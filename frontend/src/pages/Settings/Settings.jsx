@@ -1,0 +1,282 @@
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Save, Loader2, Plus, Edit2 } from 'lucide-react';
+import api from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import toast from 'react-hot-toast';
+import Modal from '@/components/UI/Modal';
+
+const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
+export default function Settings() {
+  const { user, tenant } = useAuth();
+  const [tab, setTab] = useState('company');
+  const qc = useQueryClient();
+  const isAdmin = user?.role === 'admin';
+
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.get('/settings'),
+  });
+
+  const { data: users } = useQuery({
+    queryKey: ['settings-users'],
+    queryFn: () => api.get('/settings/users'),
+    enabled: tab === 'users',
+  });
+
+  const [form, setForm] = useState({
+    name: '', app_name: '', cnpj: '', phone: '', email: '',
+    logo_url: '',
+    address: { street: '', number: '', city: '', state: '', zip: '' },
+  });
+
+  const [userModal, setUserModal] = useState(false);
+  const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'operator' });
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (settings) {
+      setForm({
+        name: settings.name || '',
+        app_name: settings.app_name || '',
+        cnpj: settings.cnpj || '',
+        phone: settings.phone || '',
+        email: settings.email || '',
+        logo_url: settings.logo_url || '',
+        address: settings.address || {},
+      });
+    }
+  }, [settings]);
+
+  const saveMutation = useMutation({
+    mutationFn: (data) => api.put('/settings', data),
+    onSuccess: () => { toast.success('Configurações salvas!'); qc.invalidateQueries(['settings']); },
+    onError: (err) => toast.error(err.error || 'Erro ao salvar'),
+  });
+
+  async function createUser(e) {
+    e.preventDefault();
+    setCreating(true);
+    try {
+      await api.post('/settings/users', newUser);
+      toast.success('Usuário criado!');
+      setUserModal(false);
+      setNewUser({ name: '', email: '', password: '', role: 'operator' });
+      qc.invalidateQueries(['settings-users']);
+    } catch (err) { toast.error(err.error || 'Erro ao criar usuário'); }
+    finally { setCreating(false); }
+  }
+
+  function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
+  function setAddr(k, v) { setForm(p => ({ ...p, address: { ...p.address, [k]: v } })); }
+
+  return (
+    <div className="space-y-4 max-w-4xl">
+      <div className="page-header">
+        <h1 className="page-title">Configurações</h1>
+      </div>
+
+      <div className="card">
+        <div className="card-header flex gap-6">
+          {[['company','Empresa'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'company' && (
+          <div className="card-body space-y-5">
+            {!isAdmin && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-2">Apenas admins podem editar as configurações da empresa.</p>}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="label">Nome da Empresa *</label>
+                <input className="input" value={form.name} onChange={e => set('name', e.target.value)} disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Nome do Sistema (App)</label>
+                <input className="input" value={form.app_name} onChange={e => set('app_name', e.target.value)}
+                  placeholder="Dator ERP" disabled={!isAdmin} />
+                <p className="text-xs text-gray-400 mt-1">Aparece no topo do menu lateral</p>
+              </div>
+              <div>
+                <label className="label">CNPJ</label>
+                <input className="input" value={form.cnpj} onChange={e => set('cnpj', e.target.value)}
+                  placeholder="00.000.000/0000-00" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Telefone</label>
+                <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">E-mail</label>
+                <input type="email" className="input" value={form.email} onChange={e => set('email', e.target.value)} disabled={!isAdmin} />
+              </div>
+              <div className="col-span-2">
+                <label className="label">URL do Logotipo</label>
+                <input className="input" value={form.logo_url} onChange={e => set('logo_url', e.target.value)}
+                  placeholder="https://..." disabled={!isAdmin} />
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-medium text-gray-900 mb-3">Endereço</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="label">CEP</label>
+                  <input className="input" value={form.address?.zip || ''} onChange={e => setAddr('zip', e.target.value)} disabled={!isAdmin} />
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Rua</label>
+                  <input className="input" value={form.address?.street || ''} onChange={e => setAddr('street', e.target.value)} disabled={!isAdmin} />
+                </div>
+                <div>
+                  <label className="label">Número</label>
+                  <input className="input" value={form.address?.number || ''} onChange={e => setAddr('number', e.target.value)} disabled={!isAdmin} />
+                </div>
+                <div>
+                  <label className="label">Cidade</label>
+                  <input className="input" value={form.address?.city || ''} onChange={e => setAddr('city', e.target.value)} disabled={!isAdmin} />
+                </div>
+                <div>
+                  <label className="label">Estado</label>
+                  <select className="input" value={form.address?.state || ''} onChange={e => setAddr('state', e.target.value)} disabled={!isAdmin}>
+                    <option value="">UF</option>
+                    {states.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {isAdmin && (
+              <div className="flex justify-end">
+                <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
+                  {saveMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Salvando...</> : <><Save size={15} /> Salvar Configurações</>}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'users' && (
+          <div className="card-body">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-gray-500">{users?.length || 0} usuários cadastrados</p>
+              {isAdmin && (
+                <button onClick={() => setUserModal(true)} className="btn-primary btn-sm">
+                  <Plus size={14} /> Novo Usuário
+                </button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {(users || []).map(u => (
+                <div key={u.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center text-sm font-bold text-primary-700">
+                      {u.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{u.name}</p>
+                      <p className="text-xs text-gray-500">{u.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`badge ${u.role === 'admin' ? 'badge-purple' : u.role === 'manager' ? 'badge-blue' : 'badge-gray'}`}>
+                      {u.role === 'admin' ? 'Admin' : u.role === 'manager' ? 'Gerente' : 'Operador'}
+                    </span>
+                    <span className={`badge ${u.is_active ? 'badge-green' : 'badge-red'}`}>
+                      {u.is_active ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab === 'fiscal' && (
+          <div className="card-body">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-5">
+              <p className="text-sm font-medium text-blue-900">Configuração de NF-e</p>
+              <p className="text-sm text-blue-700 mt-1">
+                Para emitir NF-e, você precisa configurar o certificado digital A1 (.pfx) e o ambiente (homologação ou produção).
+                Essas configurações ficam armazenadas com segurança no servidor.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Ambiente</label>
+                <select className="input" disabled={!isAdmin}>
+                  <option value="1">Produção</option>
+                  <option value="2">Homologação (Testes)</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Série NF-e</label>
+                <input type="number" className="input" placeholder="1" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Último número NF-e</label>
+                <input type="number" className="input" placeholder="0" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Regime Tributário</label>
+                <select className="input" disabled={!isAdmin}>
+                  <option value="1">Simples Nacional</option>
+                  <option value="2">Simples Nacional — Excesso</option>
+                  <option value="3">Regime Normal</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="label">Certificado Digital A1 (.pfx)</label>
+                <input type="file" accept=".pfx,.p12" className="input" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Senha do Certificado</label>
+                <input type="password" className="input" disabled={!isAdmin} />
+              </div>
+            </div>
+            {isAdmin && (
+              <div className="flex justify-end mt-4">
+                <button className="btn-primary"><Save size={15} /> Salvar Configurações Fiscais</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <Modal isOpen={userModal} onClose={() => setUserModal(false)} title="Novo Usuário" size="sm">
+        <form onSubmit={createUser} className="space-y-4">
+          <div>
+            <label className="label">Nome *</label>
+            <input className="input" value={newUser.name} onChange={e => setNewUser(p => ({...p, name: e.target.value}))} required />
+          </div>
+          <div>
+            <label className="label">E-mail *</label>
+            <input type="email" className="input" value={newUser.email} onChange={e => setNewUser(p => ({...p, email: e.target.value}))} required />
+          </div>
+          <div>
+            <label className="label">Senha *</label>
+            <input type="password" className="input" value={newUser.password} onChange={e => setNewUser(p => ({...p, password: e.target.value}))} required minLength={6} />
+          </div>
+          <div>
+            <label className="label">Perfil</label>
+            <select className="input" value={newUser.role} onChange={e => setNewUser(p => ({...p, role: e.target.value}))}>
+              <option value="operator">Operador</option>
+              <option value="manager">Gerente</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </div>
+          <div className="flex justify-end gap-3 pt-2 border-t">
+            <button type="button" onClick={() => setUserModal(false)} className="btn-secondary">Cancelar</button>
+            <button type="submit" disabled={creating} className="btn-primary">
+              {creating ? <><Loader2 size={15} className="animate-spin" /> Criando...</> : 'Criar Usuário'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}

@@ -1,0 +1,219 @@
+const express = require('express');
+const router = express.Router();
+const supabase = require('../config/supabase');
+
+router.get('/sales-summary', async (req, res) => {
+  const { start_date, end_date } = req.query;
+
+  try {
+    const { data, error } = await supabase
+      .from('VENDAS')
+      .select('id, number, total, status, created_at, CLIENTES(name)')
+      .eq('tenant_id', req.tenantId)
+      .neq('status', 'cancelled')
+      .gte('created_at', start_date || new Date(Date.now() - 30 * 86400000).toISOString())
+      .lte('created_at', (end_date || new Date().toISOString().split('T')[0]) + 'T23:59:59')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const totalAmount = data.reduce((s, v) => s + (v.total || 0), 0);
+    res.json({ data, summary: { total_amount: totalAmount, total_count: data.length } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/stock-position', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('PRODUTOS')
+      .select('id, code, name, unit, current_stock, min_stock, cost_price, sale_price, supplier_id, CATEGORIAS(name), FORNECEDORES(id, name, phone)')
+      .eq('tenant_id', req.tenantId)
+      .eq('is_active', true)
+      .order('name');
+
+    if (error) throw error;
+
+    const totalCost = data.reduce((s, p) => s + (p.current_stock * p.cost_price), 0);
+    const totalValue = data.reduce((s, p) => s + (p.current_stock * p.sale_price), 0);
+    const belowMin = data.filter(p => p.current_stock <= p.min_stock).length;
+
+    res.json({
+      data,
+      summary: {
+        total_products: data.length,
+        total_cost_value: totalCost,
+        total_sale_value: totalValue,
+        below_min_stock: belowMin,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/top-customers', async (req, res) => {
+  const { start_date, end_date, limit = 10 } = req.query;
+
+  try {
+    const { data, error } = await supabase
+      .from('VENDAS')
+      .select('customer_id, total, CLIENTES(id, name, cpf_cnpj)')
+      .eq('tenant_id', req.tenantId)
+      .neq('status', 'cancelled')
+      .not('customer_id', 'is', null)
+      .gte('created_at', start_date || new Date(Date.now() - 90 * 86400000).toISOString())
+      .lte('created_at', (end_date || new Date().toISOString().split('T')[0]) + 'T23:59:59');
+
+    if (error) throw error;
+
+    const grouped = {};
+    data.forEach(sale => {
+      const cid = sale.customer_id;
+      if (!grouped[cid]) grouped[cid] = { customer: sale.CLIENTES, total: 0, count: 0 };
+      grouped[cid].total += sale.total || 0;
+      grouped[cid].count += 1;
+    });
+
+    const sorted = Object.values(grouped)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, Number(limit));
+
+    res.json(sorted);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/top-products', async (req, res) => {
+  const { start_date, end_date, limit = 15 } = req.query;
+  const startDate = start_date || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const endDate = (end_date || new Date().toISOString().split('T')[0]) + 'T23:59:59';
+
+  try {
+    // Step 1: get valid sale IDs in date range
+    const { data: sales, error: salesError } = await supabase
+      .from('VENDAS')
+      .select('id')
+      .eq('tenant_id', req.tenantId)
+      .neq('status', 'cancelled')
+      .gte('created_at', startDate)
+      .lte('created_at', endDate);
+
+    if (salesError) throw salesError;
+
+    const saleIds = (sales || []).map(s => s.id);
+    if (saleIds.length === 0) return res.json([]);
+
+    // Step 2: get items for those sales
+    const { data: items, error: itemsError } = await supabase
+      .from('VENDA_ITENS')
+      .select('product_id, quantity, total, PRODUTOS(id, name, code, unit)')
+      .in('sale_id', saleIds);
+
+    if (itemsError) throw itemsError;
+
+    // Step 3: aggregate
+    const grouped = {};
+    (items || []).forEach(item => {
+      const pid = item.product_id;
+      if (!pid) return;
+      if (!grouped[pid]) {
+        grouped[pid] = {
+          product: item.PRODUTOS,
+          total_qty: 0,
+          total_value: 0,
+          count: 0,
+        };
+      }
+      grouped[pid].total_qty += Number(item.quantity) || 0;
+      grouped[pid].total_value += Number(item.total) || 0;
+      grouped[pid].count += 1;
+    });
+
+    const sorted = Object.values(grouped)
+      .sort((a, b) => b.total_value - a.total_value)
+      .slice(0, Number(limit));
+
+    res.json(sorted);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/cashflow', async (req, res) => {
+  const { start_date, end_date } = req.query;
+  const startDate = start_date || new Date().toISOString().split('T')[0];
+  const endDate = end_date || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+
+  try {
+    const { data, error } = await supabase
+      .from('LANCAMENTOS')
+      .select('type, amount, paid_amount, due_date, status, description')
+      .eq('tenant_id', req.tenantId)
+      .gte('due_date', startDate)
+      .lte('due_date', endDate)
+      .not('status', 'eq', 'cancelled')
+      .order('due_date');
+
+    if (error) throw error;
+
+    // Group by date
+    const byDate = {};
+    (data || []).forEach(item => {
+      const date = item.due_date;
+      if (!byDate[date]) byDate[date] = { date, receivable: 0, payable: 0, balance: 0 };
+      if (item.type === 'receivable') {
+        byDate[date].receivable += item.amount || 0;
+      } else {
+        byDate[date].payable += item.amount || 0;
+      }
+    });
+
+    // Build cumulative cashflow
+    let accumulated = 0;
+    const rows = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date)).map(row => {
+      accumulated += (row.receivable - row.payable);
+      return { ...row, balance: accumulated };
+    });
+
+    const totalReceivable = (data || []).filter(i => i.type === 'receivable').reduce((s, i) => s + (i.amount || 0), 0);
+    const totalPayable = (data || []).filter(i => i.type === 'payable').reduce((s, i) => s + (i.amount || 0), 0);
+
+    res.json({ rows, summary: { total_receivable: totalReceivable, total_payable: totalPayable, net: totalReceivable - totalPayable }, items: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/quotes-summary', async (req, res) => {
+  const { start_date, end_date } = req.query;
+
+  try {
+    const { data, error } = await supabase
+      .from('ORCAMENTOS')
+      .select('id, number, total, status, created_at, valid_until, CLIENTES(name)')
+      .eq('tenant_id', req.tenantId)
+      .gte('created_at', start_date || new Date(Date.now() - 30 * 86400000).toISOString())
+      .lte('created_at', (end_date || new Date().toISOString().split('T')[0]) + 'T23:59:59')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const summary = {
+      total_count: data.length,
+      total_value: data.reduce((s, q) => s + (q.total || 0), 0),
+      by_status: {},
+    };
+    data.forEach(q => {
+      summary.by_status[q.status] = (summary.by_status[q.status] || 0) + 1;
+    });
+
+    res.json({ data, summary });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;

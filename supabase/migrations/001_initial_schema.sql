@@ -1,0 +1,17 @@
+-- Ver arquivo APLICAR_NO_SUPABASE.sql — versão consolidada com tabelas em PT-BR maiúsculo
+-- Mapeamento de nomes:
+--   tenants              → EMPRESAS
+--   user_profiles        → USUARIOS
+--   categories           → CATEGORIAS
+--   products             → PRODUTOS
+--   customers            → CLIENTES
+--   suppliers            → FORNECEDORES
+--   price_tables         → TABELAS_PRECO
+--   sales                → VENDAS
+--   sale_items           → VENDA_ITENS
+--   purchases            → COMPRAS
+--   purchase_items       → COMPRA_ITENS
+--   stock_movements      → MOVIMENTACOES_ESTOQUE
+--   financial_accounts   → CONTAS_FINANCEIRAS
+--   transactions         → LANCAMENTOS
+--   invoices             → NOTAS_FISCAIS

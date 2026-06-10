@@ -1,0 +1,45 @@
+const express = require('express');
+const router = express.Router();
+
+const { authMiddleware } = require('../middleware/auth');
+const { tenantMiddleware } = require('../middleware/tenant');
+
+const authRoutes = require('./auth');
+const dashboardRoutes = require('./dashboard');
+const productsRoutes = require('./products');
+const customersRoutes = require('./customers');
+const suppliersRoutes = require('./suppliers');
+const salesRoutes = require('./sales');
+const purchasesRoutes = require('./purchases');
+const stockRoutes = require('./stock');
+const financialRoutes = require('./financial');
+const fiscalRoutes = require('./fiscal');
+const reportsRoutes = require('./reports');
+const settingsRoutes = require('./settings');
+const quotesRoutes = require('./quotes');
+const customizationsRoutes = require('./customizations');
+const priceTablesRoutes = require('./price-tables');
+const financialConfigRoutes = require('./financial-config');
+
+router.use('/auth', authRoutes);
+
+router.use(authMiddleware);
+router.use(tenantMiddleware);
+
+router.use('/dashboard', dashboardRoutes);
+router.use('/products', productsRoutes);
+router.use('/customers', customersRoutes);
+router.use('/suppliers', suppliersRoutes);
+router.use('/sales', salesRoutes);
+router.use('/purchases', purchasesRoutes);
+router.use('/stock', stockRoutes);
+router.use('/financial', financialRoutes);
+router.use('/fiscal', fiscalRoutes);
+router.use('/reports', reportsRoutes);
+router.use('/settings', settingsRoutes);
+router.use('/quotes', quotesRoutes);
+router.use('/customizations', customizationsRoutes);
+router.use('/price-tables', priceTablesRoutes);
+router.use('/financial-config', financialConfigRoutes);
+
+module.exports = router;
