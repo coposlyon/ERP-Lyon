@@ -1,0 +1,3 @@
+# Mantém scripts shell com LF (Unix) para rodar no Linux/Discloud
+*.sh text eol=lf
+discloud.config text eol=lf
