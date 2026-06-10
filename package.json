@@ -1,0 +1,13 @@
+{
+  "name": "erp-lyon",
+  "version": "1.0.0",
+  "description": "ERP Lyon - Sistema Comercial",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "build": "bash build.sh"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
