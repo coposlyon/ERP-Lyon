@@ -1,19 +1,15 @@
 #!/bin/bash
-set -e
 
-echo "=== [1/3] Instalando dependencias do frontend ==="
-cd frontend
-npm install
+echo "=== [1/3] Instalando deps do backend ==="
+(cd backend && npm install) || { echo "ERRO: backend npm install falhou"; exit 1; }
 
-echo "=== [2/3] Buildando React ==="
-npm run build
+echo "=== [2/3] Instalando deps do frontend e buildando ==="
+if (cd frontend && npm install && npm run build); then
+  rm -rf backend/public
+  cp -r frontend/dist backend/public
+  echo "=== [3/3] Frontend copiado para backend/public ==="
+else
+  echo "=== AVISO: build do frontend falhou, backend vai subir sem arquivos estaticos ==="
+fi
 
-echo "=== [3/3] Copiando build para backend/public ==="
-rm -rf ../backend/public
-cp -r dist ../backend/public
-
-echo "=== Instalando dependencias do backend ==="
-cd ../backend
-npm install
-
-echo "=== Build concluido ==="
+echo "=== Build finalizado ==="
