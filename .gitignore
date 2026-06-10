@@ -5,7 +5,7 @@ backend/node_modules/
 
 # Build
 frontend/dist/
-backend/public/
+# backend/public/ — commitado para deploy no Discloud sem build remoto
 
 # Variáveis de ambiente (NUNCA commitar)
 .env
