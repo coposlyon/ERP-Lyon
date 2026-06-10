@@ -8,14 +8,17 @@ if (!supabaseUrl || !supabaseServiceKey) {
   throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables');
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-  realtime: {
-    transport: WebSocket,
-  },
+// Sempre inclui ws como transport (obrigatorio no Node.js < 22)
+function makeClient(url, key, opts = {}) {
+  return createClient(url, key, {
+    ...opts,
+    realtime: { transport: WebSocket, ...(opts.realtime || {}) },
+  });
+}
+
+const supabase = makeClient(supabaseUrl, supabaseServiceKey, {
+  auth: { autoRefreshToken: false, persistSession: false },
 });
 
 module.exports = supabase;
+module.exports.makeClient = makeClient;

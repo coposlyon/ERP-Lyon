@@ -1,4 +1,4 @@
-const { createClient } = require('@supabase/supabase-js');
+const { makeClient } = require('../config/supabase');
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
@@ -13,7 +13,7 @@ async function authMiddleware(req, res, next) {
   const token = authHeader.split(' ')[1];
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const supabase = makeClient(supabaseUrl, supabaseAnonKey);
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
