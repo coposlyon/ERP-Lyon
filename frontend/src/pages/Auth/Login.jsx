@@ -83,6 +83,90 @@ function useParticles() {
   return canvasRef;
 }
 
+// ─── Logo animada (draw stroke → float) ──────────────────────────────────────
+//
+//  Cada path SVG usa stroke-dashoffset animation (CSS classes lp-1..lp-8)
+//  para simular o "desenho" progressivo dos copos, igual à animação original.
+//  Após o draw terminar (~2.8s), o wrapper inicia a flutuação contínua (lyonFloat).
+//
+function LyonAnimatedLogo() {
+  const SW  = 2.8;   // strokeWidth padrão
+  const SWI = 2.3;   // strokeWidth interno (copo afunilado)
+  const B   = 186;   // base y
+
+  return (
+    <div className="lyon-logo-wrap flex flex-col items-center select-none">
+
+      {/* ── Copos traçados progressivamente ── */}
+      <svg
+        width="260"
+        height={Math.round(260 * (196 / 280))}
+        viewBox="0 0 280 196"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        {/* L1 — magenta — baixo */}
+        <path className="lp lp-1" d={`M3,${B} L3,132 L25,132 L25,${B}`}
+          stroke="#E8187A" strokeWidth={SW} />
+
+        {/* L2 — limão — médio */}
+        <path className="lp lp-2" d={`M31,${B} L31,100 L55,100 L55,${B}`}
+          stroke="#BFDA00" strokeWidth={SW} />
+
+        {/* L3 — verde — alto */}
+        <path className="lp lp-3" d={`M61,${B} L61,61 L85,61 L85,${B}`}
+          stroke="#76BB00" strokeWidth={SW} />
+
+        {/* Centro externo — ciano — П largo */}
+        <path className="lp lp-4" d={`M93,${B} L93,8 L187,8 L187,${B}`}
+          stroke="#00B4D8" strokeWidth={SW} />
+
+        {/* Centro interno — azul — afunilado */}
+        <path className="lp lp-5" d={`M113,${B} L113,56 L105,22 L175,22 L167,56 L167,${B}`}
+          stroke="#005CB8" strokeWidth={SWI} />
+
+        {/* R1 — violeta — alto */}
+        <path className="lp lp-6" d={`M195,${B} L195,61 L219,61 L219,${B}`}
+          stroke="#7B2FBE" strokeWidth={SW} />
+
+        {/* R2 — roxo — médio */}
+        <path className="lp lp-7" d={`M225,${B} L225,100 L249,100 L249,${B}`}
+          stroke="#9C27B0" strokeWidth={SW} />
+
+        {/* R3 — magenta — baixo */}
+        <path className="lp lp-8" d={`M255,${B} L255,132 L277,132 L277,${B}`}
+          stroke="#CC1199" strokeWidth={SW} />
+      </svg>
+
+      {/* ── Texto LYON COPOS — aparece após os copos terminarem ── */}
+      <div
+        className="lyon-text-in leading-none mt-1"
+        style={{ fontFamily: "'Montserrat', sans-serif" }}
+      >
+        <span style={{ fontSize: '2.4rem', fontWeight: 900, color: '#E8187A', letterSpacing: '0.04em' }}>
+          LYON
+        </span>
+        <span style={{ fontSize: '2.4rem', fontWeight: 900, color: '#ffffff', letterSpacing: '0.04em', marginLeft: '0.4rem' }}>
+          COPOS
+        </span>
+      </div>
+
+      {/* ── Subtitle ── */}
+      <p
+        className="lyon-text-in text-[11px] mt-1"
+        style={{
+          color: 'rgba(255,255,255,0.26)',
+          letterSpacing: '0.22em',
+          fontFamily: "'Montserrat', sans-serif",
+          animationDelay: '1.7s',
+        }}
+      >
+        GESTÃO COMERCIAL
+      </p>
+    </div>
+  );
+}
+
 // ─── Página de login ──────────────────────────────────────────────────────────
 export default function Login() {
   const [email,        setEmail]        = useState('');
@@ -132,25 +216,9 @@ export default function Login() {
       {/* ── Conteúdo central ── */}
       <div className="relative w-full max-w-sm" style={{ zIndex: 2 }}>
 
-        {/* Logo animado */}
-        <div className="flex flex-col items-center mb-8 select-none">
-          <img
-            src="/lyon-logo.png"
-            alt="Lyon Copos"
-            className="lyon-logo-anim"
-            style={{ width: 280 }}
-            draggable={false}
-          />
-          <p
-            className="text-xs mt-2 tracking-widest"
-            style={{
-              color: 'rgba(255,255,255,0.28)',
-              fontFamily: "'Montserrat', sans-serif",
-              letterSpacing: '0.22em',
-            }}
-          >
-            GESTÃO COMERCIAL
-          </p>
+        {/* Logo animada (draw stroke → float) */}
+        <div className="mb-8">
+          <LyonAnimatedLogo />
         </div>
 
         {/* Card do formulário */}
