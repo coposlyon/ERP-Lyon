@@ -59,9 +59,25 @@ router.get('/', async (req, res) => {
 });
 
 router.get('/sales-chart', async (req, res) => {
-  const { days = 30 } = req.query;
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - Number(days));
+  const { days, month, year } = req.query;
+
+  let startDate, endDate;
+
+  if (month && year) {
+    // Modo mês/ano específico
+    const y = parseInt(year);
+    const m = parseInt(month);
+    const lastDay = new Date(y, m, 0).getDate();
+    startDate = `${y}-${String(m).padStart(2, '0')}-01`;
+    endDate   = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59`;
+  } else {
+    // Modo últimos N dias (legado)
+    const d = parseInt(days) || 30;
+    const from = new Date();
+    from.setDate(from.getDate() - d);
+    startDate = from.toISOString();
+    endDate   = new Date().toISOString();
+  }
 
   try {
     const { data, error } = await supabase
@@ -69,7 +85,8 @@ router.get('/sales-chart', async (req, res) => {
       .select('created_at, total')
       .eq('tenant_id', req.tenantId)
       .neq('status', 'cancelled')
-      .gte('created_at', startDate.toISOString())
+      .gte('created_at', startDate)
+      .lte('created_at', endDate)
       .order('created_at');
 
     if (error) throw error;
@@ -82,8 +99,50 @@ router.get('/sales-chart', async (req, res) => {
 
     const labels = Object.keys(grouped).sort();
     const values = labels.map(l => grouped[l]);
+    const total  = values.reduce((s, v) => s + v, 0);
 
-    res.json({ labels, values });
+    res.json({ labels, values, total });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Comparativo anual (últimos 3 anos) ────────────────────────────────────────
+router.get('/year-comparison', async (req, res) => {
+  const currentYear = new Date().getFullYear();
+
+  try {
+    const startDate = `${currentYear - 2}-01-01`;
+
+    const { data, error } = await supabase
+      .from('VENDAS')
+      .select('created_at, total')
+      .eq('tenant_id', req.tenantId)
+      .neq('status', 'cancelled')
+      .gte('created_at', startDate)
+      .order('created_at');
+
+    if (error) throw error;
+
+    // Agrupa por ano → mês (0-11)
+    const byYear = {};
+    (data || []).forEach(sale => {
+      const d = new Date(sale.created_at);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      if (!byYear[y]) byYear[y] = new Array(12).fill(0);
+      byYear[y][m] += sale.total || 0;
+    });
+
+    const result = Object.entries(byYear)
+      .sort(([a], [b]) => parseInt(a) - parseInt(b))
+      .map(([year, months]) => ({
+        year:   parseInt(year),
+        months,
+        total:  months.reduce((s, v) => s + v, 0),
+      }));
+
+    res.json({ data: result });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
