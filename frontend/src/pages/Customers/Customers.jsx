@@ -77,7 +77,7 @@ export default function Customers() {
   function onSaved() { closeModal(); qc.invalidateQueries(['customers']); }
 
   const columns = [
-    { key: 'display_id', label: '#', width: 55,
+    { key: 'display_id', label: 'Código', width: 70,
       render: v => <span className="text-xs font-mono text-gray-500 font-semibold">{v || '—'}</span>
     },
     { key: 'type', label: 'Tipo', width: 65,
