@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Loader2, Star, Instagram } from 'lucide-react';
+import { Loader2, Star, Instagram, CheckCircle2, XCircle } from 'lucide-react';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -25,7 +25,38 @@ function StarRating({ value, onChange }) {
 
 const emptyAddress = { street:'', number:'', complement:'', neighborhood:'', city:'', state:'', zip:'' };
 
-// Formata número para exibição: 200000 → "200.000" | 99990 com vírgula → "999,90"
+// ── Formatação CPF / CNPJ ────────────────────────────────────────────────────
+function formatCpf(v) {
+  const d = v.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 3)  return d;
+  if (d.length <= 6)  return `${d.slice(0,3)}.${d.slice(3)}`;
+  if (d.length <= 9)  return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`;
+  return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
+}
+
+function formatCnpj(v) {
+  const d = v.replace(/\D/g, '').slice(0, 14);
+  if (d.length <= 2)  return d;
+  if (d.length <= 5)  return `${d.slice(0,2)}.${d.slice(2)}`;
+  if (d.length <= 8)  return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5)}`;
+  if (d.length <= 12) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8)}`;
+  return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`;
+}
+
+// Valida CPF pelos dois dígitos verificadores
+function validateCpf(cpf) {
+  const d = cpf.replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const calc = (len) => {
+    let sum = 0;
+    for (let i = 0; i < len; i++) sum += parseInt(d[i]) * (len + 1 - i);
+    const r = (sum * 10) % 11;
+    return r >= 10 ? 0 : r;
+  };
+  return calc(9) === parseInt(d[9]) && calc(10) === parseInt(d[10]);
+}
+
+// ── Formatação de número para exibição: 200000 → "200.000" | 99990 com vírgula → "999,90"
 function formatCreditLimit(raw) {
   const cleaned = String(raw).replace(/[^\d,]/g, '');
   const commaIdx = cleaned.indexOf(',');
@@ -62,6 +93,8 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
   const [loading, setLoading]       = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
   const [duplicate, setDuplicate]   = useState(null);
+  const [docLoading, setDocLoading] = useState(false);
+  const [docStatus,  setDocStatus]  = useState(null); // null | 'ok' | 'error' | 'invalid'
 
   useEffect(() => {
     if (customer) {
@@ -89,6 +122,70 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
   function setUp(f, v)     { setForm(p => ({ ...p, [f]: String(v).toUpperCase() })); }
   function setAddr(f, v)   { setForm(p => ({ ...p, address: { ...p.address, [f]: v } })); }
   function setAddrUp(f, v) { setForm(p => ({ ...p, address: { ...p.address, [f]: String(v).toUpperCase() } })); }
+
+  // ── Lookup CNPJ (PJ) ────────────────────────────────────────────────────────
+  async function lookupCnpj(digits) {
+    if (digits.length !== 14 || docLoading) return;
+    setDocLoading(true);
+    setDocStatus(null);
+    try {
+      const res = await fetch(`/api/cnpj/${digits}`);
+      if (!res.ok) throw new Error('not found');
+      const d = await res.json();
+      const zip = d.zip ? d.zip.replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
+      setForm(p => ({
+        ...p,
+        name:         (d.name       || p.name).toUpperCase(),
+        nome_fantasia:(d.trade_name || p.nome_fantasia).toUpperCase(),
+        rg_ie:        d.ie          || p.rg_ie,
+        email:        d.email       || p.email,
+        phone:        d.phone ? formatPhoneDisplay(d.phone) : p.phone,
+        address: {
+          ...p.address,
+          street:       (d.street       || '').toUpperCase(),
+          number:       (d.number       || '').toUpperCase(),
+          complement:   (d.complement   || '').toUpperCase(),
+          neighborhood: (d.neighborhood || '').toUpperCase(),
+          city:         (d.city         || '').toUpperCase(),
+          state:        (d.state        || '').toUpperCase(),
+          zip,
+        },
+      }));
+      setDocStatus('ok');
+      toast.success('✅ Dados preenchidos automaticamente pelo CNPJ!');
+    } catch {
+      setDocStatus('error');
+      toast.error('CNPJ não encontrado — preencha manualmente');
+    } finally {
+      setDocLoading(false);
+    }
+  }
+
+  function formatPhoneDisplay(raw) {
+    const d = raw.replace(/\D/g, '');
+    if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+    if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+    return raw;
+  }
+
+  // ── Handler do campo CPF / CNPJ ─────────────────────────────────────────────
+  function handleDocChange(e) {
+    const raw = e.target.value.replace(/\D/g, '');
+    if (form.type === 'PJ') {
+      const formatted = formatCnpj(e.target.value);
+      set('cpf_cnpj', formatted);
+      if (raw.length === 14) lookupCnpj(raw);
+    } else {
+      const formatted = formatCpf(e.target.value);
+      set('cpf_cnpj', formatted);
+      if (raw.length === 11) {
+        const valid = validateCpf(raw);
+        setDocStatus(valid ? 'ok' : 'invalid');
+      } else {
+        setDocStatus(null);
+      }
+    }
+  }
 
   async function handleCepBlur(e) {
     const cep = e.target.value.replace(/\D/g, '');
@@ -174,7 +271,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
         ].map(({ v, l }) => (
           <label key={v} className="flex items-center gap-2 cursor-pointer">
             <input type="radio" name="type" value={v} checked={form.type === v}
-              onChange={() => set('type', v)} className="text-primary-600" />
+              onChange={() => { set('type', v); setDocStatus(null); }} className="text-primary-600" />
             <span className="text-sm font-medium">{l}</span>
           </label>
         ))}
@@ -196,8 +293,26 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
 
         <div>
           <label className="label">{isPJ ? 'CNPJ' : 'CPF'}</label>
-          <input className="input" value={form.cpf_cnpj} onChange={e => setUp('cpf_cnpj', e.target.value)}
-            placeholder={isPJ ? '00.000.000/0000-00' : '000.000.000-00'} />
+          <div className="relative">
+            <input
+              className="input pr-10"
+              value={form.cpf_cnpj}
+              onChange={handleDocChange}
+              placeholder={isPJ ? '00.000.000/0000-00' : '000.000.000-00'}
+              maxLength={isPJ ? 18 : 14}
+              disabled={docLoading}
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              {docLoading && <Loader2 size={15} className="animate-spin text-gray-400" />}
+              {!docLoading && docStatus === 'ok'      && <CheckCircle2 size={15} className="text-green-500" />}
+              {!docLoading && (docStatus === 'error' || docStatus === 'invalid') && <XCircle size={15} className="text-red-400" />}
+            </div>
+          </div>
+          {docLoading && <p className="text-xs text-primary-600 mt-1 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Consultando CNPJ...</p>}
+          {!docLoading && docStatus === 'ok'      && isPJ  && <p className="text-xs text-green-600 mt-1">✅ Dados preenchidos automaticamente</p>}
+          {!docLoading && docStatus === 'ok'      && !isPJ && <p className="text-xs text-green-600 mt-1">✅ CPF válido</p>}
+          {!docLoading && docStatus === 'invalid'           && <p className="text-xs text-red-500 mt-1">CPF inválido — verifique os dígitos</p>}
+          {!docLoading && docStatus === 'error'             && <p className="text-xs text-red-500 mt-1">CNPJ não encontrado — preencha manualmente</p>}
         </div>
 
         {isPJ && (
