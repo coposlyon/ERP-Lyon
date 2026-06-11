@@ -178,25 +178,25 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
       `}
     >
       {/* Header do sidebar: logo Lyon Copos + botão fechar (mobile) */}
-      <div className="flex items-center gap-2 px-3 py-3 border-b border-indigo-800 min-h-[64px]">
+      <div className="flex items-center gap-2 px-3 py-4 border-b border-indigo-800 min-h-[120px]">
         {collapsed ? (
-          /* Modo colapsado: só ícone pequeno */
+          /* Modo colapsado: logo média */
           <img
             src="/lyon-logo.png"
             alt="Lyon Copos"
-            style={{ height: 30, width: 'auto', objectFit: 'contain' }}
+            style={{ height: 56, width: 'auto', objectFit: 'contain' }}
             draggable={false}
           />
         ) : (
-          /* Modo expandido: logo maior + tenant abaixo */
+          /* Modo expandido: logo grande + tenant abaixo */
           <div className="flex flex-col min-w-0 flex-1">
             <img
               src="/lyon-logo.png"
               alt="Lyon Copos"
-              style={{ height: 38, width: 'auto', objectFit: 'contain', objectPosition: 'left' }}
+              style={{ width: '100%', height: 'auto', objectFit: 'contain', objectPosition: 'left' }}
               draggable={false}
             />
-            <p className="text-indigo-300 text-xs truncate mt-1">
+            <p className="text-indigo-300 text-xs truncate mt-2">
               {tenant?.name || 'Gestão Comercial'}
             </p>
           </div>
