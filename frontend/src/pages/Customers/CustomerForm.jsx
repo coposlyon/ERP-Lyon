@@ -25,17 +25,30 @@ function StarRating({ value, onChange }) {
 
 const emptyAddress = { street:'', number:'', complement:'', neighborhood:'', city:'', state:'', zip:'' };
 
-// Formata número para exibição: 200000 → "200.000"
+// Formata número para exibição: 200000 → "200.000" | 99990 com vírgula → "999,90"
 function formatCreditLimit(raw) {
-  const digits = String(raw).replace(/\D/g, '');
-  if (!digits) return '';
-  return parseInt(digits, 10).toLocaleString('pt-BR');
+  const cleaned = String(raw).replace(/[^\d,]/g, '');
+  const commaIdx = cleaned.indexOf(',');
+
+  let intPart, decPart;
+  if (commaIdx >= 0) {
+    intPart = cleaned.slice(0, commaIdx).replace(/\D/g, '');
+    decPart = cleaned.slice(commaIdx + 1).replace(/\D/g, '').slice(0, 2);
+  } else {
+    intPart = cleaned.replace(/\D/g, '');
+    decPart = null;
+  }
+
+  const formattedInt = intPart ? parseInt(intPart, 10).toLocaleString('pt-BR') : '';
+
+  if (decPart !== null) return (formattedInt || '0') + ',' + decPart;
+  return formattedInt;
 }
 
-// Converte de volta para número ao salvar: "200.000" → 200000
+// Converte de volta para número ao salvar: "1.500.000,50" → 1500000.5
 function parseCreditLimit(formatted) {
   if (!formatted) return 0;
-  return parseInt(String(formatted).replace(/\./g, ''), 10) || 0;
+  return parseFloat(String(formatted).replace(/\./g, '').replace(',', '.')) || 0;
 }
 
 export default function CustomerForm({ customer, onSaved, onCancel, hideRating = false }) {
@@ -62,7 +75,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
         mobile:       customer.mobile || '',
         address:      customer.address || { ...emptyAddress },
         credit_limit: customer.credit_limit != null && customer.credit_limit !== ''
-          ? formatCreditLimit(Math.round(Number(customer.credit_limit)))
+          ? Number(customer.credit_limit).toLocaleString('pt-BR', { maximumFractionDigits: 2 })
           : '',
         instagram:    customer.instagram || '',
         nome_fantasia: customer.nome_fantasia || '',
@@ -72,8 +85,10 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
     }
   }, [customer]);
 
-  function set(f, v)    { setForm(p => ({ ...p, [f]: v })); }
-  function setAddr(f,v) { setForm(p => ({ ...p, address: { ...p.address, [f]: v } })); }
+  function set(f, v)       { setForm(p => ({ ...p, [f]: v })); }
+  function setUp(f, v)     { setForm(p => ({ ...p, [f]: String(v).toUpperCase() })); }
+  function setAddr(f, v)   { setForm(p => ({ ...p, address: { ...p.address, [f]: v } })); }
+  function setAddrUp(f, v) { setForm(p => ({ ...p, address: { ...p.address, [f]: String(v).toUpperCase() } })); }
 
   async function handleCepBlur(e) {
     const cep = e.target.value.replace(/\D/g, '');
@@ -85,7 +100,14 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
       if (data.erro) { toast.error('CEP não encontrado'); return; }
       setForm(p => ({
         ...p,
-        address: { ...p.address, street: data.logradouro||'', neighborhood: data.bairro||'', city: data.localidade||'', state: data.uf||'', zip: e.target.value },
+        address: {
+          ...p.address,
+          street:       (data.logradouro  || '').toUpperCase(),
+          neighborhood: (data.bairro      || '').toUpperCase(),
+          city:         (data.localidade  || '').toUpperCase(),
+          state:        (data.uf          || '').toUpperCase(),
+          zip:          e.target.value,
+        },
       }));
     } catch { toast.error('Erro ao buscar CEP'); }
     finally  { setCepLoading(false); }
@@ -162,26 +184,26 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
           <label className="label">{isPJ ? 'Razão Social *' : 'Nome Completo *'}</label>
-          <input className="input" value={form.name} onChange={e => set('name', e.target.value)} />
+          <input className="input" value={form.name} onChange={e => setUp('name', e.target.value)} />
         </div>
 
         {isPJ && (
           <div className="col-span-2">
             <label className="label">Nome Fantasia</label>
-            <input className="input" value={form.nome_fantasia} onChange={e => set('nome_fantasia', e.target.value)} placeholder="Nome fantasia da empresa" />
+            <input className="input" value={form.nome_fantasia} onChange={e => setUp('nome_fantasia', e.target.value)} placeholder="Nome fantasia da empresa" />
           </div>
         )}
 
         <div>
           <label className="label">{isPJ ? 'CNPJ' : 'CPF'}</label>
-          <input className="input" value={form.cpf_cnpj} onChange={e => set('cpf_cnpj', e.target.value)}
+          <input className="input" value={form.cpf_cnpj} onChange={e => setUp('cpf_cnpj', e.target.value)}
             placeholder={isPJ ? '00.000.000/0000-00' : '000.000.000-00'} />
         </div>
 
         {isPJ && (
           <div>
             <label className="label">Inscrição Estadual</label>
-            <input className="input" value={form.rg_ie} onChange={e => set('rg_ie', e.target.value)} />
+            <input className="input" value={form.rg_ie} onChange={e => setUp('rg_ie', e.target.value)} />
           </div>
         )}
 
@@ -192,7 +214,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
 
         <div>
           <label className="label">Telefone / WhatsApp</label>
-          <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(44) 99999-9999" />
+          <input className="input" value={form.phone} onChange={e => setUp('phone', e.target.value)} placeholder="(44) 99999-9999" />
         </div>
 
         <div>
@@ -207,7 +229,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
           <label className="label">Limite de Crédito (R$)</label>
           <input
             type="text"
-            inputMode="numeric"
+            inputMode="decimal"
             className="input"
             value={form.credit_limit}
             onChange={e => set('credit_limit', formatCreditLimit(e.target.value))}
@@ -241,23 +263,23 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
           </div>
           <div className="col-span-2">
             <label className="label">Rua / Logradouro</label>
-            <input className="input" value={form.address.street} onChange={e => setAddr('street', e.target.value)} />
+            <input className="input" value={form.address.street} onChange={e => setAddrUp('street', e.target.value)} />
           </div>
           <div>
             <label className="label">Número</label>
-            <input className="input" value={form.address.number} onChange={e => setAddr('number', e.target.value)} />
+            <input className="input" value={form.address.number} onChange={e => setAddrUp('number', e.target.value)} />
           </div>
           <div>
             <label className="label">Complemento</label>
-            <input className="input" value={form.address.complement} onChange={e => setAddr('complement', e.target.value)} />
+            <input className="input" value={form.address.complement} onChange={e => setAddrUp('complement', e.target.value)} />
           </div>
           <div>
             <label className="label">Bairro</label>
-            <input className="input" value={form.address.neighborhood} onChange={e => setAddr('neighborhood', e.target.value)} />
+            <input className="input" value={form.address.neighborhood} onChange={e => setAddrUp('neighborhood', e.target.value)} />
           </div>
           <div>
             <label className="label">Cidade</label>
-            <input className="input" value={form.address.city} onChange={e => setAddr('city', e.target.value)} />
+            <input className="input" value={form.address.city} onChange={e => setAddrUp('city', e.target.value)} />
           </div>
           <div>
             <label className="label">Estado</label>
