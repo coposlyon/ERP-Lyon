@@ -6,6 +6,7 @@ import {
   Boxes, Wallet, Receipt, ChevronDown, ChevronRight,
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
+  RotateCcw, FlaskConical, Target, UserCog,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -74,6 +75,26 @@ const menuItems = [
     label: 'Relatórios',
     icon: BarChart3,
     path: '/reports',
+  },
+  {
+    label: 'Devoluções',
+    icon: RotateCcw,
+    path: '/returns',
+  },
+  {
+    label: 'Qualidade',
+    icon: FlaskConical,
+    path: '/quality',
+  },
+  {
+    label: 'CRM',
+    icon: Target,
+    path: '/crm',
+  },
+  {
+    label: 'RH',
+    icon: UserCog,
+    path: '/hr',
   },
   {
     label: 'Configurações',

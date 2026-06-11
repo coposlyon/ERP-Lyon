@@ -216,4 +216,56 @@ router.get('/quotes-summary', async (req, res) => {
   }
 });
 
+// ── Rentabilidade por pedido ──────────────────────────────
+router.get('/profitability', async (req, res) => {
+  const { start_date, end_date } = req.query;
+  const startDate = start_date || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const endDate   = (end_date  || new Date().toISOString().split('T')[0]) + 'T23:59:59';
+
+  try {
+    const { data: sales, error: sErr } = await supabase
+      .from('VENDAS')
+      .select('id, number, total, discount, created_at, customer_id, CLIENTES(id,name)')
+      .eq('tenant_id', req.tenantId)
+      .neq('status', 'cancelled')
+      .gte('created_at', startDate)
+      .lte('created_at', endDate);
+    if (sErr) throw sErr;
+    if (!sales?.length)
+      return res.json({ data:[], summary:{ revenue:0, cost:0, profit:0, margin:0 } });
+
+    const saleIds = sales.map(s => s.id);
+    const { data: items, error: iErr } = await supabase
+      .from('VENDA_ITENS')
+      .select('sale_id, quantity, total, PRODUTOS(id,name,cost_price)')
+      .in('sale_id', saleIds);
+    if (iErr) throw iErr;
+
+    const costBySale = {};
+    (items||[]).forEach(it => {
+      const cost = (it.quantity||0) * (it.PRODUTOS?.cost_price||0);
+      costBySale[it.sale_id] = (costBySale[it.sale_id]||0) + cost;
+    });
+
+    const data = sales.map(s => {
+      const revenue = s.total || 0;
+      const cost    = costBySale[s.id] || 0;
+      const profit  = revenue - cost;
+      const margin  = revenue > 0 ? (profit / revenue * 100) : 0;
+      return { ...s, revenue, cost, profit, margin: parseFloat(margin.toFixed(2)) };
+    });
+
+    const totalRevenue = data.reduce((a,d) => a + d.revenue, 0);
+    const totalCost    = data.reduce((a,d) => a + d.cost,    0);
+    const totalProfit  = totalRevenue - totalCost;
+    const avgMargin    = totalRevenue > 0
+      ? parseFloat((totalProfit / totalRevenue * 100).toFixed(2)) : 0;
+
+    res.json({
+      data,
+      summary: { revenue:totalRevenue, cost:totalCost, profit:totalProfit, margin:avgMargin },
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

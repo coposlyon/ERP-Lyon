@@ -25,6 +25,10 @@ import PriceTables from '@/pages/PriceTable/PriceTables';
 import CustomerDetail from '@/pages/Customers/CustomerDetail';
 import Employees from '@/pages/Employees/Employees';
 import Logistics from '@/pages/Logistics/Logistics';
+import Returns from '@/pages/Returns/Returns';
+import Quality from '@/pages/Quality/Quality';
+import CRM from '@/pages/CRM/CRM';
+import HR from '@/pages/HR/HR';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -79,6 +83,11 @@ function AppRoutes() {
         <Route path="reports" element={<Reports />} />
         {/* Config */}
         <Route path="settings" element={<Settings />} />
+        {/* Novos módulos */}
+        <Route path="returns"  element={<Returns />}  />
+        <Route path="quality"  element={<Quality />}  />
+        <Route path="crm"      element={<CRM />}      />
+        <Route path="hr"       element={<HR />}       />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

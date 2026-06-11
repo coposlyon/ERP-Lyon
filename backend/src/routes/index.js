@@ -22,6 +22,10 @@ const priceTablesRoutes = require('./price-tables');
 const financialConfigRoutes = require('./financial-config');
 const logisticsRoutes       = require('./logistics');
 const cnpjRoutes            = require('./cnpj');
+const returnsRoutes         = require('./returns');
+const qualityRoutes         = require('./quality');
+const crmRoutes             = require('./crm');
+const hrRoutes              = require('./hr');
 
 router.use('/auth', authRoutes);
 router.use('/cnpj', cnpjRoutes);   // público — sem auth
@@ -45,5 +49,9 @@ router.use('/customizations', customizationsRoutes);
 router.use('/price-tables', priceTablesRoutes);
 router.use('/financial-config', financialConfigRoutes);
 router.use('/logistics',       logisticsRoutes);
+router.use('/returns',         returnsRoutes);
+router.use('/quality',         qualityRoutes);
+router.use('/crm',             crmRoutes);
+router.use('/hr',              hrRoutes);
 
 module.exports = router;
