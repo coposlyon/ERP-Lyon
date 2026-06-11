@@ -21,8 +21,10 @@ const customizationsRoutes = require('./customizations');
 const priceTablesRoutes = require('./price-tables');
 const financialConfigRoutes = require('./financial-config');
 const logisticsRoutes       = require('./logistics');
+const cnpjRoutes            = require('./cnpj');
 
 router.use('/auth', authRoutes);
+router.use('/cnpj', cnpjRoutes);   // público — sem auth
 
 router.use(authMiddleware);
 router.use(tenantMiddleware);

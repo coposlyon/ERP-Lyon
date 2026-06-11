@@ -94,87 +94,44 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
     });
   }
 
-  // Parsers para cada API — retornam o mesmo formato interno
-  const CNPJ_APIS = [
-    {
-      url: d => `https://brasilapi.com.br/api/cnpj/v1/${d}`,
-      parse: d => ({
-        name:       d.razao_social   || '',
-        trade_name: d.nome_fantasia  || '',
-        email:      d.email          || '',
-        phone:      formatPhone(d.ddd_telefone_1 || d.ddd_telefone_2 || ''),
-        address: {
-          street:       d.logradouro  || '',
-          number:       d.numero      || '',
-          complement:   d.complemento || '',
-          neighborhood: d.bairro      || '',
-          city:         d.municipio   || '',
-          state:        d.uf          || '',
-          zip:          (d.cep || '').replace(/\D/g,'').replace(/^(\d{5})(\d{3})$/,'$1-$2'),
-        },
-      }),
-    },
-    {
-      url: d => `https://publica.cnpj.ws/cnpj/${d}`,
-      parse: d => {
-        const est = d.estabelecimento || {};
-        const tel = est.ddd1 && est.telefone1 ? `${est.ddd1}${est.telefone1}` : '';
-        return {
-          name:       d.razao_social         || '',
-          trade_name: est.nome_fantasia       || '',
-          email:      est.email               || '',
-          phone:      formatPhone(tel),
-          address: {
-            street:       est.logradouro           || '',
-            number:       est.numero               || '',
-            complement:   est.complemento          || '',
-            neighborhood: est.bairro               || '',
-            city:         est.municipio?.nome      || '',
-            state:        est.estado?.sigla        || '',
-            zip:          (est.cep || '').replace(/\D/g,'').replace(/^(\d{5})(\d{3})$/,'$1-$2'),
-          },
-        };
-      },
-    },
-  ];
-
-  // Tenta cada API em sequência — para na primeira que responder
+  // Busca via backend (proxy server-side — sem CORS, tenta 4 APIs)
   async function lookupCnpj(digits) {
     if (digits.length !== 14 || cnpjLoading) return;
     setCnpjLoading(true);
     setCnpjStatus(null);
 
-    let parsed = null;
-    for (const api of CNPJ_APIS) {
-      try {
-        const res = await fetch(api.url(digits));
-        if (!res.ok) continue;
-        const data = await res.json();
-        parsed = api.parse(data);
-        if (parsed.name) break; // achou dados válidos
-      } catch {
-        continue;
-      }
-    }
+    try {
+      const res = await fetch(`/api/cnpj/${digits}`);
+      if (!res.ok) throw new Error('not found');
+      const d = await res.json();
 
-    if (parsed?.name) {
+      const zip = d.zip ? d.zip.replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
       setForm(p => ({
         ...p,
-        name:       parsed.name       || p.name,
-        trade_name: parsed.trade_name || p.trade_name,
-        email:      parsed.email      || p.email,
-        phone:      parsed.phone      || p.phone,
-        address:    { ...p.address, ...parsed.address },
+        name:       d.name       || p.name,
+        trade_name: d.trade_name || p.trade_name,
+        email:      d.email      || p.email,
+        phone:      formatPhone(d.phone || ''),
+        address: {
+          ...p.address,
+          street:       d.street       || '',
+          number:       d.number       || '',
+          complement:   d.complement   || '',
+          neighborhood: d.neighborhood || '',
+          city:         d.city         || '',
+          state:        d.state        || '',
+          zip,
+        },
       }));
-      if (parsed.address.street || parsed.address.city) setAddressOpen(true);
+      if (d.street || d.city) setAddressOpen(true);
       setCnpjStatus('ok');
       toast.success('✅ Dados do CNPJ preenchidos automaticamente!');
-    } else {
+    } catch {
       setCnpjStatus('error');
-      toast.error('CNPJ não encontrado em nenhuma fonte');
+      toast.error('CNPJ não encontrado');
+    } finally {
+      setCnpjLoading(false);
     }
-
-    setCnpjLoading(false);
   }
 
   function handleCnpjChange(e) {

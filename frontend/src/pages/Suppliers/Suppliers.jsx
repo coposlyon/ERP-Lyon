@@ -49,81 +49,36 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
     if (raw.length !== 14) return;
     setCnpjLoading(true);
     setCnpjStatus(null);
-
-    const APIS = [
-      {
-        url:   `https://brasilapi.com.br/api/cnpj/v1/${raw}`,
-        parse: d => ({
-          name:          d.razao_social  || '',
-          nome_fantasia: d.nome_fantasia || '',
-          email:         d.email         || '',
-          phone:         formatPhone(d.ddd_telefone_1 || d.ddd_telefone_2 || ''),
-          street:        d.logradouro    || '',
-          number:        d.numero        || '',
-          complement:    d.complemento   || '',
-          neighborhood:  d.bairro        || '',
-          city:          d.municipio     || '',
-          state:         d.uf            || '',
-          zip:           (d.cep || '').replace(/\D/g,'').replace(/^(\d{5})(\d{3})$/,'$1-$2'),
-        }),
-      },
-      {
-        url:   `https://publica.cnpj.ws/cnpj/${raw}`,
-        parse: d => {
-          const est = d.estabelecimento || {};
-          const tel = est.ddd1 && est.telefone1 ? `${est.ddd1}${est.telefone1}` : '';
-          return {
-            name:          d.razao_social       || '',
-            nome_fantasia: est.nome_fantasia     || '',
-            email:         est.email             || '',
-            phone:         formatPhone(tel),
-            street:        est.logradouro        || '',
-            number:        est.numero            || '',
-            complement:    est.complemento       || '',
-            neighborhood:  est.bairro            || '',
-            city:          est.municipio?.nome   || '',
-            state:         est.estado?.sigla     || '',
-            zip:           (est.cep || '').replace(/\D/g,'').replace(/^(\d{5})(\d{3})$/,'$1-$2'),
-          };
-        },
-      },
-    ];
-
-    let p = null;
-    for (const api of APIS) {
-      try {
-        const res = await fetch(api.url);
-        if (!res.ok) continue;
-        p = api.parse(await res.json());
-        if (p.name) break;
-      } catch { continue; }
-    }
-
-    if (p?.name) {
-      setForm(prev => ({
-        ...prev,
-        name:  p.name  || prev.name,
-        email: p.email || prev.email,
-        phone: p.phone || prev.phone,
+    try {
+      const res = await fetch(`/api/cnpj/${raw}`);
+      if (!res.ok) throw new Error('not found');
+      const d = await res.json();
+      const zip = d.zip ? d.zip.replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
+      setForm(p => ({
+        ...p,
+        name:  d.name  || p.name,
+        email: d.email || p.email,
+        phone: formatPhone(d.phone || ''),
         address: {
-          ...prev.address,
-          nome_fantasia: p.nome_fantasia,
-          street:        p.street,
-          number:        p.number,
-          complement:    p.complement,
-          neighborhood:  p.neighborhood,
-          city:          p.city,
-          state:         p.state,
-          zip:           p.zip,
+          ...p.address,
+          nome_fantasia: d.trade_name   || '',
+          street:        d.street       || '',
+          number:        d.number       || '',
+          complement:    d.complement   || '',
+          neighborhood:  d.neighborhood || '',
+          city:          d.city         || '',
+          state:         d.state        || '',
+          zip,
         },
       }));
       setCnpjStatus('ok');
       toast.success('Dados do CNPJ preenchidos automaticamente!');
-    } else {
+    } catch {
       setCnpjStatus('error');
       toast.error('CNPJ não encontrado ou inválido');
+    } finally {
+      setCnpjLoading(false);
     }
-    setCnpjLoading(false);
   }
 
   async function handleSubmit(e) {
