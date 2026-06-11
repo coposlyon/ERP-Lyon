@@ -8,25 +8,6 @@ import {
   Building2, Percent, PenLine, Briefcase, X, MapPin,
 } from 'lucide-react';
 
-/* Mini logo Lyon Copos para a sidebar */
-function LyonMiniLogo() {
-  const cups = [
-    [1,  9, 4, 14, '#F5C400'],
-    [6,  5, 4, 18, '#8CC63F'],
-    [11, 2, 4, 21, '#00B8D4'],
-    [16, 2, 4, 21, '#005CB8'],
-    [21, 5, 4, 18, '#7B2C8B'],
-    [26, 9, 4, 14, '#7B2C8B'],
-  ];
-  return (
-    <svg width="32" height="24" viewBox="0 0 32 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {cups.map(([x, y, w, h, color], i) => (
-        <rect key={i} x={x} y={y} width={w} height={h} rx="0.8"
-          stroke={color} strokeWidth="1.5" fill="none" />
-      ))}
-    </svg>
-  );
-}
 import { useState } from 'react';
 
 const menuItems = [
@@ -176,23 +157,33 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
       `}
     >
       {/* Header do sidebar: logo Lyon Copos + botão fechar (mobile) */}
-      <div className="flex items-center gap-3 px-4 py-4 border-b border-indigo-800 min-h-[64px]">
-        <div className="flex-shrink-0">
-          <LyonMiniLogo />
-        </div>
-        {!collapsed && (
-          <div className="min-w-0 flex-1">
-            <p className="font-black text-sm tracking-wider leading-none select-none">
-              <span style={{ color: '#E8187A' }}>LYON</span>
-              <span className="text-white ml-1">COPOS</span>
+      <div className="flex items-center gap-2 px-3 py-3 border-b border-indigo-800 min-h-[64px]">
+        {collapsed ? (
+          /* Modo colapsado: só ícone pequeno */
+          <img
+            src="/lyon-logo.png"
+            alt="Lyon Copos"
+            style={{ height: 30, width: 'auto', objectFit: 'contain' }}
+            draggable={false}
+          />
+        ) : (
+          /* Modo expandido: logo maior + tenant abaixo */
+          <div className="flex flex-col min-w-0 flex-1">
+            <img
+              src="/lyon-logo.png"
+              alt="Lyon Copos"
+              style={{ height: 38, width: 'auto', objectFit: 'contain', objectPosition: 'left' }}
+              draggable={false}
+            />
+            <p className="text-indigo-300 text-xs truncate mt-1">
+              {tenant?.name || 'Gestão Comercial'}
             </p>
-            <p className="text-indigo-300 text-xs truncate mt-0.5">{tenant?.name || 'Gestão Comercial'}</p>
           </div>
         )}
         {/* Botão fechar — só no mobile */}
         <button
           onClick={onMobileClose}
-          className="lg:hidden ml-auto text-indigo-300 hover:text-white p-1 rounded-lg hover:bg-indigo-800 transition-colors"
+          className="lg:hidden ml-auto text-indigo-300 hover:text-white p-1 rounded-lg hover:bg-indigo-800 transition-colors flex-shrink-0"
         >
           <X size={18} />
         </button>
