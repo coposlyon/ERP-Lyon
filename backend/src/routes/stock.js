@@ -379,4 +379,28 @@ router.post('/replenishment-orders/:id/complete', async (req, res) => {
   }
 });
 
+// ── Resumo de movimentações (últimos 30 dias) ─────────────────────────────────
+router.get('/movements-summary', async (req, res) => {
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - 30);
+
+    const { data, error } = await supabase
+      .from('MOVIMENTACOES_ESTOQUE')
+      .select('quantity, notes, type')
+      .eq('tenant_id', req.tenantId)
+      .gte('created_at', since.toISOString());
+
+    if (error) throw error;
+
+    const entries = data.filter(m => m.type === 'entry').length;
+    const exits   = data.filter(m => m.type === 'exit').length;
+    const losses  = data.filter(m => (m.notes || '').toUpperCase().includes('PERDA')).length;
+
+    res.json({ entries, exits, losses, period_days: 30 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
