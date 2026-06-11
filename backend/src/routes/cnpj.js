@@ -21,12 +21,18 @@ function normalize(source, raw) {
 
   if (source === 'cnpjws') {
     const est = raw.estabelecimento || {};
-    const tel = est.ddd1 && est.telefone1 ? `${est.ddd1}${est.telefone1}` : '';
+    // tenta montar telefone com DDD + número, fallback para telefone1 sozinho
+    let phone = '';
+    if (est.ddd1 && est.telefone1)       phone = `${est.ddd1}${est.telefone1}`;
+    else if (est.telefone1)              phone = est.telefone1;
+    else if (est.ddd2 && est.telefone2)  phone = `${est.ddd2}${est.telefone2}`;
+    else if (est.telefone2)              phone = est.telefone2;
+
     return {
       name:         raw.razao_social      || '',
       trade_name:   est.nome_fantasia     || '',
-      email:        est.email             || '',
-      phone:        tel,
+      email:        est.email             || raw.email || '',
+      phone:        phone.replace(/\D/g, ''),
       street:       est.logradouro        || '',
       number:       est.numero            || '',
       complement:   est.complemento       || '',
@@ -72,7 +78,28 @@ function normalize(source, raw) {
   return null;
 }
 
-// GET /api/cnpj/:digits — tenta 4 APIs em sequência no servidor (sem CORS)
+async function fetchApi(api, cnpj) {
+  const controller = new AbortController();
+  const timeout    = setTimeout(() => controller.abort(), 6000);
+  try {
+    const response = await fetch(api.url, {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json', 'User-Agent': 'ERP-Lyon/1.0' },
+    });
+    clearTimeout(timeout);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!api.ok(data)) return null;
+    const result = normalize(api.name, data);
+    return result?.name ? result : null;
+  } catch {
+    clearTimeout(timeout);
+    return null;
+  }
+}
+
+// GET /api/cnpj/:digits — tenta 4 APIs em paralelo/cascata e MESCLA campos
+// Continua mesmo após achar o nome, para buscar email/telefone em outras fontes
 router.get('/:digits', async (req, res) => {
   const { digits } = req.params;
   const cnpj = digits.replace(/\D/g, '');
@@ -104,32 +131,33 @@ router.get('/:digits', async (req, res) => {
     },
   ];
 
+  let merged = null;
+
   for (const api of apis) {
-    try {
-      const controller = new AbortController();
-      const timeout    = setTimeout(() => controller.abort(), 6000);
+    // Se já temos todos os campos importantes, para
+    if (merged?.name && merged?.email && merged?.phone) break;
 
-      const response = await fetch(api.url, {
-        signal: controller.signal,
-        headers: { 'Accept': 'application/json', 'User-Agent': 'ERP-Lyon/1.0' },
-      });
-      clearTimeout(timeout);
+    const result = await fetchApi(api, cnpj);
+    if (!result) continue;
 
-      if (!response.ok) continue;
+    console.log(`[cnpj] ${cnpj} — dados de ${api.name} (email=${!!result.email}, phone=${!!result.phone})`);
 
-      const data = await response.json();
-      if (!api.ok(data)) continue;
-
-      const result = normalize(api.name, data);
-      if (!result?.name) continue;
-
-      console.log(`[cnpj] ${cnpj} encontrado via ${api.name}`);
-      return res.json({ ...result, source: api.name });
-
-    } catch (err) {
-      console.warn(`[cnpj] ${api.name} falhou: ${err.message}`);
-      continue;
+    if (!merged) {
+      // primeiro resultado vira a base
+      merged = { ...result };
+    } else {
+      // preenche campos ainda vazios com dados de APIs posteriores
+      if (!merged.email   && result.email)        merged.email        = result.email;
+      if (!merged.phone   && result.phone)        merged.phone        = result.phone;
+      if (!merged.trade_name && result.trade_name) merged.trade_name  = result.trade_name;
+      if (!merged.zip     && result.zip)          merged.zip          = result.zip;
+      if (!merged.street  && result.street)       merged.street       = result.street;
+      if (!merged.city    && result.city)         merged.city         = result.city;
     }
+  }
+
+  if (merged?.name) {
+    return res.json({ ...merged, source: 'merged' });
   }
 
   res.status(404).json({ error: 'CNPJ não encontrado em nenhuma fonte' });

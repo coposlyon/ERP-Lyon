@@ -8,11 +8,6 @@ import toast from 'react-hot-toast';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
-const VEHICLE_TYPES = [
-  'Moto', 'Van / Furgão', 'Caminhão Baú', 'Caminhão Sider',
-  'Caminhão Frigorífico', 'Caminhão Basculante', 'Carreta / Bi-trem', 'Outro',
-];
-
 function formatPhone(raw) {
   if (!raw) return '';
   const d = raw.replace(/\D/g, '');
@@ -45,7 +40,7 @@ const emptySlot = () => ({ days: [], start: '08:00', end: '17:00' });
 const emptyForm = {
   name: '', trade_name: '', cnpj: '', email: '',
   phone: '', whatsapp: '', contact_name: '', rntrc: '',
-  vehicle_types: [], pickup_schedule: [], observations: '', is_active: true,
+  pickup_schedule: [], observations: '', is_active: true,
   address: { street: '', number: '', complement: '', neighborhood: '', city: '', state: '', zip: '' },
 };
 
@@ -53,7 +48,6 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
   const [form, setForm] = useState({
     ...emptyForm,
     ...(carrier || {}),
-    vehicle_types:    carrier?.vehicle_types    || [],
     pickup_schedule:  carrier?.pickup_schedule  || [],
     address: { ...emptyForm.address, ...(carrier?.address || {}) },
     is_active: carrier?.is_active !== false,
@@ -65,15 +59,6 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
 
   function set(k, v)    { setForm(p => ({ ...p, [k]: v })); }
   function setAddr(k,v) { setForm(p => ({ ...p, address: { ...p.address, [k]: v } })); }
-
-  function toggleVehicle(type) {
-    setForm(p => ({
-      ...p,
-      vehicle_types: p.vehicle_types.includes(type)
-        ? p.vehicle_types.filter(t => t !== type)
-        : [...p.vehicle_types, type],
-    }));
-  }
 
   // Horários de coleta
   function addSlot()        { setForm(p => ({ ...p, pickup_schedule: [...p.pickup_schedule, emptySlot()] })); }
@@ -238,24 +223,6 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
           <input className="input" value={form.rntrc}
             onChange={e => set('rntrc', e.target.value)}
             placeholder="Registro Nacional de Transportadores" />
-        </div>
-      </div>
-
-      {/* Tipos de veículo */}
-      <div>
-        <label className="label">Tipos de Veículo</label>
-        <div className="grid grid-cols-2 gap-2">
-          {VEHICLE_TYPES.map(type => (
-            <label key={type} className="flex items-center gap-2 cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={form.vehicle_types.includes(type)}
-                onChange={() => toggleVehicle(type)}
-                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              />
-              <span className="text-sm text-gray-700 group-hover:text-gray-900">{type}</span>
-            </label>
-          ))}
         </div>
       </div>
 
@@ -439,20 +406,6 @@ export default function Logistics() {
     { key: 'cnpj', label: 'CNPJ', width: 170 },
     { key: 'contact_name', label: 'Contato' },
     { key: 'phone', label: 'Telefone', width: 145 },
-    {
-      key: 'vehicle_types', label: 'Veículos',
-      render: v => (
-        <div className="flex flex-wrap gap-1">
-          {(v || []).slice(0, 2).map(t => (
-            <span key={t} className="badge badge-blue text-xs">{t}</span>
-          ))}
-          {(v || []).length > 2 && (
-            <span className="badge badge-gray text-xs">+{v.length - 2}</span>
-          )}
-          {(!v || v.length === 0) && <span className="text-gray-400 text-xs">—</span>}
-        </div>
-      ),
-    },
     {
       key: 'pickup_schedule', label: 'Horários', width: 160,
       render: v => {
