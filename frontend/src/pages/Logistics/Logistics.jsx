@@ -35,7 +35,7 @@ const DAYS = [
   { key: 'dom', label: 'Dom' },
 ];
 
-const emptySlot = () => ({ days: [], start: '08:00', end: '17:00' });
+const emptySlot = () => ({ days: [], time: '08:00' });
 
 const emptyForm = {
   name: '', trade_name: '', cnpj: '', ie: '', email: '',
@@ -327,20 +327,13 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
                 ))}
               </div>
 
-              {/* Faixa de hora + botão remover */}
+              {/* Hora da coleta + botão remover */}
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 shrink-0">Das</span>
+                <span className="text-xs text-gray-500 shrink-0">Horário:</span>
                 <input
                   type="time"
-                  value={slot.start}
-                  onChange={e => updateSlot(i, 'start', e.target.value)}
-                  className="input py-1 text-sm w-28"
-                />
-                <span className="text-xs text-gray-500 shrink-0">às</span>
-                <input
-                  type="time"
-                  value={slot.end}
-                  onChange={e => updateSlot(i, 'end', e.target.value)}
+                  value={slot.time}
+                  onChange={e => updateSlot(i, 'time', e.target.value)}
                   className="input py-1 text-sm w-28"
                 />
                 <button
@@ -415,7 +408,7 @@ export default function Logistics() {
             {v.slice(0, 2).map((slot, i) => (
               <p key={i} className="text-xs text-gray-600 leading-tight">
                 <span className="font-medium">{slot.days.map(d => DAY_LABELS[d] || d).join(', ')}</span>
-                {slot.start && <span className="text-gray-400"> {slot.start}–{slot.end}</span>}
+                {slot.time && <span className="text-gray-400"> {slot.time}</span>}
               </p>
             ))}
             {v.length > 2 && <p className="text-xs text-gray-400">+{v.length - 2} mais</p>}
