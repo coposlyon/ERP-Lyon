@@ -4,9 +4,29 @@ import {
   LayoutDashboard, Package, Users, Truck, ShoppingCart,
   ShoppingBag, BarChart3, FileText, Settings, LogOut,
   Boxes, Wallet, Receipt, ChevronDown, ChevronRight,
-  Monitor, TrendingUp, ClipboardList, Palette, Tag,
+  Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
 } from 'lucide-react';
+
+/* Mini logo Lyon Copos para a sidebar */
+function LyonMiniLogo() {
+  const cups = [
+    [1,  9, 4, 14, '#F5C400'],
+    [6,  5, 4, 18, '#8CC63F'],
+    [11, 2, 4, 21, '#00B8D4'],
+    [16, 2, 4, 21, '#005CB8'],
+    [21, 5, 4, 18, '#7B2C8B'],
+    [26, 9, 4, 14, '#7B2C8B'],
+  ];
+  return (
+    <svg width="32" height="24" viewBox="0 0 32 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {cups.map(([x, y, w, h, color], i) => (
+        <rect key={i} x={x} y={y} width={w} height={h} rx="0.8"
+          stroke={color} strokeWidth="1.5" fill="none" />
+      ))}
+    </svg>
+  );
+}
 import { useState } from 'react';
 
 const menuItems = [
@@ -155,17 +175,18 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         w-72
       `}
     >
-      {/* Header do sidebar: logo + botão fechar (mobile) */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-indigo-800 min-h-[64px]">
-        <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center flex-shrink-0">
-          <TrendingUp size={16} className="text-white" />
+      {/* Header do sidebar: logo Lyon Copos + botão fechar (mobile) */}
+      <div className="flex items-center gap-3 px-4 py-4 border-b border-indigo-800 min-h-[64px]">
+        <div className="flex-shrink-0">
+          <LyonMiniLogo />
         </div>
         {!collapsed && (
           <div className="min-w-0 flex-1">
-            <p className="text-white font-bold text-sm truncate">
-              {tenant?.app_name || 'Dator ERP'}
+            <p className="font-black text-sm tracking-wider leading-none select-none">
+              <span style={{ color: '#E8187A' }}>LYON</span>
+              <span className="text-white ml-1">COPOS</span>
             </p>
-            <p className="text-indigo-300 text-xs truncate">{tenant?.name}</p>
+            <p className="text-indigo-300 text-xs truncate mt-0.5">{tenant?.name || 'Gestão Comercial'}</p>
           </div>
         )}
         {/* Botão fechar — só no mobile */}
