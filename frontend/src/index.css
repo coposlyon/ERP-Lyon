@@ -140,6 +140,16 @@
   }
 }
 
+/* ── Animação logo Lyon Copos ─────────────────────────────────────────────── */
+@keyframes lyonFloat {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50%       { transform: translateY(-10px) scale(1.01); }
+}
+.lyon-logo-anim {
+  animation: lyonFloat 5s ease-in-out infinite;
+  filter: drop-shadow(0 4px 28px rgba(232,24,122,0.3)) brightness(1.08);
+}
+
 /* Status colors */
 .status-confirmed    { @apply badge-green; }
 .status-open         { @apply badge-yellow; }

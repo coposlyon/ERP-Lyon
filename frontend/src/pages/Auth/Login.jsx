@@ -83,89 +83,6 @@ function useParticles() {
   return canvasRef;
 }
 
-// ─── SVG fiel ao logo Lyon Copos ─────────────────────────────────────────────
-//
-// Estrutura (da esquerda p/ direita):
-//   Grupo esquerdo  — 3 copos П cada vez mais altos (amarelo → limão → verde)
-//   Copo central    — copo-herói com boca larga + corpo afunilado (ciano + azul)
-//   Grupo direito   — espelho do esquerdo (violeta → roxo → magenta)
-//
-// Todos são formas П (barra no topo = boca do copo, laterais = paredes, base aberta)
-// ViewBox: 0 0 280 196
-// ─────────────────────────────────────────────────────────────────────────────
-function LyonCoposLogoSVG({ width = 280 }) {
-  const sw   = 2.8;   // stroke-width padrão
-  const swIn = 2.3;   // stroke-width do copo interno
-  const cap  = 'round';
-  const join = 'round';
-  const base = 186;   // linha de base (y onde todos os copos terminam)
-
-  return (
-    <svg
-      width={width}
-      height={width * (196 / 280)}
-      viewBox="0 0 280 196"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      {/* ── GRUPO ESQUERDO ── */}
-
-      {/* L1 — Amarelo (mais baixo, mais externo) */}
-      <path
-        d={`M3,${base} L3,132 L25,132 L25,${base}`}
-        stroke="#F5C400" strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}
-      />
-
-      {/* L2 — Limão */}
-      <path
-        d={`M31,${base} L31,100 L55,100 L55,${base}`}
-        stroke="#BFDA00" strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}
-      />
-
-      {/* L3 — Verde (mais alto, mais interno) */}
-      <path
-        d={`M61,${base} L61,61 L85,61 L85,${base}`}
-        stroke="#76BB00" strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}
-      />
-
-      {/* ── COPO CENTRAL ── */}
-
-      {/* Contorno externo — ciano — П largo (boca do copo aberta em cima) */}
-      <path
-        d={`M93,${base} L93,8 L187,8 L187,${base}`}
-        stroke="#00B4D8" strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}
-      />
-
-      {/* Copo interno — azul — afunilado (boca larga, corpo mais estreito) */}
-      {/* Boca: x=105 até x=175 em y=22; corpo: x=113 até x=167 em y=56 até base */}
-      <path
-        d={`M113,${base} L113,56 L105,22 L175,22 L167,56 L167,${base}`}
-        stroke="#005CB8" strokeWidth={swIn} strokeLinecap={cap} strokeLinejoin={join}
-      />
-
-      {/* ── GRUPO DIREITO (espelho) ── */}
-
-      {/* R1 — Violeta (mais alto, mais interno) */}
-      <path
-        d={`M195,${base} L195,61 L219,61 L219,${base}`}
-        stroke="#7B2FBE" strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}
-      />
-
-      {/* R2 — Roxo */}
-      <path
-        d={`M225,${base} L225,100 L249,100 L249,${base}`}
-        stroke="#9C27B0" strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}
-      />
-
-      {/* R3 — Magenta (mais baixo, mais externo) */}
-      <path
-        d={`M255,${base} L255,132 L277,132 L277,${base}`}
-        stroke="#CC1199" strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}
-      />
-    </svg>
-  );
-}
-
 // ─── Página de login ──────────────────────────────────────────────────────────
 export default function Login() {
   const [email,        setEmail]        = useState('');
@@ -215,39 +132,24 @@ export default function Login() {
       {/* ── Conteúdo central ── */}
       <div className="relative w-full max-w-sm" style={{ zIndex: 2 }}>
 
-        {/* Logo + nome */}
+        {/* Logo animado */}
         <div className="flex flex-col items-center mb-8 select-none">
-
-          {/* SVG do logo */}
-          <LyonCoposLogoSVG width={260} />
-
-          {/* LYON COPOS */}
-          <div className="mt-2 leading-none" style={{ fontFamily: "'Montserrat', sans-serif" }}>
-            <span
-              className="text-[2.6rem] font-black tracking-wide"
-              style={{ color: '#E8187A', fontFamily: 'inherit', letterSpacing: '0.04em' }}
-            >
-              LYON
-            </span>
-            <span
-              className="text-[2.6rem] font-black tracking-wide ml-2"
-              style={{ color: '#ffffff', fontFamily: 'inherit', letterSpacing: '0.04em' }}
-            >
-              COPOS
-            </span>
-          </div>
-
-          {/* acrílicos */}
+          <img
+            src="/lyon-logo.png"
+            alt="Lyon Copos"
+            className="lyon-logo-anim"
+            style={{ width: 280 }}
+            draggable={false}
+          />
           <p
-            className="text-sm mt-0.5"
+            className="text-xs mt-2 tracking-widest"
             style={{
+              color: 'rgba(255,255,255,0.28)',
               fontFamily: "'Montserrat', sans-serif",
-              color: '#E8187A',
-              fontWeight: 400,
-              letterSpacing: '0.12em',
+              letterSpacing: '0.22em',
             }}
           >
-            acrílicos
+            GESTÃO COMERCIAL
           </p>
         </div>
 
