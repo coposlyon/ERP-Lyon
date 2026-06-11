@@ -94,45 +94,87 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
     });
   }
 
-  // Busca CNPJ na BrasilAPI — chamado automaticamente ao completar 14 dígitos
+  // Parsers para cada API — retornam o mesmo formato interno
+  const CNPJ_APIS = [
+    {
+      url: d => `https://brasilapi.com.br/api/cnpj/v1/${d}`,
+      parse: d => ({
+        name:       d.razao_social   || '',
+        trade_name: d.nome_fantasia  || '',
+        email:      d.email          || '',
+        phone:      formatPhone(d.ddd_telefone_1 || d.ddd_telefone_2 || ''),
+        address: {
+          street:       d.logradouro  || '',
+          number:       d.numero      || '',
+          complement:   d.complemento || '',
+          neighborhood: d.bairro      || '',
+          city:         d.municipio   || '',
+          state:        d.uf          || '',
+          zip:          (d.cep || '').replace(/\D/g,'').replace(/^(\d{5})(\d{3})$/,'$1-$2'),
+        },
+      }),
+    },
+    {
+      url: d => `https://publica.cnpj.ws/cnpj/${d}`,
+      parse: d => {
+        const est = d.estabelecimento || {};
+        const tel = est.ddd1 && est.telefone1 ? `${est.ddd1}${est.telefone1}` : '';
+        return {
+          name:       d.razao_social         || '',
+          trade_name: est.nome_fantasia       || '',
+          email:      est.email               || '',
+          phone:      formatPhone(tel),
+          address: {
+            street:       est.logradouro           || '',
+            number:       est.numero               || '',
+            complement:   est.complemento          || '',
+            neighborhood: est.bairro               || '',
+            city:         est.municipio?.nome      || '',
+            state:        est.estado?.sigla        || '',
+            zip:          (est.cep || '').replace(/\D/g,'').replace(/^(\d{5})(\d{3})$/,'$1-$2'),
+          },
+        };
+      },
+    },
+  ];
+
+  // Tenta cada API em sequência — para na primeira que responder
   async function lookupCnpj(digits) {
     if (digits.length !== 14 || cnpjLoading) return;
     setCnpjLoading(true);
     setCnpjStatus(null);
-    try {
-      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
-      if (!res.ok) throw new Error('not found');
-      const data = await res.json();
 
+    let parsed = null;
+    for (const api of CNPJ_APIS) {
+      try {
+        const res = await fetch(api.url(digits));
+        if (!res.ok) continue;
+        const data = await res.json();
+        parsed = api.parse(data);
+        if (parsed.name) break; // achou dados válidos
+      } catch {
+        continue;
+      }
+    }
+
+    if (parsed?.name) {
       setForm(p => ({
         ...p,
-        name:       data.razao_social  || p.name,
-        trade_name: data.nome_fantasia || p.trade_name,
-        email:      data.email         || p.email,
-        phone:      formatPhone(data.ddd_telefone_1 || data.ddd_telefone_2 || ''),
-        address: {
-          ...p.address,
-          street:       data.logradouro  || '',
-          number:       data.numero      || '',
-          complement:   data.complemento || '',
-          neighborhood: data.bairro      || '',
-          city:         data.municipio   || '',
-          state:        data.uf          || '',
-          zip:          (data.cep || '').replace(/\D/g,'').replace(/^(\d{5})(\d{3})$/, '$1-$2'),
-        },
+        name:       parsed.name       || p.name,
+        trade_name: parsed.trade_name || p.trade_name,
+        email:      parsed.email      || p.email,
+        phone:      parsed.phone      || p.phone,
+        address:    { ...p.address, ...parsed.address },
       }));
-
-      // Abre o endereço automaticamente se veio preenchido
-      if (data.logradouro || data.municipio) setAddressOpen(true);
-
+      if (parsed.address.street || parsed.address.city) setAddressOpen(true);
       setCnpjStatus('ok');
       toast.success('✅ Dados do CNPJ preenchidos automaticamente!');
-    } catch {
+    } else {
       setCnpjStatus('error');
-      toast.error('CNPJ não encontrado ou inválido');
-    } finally {
-      setCnpjLoading(false);
+      toast.error('CNPJ não encontrado em nenhuma fonte');
     }
+
+    setCnpjLoading(false);
   }
 
   function handleCnpjChange(e) {
