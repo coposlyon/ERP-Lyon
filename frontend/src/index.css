@@ -140,61 +140,48 @@
   }
 }
 
-/* ── Lyon Copos — animação de entrada (draw) + flutuação ─────────────────── */
+/* ── Lyon Copos — animação reveal esq→dir + flutuação ───────────────────── */
 
-/* 1. Traça o caminho do SVG do início ao fim */
-@keyframes lyonDraw {
-  to { stroke-dashoffset: 0; }
+/* Revela o logo progressivamente da esquerda para a direita,
+   desacelerando em cada copo para simular o "draw" do vídeo  */
+@keyframes lyonReveal {
+  0%   { clip-path: inset(0 100% 0 0); opacity: 0; }
+  4%   { opacity: 1; }
+  16%  { clip-path: inset(0 85% 0 0); }   /* copo 1 */
+  30%  { clip-path: inset(0 66% 0 0); }   /* copo 2 */
+  36%  { clip-path: inset(0 60% 0 0); }   /* pausa */
+  52%  { clip-path: inset(0 38% 0 0); }   /* copo central */
+  58%  { clip-path: inset(0 33% 0 0); }   /* pausa central */
+  72%  { clip-path: inset(0 16% 0 0); }   /* copo direito 1 */
+  86%  { clip-path: inset(0 4%  0 0); }   /* copo direito 2 */
+  100% { clip-path: inset(0 0%  0 0); }   /* completo */
 }
 
-/* 2. Texto sobe e aparece */
-@keyframes lyonFadeUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0px);  }
-}
-
-/* 3. Flutuação contínua após o desenho terminar */
+/* Flutuação suave após o reveal terminar */
 @keyframes lyonFloat {
   0%, 100% { transform: translateY(0px); }
   50%       { transform: translateY(-10px); }
 }
 
-/* Wrapper: float começa depois do draw (~2.8s) */
-.lyon-logo-wrap {
-  animation: lyonFloat 5s ease-in-out 2.8s infinite;
+/* Subtítulo sobe e aparece */
+@keyframes lyonFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0px);  }
 }
 
-/* Base para todos os paths animados */
-.lp {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  animation-name: lyonDraw;
-  animation-timing-function: ease-out;
-  animation-fill-mode: forwards;
+/* Logo PNG: reveal (2.4s) → float (começa em 3s, loop infinito) */
+.lyon-logo-anim {
+  opacity: 0;
+  animation:
+    lyonReveal 2.4s cubic-bezier(0.4, 0, 0.2, 1) forwards,
+    lyonFloat  5s ease-in-out 3s infinite;
+  filter: drop-shadow(0 4px 24px rgba(232,24,122,0.25)) brightness(1.1);
 }
 
-/* Comprimentos calculados por path (stroke-dasharray = comprimento total do path) */
-/* L1 — magenta — copo baixo esquerdo */
-.lp-1 { stroke-dasharray: 135; stroke-dashoffset: 135; animation-duration: 0.33s; animation-delay: 0.00s; }
-/* L2 — limão — copo médio esquerdo */
-.lp-2 { stroke-dasharray: 200; stroke-dashoffset: 200; animation-duration: 0.42s; animation-delay: 0.12s; }
-/* L3 — verde — copo alto esquerdo */
-.lp-3 { stroke-dasharray: 280; stroke-dashoffset: 280; animation-duration: 0.50s; animation-delay: 0.24s; }
-/* Copo central externo — ciano */
-.lp-4 { stroke-dasharray: 460; stroke-dashoffset: 460; animation-duration: 0.70s; animation-delay: 0.38s; }
-/* Copo central interno — azul afunilado */
-.lp-5 { stroke-dasharray: 415; stroke-dashoffset: 415; animation-duration: 0.65s; animation-delay: 0.44s; }
-/* R1 — violeta — copo alto direito */
-.lp-6 { stroke-dasharray: 280; stroke-dashoffset: 280; animation-duration: 0.50s; animation-delay: 0.62s; }
-/* R2 — roxo — copo médio direito */
-.lp-7 { stroke-dasharray: 200; stroke-dashoffset: 200; animation-duration: 0.42s; animation-delay: 0.74s; }
-/* R3 — magenta — copo baixo direito */
-.lp-8 { stroke-dasharray: 135; stroke-dashoffset: 135; animation-duration: 0.33s; animation-delay: 0.86s; }
-
-/* Texto: aparece após os copos terminarem */
-.lyon-text-in {
-  animation: lyonFadeUp 0.75s ease-out 1.45s both;
+/* Subtítulo */
+.lyon-subtitle-anim {
+  opacity: 0;
+  animation: lyonFadeUp 0.7s ease-out 2.5s forwards;
 }
 
 /* Status colors */
