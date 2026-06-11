@@ -39,8 +39,8 @@ const emptySlot = () => ({ days: [], start: '08:00', end: '17:00' });
 
 const emptyForm = {
   name: '', trade_name: '', cnpj: '', email: '',
-  phone: '', whatsapp: '', contact_name: '', rntrc: '',
-  pickup_schedule: [], observations: '', is_active: true,
+  phone: '', whatsapp: '', contact_name: '',
+  pickup_schedule: [], is_active: true,
   address: { street: '', number: '', complement: '', neighborhood: '', city: '', state: '', zip: '' },
 };
 
@@ -218,12 +218,6 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
             onChange={e => set('whatsapp', e.target.value)}
             placeholder="(44) 99999-9999" />
         </div>
-        <div>
-          <label className="label">RNTRC</label>
-          <input className="input" value={form.rntrc}
-            onChange={e => set('rntrc', e.target.value)}
-            placeholder="Registro Nacional de Transportadores" />
-        </div>
       </div>
 
       {/* Endereço */}
@@ -348,14 +342,6 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Observações */}
-      <div>
-        <label className="label">Observações</label>
-        <textarea className="input min-h-[80px] resize-none" value={form.observations}
-          onChange={e => set('observations', e.target.value)}
-          placeholder="Prazos de entrega, regiões atendidas, condições..." />
       </div>
 
       {/* Status */}
