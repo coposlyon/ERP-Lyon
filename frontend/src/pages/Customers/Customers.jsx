@@ -91,7 +91,12 @@ export default function Customers() {
         </div>
       )
     },
-    { key: 'cpf_cnpj', label: 'CPF/CNPJ', width: 155 },
+    { key: 'credit_limit', label: 'Limite de Crédito', width: 140,
+      render: v => v > 0
+        ? <span className="text-sm text-gray-700">R$ {Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</span>
+        : <span className="text-gray-300 text-xs">—</span>
+    },
+    { key: 'cpf_cnpj', label: 'CPF/CNPJ', width: 145 },
     { key: 'phone', label: 'Telefone', width: 150,
       render: (v, row) => {
         if (!v) return '—';
