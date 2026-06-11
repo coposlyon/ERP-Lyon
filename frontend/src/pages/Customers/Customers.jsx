@@ -38,17 +38,19 @@ export default function Customers() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [typeFilter, setTypeFilter] = useState('cliente');
+  const [ratingFilter, setRatingFilter] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const qc = useQueryClient();
   const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customers', page, search, typeFilter],
+    queryKey: ['customers', page, search, typeFilter, ratingFilter],
     queryFn: () => {
       let url = `/customers?page=${page}&limit=20`;
-      if (search)     url += `&search=${encodeURIComponent(search)}`;
-      if (typeFilter) url += `&type=${typeFilter}`;
+      if (search)       url += `&search=${encodeURIComponent(search)}`;
+      if (typeFilter)   url += `&type=${typeFilter}`;
+      if (ratingFilter) url += `&rating=${ratingFilter}`;
       return api.get(url);
     },
   });
@@ -61,6 +63,11 @@ export default function Customers() {
 
   function applyFilter(val) {
     setTypeFilter(val);
+    setPage(1);
+  }
+
+  function applyRating(val) {
+    setRatingFilter(prev => prev === val ? null : val);
     setPage(1);
   }
 
@@ -128,8 +135,9 @@ export default function Customers() {
       </div>
 
       <div className="card">
-        {/* Filtros de tipo */}
+        {/* Filtros */}
         <div className="card-header flex flex-wrap items-center gap-3">
+          {/* Tipo */}
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
             {FILTERS.map(f => (
               <button
@@ -144,6 +152,33 @@ export default function Customers() {
                 {f.label}
               </button>
             ))}
+          </div>
+
+          {/* Filtro por estrelas */}
+          <div className="flex items-center gap-0.5 border border-gray-200 rounded-lg px-2 py-1.5">
+            <span className="text-xs text-gray-400 mr-1.5 select-none">Avaliação:</span>
+            {[1,2,3,4,5].map(n => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => applyRating(n)}
+                title={`${n} estrela${n > 1 ? 's' : ''}`}
+                className="focus:outline-none transition-transform hover:scale-110"
+              >
+                <Star
+                  size={17}
+                  className={n === ratingFilter ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300 hover:text-yellow-300'}
+                />
+              </button>
+            ))}
+            {ratingFilter && (
+              <button
+                type="button"
+                onClick={() => applyRating(null)}
+                className="ml-1.5 text-gray-400 hover:text-gray-600 text-xs leading-none"
+                title="Limpar filtro"
+              >✕</button>
+            )}
           </div>
 
           <form onSubmit={handleSearch} className="flex gap-2 flex-1 max-w-sm ml-auto">

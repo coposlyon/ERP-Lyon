@@ -9,7 +9,7 @@ const upload = multer({
 });
 
 router.get('/', async (req, res) => {
-  const { page = 1, limit = 50, search, type, is_active } = req.query;
+  const { page = 1, limit = 50, search, type, is_active, rating } = req.query;
   const offset = (page - 1) * limit;
 
   try {
@@ -40,6 +40,7 @@ router.get('/', async (req, res) => {
       query = query.in('type', ['PF', 'PJ']);
     }
 
+    if (rating)     query = query.eq('rating', parseInt(rating));
     if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
     query = query.range(offset, offset + limit - 1);
 
