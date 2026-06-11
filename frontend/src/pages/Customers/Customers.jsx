@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Eye, Star, MessageCircle } from 'lucide-react';
+import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import CustomerForm from './CustomerForm';
+import MarketingModal from './MarketingModal';
 import { useNavigate } from 'react-router-dom';
 
 const TYPE_LABELS = { PF: 'PF', PJ: 'PJ', CO: 'Colab.' };
@@ -39,6 +40,7 @@ export default function Customers() {
   const [searchInput, setSearchInput] = useState('');
   const [typeFilter, setTypeFilter] = useState('cliente');
   const [ratingFilter, setRatingFilter] = useState(null);
+  const [marketingOpen, setMarketingOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const qc = useQueryClient();
@@ -96,17 +98,24 @@ export default function Customers() {
         ? <span className="text-sm text-gray-700">R$ {Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</span>
         : <span className="text-gray-300 text-xs">—</span>
     },
-    { key: 'cpf_cnpj', label: 'CPF/CNPJ', width: 145 },
-    { key: 'phone', label: 'Telefone', width: 150,
+    { key: 'cpf_cnpj', label: 'CPF/CNPJ', width: 130,
+      render: v => <span className="text-xs font-mono whitespace-nowrap">{v || '—'}</span>
+    },
+    { key: 'phone', label: 'Telefone', width: 130,
       render: (v, row) => {
         if (!v) return '—';
+        // Exibe sem pontuação para não quebrar o layout
+        const digits = v.replace(/\D/g, '');
+        const compact = digits.length >= 10
+          ? digits.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '$1 $2-$3')
+          : digits;
         const link = whatsappLink(v, row.name);
         return link ? (
           <a href={link} target="_blank" rel="noreferrer"
-            className="flex items-center gap-1 text-green-600 hover:text-green-700 text-sm font-medium">
-            <MessageCircle size={13} /> {v}
+            className="flex items-center gap-1 text-green-600 hover:text-green-700 text-sm font-medium whitespace-nowrap">
+            <MessageCircle size={13} /> {compact}
           </a>
-        ) : v;
+        ) : <span className="whitespace-nowrap">{compact}</span>;
       }
     },
     { key: 'rating', label: '⭐', width: 90,
@@ -186,6 +195,14 @@ export default function Customers() {
             )}
           </div>
 
+          {/* Botão Marketing */}
+          <button
+            onClick={() => setMarketingOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 text-sm font-medium transition-colors"
+          >
+            <Megaphone size={15} /> Marketing
+          </button>
+
           <form onSubmit={handleSearch} className="flex gap-2 flex-1 max-w-sm ml-auto">
             <div className="relative flex-1">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -210,6 +227,8 @@ export default function Customers() {
         <Table columns={columns} data={data?.data} loading={isLoading} />
         <Pagination page={page} total={data?.total || 0} limit={20} onPageChange={setPage} />
       </div>
+
+      <MarketingModal isOpen={marketingOpen} onClose={() => setMarketingOpen(false)} />
 
       <Modal isOpen={modalOpen} onClose={closeModal}
         title={editing ? (editing.type === 'CO' ? 'Editar Colaborador' : 'Editar Cliente') : 'Novo Cadastro'}
