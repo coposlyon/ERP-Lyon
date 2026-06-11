@@ -5,7 +5,7 @@ import {
   ShoppingBag, BarChart3, FileText, Settings, LogOut,
   Boxes, Wallet, Receipt, ChevronDown, ChevronRight,
   Monitor, TrendingUp, ClipboardList, Palette, Tag,
-  Building2, Percent, PenLine, Briefcase,
+  Building2, Percent, PenLine, Briefcase, X,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -74,7 +74,7 @@ const menuItems = [
   },
 ];
 
-function SidebarGroup({ item, collapsed }) {
+function SidebarGroup({ item, collapsed, onMobileClose }) {
   const [open, setOpen] = useState(false);
 
   if (!item.children) {
@@ -82,6 +82,7 @@ function SidebarGroup({ item, collapsed }) {
       <NavLink
         to={item.path}
         end={item.exact}
+        onClick={onMobileClose}
         className={({ isActive }) =>
           `sidebar-item ${isActive ? 'active' : ''}`
         }
@@ -112,6 +113,7 @@ function SidebarGroup({ item, collapsed }) {
             <NavLink
               key={child.path}
               to={child.path}
+              onClick={onMobileClose}
               className={({ isActive }) =>
                 `sidebar-item text-xs ${isActive ? 'active' : ''}`
               }
@@ -126,7 +128,7 @@ function SidebarGroup({ item, collapsed }) {
   );
 }
 
-export default function Sidebar({ collapsed, onToggle }) {
+export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
   const { tenant, user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -137,38 +139,55 @@ export default function Sidebar({ collapsed, onToggle }) {
 
   return (
     <aside
-      className={`flex flex-col bg-sidebar transition-all duration-300 ${
-        collapsed ? 'w-16' : 'w-64'
-      } min-h-screen flex-shrink-0`}
+      className={`
+        flex flex-col bg-sidebar flex-shrink-0 z-40
+        fixed lg:relative h-full
+        transition-transform duration-300 ease-in-out
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        ${collapsed ? 'lg:w-16' : 'lg:w-64'}
+        w-72
+      `}
     >
-      {/* Logo / Brand */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-indigo-800">
+      {/* Header do sidebar: logo + botão fechar (mobile) */}
+      <div className="flex items-center gap-3 px-4 py-5 border-b border-indigo-800 min-h-[64px]">
         <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center flex-shrink-0">
           <TrendingUp size={16} className="text-white" />
         </div>
         {!collapsed && (
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-white font-bold text-sm truncate">
               {tenant?.app_name || 'Dator ERP'}
             </p>
             <p className="text-indigo-300 text-xs truncate">{tenant?.name}</p>
           </div>
         )}
+        {/* Botão fechar — só no mobile */}
+        <button
+          onClick={onMobileClose}
+          className="lg:hidden ml-auto text-indigo-300 hover:text-white p-1 rounded-lg hover:bg-indigo-800 transition-colors"
+        >
+          <X size={18} />
+        </button>
       </div>
 
-      {/* Navigation */}
+      {/* Navegação */}
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-0.5">
         {menuItems.map((item) => (
-          <SidebarGroup key={item.label} item={item} collapsed={collapsed} />
+          <SidebarGroup
+            key={item.label}
+            item={item}
+            collapsed={collapsed}
+            onMobileClose={onMobileClose}
+          />
         ))}
       </nav>
 
-      {/* User / Logout */}
+      {/* Usuário / Logout */}
       <div className="border-t border-indigo-800 px-2 py-3">
         {!collapsed && (
           <div className="px-3 py-2 mb-1">
             <p className="text-white text-xs font-medium truncate">{user?.name}</p>
-            <p className="text-indigo-300 text-xs truncate">{user?.role}</p>
+            <p className="text-indigo-300 text-xs truncate capitalize">{user?.role}</p>
           </div>
         )}
         <button
