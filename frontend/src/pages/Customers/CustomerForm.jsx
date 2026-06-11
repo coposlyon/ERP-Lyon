@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Loader2, Star, Instagram, CheckCircle2, XCircle } from 'lucide-react';
@@ -95,6 +95,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
   const [duplicate, setDuplicate]   = useState(null);
   const [docLoading, setDocLoading] = useState(false);
   const [docStatus,  setDocStatus]  = useState(null); // null | 'ok' | 'error' | 'invalid'
+  const lookupInProgress = useRef(false);          // ref para evitar stale closure na guard
 
   useEffect(() => {
     if (customer) {
@@ -125,7 +126,8 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
 
   // ── Lookup CNPJ (PJ) ────────────────────────────────────────────────────────
   async function lookupCnpj(digits) {
-    if (digits.length !== 14 || docLoading) return;
+    if (digits.length !== 14 || lookupInProgress.current) return;
+    lookupInProgress.current = true;
     setDocLoading(true);
     setDocStatus(null);
     try {
@@ -158,6 +160,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
       toast.error('CNPJ não encontrado — preencha manualmente');
     } finally {
       setDocLoading(false);
+      lookupInProgress.current = false;
     }
   }
 
@@ -298,6 +301,9 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
               className="input pr-10"
               value={form.cpf_cnpj}
               onChange={handleDocChange}
+              onBlur={e => {
+                if (isPJ) lookupCnpj(e.target.value.replace(/\D/g, ''));
+              }}
               placeholder={isPJ ? '00.000.000/0000-00' : '000.000.000-00'}
               maxLength={isPJ ? 18 : 14}
               disabled={docLoading}
