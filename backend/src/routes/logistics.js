@@ -47,7 +47,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   const {
     name, trade_name, cnpj, email, phone, whatsapp,
-    contact_name, rntrc, vehicle_types, address, observations, is_active,
+    contact_name, rntrc, vehicle_types, pickup_schedule, address, observations, is_active,
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Razão Social é obrigatória' });
@@ -59,7 +59,8 @@ router.post('/', async (req, res) => {
         tenant_id: req.tenantId,
         name, trade_name, cnpj, email, phone, whatsapp,
         contact_name, rntrc,
-        vehicle_types: vehicle_types || [],
+        vehicle_types:   vehicle_types   || [],
+        pickup_schedule: pickup_schedule || [],
         address: address || {},
         observations,
         is_active: is_active !== false,
@@ -78,7 +79,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const {
     name, trade_name, cnpj, email, phone, whatsapp,
-    contact_name, rntrc, vehicle_types, address, observations, is_active,
+    contact_name, rntrc, vehicle_types, pickup_schedule, address, observations, is_active,
   } = req.body;
 
   try {
@@ -86,7 +87,7 @@ router.put('/:id', async (req, res) => {
       .from('TRANSPORTADORAS')
       .update({
         name, trade_name, cnpj, email, phone, whatsapp,
-        contact_name, rntrc, vehicle_types, address, observations, is_active,
+        contact_name, rntrc, vehicle_types, pickup_schedule, address, observations, is_active,
         updated_at: new Date().toISOString(),
       })
       .eq('id', req.params.id)

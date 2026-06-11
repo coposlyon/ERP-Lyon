@@ -30,10 +30,22 @@ function formatCnpj(v) {
   return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`;
 }
 
+const DAYS = [
+  { key: 'seg', label: 'Seg' },
+  { key: 'ter', label: 'Ter' },
+  { key: 'qua', label: 'Qua' },
+  { key: 'qui', label: 'Qui' },
+  { key: 'sex', label: 'Sex' },
+  { key: 'sab', label: 'Sáb' },
+  { key: 'dom', label: 'Dom' },
+];
+
+const emptySlot = () => ({ days: [], start: '08:00', end: '17:00' });
+
 const emptyForm = {
   name: '', trade_name: '', cnpj: '', email: '',
   phone: '', whatsapp: '', contact_name: '', rntrc: '',
-  vehicle_types: [], observations: '', is_active: true,
+  vehicle_types: [], pickup_schedule: [], observations: '', is_active: true,
   address: { street: '', number: '', complement: '', neighborhood: '', city: '', state: '', zip: '' },
 };
 
@@ -41,7 +53,8 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
   const [form, setForm] = useState({
     ...emptyForm,
     ...(carrier || {}),
-    vehicle_types: carrier?.vehicle_types || [],
+    vehicle_types:    carrier?.vehicle_types    || [],
+    pickup_schedule:  carrier?.pickup_schedule  || [],
     address: { ...emptyForm.address, ...(carrier?.address || {}) },
     is_active: carrier?.is_active !== false,
   });
@@ -60,6 +73,25 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
         ? p.vehicle_types.filter(t => t !== type)
         : [...p.vehicle_types, type],
     }));
+  }
+
+  // Horários de coleta
+  function addSlot()        { setForm(p => ({ ...p, pickup_schedule: [...p.pickup_schedule, emptySlot()] })); }
+  function removeSlot(i)    { setForm(p => ({ ...p, pickup_schedule: p.pickup_schedule.filter((_, idx) => idx !== i) })); }
+  function updateSlot(i, k, v) {
+    setForm(p => {
+      const s = [...p.pickup_schedule];
+      s[i] = { ...s[i], [k]: v };
+      return { ...p, pickup_schedule: s };
+    });
+  }
+  function toggleSlotDay(i, day) {
+    setForm(p => {
+      const s = [...p.pickup_schedule];
+      const days = s[i].days.includes(day) ? s[i].days.filter(d => d !== day) : [...s[i].days, day];
+      s[i] = { ...s[i], days };
+      return { ...p, pickup_schedule: s };
+    });
   }
 
   // Busca CNPJ na BrasilAPI — chamado automaticamente ao completar 14 dígitos
@@ -285,6 +317,73 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
         </div>}
       </div>
 
+      {/* Horários de Coleta */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="label mb-0">Horários de Coleta</label>
+          <button type="button" onClick={addSlot}
+            className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
+            <Plus size={13} /> Adicionar horário
+          </button>
+        </div>
+
+        {form.pickup_schedule.length === 0 && (
+          <p className="text-xs text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-lg">
+            Nenhum horário cadastrado — clique em "Adicionar horário"
+          </p>
+        )}
+
+        <div className="space-y-3">
+          {form.pickup_schedule.map((slot, i) => (
+            <div key={i} className="border border-gray-200 rounded-xl p-3 bg-gray-50 space-y-2">
+              {/* Dias da semana */}
+              <div className="flex flex-wrap gap-1.5">
+                {DAYS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggleSlotDay(i, key)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                      slot.days.includes(key)
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-white text-gray-500 border border-gray-300 hover:border-primary-400'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Faixa de hora + botão remover */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 shrink-0">Das</span>
+                <input
+                  type="time"
+                  value={slot.start}
+                  onChange={e => updateSlot(i, 'start', e.target.value)}
+                  className="input py-1 text-sm w-28"
+                />
+                <span className="text-xs text-gray-500 shrink-0">às</span>
+                <input
+                  type="time"
+                  value={slot.end}
+                  onChange={e => updateSlot(i, 'end', e.target.value)}
+                  className="input py-1 text-sm w-28"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeSlot(i)}
+                  className="ml-auto text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
+                  title="Remover"
+                >
+                  <XCircle size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Observações */}
       <div>
         <label className="label">Observações</label>
@@ -354,6 +453,24 @@ export default function Logistics() {
           {(!v || v.length === 0) && <span className="text-gray-400 text-xs">—</span>}
         </div>
       ),
+    },
+    {
+      key: 'pickup_schedule', label: 'Horários', width: 160,
+      render: v => {
+        if (!v || v.length === 0) return <span className="text-gray-400 text-xs">—</span>;
+        const DAY_LABELS = { seg:'Seg',ter:'Ter',qua:'Qua',qui:'Qui',sex:'Sex',sab:'Sáb',dom:'Dom' };
+        return (
+          <div className="space-y-0.5">
+            {v.slice(0, 2).map((slot, i) => (
+              <p key={i} className="text-xs text-gray-600 leading-tight">
+                <span className="font-medium">{slot.days.map(d => DAY_LABELS[d] || d).join(', ')}</span>
+                {slot.start && <span className="text-gray-400"> {slot.start}–{slot.end}</span>}
+              </p>
+            ))}
+            {v.length > 2 && <p className="text-xs text-gray-400">+{v.length - 2} mais</p>}
+          </div>
+        );
+      },
     },
     {
       key: 'address', label: 'Cidade/UF', width: 130,
