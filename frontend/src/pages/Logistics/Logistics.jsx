@@ -294,10 +294,12 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className="label mb-0">Horários de Coleta</label>
-          <button type="button" onClick={addSlot}
-            className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
-            <Plus size={13} /> Adicionar horário
-          </button>
+          {form.pickup_schedule.length === 0 && (
+            <button type="button" onClick={addSlot}
+              className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
+              <Plus size={13} /> Adicionar horário
+            </button>
+          )}
         </div>
 
         {form.pickup_schedule.length === 0 && (
