@@ -140,24 +140,23 @@
   }
 }
 
-/* ── Lyon Copos — animação reveal esq→dir + flutuação ───────────────────── */
+/* ── Lyon Copos — reveal esq→dir + flutuação (animações em elementos separados) */
 
-/* Revela o logo progressivamente da esquerda para a direita,
-   desacelerando em cada copo para simular o "draw" do vídeo  */
+/* Reveal progressivo: desacelera em cada copo para simular o "draw" do vídeo */
 @keyframes lyonReveal {
   0%   { clip-path: inset(0 100% 0 0); opacity: 0; }
-  4%   { opacity: 1; }
-  16%  { clip-path: inset(0 85% 0 0); }   /* copo 1 */
-  30%  { clip-path: inset(0 66% 0 0); }   /* copo 2 */
-  36%  { clip-path: inset(0 60% 0 0); }   /* pausa */
-  52%  { clip-path: inset(0 38% 0 0); }   /* copo central */
-  58%  { clip-path: inset(0 33% 0 0); }   /* pausa central */
-  72%  { clip-path: inset(0 16% 0 0); }   /* copo direito 1 */
-  86%  { clip-path: inset(0 4%  0 0); }   /* copo direito 2 */
-  100% { clip-path: inset(0 0%  0 0); }   /* completo */
+  8%   { clip-path: inset(0 100% 0 0); opacity: 1; }
+  20%  { clip-path: inset(0 83%  0 0); }   /* copo 1 */
+  35%  { clip-path: inset(0 63%  0 0); }   /* copo 2 */
+  42%  { clip-path: inset(0 57%  0 0); }   /* pausa */
+  55%  { clip-path: inset(0 37%  0 0); }   /* copo central */
+  62%  { clip-path: inset(0 31%  0 0); }   /* pausa central */
+  78%  { clip-path: inset(0 14%  0 0); }   /* copo dir 1 */
+  91%  { clip-path: inset(0 3%   0 0); }   /* copo dir 2 */
+  100% { clip-path: inset(0 0%   0 0); opacity: 1; }
 }
 
-/* Flutuação suave após o reveal terminar */
+/* Flutuação aplicada no WRAPPER (separada da reveal para evitar reset de opacity) */
 @keyframes lyonFloat {
   0%, 100% { transform: translateY(0px); }
   50%       { transform: translateY(-10px); }
@@ -166,16 +165,19 @@
 /* Subtítulo sobe e aparece */
 @keyframes lyonFadeUp {
   from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0px);  }
+  to   { opacity: 1; transform: translateY(0px); }
 }
 
-/* Logo PNG: reveal (2.4s) → float (começa em 3s, loop infinito) */
-.lyon-logo-anim {
-  opacity: 0;
-  animation:
-    lyonReveal 2.4s cubic-bezier(0.4, 0, 0.2, 1) forwards,
-    lyonFloat  5s ease-in-out 3s infinite;
-  filter: drop-shadow(0 4px 24px rgba(232,24,122,0.25)) brightness(1.1);
+/* WRAPPER: apenas float (inicia após reveal terminar em ~3s) */
+.lyon-logo-wrap {
+  animation: lyonFloat 5s ease-in-out 3s infinite;
+}
+
+/* IMG: apenas reveal com forwards fill (mantém estado final visível) */
+.lyon-reveal-img {
+  display: block;
+  animation: lyonReveal 2.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  filter: drop-shadow(0 4px 24px rgba(232,24,122,0.28)) brightness(1.12);
 }
 
 /* Subtítulo */

@@ -132,13 +132,13 @@ export default function Login() {
       {/* ── Conteúdo central ── */}
       <div className="relative w-full max-w-sm" style={{ zIndex: 2 }}>
 
-        {/* Logo real Lyon Copos — reveal esq→dir + float */}
-        <div className="flex flex-col items-center mb-8 select-none">
+        {/* Logo real Lyon Copos — wrapper float + img reveal (separados) */}
+        <div className="flex flex-col items-center mb-8 select-none lyon-logo-wrap">
           <img
             src="/lyon-logo.png"
             alt="Lyon Copos"
-            className="lyon-logo-anim"
-            style={{ width: 300 }}
+            className="lyon-reveal-img"
+            style={{ width: '100%', maxWidth: 420 }}
             draggable={false}
           />
           <p
