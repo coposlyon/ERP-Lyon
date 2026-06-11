@@ -12,6 +12,9 @@ const routes = require('./routes');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Discloud (e maioria dos hosts) roda atrás de proxy reverso
+app.set('trust proxy', 1);
+
 app.use(helmet());
 
 app.use(cors({
