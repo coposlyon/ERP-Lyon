@@ -45,9 +45,10 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
     address: { ...emptyForm.address, ...(carrier?.address || {}) },
     is_active: carrier?.is_active !== false,
   });
-  const [loading,     setLoading]     = useState(false);
-  const [cnpjLoading, setCnpjLoading] = useState(false);
-  const [cnpjStatus,  setCnpjStatus]  = useState(null);
+  const [loading,      setLoading]      = useState(false);
+  const [cnpjLoading,  setCnpjLoading]  = useState(false);
+  const [cnpjStatus,   setCnpjStatus]   = useState(null);
+  const [addressOpen,  setAddressOpen]  = useState(!!carrier?.address?.street);
 
   function set(k, v)    { setForm(p => ({ ...p, [k]: v })); }
   function setAddr(k,v) { setForm(p => ({ ...p, address: { ...p.address, [k]: v } })); }
@@ -61,39 +62,53 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
     }));
   }
 
-  async function handleCnpjBlur(e) {
-    const raw = e.target.value.replace(/\D/g, '');
-    if (raw.length !== 14) return;
-    setCnpjLoading(true); setCnpjStatus(null);
+  // Busca CNPJ na BrasilAPI — chamado automaticamente ao completar 14 dígitos
+  async function lookupCnpj(digits) {
+    if (digits.length !== 14 || cnpjLoading) return;
+    setCnpjLoading(true);
+    setCnpjStatus(null);
     try {
-      const res  = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${raw}`);
-      if (!res.ok) throw new Error();
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
+      if (!res.ok) throw new Error('not found');
       const data = await res.json();
+
       setForm(p => ({
         ...p,
         name:       data.razao_social  || p.name,
         trade_name: data.nome_fantasia || p.trade_name,
         email:      data.email         || p.email,
-        phone:      formatPhone(data.ddd_telefone_1 || ''),
+        phone:      formatPhone(data.ddd_telefone_1 || data.ddd_telefone_2 || ''),
         address: {
           ...p.address,
-          street:       data.logradouro || '',
-          number:       data.numero     || '',
+          street:       data.logradouro  || '',
+          number:       data.numero      || '',
           complement:   data.complemento || '',
-          neighborhood: data.bairro     || '',
-          city:         data.municipio  || '',
-          state:        data.uf         || '',
-          zip:          (data.cep || '').replace(/\D/g,'').replace(/^(\d{5})(\d{3})$/,'$1-$2'),
+          neighborhood: data.bairro      || '',
+          city:         data.municipio   || '',
+          state:        data.uf          || '',
+          zip:          (data.cep || '').replace(/\D/g,'').replace(/^(\d{5})(\d{3})$/, '$1-$2'),
         },
       }));
+
+      // Abre o endereço automaticamente se veio preenchido
+      if (data.logradouro || data.municipio) setAddressOpen(true);
+
       setCnpjStatus('ok');
-      toast.success('Dados do CNPJ preenchidos!');
+      toast.success('✅ Dados do CNPJ preenchidos automaticamente!');
     } catch {
       setCnpjStatus('error');
-      toast.error('CNPJ não encontrado');
+      toast.error('CNPJ não encontrado ou inválido');
     } finally {
       setCnpjLoading(false);
     }
+  }
+
+  function handleCnpjChange(e) {
+    const formatted = formatCnpj(e.target.value);
+    set('cnpj', formatted);
+    // Dispara automaticamente ao completar os 14 dígitos
+    const digits = formatted.replace(/\D/g, '');
+    if (digits.length === 14) lookupCnpj(digits);
   }
 
   async function handleSubmit(e) {
@@ -123,16 +138,32 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
       <div>
         <label className="label">CNPJ</label>
         <div className="relative">
-          <input className="input pr-10" value={form.cnpj}
-            onChange={e => set('cnpj', formatCnpj(e.target.value))}
-            onBlur={handleCnpjBlur}
-            placeholder="00.000.000/0000-00" maxLength={18} />
+          <input
+            className="input pr-10"
+            value={form.cnpj}
+            onChange={handleCnpjChange}
+            onBlur={e => lookupCnpj(e.target.value.replace(/\D/g, ''))}
+            placeholder="00.000.000/0000-00"
+            maxLength={18}
+            disabled={cnpjLoading}
+          />
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
             {cnpjLoading && <Loader2 size={16} className="animate-spin text-gray-400" />}
             {!cnpjLoading && cnpjStatus === 'ok'    && <CheckCircle2 size={16} className="text-green-500" />}
             {!cnpjLoading && cnpjStatus === 'error' && <XCircle      size={16} className="text-red-400" />}
           </div>
         </div>
+        {cnpjLoading && (
+          <p className="text-xs text-primary-600 mt-1 flex items-center gap-1">
+            <Loader2 size={11} className="animate-spin" /> Consultando Receita Federal...
+          </p>
+        )}
+        {!cnpjLoading && cnpjStatus === 'ok' && (
+          <p className="text-xs text-green-600 mt-1">✅ Dados preenchidos automaticamente</p>
+        )}
+        {!cnpjLoading && cnpjStatus === 'error' && (
+          <p className="text-xs text-red-500 mt-1">CNPJ não encontrado — preencha manualmente</p>
+        )}
       </div>
 
       {/* Razão Social + Nome Fantasia */}
@@ -198,14 +229,21 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
       </div>
 
       {/* Endereço */}
-      <details className="border border-gray-200 rounded-lg" open={!!form.address.street}>
-        <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg select-none">
-          Endereço
-          {form.address.city && (
-            <span className="text-gray-400 font-normal"> — {form.address.city}/{form.address.state}</span>
-          )}
-        </summary>
-        <div className="px-4 pb-4 grid grid-cols-3 gap-3 mt-3">
+      <div className="border border-gray-200 rounded-lg">
+        <button
+          type="button"
+          onClick={() => setAddressOpen(v => !v)}
+          className="w-full px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg text-left flex items-center justify-between"
+        >
+          <span>
+            Endereço
+            {form.address.city && (
+              <span className="text-gray-400 font-normal"> — {form.address.city}/{form.address.state}</span>
+            )}
+          </span>
+          <span className="text-gray-400 text-xs">{addressOpen ? '▲' : '▼'}</span>
+        </button>
+        {addressOpen && <div className="px-4 pb-4 grid grid-cols-3 gap-3 border-t border-gray-100 pt-3">
           <div>
             <label className="label">CEP</label>
             <input className="input" value={form.address.zip}
@@ -244,8 +282,8 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
               {states.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-        </div>
-      </details>
+        </div>}
+      </div>
 
       {/* Observações */}
       <div>
