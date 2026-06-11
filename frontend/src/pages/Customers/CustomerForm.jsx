@@ -25,6 +25,19 @@ function StarRating({ value, onChange }) {
 
 const emptyAddress = { street:'', number:'', complement:'', neighborhood:'', city:'', state:'', zip:'' };
 
+// Formata número para exibição: 200000 → "200.000"
+function formatCreditLimit(raw) {
+  const digits = String(raw).replace(/\D/g, '');
+  if (!digits) return '';
+  return parseInt(digits, 10).toLocaleString('pt-BR');
+}
+
+// Converte de volta para número ao salvar: "200.000" → 200000
+function parseCreditLimit(formatted) {
+  if (!formatted) return 0;
+  return parseInt(String(formatted).replace(/\./g, ''), 10) || 0;
+}
+
 export default function CustomerForm({ customer, onSaved, onCancel, hideRating = false }) {
   const [form, setForm] = useState({
     type: 'PF', name: '', cpf_cnpj: '', rg_ie: '',
@@ -48,7 +61,9 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
         phone:        customer.phone || '',
         mobile:       customer.mobile || '',
         address:      customer.address || { ...emptyAddress },
-        credit_limit: customer.credit_limit || '',
+        credit_limit: customer.credit_limit != null && customer.credit_limit !== ''
+          ? formatCreditLimit(Math.round(Number(customer.credit_limit)))
+          : '',
         instagram:    customer.instagram || '',
         nome_fantasia: customer.nome_fantasia || '',
         rating:       customer.rating || null,
@@ -81,7 +96,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
     if (!form.name) { toast.error('Nome é obrigatório'); return; }
     setLoading(true);
     try {
-      const payload = { ...form, credit_limit: parseFloat(form.credit_limit) || 0 };
+      const payload = { ...form, credit_limit: parseCreditLimit(form.credit_limit) };
       if (customer?.id) {
         await api.put(`/customers/${customer.id}`, payload);
         toast.success('Cliente atualizado!');
@@ -190,8 +205,14 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
 
         <div>
           <label className="label">Limite de Crédito (R$)</label>
-          <input type="number" step="0.01" min="0" className="input"
-            value={form.credit_limit} onChange={e => set('credit_limit', e.target.value)} />
+          <input
+            type="text"
+            inputMode="numeric"
+            className="input"
+            value={form.credit_limit}
+            onChange={e => set('credit_limit', formatCreditLimit(e.target.value))}
+            placeholder="0"
+          />
         </div>
       </div>
 
