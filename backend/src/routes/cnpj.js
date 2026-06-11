@@ -9,6 +9,7 @@ function normalize(source, raw) {
       trade_name:   raw.nome_fantasia  || '',
       email:        raw.email          || '',
       phone:        raw.ddd_telefone_1 || raw.ddd_telefone_2 || '',
+      ie:           raw.inscricao_estadual || '',
       street:       raw.logradouro     || '',
       number:       raw.numero         || '',
       complement:   raw.complemento    || '',
@@ -28,11 +29,16 @@ function normalize(source, raw) {
     else if (est.ddd2 && est.telefone2)  phone = `${est.ddd2}${est.telefone2}`;
     else if (est.telefone2)              phone = est.telefone2;
 
+    // pega a primeira IE ativa; se nenhuma ativa, pega a primeira da lista
+    const ies = est.inscricoes_estaduais || [];
+    const ie  = (ies.find(x => x.ativo !== false) || ies[0])?.inscricao_estadual || '';
+
     return {
       name:         raw.razao_social      || '',
       trade_name:   est.nome_fantasia     || '',
       email:        est.email             || raw.email || '',
       phone:        phone.replace(/\D/g, ''),
+      ie,
       street:       est.logradouro        || '',
       number:       est.numero            || '',
       complement:   est.complemento       || '',
@@ -49,6 +55,7 @@ function normalize(source, raw) {
       trade_name:   raw.fantasia    || '',
       email:        raw.email       || '',
       phone:        (raw.telefone   || '').replace(/\D/g, ''),
+      ie:           raw.inscricao_estadual || '',
       street:       raw.logradouro  || '',
       number:       raw.numero      || '',
       complement:   raw.complemento || '',
@@ -65,6 +72,7 @@ function normalize(source, raw) {
       trade_name:   raw.nome_fantasia     || '',
       email:        raw.email             || '',
       phone:        raw.ddd_telefone_1    || '',
+      ie:           raw.inscricao_estadual || '',
       street:       raw.logradouro        || '',
       number:       raw.numero            || '',
       complement:   raw.complemento       || '',
@@ -135,7 +143,7 @@ router.get('/:digits', async (req, res) => {
 
   for (const api of apis) {
     // Se já temos todos os campos importantes, para
-    if (merged?.name && merged?.email && merged?.phone) break;
+    if (merged?.name && merged?.email && merged?.phone && merged?.ie) break;
 
     const result = await fetchApi(api, cnpj);
     if (!result) continue;
@@ -147,12 +155,13 @@ router.get('/:digits', async (req, res) => {
       merged = { ...result };
     } else {
       // preenche campos ainda vazios com dados de APIs posteriores
-      if (!merged.email   && result.email)        merged.email        = result.email;
-      if (!merged.phone   && result.phone)        merged.phone        = result.phone;
-      if (!merged.trade_name && result.trade_name) merged.trade_name  = result.trade_name;
-      if (!merged.zip     && result.zip)          merged.zip          = result.zip;
-      if (!merged.street  && result.street)       merged.street       = result.street;
-      if (!merged.city    && result.city)         merged.city         = result.city;
+      if (!merged.email      && result.email)      merged.email      = result.email;
+      if (!merged.phone      && result.phone)      merged.phone      = result.phone;
+      if (!merged.ie         && result.ie)         merged.ie         = result.ie;
+      if (!merged.trade_name && result.trade_name) merged.trade_name = result.trade_name;
+      if (!merged.zip        && result.zip)        merged.zip        = result.zip;
+      if (!merged.street     && result.street)     merged.street     = result.street;
+      if (!merged.city       && result.city)       merged.city       = result.city;
     }
   }
 

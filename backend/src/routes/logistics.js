@@ -46,8 +46,8 @@ router.get('/:id', async (req, res) => {
 // POST /api/logistics — nova transportadora
 router.post('/', async (req, res) => {
   const {
-    name, trade_name, cnpj, email, phone, whatsapp,
-    contact_name, rntrc, vehicle_types, pickup_schedule, address, observations, is_active,
+    name, trade_name, cnpj, ie, email, phone, whatsapp,
+    contact_name, pickup_schedule, address, is_active,
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Razão Social é obrigatória' });
@@ -57,12 +57,10 @@ router.post('/', async (req, res) => {
       .from('TRANSPORTADORAS')
       .insert({
         tenant_id: req.tenantId,
-        name, trade_name, cnpj, email, phone, whatsapp,
-        contact_name, rntrc,
-        vehicle_types:   vehicle_types   || [],
+        name, trade_name, cnpj, ie, email, phone, whatsapp,
+        contact_name,
         pickup_schedule: pickup_schedule || [],
         address: address || {},
-        observations,
         is_active: is_active !== false,
       })
       .select()
@@ -78,16 +76,16 @@ router.post('/', async (req, res) => {
 // PUT /api/logistics/:id — atualiza transportadora
 router.put('/:id', async (req, res) => {
   const {
-    name, trade_name, cnpj, email, phone, whatsapp,
-    contact_name, rntrc, vehicle_types, pickup_schedule, address, observations, is_active,
+    name, trade_name, cnpj, ie, email, phone, whatsapp,
+    contact_name, pickup_schedule, address, is_active,
   } = req.body;
 
   try {
     const { data, error } = await supabase
       .from('TRANSPORTADORAS')
       .update({
-        name, trade_name, cnpj, email, phone, whatsapp,
-        contact_name, rntrc, vehicle_types, pickup_schedule, address, observations, is_active,
+        name, trade_name, cnpj, ie, email, phone, whatsapp,
+        contact_name, pickup_schedule, address, is_active,
         updated_at: new Date().toISOString(),
       })
       .eq('id', req.params.id)

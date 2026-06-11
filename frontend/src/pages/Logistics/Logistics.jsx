@@ -38,7 +38,7 @@ const DAYS = [
 const emptySlot = () => ({ days: [], start: '08:00', end: '17:00' });
 
 const emptyForm = {
-  name: '', trade_name: '', cnpj: '', email: '',
+  name: '', trade_name: '', cnpj: '', ie: '', email: '',
   phone: '', whatsapp: '', contact_name: '',
   pickup_schedule: [], is_active: true,
   address: { street: '', number: '', complement: '', neighborhood: '', city: '', state: '', zip: '' },
@@ -95,6 +95,7 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
         ...p,
         name:       d.name       || p.name,
         trade_name: d.trade_name || p.trade_name,
+        ie:         d.ie         || p.ie,
         email:      d.email      || p.email,
         phone:      formatPhone(d.phone || ''),
         address: {
@@ -150,36 +151,48 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
 
-      {/* CNPJ */}
-      <div>
-        <label className="label">CNPJ</label>
-        <div className="relative">
-          <input
-            className="input pr-10"
-            value={form.cnpj}
-            onChange={handleCnpjChange}
-            onBlur={e => lookupCnpj(e.target.value.replace(/\D/g, ''))}
-            placeholder="00.000.000/0000-00"
-            maxLength={18}
-            disabled={cnpjLoading}
-          />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            {cnpjLoading && <Loader2 size={16} className="animate-spin text-gray-400" />}
-            {!cnpjLoading && cnpjStatus === 'ok'    && <CheckCircle2 size={16} className="text-green-500" />}
-            {!cnpjLoading && cnpjStatus === 'error' && <XCircle      size={16} className="text-red-400" />}
+      {/* CNPJ + IE */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="label">CNPJ</label>
+          <div className="relative">
+            <input
+              className="input pr-10"
+              value={form.cnpj}
+              onChange={handleCnpjChange}
+              onBlur={e => lookupCnpj(e.target.value.replace(/\D/g, ''))}
+              placeholder="00.000.000/0000-00"
+              maxLength={18}
+              disabled={cnpjLoading}
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              {cnpjLoading && <Loader2 size={16} className="animate-spin text-gray-400" />}
+              {!cnpjLoading && cnpjStatus === 'ok'    && <CheckCircle2 size={16} className="text-green-500" />}
+              {!cnpjLoading && cnpjStatus === 'error' && <XCircle      size={16} className="text-red-400" />}
+            </div>
           </div>
+          {cnpjLoading && (
+            <p className="text-xs text-primary-600 mt-1 flex items-center gap-1">
+              <Loader2 size={11} className="animate-spin" /> Consultando...
+            </p>
+          )}
+          {!cnpjLoading && cnpjStatus === 'ok' && (
+            <p className="text-xs text-green-600 mt-1">✅ Dados preenchidos automaticamente</p>
+          )}
+          {!cnpjLoading && cnpjStatus === 'error' && (
+            <p className="text-xs text-red-500 mt-1">CNPJ não encontrado — preencha manualmente</p>
+          )}
         </div>
-        {cnpjLoading && (
-          <p className="text-xs text-primary-600 mt-1 flex items-center gap-1">
-            <Loader2 size={11} className="animate-spin" /> Consultando Receita Federal...
-          </p>
-        )}
-        {!cnpjLoading && cnpjStatus === 'ok' && (
-          <p className="text-xs text-green-600 mt-1">✅ Dados preenchidos automaticamente</p>
-        )}
-        {!cnpjLoading && cnpjStatus === 'error' && (
-          <p className="text-xs text-red-500 mt-1">CNPJ não encontrado — preencha manualmente</p>
-        )}
+
+        <div>
+          <label className="label">Inscrição Estadual (IE)</label>
+          <input
+            className="input"
+            value={form.ie}
+            onChange={e => set('ie', e.target.value)}
+            placeholder="Auto-preenchido pelo CNPJ"
+          />
+        </div>
       </div>
 
       {/* Razão Social + Nome Fantasia */}
