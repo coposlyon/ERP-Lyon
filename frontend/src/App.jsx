@@ -24,6 +24,7 @@ import CustomizationDetail from '@/pages/Customizations/CustomizationDetail';
 import PriceTables from '@/pages/PriceTable/PriceTables';
 import CustomerDetail from '@/pages/Customers/CustomerDetail';
 import Employees from '@/pages/Employees/Employees';
+import Logistics from '@/pages/Logistics/Logistics';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -49,6 +50,7 @@ function AppRoutes() {
         <Route path="customers/:id" element={<CustomerDetail />} />
         <Route path="suppliers" element={<Suppliers />} />
         <Route path="employees" element={<Employees />} />
+        <Route path="logistics" element={<Logistics />} />
         <Route path="price-tables" element={<PriceTables />} />
         {/* Vendas */}
         <Route path="sales" element={<Sales />} />

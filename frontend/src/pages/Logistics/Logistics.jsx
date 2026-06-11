@@ -1,0 +1,386 @@
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus, Search, Edit2, Loader2, CheckCircle2, XCircle, Truck } from 'lucide-react';
+import api from '@/lib/api';
+import { Table, Pagination } from '@/components/UI/Table';
+import Modal from '@/components/UI/Modal';
+import toast from 'react-hot-toast';
+
+const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
+const VEHICLE_TYPES = [
+  'Moto', 'Van / Furgão', 'Caminhão Baú', 'Caminhão Sider',
+  'Caminhão Frigorífico', 'Caminhão Basculante', 'Carreta / Bi-trem', 'Outro',
+];
+
+function formatPhone(raw) {
+  if (!raw) return '';
+  const d = raw.replace(/\D/g, '');
+  if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  return raw;
+}
+
+function formatCnpj(v) {
+  const d = v.replace(/\D/g, '').slice(0, 14);
+  if (d.length <= 2)  return d;
+  if (d.length <= 5)  return `${d.slice(0,2)}.${d.slice(2)}`;
+  if (d.length <= 8)  return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5)}`;
+  if (d.length <= 12) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8)}`;
+  return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`;
+}
+
+const emptyForm = {
+  name: '', trade_name: '', cnpj: '', email: '',
+  phone: '', whatsapp: '', contact_name: '', rntrc: '',
+  vehicle_types: [], observations: '', is_active: true,
+  address: { street: '', number: '', complement: '', neighborhood: '', city: '', state: '', zip: '' },
+};
+
+function CarrierForm({ carrier, onSaved, onCancel }) {
+  const [form, setForm] = useState({
+    ...emptyForm,
+    ...(carrier || {}),
+    vehicle_types: carrier?.vehicle_types || [],
+    address: { ...emptyForm.address, ...(carrier?.address || {}) },
+    is_active: carrier?.is_active !== false,
+  });
+  const [loading,     setLoading]     = useState(false);
+  const [cnpjLoading, setCnpjLoading] = useState(false);
+  const [cnpjStatus,  setCnpjStatus]  = useState(null);
+
+  function set(k, v)    { setForm(p => ({ ...p, [k]: v })); }
+  function setAddr(k,v) { setForm(p => ({ ...p, address: { ...p.address, [k]: v } })); }
+
+  function toggleVehicle(type) {
+    setForm(p => ({
+      ...p,
+      vehicle_types: p.vehicle_types.includes(type)
+        ? p.vehicle_types.filter(t => t !== type)
+        : [...p.vehicle_types, type],
+    }));
+  }
+
+  async function handleCnpjBlur(e) {
+    const raw = e.target.value.replace(/\D/g, '');
+    if (raw.length !== 14) return;
+    setCnpjLoading(true); setCnpjStatus(null);
+    try {
+      const res  = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${raw}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setForm(p => ({
+        ...p,
+        name:       data.razao_social  || p.name,
+        trade_name: data.nome_fantasia || p.trade_name,
+        email:      data.email         || p.email,
+        phone:      formatPhone(data.ddd_telefone_1 || ''),
+        address: {
+          ...p.address,
+          street:       data.logradouro || '',
+          number:       data.numero     || '',
+          complement:   data.complemento || '',
+          neighborhood: data.bairro     || '',
+          city:         data.municipio  || '',
+          state:        data.uf         || '',
+          zip:          (data.cep || '').replace(/\D/g,'').replace(/^(\d{5})(\d{3})$/,'$1-$2'),
+        },
+      }));
+      setCnpjStatus('ok');
+      toast.success('Dados do CNPJ preenchidos!');
+    } catch {
+      setCnpjStatus('error');
+      toast.error('CNPJ não encontrado');
+    } finally {
+      setCnpjLoading(false);
+    }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.name) { toast.error('Razão Social é obrigatória'); return; }
+    setLoading(true);
+    try {
+      if (carrier?.id) {
+        await api.put(`/logistics/${carrier.id}`, form);
+        toast.success('Transportadora atualizada!');
+      } else {
+        await api.post('/logistics', form);
+        toast.success('Transportadora cadastrada!');
+      }
+      onSaved();
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Erro ao salvar');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+
+      {/* CNPJ */}
+      <div>
+        <label className="label">CNPJ</label>
+        <div className="relative">
+          <input className="input pr-10" value={form.cnpj}
+            onChange={e => set('cnpj', formatCnpj(e.target.value))}
+            onBlur={handleCnpjBlur}
+            placeholder="00.000.000/0000-00" maxLength={18} />
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            {cnpjLoading && <Loader2 size={16} className="animate-spin text-gray-400" />}
+            {!cnpjLoading && cnpjStatus === 'ok'    && <CheckCircle2 size={16} className="text-green-500" />}
+            {!cnpjLoading && cnpjStatus === 'error' && <XCircle      size={16} className="text-red-400" />}
+          </div>
+        </div>
+      </div>
+
+      {/* Razão Social + Nome Fantasia */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-2">
+          <label className="label">Razão Social *</label>
+          <input className="input" value={form.name}
+            onChange={e => set('name', e.target.value)} />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label">Nome Fantasia</label>
+          <input className="input" value={form.trade_name}
+            onChange={e => set('trade_name', e.target.value)}
+            placeholder="Nome comercial" />
+        </div>
+
+        <div>
+          <label className="label">Responsável / Contato</label>
+          <input className="input" value={form.contact_name}
+            onChange={e => set('contact_name', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">E-mail</label>
+          <input type="email" className="input" value={form.email}
+            onChange={e => set('email', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Telefone</label>
+          <input className="input" value={form.phone}
+            onChange={e => set('phone', e.target.value)}
+            placeholder="(44) 3333-3333" />
+        </div>
+        <div>
+          <label className="label">WhatsApp</label>
+          <input className="input" value={form.whatsapp}
+            onChange={e => set('whatsapp', e.target.value)}
+            placeholder="(44) 99999-9999" />
+        </div>
+        <div>
+          <label className="label">RNTRC</label>
+          <input className="input" value={form.rntrc}
+            onChange={e => set('rntrc', e.target.value)}
+            placeholder="Registro Nacional de Transportadores" />
+        </div>
+      </div>
+
+      {/* Tipos de veículo */}
+      <div>
+        <label className="label">Tipos de Veículo</label>
+        <div className="grid grid-cols-2 gap-2">
+          {VEHICLE_TYPES.map(type => (
+            <label key={type} className="flex items-center gap-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={form.vehicle_types.includes(type)}
+                onChange={() => toggleVehicle(type)}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span className="text-sm text-gray-700 group-hover:text-gray-900">{type}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Endereço */}
+      <details className="border border-gray-200 rounded-lg" open={!!form.address.street}>
+        <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg select-none">
+          Endereço
+          {form.address.city && (
+            <span className="text-gray-400 font-normal"> — {form.address.city}/{form.address.state}</span>
+          )}
+        </summary>
+        <div className="px-4 pb-4 grid grid-cols-3 gap-3 mt-3">
+          <div>
+            <label className="label">CEP</label>
+            <input className="input" value={form.address.zip}
+              onChange={e => setAddr('zip', e.target.value)} placeholder="00000-000" />
+          </div>
+          <div className="col-span-2">
+            <label className="label">Rua / Logradouro</label>
+            <input className="input" value={form.address.street}
+              onChange={e => setAddr('street', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Número</label>
+            <input className="input" value={form.address.number}
+              onChange={e => setAddr('number', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Complemento</label>
+            <input className="input" value={form.address.complement}
+              onChange={e => setAddr('complement', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Bairro</label>
+            <input className="input" value={form.address.neighborhood}
+              onChange={e => setAddr('neighborhood', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Cidade</label>
+            <input className="input" value={form.address.city}
+              onChange={e => setAddr('city', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Estado</label>
+            <select className="input" value={form.address.state}
+              onChange={e => setAddr('state', e.target.value)}>
+              <option value="">UF</option>
+              {states.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+      </details>
+
+      {/* Observações */}
+      <div>
+        <label className="label">Observações</label>
+        <textarea className="input min-h-[80px] resize-none" value={form.observations}
+          onChange={e => set('observations', e.target.value)}
+          placeholder="Prazos de entrega, regiões atendidas, condições..." />
+      </div>
+
+      {/* Status */}
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={form.is_active}
+          onChange={e => set('is_active', e.target.checked)} className="rounded" />
+        <span className="text-sm text-gray-700">Transportadora ativa</span>
+      </label>
+
+      <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+        <button type="button" onClick={onCancel} className="btn-secondary">Cancelar</button>
+        <button type="submit" disabled={loading} className="btn-primary">
+          {loading ? <><Loader2 size={15} className="animate-spin" /> Salvando...</> : 'Salvar'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export default function Logistics() {
+  const [page, setPage]               = useState(1);
+  const [search, setSearch]           = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [modalOpen, setModalOpen]     = useState(false);
+  const [editing, setEditing]         = useState(null);
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['carriers', page, search],
+    queryFn: () => api.get(`/logistics?page=${page}&limit=20${search ? `&search=${encodeURIComponent(search)}` : ''}`),
+  });
+
+  function openNew()   { setEditing(null); setModalOpen(true); }
+  function openEdit(c) { setEditing(c);    setModalOpen(true); }
+  function close()     { setModalOpen(false); setEditing(null); }
+  function onSaved()   { close(); qc.invalidateQueries({ queryKey: ['carriers'] }); }
+
+  const columns = [
+    {
+      key: 'name', label: 'Transportadora',
+      render: (v, row) => (
+        <div>
+          <p className="font-medium text-gray-900 text-sm">{v}</p>
+          {row.trade_name && <p className="text-xs text-gray-400">{row.trade_name}</p>}
+        </div>
+      ),
+    },
+    { key: 'cnpj', label: 'CNPJ', width: 170 },
+    { key: 'contact_name', label: 'Contato' },
+    { key: 'phone', label: 'Telefone', width: 145 },
+    {
+      key: 'vehicle_types', label: 'Veículos',
+      render: v => (
+        <div className="flex flex-wrap gap-1">
+          {(v || []).slice(0, 2).map(t => (
+            <span key={t} className="badge badge-blue text-xs">{t}</span>
+          ))}
+          {(v || []).length > 2 && (
+            <span className="badge badge-gray text-xs">+{v.length - 2}</span>
+          )}
+          {(!v || v.length === 0) && <span className="text-gray-400 text-xs">—</span>}
+        </div>
+      ),
+    },
+    {
+      key: 'address', label: 'Cidade/UF', width: 130,
+      render: v => v?.city ? `${v.city}/${v.state}` : '—',
+    },
+    {
+      key: 'is_active', label: 'Status', width: 80,
+      render: v => (
+        <span className={`badge ${v ? 'badge-green' : 'badge-gray'}`}>
+          {v ? 'Ativa' : 'Inativa'}
+        </span>
+      ),
+    },
+    {
+      key: 'id', label: '', width: 50,
+      render: (_, row) => (
+        <button onClick={() => openEdit(row)} className="btn-ghost p-1.5" title="Editar">
+          <Edit2 size={14} />
+        </button>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="page-header flex-wrap gap-3">
+        <div>
+          <h1 className="page-title flex items-center gap-2">
+            <Truck size={24} className="text-primary-600" />
+            Transportadoras
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">{data?.total || 0} transportadoras cadastradas</p>
+        </div>
+        <button onClick={openNew} className="btn-primary">
+          <Plus size={16} /> Nova Transportadora
+        </button>
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <form
+            onSubmit={e => { e.preventDefault(); setSearch(searchInput); setPage(1); }}
+            className="flex gap-3 max-w-md"
+          >
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" placeholder="Nome, CNPJ..." value={searchInput}
+                onChange={e => setSearchInput(e.target.value)} className="input pl-9" />
+            </div>
+            <button type="submit" className="btn-secondary">Buscar</button>
+          </form>
+        </div>
+
+        <Table columns={columns} data={data?.data} loading={isLoading} />
+        <Pagination page={page} total={data?.total || 0} limit={20} onPageChange={setPage} />
+      </div>
+
+      <Modal
+        isOpen={modalOpen}
+        onClose={close}
+        title={editing ? 'Editar Transportadora' : 'Nova Transportadora'}
+        size="md"
+      >
+        <CarrierForm carrier={editing} onSaved={onSaved} onCancel={close} />
+      </Modal>
+    </div>
+  );
+}

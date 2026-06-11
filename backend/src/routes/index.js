@@ -20,6 +20,7 @@ const quotesRoutes = require('./quotes');
 const customizationsRoutes = require('./customizations');
 const priceTablesRoutes = require('./price-tables');
 const financialConfigRoutes = require('./financial-config');
+const logisticsRoutes       = require('./logistics');
 
 router.use('/auth', authRoutes);
 
@@ -41,5 +42,6 @@ router.use('/quotes', quotesRoutes);
 router.use('/customizations', customizationsRoutes);
 router.use('/price-tables', priceTablesRoutes);
 router.use('/financial-config', financialConfigRoutes);
+router.use('/logistics',       logisticsRoutes);
 
 module.exports = router;

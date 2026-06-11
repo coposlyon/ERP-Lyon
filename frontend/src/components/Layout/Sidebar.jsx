@@ -5,7 +5,7 @@ import {
   ShoppingBag, BarChart3, FileText, Settings, LogOut,
   Boxes, Wallet, Receipt, ChevronDown, ChevronRight,
   Monitor, TrendingUp, ClipboardList, Palette, Tag,
-  Building2, Percent, PenLine, Briefcase, X,
+  Building2, Percent, PenLine, Briefcase, X, MapPin,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -47,6 +47,13 @@ const menuItems = [
       { label: 'Fornecedores', path: '/suppliers', icon: Truck },
       { label: 'Colaboradores', path: '/employees', icon: Briefcase },
       { label: 'Tabelas de Preço', path: '/price-tables', icon: Percent },
+    ],
+  },
+  {
+    label: 'Logística',
+    icon: MapPin,
+    children: [
+      { label: 'Transportadoras', path: '/logistics', icon: Truck },
     ],
   },
   {
