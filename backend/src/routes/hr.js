@@ -63,6 +63,85 @@ function apurarDia({ total_minutes, hasMarks, expected, tolerance }) {
   return { extra_minutes, late_minutes, status };
 }
 
+function timeDiff(s, e) {
+  if (!s || !e) return 0;
+  const [sh,sm] = s.split(':').map(Number);
+  const [eh,em] = e.split(':').map(Number);
+  return Math.max(0,(eh*60+em)-(sh*60+sm));
+}
+
+// Recalcula a apuração diária (RH_PONTO) a partir das marcações (RH_MARCACOES).
+// Pareia as batidas em (entrada,saída) para somar o total trabalhado.
+async function recomputeDay(tenantId, employee_id, work_date, escala_id, opts = {}) {
+  const { data: marks } = await supabase
+    .from('RH_MARCACOES').select('punch_time')
+    .eq('tenant_id', tenantId).eq('employee_id', employee_id).eq('work_date', work_date)
+    .order('punch_time');
+
+  const times = (marks || []).map(m => String(m.punch_time).slice(0,5));
+  let total = 0;
+  for (let i = 0; i + 1 < times.length; i += 2) total += timeDiff(times[i], times[i+1]);
+  const hasMarks = times.length > 0;
+
+  const escala    = await getEscala(tenantId, employee_id, escala_id);
+  const expected  = escala.daily_minutes ?? 480;
+  const tolerance = escala.tolerance_minutes ?? 10;
+  const { extra_minutes, late_minutes, status } = apurarDia({ total_minutes: total, hasMarks, expected, tolerance });
+
+  const { data: existing } = await supabase
+    .from('RH_PONTO').select('*')
+    .eq('tenant_id', tenantId).eq('employee_id', employee_id).eq('work_date', work_date)
+    .maybeSingle();
+
+  const absence = opts.absence != null ? opts.absence : (existing?.absence || false);
+
+  const payload = {
+    tenant_id: tenantId, employee_id, work_date,
+    entry1: times[0] || null, exit1: times[1] || null,
+    entry2: times[2] || null, exit2: times[3] || null,
+    total_minutes:    absence ? 0 : total,
+    extra_minutes:    absence ? 0 : extra_minutes,
+    expected_minutes: expected,
+    late_minutes:     absence ? 0 : late_minutes,
+    status:           absence ? 'absence' : status,
+    escala_id:        escala.id || existing?.escala_id || null,
+    absence,
+    override_situation: existing?.override_situation || null,
+    override_note:      existing?.override_note      || null,
+    override_minutes:   existing?.override_minutes ?? null,
+  };
+
+  const { data, error } = await supabase
+    .from('RH_PONTO')
+    .upsert(payload, { onConflict: 'tenant_id,employee_id,work_date' })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+
+// Substitui TODAS as marcações de um dia e recalcula a apuração.
+async function applyDayMarks(tenantId, userId, { employee_id, work_date, times = [], absence = false, escala_id }) {
+  await supabase.from('RH_MARCACOES').delete()
+    .eq('tenant_id', tenantId).eq('employee_id', employee_id).eq('work_date', work_date);
+
+  if (!absence) {
+    const clean = [...new Set(
+      times.filter(t => /^\d{1,2}:\d{2}/.test(t)).map(t => String(t).slice(0,5))
+    )].sort();
+    if (clean.length) {
+      const { error } = await supabase.from('RH_MARCACOES').insert(
+        clean.map(t => ({
+          tenant_id: tenantId, employee_id, work_date,
+          punch_time: `${t}:00`, source: 'manual', registered_by: userId || null,
+        }))
+      );
+      if (error) throw error;
+    }
+  }
+  return recomputeDay(tenantId, employee_id, work_date, escala_id, { absence });
+}
+
+// Apuração do mês (RH_PONTO) + marcações embutidas em cada dia
 router.get('/timesheet', async (req, res) => {
   const { employee_id, month } = req.query;
   if (!employee_id || !month)
@@ -72,60 +151,106 @@ router.get('/timesheet', async (req, res) => {
   const startDate   = `${year}-${m}-01`;
   const endDate     = `${year}-${m}-${String(daysInMonth).padStart(2,'0')}`;
   try {
-    const { data, error } = await supabase
-      .from('RH_PONTO').select('*')
-      .eq('tenant_id', req.tenantId).eq('employee_id', employee_id)
-      .gte('work_date', startDate).lte('work_date', endDate)
-      .order('work_date');
-    if (error) throw error;
-    res.json(data||[]);
+    const [{ data: ponto, error: e1 }, { data: marks, error: e2 }] = await Promise.all([
+      supabase.from('RH_PONTO').select('*')
+        .eq('tenant_id', req.tenantId).eq('employee_id', employee_id)
+        .gte('work_date', startDate).lte('work_date', endDate).order('work_date'),
+      supabase.from('RH_MARCACOES').select('id,work_date,punch_time,source')
+        .eq('tenant_id', req.tenantId).eq('employee_id', employee_id)
+        .gte('work_date', startDate).lte('work_date', endDate).order('punch_time'),
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+
+    const byDate = {};
+    (marks || []).forEach(mk => {
+      (byDate[mk.work_date] ||= []).push({ id: mk.id, time: String(mk.punch_time).slice(0,5), source: mk.source });
+    });
+
+    const rows = (ponto || []).map(r => ({ ...r, marks: byDate[r.work_date] || [] }));
+    // dias que têm marcações mas (por algum motivo) ainda não têm linha de apuração
+    const pontoDates = new Set((ponto || []).map(r => r.work_date));
+    Object.keys(byDate).forEach(d => {
+      if (!pontoDates.has(d)) rows.push({ employee_id, work_date: d, marks: byDate[d] });
+    });
+    rows.sort((a, b) => a.work_date < b.work_date ? -1 : 1);
+    res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-function timeDiff(s, e) {
-  if (!s || !e) return 0;
-  const [sh,sm] = s.split(':').map(Number);
-  const [eh,em] = e.split(':').map(Number);
-  return Math.max(0,(eh*60+em)-(sh*60+sm));
-}
+// Lista marcações brutas (para o app de marcação / auditoria)
+router.get('/marcacoes', async (req, res) => {
+  const { employee_id, month, work_date } = req.query;
+  try {
+    let query = supabase.from('RH_MARCACOES').select('*')
+      .eq('tenant_id', req.tenantId).order('work_date').order('punch_time');
+    if (employee_id) query = query.eq('employee_id', employee_id);
+    if (work_date)   query = query.eq('work_date', work_date);
+    if (month) {
+      const [y, mm] = month.split('-');
+      const dim = new Date(y, parseInt(mm), 0).getDate();
+      query = query.gte('work_date', `${y}-${mm}-01`).lte('work_date', `${y}-${mm}-${String(dim).padStart(2,'0')}`);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-router.put('/timesheet', async (req, res) => {
-  const { employee_id, work_date, entry1, exit1, entry2, exit2, absence, justification, notes, escala_id } = req.body;
+// Registra UMA batida (entrada/saída) — usado pelo futuro app de marcação
+router.post('/marcacoes', async (req, res) => {
+  const { employee_id, work_date, time, source = 'app', device, latitude, longitude, notes } = req.body;
+  if (!employee_id || !work_date || !time)
+    return res.status(400).json({ error: 'employee_id, work_date e time são obrigatórios' });
+  try {
+    const { error } = await supabase.from('RH_MARCACOES').insert({
+      tenant_id: req.tenantId, employee_id, work_date,
+      punch_time: String(time).length === 5 ? `${time}:00` : time,
+      source, device: device || null,
+      latitude: latitude ?? null, longitude: longitude ?? null,
+      registered_by: req.user?.id || null, notes: notes || null,
+    });
+    if (error) throw error;
+    const ponto = await recomputeDay(req.tenantId, employee_id, work_date);
+    res.status(201).json(ponto);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Substitui as marcações de um dia inteiro (editor manual do RH)
+router.put('/marcacoes/day', async (req, res) => {
+  const { employee_id, work_date, times = [], absence = false, escala_id } = req.body;
   if (!employee_id || !work_date)
     return res.status(400).json({ error: 'employee_id e work_date são obrigatórios' });
-
-  const total_minutes = timeDiff(entry1,exit1) + timeDiff(entry2,exit2);
-  const hasMarks = !!(entry1 || exit1 || entry2 || exit2);
-
   try {
-    const escala = await getEscala(req.tenantId, employee_id, escala_id);
-    const expected  = escala.daily_minutes ?? 480;
-    const tolerance = escala.tolerance_minutes ?? 10;
-    const { extra_minutes, late_minutes, status } = apurarDia({ total_minutes, hasMarks, expected, tolerance });
+    const ponto = await applyDayMarks(req.tenantId, req.user?.id, { employee_id, work_date, times, absence, escala_id });
+    res.json(ponto);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-    const { data, error } = await supabase
-      .from('RH_PONTO')
-      .upsert({
-        tenant_id:        req.tenantId,
-        employee_id,
-        work_date,
-        entry1:           entry1       || null,
-        exit1:            exit1        || null,
-        entry2:           entry2       || null,
-        exit2:            exit2        || null,
-        total_minutes,
-        extra_minutes,
-        expected_minutes: expected,
-        late_minutes,
-        status:           absence ? 'absence' : status,
-        escala_id:        escala.id || null,
-        absence:          absence      || false,
-        justification:    justification|| null,
-        notes:            notes        || null,
-      }, { onConflict: 'tenant_id,employee_id,work_date' })
-      .select().single();
-    if (error) throw error;
-    res.json(data);
+// Remove uma batida específica e recalcula o dia
+router.delete('/marcacoes/:id', async (req, res) => {
+  try {
+    const { data: mark } = await supabase.from('RH_MARCACOES')
+      .select('employee_id,work_date').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    await supabase.from('RH_MARCACOES').delete().eq('id', req.params.id).eq('tenant_id', req.tenantId);
+    if (mark) await recomputeDay(req.tenantId, mark.employee_id, mark.work_date);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Compat: editor antigo (entry1..exit2) → grava como marcações e recalcula
+router.put('/timesheet', async (req, res) => {
+  const { employee_id, work_date, entry1, exit1, entry2, exit2, absence, escala_id, times } = req.body;
+  if (!employee_id || !work_date)
+    return res.status(400).json({ error: 'employee_id e work_date são obrigatórios' });
+  try {
+    const list = Array.isArray(times) && times.length
+      ? times
+      : [entry1, exit1, entry2, exit2].filter(Boolean);
+    const ponto = await applyDayMarks(req.tenantId, req.user?.id, {
+      employee_id, work_date, times: list, absence: !!absence, escala_id,
+    });
+    res.json(ponto);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

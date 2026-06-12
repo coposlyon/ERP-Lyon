@@ -119,9 +119,12 @@ function buildDay(date, entry, escala, admDate, todayStart, situMap) {
   const expected  = escala.daily_minutes ?? 480;
   const tolerance = escala.tolerance_minutes ?? 10;
 
+  const markTimes = (entry?.marks?.length
+    ? entry.marks.map(m => m.time)
+    : [entry?.entry1, entry?.exit1, entry?.entry2, entry?.exit2].filter(Boolean));
   const workedMin = entry?.total_minutes || 0;
   const extraMin  = entry?.extra_minutes || 0;
-  const hasMarks  = !!(entry?.entry1 || entry?.exit1 || entry?.entry2 || entry?.exit2);
+  const hasMarks  = markTimes.length > 0;
   const overrideCode = entry?.override_situation || null;
   const override  = overrideCode ? (situMap[overrideCode] || { code:overrideCode, name:overrideCode, color:'blue' }) : null;
 
@@ -160,7 +163,7 @@ function buildDay(date, entry, escala, admDate, todayStart, situMap) {
 
   return {
     date, dateStr, dow, isPast, isToday, isFuture, isWeekend, isBeforeAdm,
-    entry, expected, tolerance, workedMin, extraMin, lateMin, hasMarks,
+    entry, expected, tolerance, workedMin, extraMin, lateMin, hasMarks, markTimes,
     override, type, chips, isNegative, canAct, dotColor,
   };
 }
@@ -365,7 +368,7 @@ function PontoManager({ employee, onBack }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [filter, setFilter]   = useState('todos');
   const [editDay, setEditDay] = useState(null);
-  const [editForm, setEditForm] = useState({ entry1:'', exit1:'', entry2:'', exit2:'', absence:false });
+  const [editForm, setEditForm] = useState({ times:['',''], absence:false });
   const [situationDay, setSituationDay] = useState(null);
   const [openMenu, setOpenMenu] = useState(null);
   const qc = useQueryClient();
@@ -399,9 +402,9 @@ function PontoManager({ employee, onBack }) {
   }, [situacoes]);
 
   const saveMut = useMutation({
-    mutationFn: d => api.put('/hr/timesheet', d),
-    onSuccess: () => { qc.invalidateQueries(['rh-ponto', employee.id]); setEditDay(null); toast.success('Ponto registrado!'); },
-    onError:   () => toast.error('Erro ao salvar ponto'),
+    mutationFn: d => api.put('/hr/marcacoes/day', d),
+    onSuccess: () => { qc.invalidateQueries(['rh-ponto', employee.id]); setEditDay(null); toast.success('Marcações salvas!'); },
+    onError:   () => toast.error('Erro ao salvar marcações'),
   });
 
   const situMut = useMutation({
@@ -444,11 +447,13 @@ function PontoManager({ employee, onBack }) {
     setOpenMenu(null);
     setEditDay(day);
     setEditForm({
-      entry1: day.entry?.entry1 || '', exit1: day.entry?.exit1 || '',
-      entry2: day.entry?.entry2 || '', exit2: day.entry?.exit2 || '',
+      times: day.markTimes.length ? [...day.markTimes] : ['', ''],
       absence: !!day.entry?.absence,
     });
   }
+  function addMark()       { setEditForm(p => ({ ...p, times: [...p.times, ''] })); }
+  function removeMark(i)   { setEditForm(p => ({ ...p, times: p.times.filter((_, idx) => idx !== i) })); }
+  function setMarkAt(i, v) { setEditForm(p => ({ ...p, times: p.times.map((t, idx) => idx === i ? v : t) })); }
 
   function saveEdit() {
     if (!editDay) return;
@@ -457,10 +462,7 @@ function PontoManager({ employee, onBack }) {
       work_date:   editDay.dateStr,
       escala_id:   escala.id || null,
       absence:     editForm.absence,
-      entry1: editForm.absence ? null : (editForm.entry1 || null),
-      exit1:  editForm.absence ? null : (editForm.exit1  || null),
-      entry2: editForm.absence ? null : (editForm.entry2 || null),
-      exit2:  editForm.absence ? null : (editForm.exit2  || null),
+      times:       editForm.absence ? [] : editForm.times.filter(Boolean),
     });
   }
 
@@ -583,7 +585,7 @@ function PontoManager({ employee, onBack }) {
             </thead>
             <tbody>
               {filteredDays.map(day => {
-                const times = [day.entry?.entry1, day.entry?.exit1, day.entry?.entry2, day.entry?.exit2].filter(Boolean);
+                const times = day.markTimes;
                 return (
                   <tr key={day.dateStr}
                     className={`border-b border-gray-50 last:border-0 transition-colors hover:bg-gray-50/50 ${
@@ -734,29 +736,41 @@ function PontoManager({ employee, onBack }) {
 
             {!editForm.absence && (
               <>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Registros de horário</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    ['entry1', '1ª Entrada', 'text-green-700'],
-                    ['exit1',  '1ª Saída', 'text-gray-600'],
-                    ['entry2', 'Entrada após intervalo', 'text-gray-600'],
-                    ['exit2',  'Saída final', 'text-green-700'],
-                  ].map(([field, label, cls]) => (
-                    <div key={field}>
-                      <label className={`label text-xs ${cls}`}>{label}</label>
-                      <input type="time" className="input" value={editForm[field]}
-                        onChange={e => setEditForm(p => ({...p, [field]: e.target.value}))} />
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Marcações do dia</p>
+                  <button type="button" onClick={addMark}
+                    className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700">
+                    <Plus size={13} /> Adicionar batida
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {editForm.times.length === 0 && (
+                    <p className="text-xs text-gray-400">Nenhuma marcação. Clique em “Adicionar batida”.</p>
+                  )}
+                  {editForm.times.map((t, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className={`text-xs w-24 flex-shrink-0 ${i % 2 === 0 ? 'text-green-700 font-medium' : 'text-gray-500'}`}>
+                        {i % 2 === 0 ? `Entrada ${Math.floor(i/2)+1}` : `Saída ${Math.floor(i/2)+1}`}
+                      </span>
+                      <input type="time" className="input flex-1" value={t}
+                        onChange={e => setMarkAt(i, e.target.value)} />
+                      <button type="button" onClick={() => removeMark(i)}
+                        className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-gray-400">Jornada da escala: {escalaHoras} · tolerância {escala.tolerance_minutes ?? 10} min.</p>
+                <p className="text-xs text-gray-400">
+                  As batidas são pareadas (entrada → saída) para somar o total. Jornada: {escalaHoras} · tolerância {escala.tolerance_minutes ?? 10} min.
+                </p>
               </>
             )}
 
             <div className="flex gap-2 pt-2 border-t border-gray-100">
               <button type="button" onClick={() => setEditDay(null)} className="btn-secondary flex-1">Cancelar</button>
               <button onClick={saveEdit} disabled={saveMut.isPending} className="btn-primary flex-1">
-                {saveMut.isPending ? 'Salvando...' : 'Salvar Ponto'}
+                {saveMut.isPending ? 'Salvando...' : 'Salvar Marcações'}
               </button>
             </div>
           </div>

@@ -153,3 +153,41 @@ ALTER TABLE "RH_PONTO"
 
 -- Vincula colaborador (CLIENTES.admission_data) a uma escala por id (opcional)
 -- A escala fica salva em admission_data->>'scale_id'.
+
+-- ============================================================
+-- 8. RH_MARCACOES — batidas/marcações individuais de ponto
+--    Cada linha = uma batida (entrada ou saída). O futuro app de
+--    marcação insere aqui. RH_PONTO passa a ser a APURAÇÃO diária
+--    (totais, atraso, situação) calculada a partir destas batidas.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS "RH_MARCACOES" (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL,
+  employee_id   UUID NOT NULL,
+  work_date     DATE NOT NULL,
+  punch_time    TIME NOT NULL,
+  punched_at    TIMESTAMPTZ DEFAULT now(),
+  source        TEXT DEFAULT 'manual',   -- manual | app | biometria | web
+  device        TEXT,
+  latitude      NUMERIC(10,7),
+  longitude     NUMERIC(10,7),
+  registered_by UUID,
+  notes         TEXT,
+  created_at    TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE "RH_MARCACOES"
+  ADD COLUMN IF NOT EXISTS tenant_id     UUID,
+  ADD COLUMN IF NOT EXISTS employee_id   UUID,
+  ADD COLUMN IF NOT EXISTS work_date     DATE,
+  ADD COLUMN IF NOT EXISTS punch_time    TIME,
+  ADD COLUMN IF NOT EXISTS punched_at    TIMESTAMPTZ DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS source        TEXT DEFAULT 'manual',
+  ADD COLUMN IF NOT EXISTS device        TEXT,
+  ADD COLUMN IF NOT EXISTS latitude      NUMERIC(10,7),
+  ADD COLUMN IF NOT EXISTS longitude     NUMERIC(10,7),
+  ADD COLUMN IF NOT EXISTS registered_by UUID,
+  ADD COLUMN IF NOT EXISTS notes         TEXT,
+  ADD COLUMN IF NOT EXISTS created_at    TIMESTAMPTZ DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS rh_marcacoes_lookup_idx
+  ON "RH_MARCACOES" (tenant_id, employee_id, work_date, punch_time);
