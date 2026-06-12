@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 
 const AuthContext = createContext(null);
@@ -36,8 +36,20 @@ export function AuthProvider({ children }) {
     setTenant(null);
   }
 
+  // Verifica se o usuário pode ver/usar um módulo.
+  // admin → tudo | allowed_modules null → sem restrição (legado) | senão precisa estar na lista
+  const hasModule = useCallback((...modules) => {
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    const allowed = user.allowed_modules;
+    if (allowed == null) return true;
+    return modules.some(m => allowed.includes(m));
+  }, [user]);
+
+  const isAdmin = user?.role === 'admin';
+
   return (
-    <AuthContext.Provider value={{ user, tenant, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, tenant, loading, login, logout, hasModule, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );

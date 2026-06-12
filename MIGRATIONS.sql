@@ -299,3 +299,12 @@ ALTER TABLE "RH_MARCACOES"
 
 CREATE INDEX IF NOT EXISTS rh_marcacoes_lookup_idx
   ON "RH_MARCACOES" (tenant_id, employee_id, work_date, punch_time);
+
+-- ============================================================
+-- 9. PERMISSÕES — módulos permitidos por usuário
+--    NULL  = sem restrição (admins e usuários legados)
+--    []    = nenhum módulo (só dashboard)
+--    [...] = lista de módulos permitidos
+-- ============================================================
+ALTER TABLE "USUARIOS"
+  ADD COLUMN IF NOT EXISTS allowed_modules JSONB DEFAULT NULL;

@@ -230,14 +230,16 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
         toast.success('Colaborador cadastrado!');
       }
 
-      // Criar/atualizar acesso ao sistema
-      if (form.admission_data.has_access && form.admission_data.access_password && savedId) {
+      // Criar/atualizar acesso ao sistema (senha só é enviada se preenchida;
+      // módulos permitidos são sempre sincronizados)
+      if (form.admission_data.has_access && form.admission_data.access_email && savedId) {
         try {
           await api.post('/employees/access', {
             customer_id: savedId,
             email: form.admission_data.access_email,
-            password: form.admission_data.access_password,
+            password: form.admission_data.access_password || undefined,
             name: form.name,
+            allowed_modules: form.admission_data.allowed_modules || [],
           });
           toast.success('Acesso ao sistema configurado!');
         } catch (accessErr) {

@@ -28,14 +28,14 @@ async function authMiddleware(req, res, next) {
   }
 }
 
-async function requireRole(roles) {
-  return async (req, res, next) => {
+function requireRole(roles) {
+  return (req, res, next) => {
     if (!req.userProfile) {
-      return res.status(403).json({ error: 'User profile not loaded' });
+      return res.status(403).json({ error: 'Perfil de usuário não carregado' });
     }
 
     if (!roles.includes(req.userProfile.role)) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
+      return res.status(403).json({ error: 'Permissão insuficiente' });
     }
 
     next();

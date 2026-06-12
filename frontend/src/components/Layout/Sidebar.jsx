@@ -18,94 +18,104 @@ const menuItems = [
     icon: LayoutDashboard,
     path: '/',
     exact: true,
+    // sem module: visível para todos
   },
   {
     label: 'Comercial',
     icon: ShoppingCart,
     children: [
-      { label: 'PDV / Caixa', path: '/pdv', icon: Monitor },
-      { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart },
-      { label: 'Orçamentos', path: '/quotes', icon: ClipboardList },
-      { label: 'Personalização', path: '/customizations', icon: Palette },
+      { label: 'PDV / Caixa', path: '/pdv', icon: Monitor, module: 'pdv' },
+      { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart, module: 'sales' },
+      { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
+      { label: 'Personalização', path: '/customizations', icon: Palette, module: 'customizations' },
     ],
   },
   {
     label: 'Compras',
     icon: ShoppingBag,
     children: [
-      { label: 'Pedidos de Compra', path: '/purchases', icon: ShoppingBag },
+      { label: 'Pedidos de Compra', path: '/purchases', icon: ShoppingBag, module: 'purchases' },
     ],
   },
   {
     label: 'Estoque',
     icon: Boxes,
     path: '/stock',
+    module: 'stock',
   },
   {
     label: 'Cadastros',
     icon: Package,
     children: [
-      { label: 'Produtos', path: '/products', icon: Package },
-      { label: 'Clientes', path: '/customers', icon: Users },
-      { label: 'Fornecedores', path: '/suppliers', icon: Truck },
-      { label: 'Colaboradores', path: '/employees', icon: Briefcase },
-      { label: 'Tabelas de Preço', path: '/price-tables', icon: Percent },
+      { label: 'Produtos', path: '/products', icon: Package, module: 'products' },
+      { label: 'Clientes', path: '/customers', icon: Users, module: 'customers' },
+      { label: 'Fornecedores', path: '/suppliers', icon: Truck, module: 'suppliers' },
+      { label: 'Colaboradores', path: '/employees', icon: Briefcase, module: 'employees' },
+      { label: 'Tabelas de Preço', path: '/price-tables', icon: Percent, module: 'price-tables' },
     ],
   },
   {
     label: 'Logística',
     icon: MapPin,
     children: [
-      { label: 'Transportadoras', path: '/logistics', icon: Truck },
+      { label: 'Transportadoras', path: '/logistics', icon: Truck, module: 'logistics' },
     ],
   },
   {
     label: 'Financeiro',
     icon: Wallet,
     children: [
-      { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet },
-      { label: 'Config. Financeira', path: '/financial-config', icon: Building2 },
+      { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet, module: 'financial' },
+      { label: 'Config. Financeira', path: '/financial-config', icon: Building2, module: 'financial' },
     ],
   },
   {
     label: 'Fiscal / NF-e',
     icon: Receipt,
     path: '/fiscal',
+    module: 'fiscal',
   },
   {
     label: 'Relatórios',
     icon: BarChart3,
     path: '/reports',
+    module: 'reports',
   },
   {
     label: 'Devoluções',
     icon: RotateCcw,
     path: '/returns',
+    module: 'returns',
   },
   {
     label: 'Qualidade',
     icon: FlaskConical,
     path: '/quality',
+    module: 'quality',
   },
   {
     label: 'CRM',
     icon: Target,
     path: '/crm',
+    module: 'crm',
   },
   {
     label: 'Recursos Humanos',
     icon: UserCog,
     children: [
-      { label: 'Gestão de Pontos',    path: '/hr/ponto',      icon: Clock      },
-      { label: 'Férias',              path: '/hr/ferias',     icon: Umbrella   },
-      { label: 'Folha de Pagamento',  path: '/hr/folha',      icon: DollarSign },
-      { label: 'Documentos',          path: '/hr/documentos', icon: FileText   },
+      { label: 'Gestão de Pontos',    path: '/hr/ponto',      icon: Clock,      module: 'hr' },
+      { label: 'Férias',              path: '/hr/ferias',     icon: Umbrella,   module: 'hr' },
+      { label: 'Folha de Pagamento',  path: '/hr/folha',      icon: DollarSign, module: 'hr' },
+      { label: 'Documentos',          path: '/hr/documentos', icon: FileText,   module: 'hr' },
     ],
   },
   {
     label: 'Configurações',
     icon: Settings,
-    path: '/settings',
+    children: [
+      { label: 'Geral',    path: '/settings', icon: Settings, module: 'settings' },
+      { label: 'Usuários', path: '/users',    icon: Users,    adminOnly: true },
+    ],
   },
 ];
 
@@ -163,9 +173,28 @@ function SidebarGroup({ item, collapsed, onMobileClose }) {
   );
 }
 
+// Aplica permissões: itens sem module são públicos; adminOnly exige admin;
+// grupos somem quando nenhum filho sobra.
+function filterMenu(items, hasModule, isAdmin) {
+  return items
+    .map(item => {
+      if (item.children) {
+        const children = item.children.filter(c =>
+          c.adminOnly ? isAdmin : (!c.module || hasModule(c.module))
+        );
+        return children.length ? { ...item, children } : null;
+      }
+      if (item.adminOnly && !isAdmin) return null;
+      if (item.module && !hasModule(item.module)) return null;
+      return item;
+    })
+    .filter(Boolean);
+}
+
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
-  const { tenant, user, logout } = useAuth();
+  const { tenant, user, logout, hasModule, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const visibleItems = filterMenu(menuItems, hasModule, isAdmin);
 
   async function handleLogout() {
     await logout();
@@ -218,7 +247,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
       {/* Navegação */}
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-0.5">
-        {menuItems.map((item) => (
+        {visibleItems.map((item) => (
           <SidebarGroup
             key={item.label}
             item={item}

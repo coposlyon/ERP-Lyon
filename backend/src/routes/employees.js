@@ -12,10 +12,10 @@ router.post('/access', async (req, res) => {
     return res.status(403).json({ error: 'Apenas administradores podem gerenciar acessos' });
   }
 
-  const { customer_id, email, password, name } = req.body;
+  const { customer_id, email, password, name, allowed_modules } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email e senha são obrigatórios para criar acesso' });
+  if (!email) {
+    return res.status(400).json({ error: 'Email é obrigatório' });
   }
 
   try {
@@ -26,11 +26,15 @@ router.post('/access', async (req, res) => {
     let authUserId;
 
     if (existingUser) {
-      // Atualiza senha
-      await supabase.auth.admin.updateUserById(existingUser.id, { password });
+      // Atualiza senha apenas se uma nova foi informada
+      if (password) {
+        await supabase.auth.admin.updateUserById(existingUser.id, { password });
+      }
       authUserId = existingUser.id;
     } else {
-      // Cria novo usuário no auth
+      if (!password) {
+        return res.status(400).json({ error: 'Senha é obrigatória para criar um novo acesso' });
+      }
       const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
         email,
         password,
@@ -40,7 +44,8 @@ router.post('/access', async (req, res) => {
       authUserId = authUser.user.id;
     }
 
-    // Upsert no USUARIOS
+    // Upsert no USUARIOS — allowed_modules é a fonte usada pelo
+    // middleware de permissões em toda requisição
     const { error: profileError } = await supabase
       .from('USUARIOS')
       .upsert({
@@ -49,6 +54,7 @@ router.post('/access', async (req, res) => {
         name: name || email,
         email,
         role: 'operator',
+        allowed_modules: Array.isArray(allowed_modules) ? allowed_modules : [],
         is_active: true,
       }, { onConflict: 'id' });
 

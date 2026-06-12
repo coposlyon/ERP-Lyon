@@ -56,17 +56,22 @@ router.post('/login', async (req, res) => {
       }
     }
 
-    // Módulos permitidos (para colaboradores com acesso restrito)
+    // Módulos permitidos: USUARIOS.allowed_modules é a fonte oficial
+    // (fallback no admission_data do colaborador para registros antigos)
     let allowedModules = null;
     if (userProfile && userProfile.role !== 'admin') {
-      const { data: empMods } = await supabase
-        .from('CLIENTES')
-        .select('admission_data')
-        .eq('email', data.user.email)
-        .eq('type', 'CO')
-        .maybeSingle();
-      if (empMods?.admission_data?.allowed_modules?.length) {
-        allowedModules = empMods.admission_data.allowed_modules;
+      if (userProfile.allowed_modules !== undefined && userProfile.allowed_modules !== null) {
+        allowedModules = userProfile.allowed_modules;
+      } else {
+        const { data: empMods } = await supabase
+          .from('CLIENTES')
+          .select('admission_data')
+          .eq('email', data.user.email)
+          .eq('type', 'CO')
+          .maybeSingle();
+        if (empMods?.admission_data?.allowed_modules?.length) {
+          allowedModules = empMods.admission_data.allowed_modules;
+        }
       }
     }
 

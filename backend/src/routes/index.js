@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, requireRole } = require('../middleware/auth');
 const { tenantMiddleware } = require('../middleware/tenant');
+const { requireModules } = require('../middleware/permissions');
 
 const authRoutes = require('./auth');
 const dashboardRoutes = require('./dashboard');
@@ -30,6 +31,7 @@ const hrRoutes              = require('./hr');
 const employeesRoutes       = require('./employees');
 const escalasRoutes         = require('./escalas');
 const situacoesRoutes       = require('./situacoes');
+const usersRoutes           = require('./users');
 
 router.use('/auth', authRoutes);
 router.use('/cnpj', cnpjRoutes);   // público — sem auth
@@ -38,28 +40,34 @@ router.use('/cep',  cepRoutes);    // público — sem auth
 router.use(authMiddleware);
 router.use(tenantMiddleware);
 
+// Dashboard é a página inicial de todos os usuários — sem restrição de módulo.
 router.use('/dashboard', dashboardRoutes);
-router.use('/products', productsRoutes);
-router.use('/customers', customersRoutes);
-router.use('/suppliers', suppliersRoutes);
-router.use('/sales', salesRoutes);
-router.use('/purchases', purchasesRoutes);
-router.use('/stock', stockRoutes);
-router.use('/financial', financialRoutes);
-router.use('/fiscal', fiscalRoutes);
-router.use('/reports', reportsRoutes);
-router.use('/settings', settingsRoutes);
-router.use('/quotes', quotesRoutes);
-router.use('/customizations', customizationsRoutes);
-router.use('/price-tables', priceTablesRoutes);
-router.use('/financial-config', financialConfigRoutes);
-router.use('/logistics',       logisticsRoutes);
-router.use('/returns',         returnsRoutes);
-router.use('/quality',         qualityRoutes);
-router.use('/crm',             crmRoutes);
-router.use('/hr',              hrRoutes);
-router.use('/employees',       employeesRoutes);
-router.use('/escalas',         escalasRoutes);
-router.use('/situacoes',       situacoesRoutes);
+
+// Rotas usadas por vários módulos aceitam qualquer um deles (basta ter um).
+router.use('/products',  requireModules('products','sales','pdv','quotes','purchases','stock','customizations','price-tables','returns'), productsRoutes);
+router.use('/customers', requireModules('customers','sales','pdv','quotes','crm','customizations','employees','hr','returns'), customersRoutes);
+router.use('/suppliers', requireModules('suppliers','purchases','logistics'), suppliersRoutes);
+router.use('/sales',     requireModules('sales','pdv','returns'), salesRoutes);
+router.use('/purchases', requireModules('purchases'), purchasesRoutes);
+router.use('/stock',     requireModules('stock','purchases'), stockRoutes);
+router.use('/financial', requireModules('financial'), financialRoutes);
+router.use('/fiscal',    requireModules('fiscal'), fiscalRoutes);
+router.use('/reports',   requireModules('reports'), reportsRoutes);
+router.use('/settings',  requireModules('settings'), settingsRoutes);
+router.use('/quotes',    requireModules('quotes','sales'), quotesRoutes);
+router.use('/customizations', requireModules('customizations','sales'), customizationsRoutes);
+router.use('/price-tables',   requireModules('price-tables','sales','pdv'), priceTablesRoutes);
+router.use('/financial-config', requireModules('financial','settings'), financialConfigRoutes);
+router.use('/logistics', requireModules('logistics'), logisticsRoutes);
+router.use('/returns',   requireModules('returns','sales'), returnsRoutes);
+router.use('/quality',   requireModules('quality'), qualityRoutes);
+router.use('/crm',       requireModules('crm'), crmRoutes);
+router.use('/hr',        requireModules('hr'), hrRoutes);
+router.use('/escalas',   requireModules('hr','employees','settings'), escalasRoutes);
+router.use('/situacoes', requireModules('hr','settings'), situacoesRoutes);
+
+// Gestão de acessos/usuários — somente administradores
+router.use('/employees', requireRole(['admin']), employeesRoutes);
+router.use('/users',     requireRole(['admin']), usersRoutes);
 
 module.exports = router;

@@ -18,6 +18,7 @@ import FinancialConfig from '@/pages/Financial/FinancialConfig';
 import Fiscal from '@/pages/Fiscal/Fiscal';
 import Reports from '@/pages/Reports/Reports';
 import Settings from '@/pages/Settings/Settings';
+import Users from '@/pages/Settings/Users';
 import Quotes from '@/pages/Quotes/Quotes';
 import QuoteForm from '@/pages/Quotes/QuoteForm';
 import Customizations from '@/pages/Customizations/Customizations';
@@ -45,6 +46,18 @@ function PrivateRoute({ children }) {
   return user ? children : <Navigate to="/login" replace />;
 }
 
+// Bloqueia a rota se o usuário não tiver acesso ao módulo
+function Mod({ m, children }) {
+  const { hasModule } = useAuth();
+  const mods = Array.isArray(m) ? m : [m];
+  return hasModule(...mods) ? children : <Navigate to="/" replace />;
+}
+
+function AdminOnly({ children }) {
+  const { isAdmin } = useAuth();
+  return isAdmin ? children : <Navigate to="/" replace />;
+}
+
 function AppRoutes() {
   const { user } = useAuth();
 
@@ -54,45 +67,46 @@ function AppRoutes() {
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
         <Route index element={<Dashboard />} />
         {/* Produtos / Clientes / Fornecedores */}
-        <Route path="products" element={<Products />} />
-        <Route path="customers" element={<Customers />} />
-        <Route path="customers/:id" element={<CustomerDetail />} />
-        <Route path="suppliers" element={<Suppliers />} />
-        <Route path="employees" element={<Employees />} />
-        <Route path="logistics" element={<Logistics />} />
-        <Route path="price-tables" element={<PriceTables />} />
+        <Route path="products" element={<Mod m="products"><Products /></Mod>} />
+        <Route path="customers" element={<Mod m="customers"><Customers /></Mod>} />
+        <Route path="customers/:id" element={<Mod m="customers"><CustomerDetail /></Mod>} />
+        <Route path="suppliers" element={<Mod m="suppliers"><Suppliers /></Mod>} />
+        <Route path="employees" element={<Mod m="employees"><Employees /></Mod>} />
+        <Route path="logistics" element={<Mod m="logistics"><Logistics /></Mod>} />
+        <Route path="price-tables" element={<Mod m="price-tables"><PriceTables /></Mod>} />
         {/* Vendas */}
-        <Route path="sales" element={<Sales />} />
-        <Route path="sales/new" element={<SaleForm />} />
-        <Route path="sales/:id" element={<SaleForm />} />
-        <Route path="pdv" element={<PDV />} />
+        <Route path="sales" element={<Mod m="sales"><Sales /></Mod>} />
+        <Route path="sales/new" element={<Mod m="sales"><SaleForm /></Mod>} />
+        <Route path="sales/:id" element={<Mod m="sales"><SaleForm /></Mod>} />
+        <Route path="pdv" element={<Mod m="pdv"><PDV /></Mod>} />
         {/* Orçamentos */}
-        <Route path="quotes" element={<Quotes />} />
-        <Route path="quotes/new" element={<QuoteForm />} />
-        <Route path="quotes/:id" element={<QuoteForm />} />
+        <Route path="quotes" element={<Mod m="quotes"><Quotes /></Mod>} />
+        <Route path="quotes/new" element={<Mod m="quotes"><QuoteForm /></Mod>} />
+        <Route path="quotes/:id" element={<Mod m="quotes"><QuoteForm /></Mod>} />
         {/* Personalização */}
-        <Route path="customizations" element={<Customizations />} />
-        <Route path="customizations/:id" element={<CustomizationDetail />} />
+        <Route path="customizations" element={<Mod m="customizations"><Customizations /></Mod>} />
+        <Route path="customizations/:id" element={<Mod m="customizations"><CustomizationDetail /></Mod>} />
         {/* Compras */}
-        <Route path="purchases" element={<Purchases />} />
-        <Route path="purchases/new" element={<PurchaseForm />} />
-        <Route path="purchases/:id" element={<PurchaseForm />} />
+        <Route path="purchases" element={<Mod m="purchases"><Purchases /></Mod>} />
+        <Route path="purchases/new" element={<Mod m="purchases"><PurchaseForm /></Mod>} />
+        <Route path="purchases/:id" element={<Mod m="purchases"><PurchaseForm /></Mod>} />
         {/* Estoque */}
-        <Route path="stock" element={<Stock />} />
+        <Route path="stock" element={<Mod m="stock"><Stock /></Mod>} />
         {/* Financeiro */}
-        <Route path="financial" element={<Financial />} />
-        <Route path="financial-config" element={<FinancialConfig />} />
+        <Route path="financial" element={<Mod m="financial"><Financial /></Mod>} />
+        <Route path="financial-config" element={<Mod m="financial"><FinancialConfig /></Mod>} />
         {/* Fiscal */}
-        <Route path="fiscal" element={<Fiscal />} />
+        <Route path="fiscal" element={<Mod m="fiscal"><Fiscal /></Mod>} />
         {/* Relatórios */}
-        <Route path="reports" element={<Reports />} />
+        <Route path="reports" element={<Mod m="reports"><Reports /></Mod>} />
         {/* Config */}
-        <Route path="settings" element={<Settings />} />
+        <Route path="settings" element={<Mod m="settings"><Settings /></Mod>} />
+        <Route path="users" element={<AdminOnly><Users /></AdminOnly>} />
         {/* Novos módulos */}
-        <Route path="returns"  element={<Returns />}  />
-        <Route path="quality"  element={<Quality />}  />
-        <Route path="crm"      element={<CRM />}      />
-        <Route path="hr" element={<HR />}>
+        <Route path="returns"  element={<Mod m="returns"><Returns /></Mod>}  />
+        <Route path="quality"  element={<Mod m="quality"><Quality /></Mod>}  />
+        <Route path="crm"      element={<Mod m="crm"><CRM /></Mod>}      />
+        <Route path="hr" element={<Mod m="hr"><HR /></Mod>}>
           <Route index element={<Navigate to="ponto" replace />} />
           <Route path="ponto"      element={<HRPonto />} />
           <Route path="ferias"     element={<HRFerias />} />
