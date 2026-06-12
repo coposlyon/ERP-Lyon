@@ -13,7 +13,10 @@ router.get('/', async (req, res) => {
       .eq('tenant_id', req.tenantId)
       .order('name');
 
-    if (search) query = query.ilike('name', `%${search}%`);
+    if (search) {
+      const s = search.trim();
+      query = query.or(`name.ilike.%${s}%,code.ilike.%${s}%,ean.ilike.%${s}%`);
+    }
     if (category_id) query = query.eq('category_id', category_id);
     if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
 
