@@ -195,17 +195,17 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
     if (cep.length !== 8) return;
     setCepLoading(true);
     try {
-      const res  = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const res  = await fetch(`/api/cep/${cep}`);
       const data = await res.json();
-      if (data.erro) { toast.error('CEP não encontrado'); return; }
+      if (!res.ok) { toast.error(data.error || 'CEP não encontrado'); return; }
       setForm(p => ({
         ...p,
         address: {
           ...p.address,
-          street:       (data.logradouro  || '').toUpperCase(),
-          neighborhood: (data.bairro      || '').toUpperCase(),
-          city:         (data.localidade  || '').toUpperCase(),
-          state:        (data.uf          || '').toUpperCase(),
+          street:       (data.street       || '').toUpperCase(),
+          neighborhood: (data.neighborhood || '').toUpperCase(),
+          city:         (data.city         || '').toUpperCase(),
+          state:        (data.state        || '').toUpperCase(),
           zip:          e.target.value,
         },
       }));

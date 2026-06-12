@@ -1,10 +1,12 @@
-import { Menu, Bell, Search, X } from 'lucide-react';
+import { Menu, Bell, Search, X, Sun, Moon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
   const { user, tenant } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const navigate = useNavigate();
@@ -18,24 +20,37 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
     }
   }
 
-  const headerStyle = {
-    background: 'rgba(255,255,255,0.04)',
-    borderBottom: '1px solid rgba(255,255,255,0.08)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    flexShrink: 0,
-  };
+  const headerStyle = isDark
+    ? { background: '#1f2937', borderBottom: '1px solid #374151', flexShrink: 0 }
+    : { background: '#ffffff', borderBottom: '1px solid #e5e7eb', flexShrink: 0 };
 
-  const inputStyle = {
-    background: 'rgba(255,255,255,0.07)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    color: 'white',
-    outline: 'none',
-    borderRadius: '0.5rem',
-    padding: '0.375rem 0.75rem 0.375rem 2.25rem',
-    fontSize: '0.875rem',
-    width: '100%',
-  };
+  const inputStyle = isDark
+    ? {
+        background: '#111827',
+        border: '1px solid #374151',
+        color: '#f9fafb',
+        outline: 'none',
+        borderRadius: '0.5rem',
+        padding: '0.375rem 0.75rem 0.375rem 2.25rem',
+        fontSize: '0.875rem',
+        width: '100%',
+      }
+    : {
+        background: '#f9fafb',
+        border: '1px solid #e5e7eb',
+        color: '#111827',
+        outline: 'none',
+        borderRadius: '0.5rem',
+        padding: '0.375rem 0.75rem 0.375rem 2.25rem',
+        fontSize: '0.875rem',
+        width: '100%',
+      };
+
+  const iconCls = isDark
+    ? 'p-2 rounded-lg transition-colors hover:bg-gray-700 text-gray-400 flex items-center justify-center'
+    : 'p-2 rounded-lg transition-colors hover:bg-gray-100 text-gray-500 flex items-center justify-center';
+
+  const searchIconColor = isDark ? '#6b7280' : '#9ca3af';
 
   return (
     <header
@@ -43,27 +58,17 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
       style={headerStyle}
     >
       {/* Botão menu — mobile */}
-      <button
-        onClick={onToggleMobileSidebar}
-        className="p-2 rounded-lg lg:hidden transition-colors hover:bg-white/10"
-        style={{ color: 'rgba(255,255,255,0.6)' }}
-        aria-label="Abrir menu"
-      >
+      <button onClick={onToggleMobileSidebar} className={`${iconCls} lg:hidden`} aria-label="Abrir menu">
         <Menu size={20} />
       </button>
       {/* Botão menu — desktop */}
-      <button
-        onClick={onToggleSidebar}
-        className="p-2 rounded-lg hidden lg:flex transition-colors hover:bg-white/10"
-        style={{ color: 'rgba(255,255,255,0.6)' }}
-        aria-label="Colapsar menu"
-      >
+      <button onClick={onToggleSidebar} className={`${iconCls} hidden lg:flex`} aria-label="Colapsar menu">
         <Menu size={20} />
       </button>
 
       {/* Nome do sistema — só mobile */}
       <div className="flex-1 flex items-center gap-2 lg:hidden">
-        <span className="text-sm font-bold truncate" style={{ color: 'rgba(255,255,255,0.85)' }}>
+        <span className={`text-sm font-bold truncate ${isDark ? 'text-gray-100' : 'text-gray-800'}`}>
           {tenant?.app_name || 'Lyon Copos'}
         </span>
       </div>
@@ -72,7 +77,7 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
       <form onSubmit={handleSearch} className="hidden lg:flex flex-1 max-w-md">
         <div className="relative w-full">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2"
-            style={{ color: 'rgba(255,255,255,0.3)' }} />
+            style={{ color: searchIconColor }} />
           <input
             type="text"
             placeholder="Buscar produtos, clientes..."
@@ -84,26 +89,31 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
       </form>
 
       {/* Ações direita */}
-      <div className="flex items-center gap-1 lg:gap-3 ml-auto">
+      <div className="flex items-center gap-1 lg:gap-1.5 ml-auto">
         {/* Busca mobile — ícone */}
-        <button
-          onClick={() => setSearchOpen(v => !v)}
-          className="p-2 rounded-lg lg:hidden transition-colors hover:bg-white/10"
-          style={{ color: 'rgba(255,255,255,0.6)' }}
-          aria-label="Buscar"
-        >
+        <button onClick={() => setSearchOpen(v => !v)} className={`${iconCls} lg:hidden`} aria-label="Buscar">
           {searchOpen ? <X size={18} /> : <Search size={18} />}
         </button>
 
+        {/* Toggle Tema — Sol / Lua */}
         <button
-          className="p-2 rounded-lg transition-colors hover:bg-white/10 relative"
-          style={{ color: 'rgba(255,255,255,0.6)' }}
-          aria-label="Notificações"
+          onClick={toggleTheme}
+          className={iconCls}
+          aria-label={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
+          title={isDark ? 'Modo claro' : 'Modo escuro'}
         >
+          {isDark
+            ? <Sun size={18} className="text-yellow-400" />
+            : <Moon size={18} />}
+        </button>
+
+        {/* Notificações */}
+        <button className={`${iconCls} relative`} aria-label="Notificações">
           <Bell size={18} />
         </button>
 
-        <div className="flex items-center gap-2">
+        {/* Avatar + nome */}
+        <div className="flex items-center gap-2 ml-1">
           <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
             style={{ background: 'linear-gradient(135deg, #E8187A 0%, #B80F5E 100%)' }}>
             <span className="text-white text-xs font-semibold">
@@ -111,10 +121,10 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
             </span>
           </div>
           <div className="hidden sm:block">
-            <p className="text-sm font-medium leading-none" style={{ color: 'rgba(255,255,255,0.85)' }}>
+            <p className={`text-sm font-medium leading-none ${isDark ? 'text-gray-100' : 'text-gray-800'}`}>
               {user?.name}
             </p>
-            <p className="text-xs capitalize mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            <p className={`text-xs capitalize mt-0.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
               {user?.role}
             </p>
           </div>
@@ -127,13 +137,13 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
           onSubmit={handleSearch}
           className="absolute top-14 left-0 right-0 z-20 px-3 py-2 lg:hidden"
           style={{
-            background: 'rgba(17,17,17,0.97)',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            background: isDark ? '#1f2937' : '#ffffff',
+            borderBottom: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`,
           }}
         >
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2"
-              style={{ color: 'rgba(255,255,255,0.3)' }} />
+              style={{ color: searchIconColor }} />
             <input
               type="text"
               placeholder="Buscar produtos, clientes..."

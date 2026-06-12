@@ -151,12 +151,12 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
     if (cep.length !== 8) return;
     setCepLoading(true);
     try {
-      const res  = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const res  = await fetch(`/api/cep/${cep}`);
       const data = await res.json();
-      if (data.erro) { toast.error('CEP não encontrado'); return; }
+      if (!res.ok) { toast.error(data.error || 'CEP não encontrado'); return; }
       setForm(p => ({
         ...p,
-        address: { ...p.address, street: data.logradouro||'', neighborhood: data.bairro||'', city: data.localidade||'', state: data.uf||'', zip: e.target.value },
+        address: { ...p.address, street: data.street||'', neighborhood: data.neighborhood||'', city: data.city||'', state: data.state||'', zip: e.target.value },
       }));
     } catch { toast.error('Erro ao buscar CEP'); }
     finally   { setCepLoading(false); }

@@ -15,7 +15,20 @@ const PORT = process.env.PORT || 3001;
 // Discloud (e maioria dos hosts) roda atrás de proxy reverso
 app.set('trust proxy', 1);
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc:  ["'self'"],
+      scriptSrc:   ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc:    ["'self'", "'unsafe-inline'"],
+      imgSrc:      ["'self'", "data:", "blob:"],
+      fontSrc:     ["'self'", "data:"],
+      connectSrc:  ["'self'"],
+      objectSrc:   ["'none'"],
+      frameSrc:    ["'none'"],
+    },
+  },
+}));
 
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
