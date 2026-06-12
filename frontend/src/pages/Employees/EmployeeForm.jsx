@@ -2,14 +2,42 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Loader2, Instagram, Paperclip, Trash2, Download, Upload } from 'lucide-react';
+import { Loader2, Instagram, Paperclip, Trash2, Download, Upload, Shield, Eye, EyeOff } from 'lucide-react';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 const SETORES = ['GRAVAÇÃO','MARKETING','LOGÍSTICA','DESIGNER','VENDAS','FINANCEIRO','ALMOXARIFADO','QUALIDADE'];
 const ESCALAS = ['Segunda a Sexta','Segunda a Sábado','6x1','5x2','12x36','Plantão'];
 
+const MODULOS = [
+  { key: 'dashboard',      label: 'Dashboard' },
+  { key: 'products',       label: 'Produtos' },
+  { key: 'customers',      label: 'Clientes' },
+  { key: 'suppliers',      label: 'Fornecedores' },
+  { key: 'employees',      label: 'Colaboradores' },
+  { key: 'logistics',      label: 'Logística' },
+  { key: 'price-tables',   label: 'Tabelas de Preço' },
+  { key: 'sales',          label: 'Vendas' },
+  { key: 'pdv',            label: 'PDV' },
+  { key: 'quotes',         label: 'Orçamentos' },
+  { key: 'customizations', label: 'Personalizações' },
+  { key: 'purchases',      label: 'Compras' },
+  { key: 'stock',          label: 'Estoque' },
+  { key: 'financial',      label: 'Financeiro' },
+  { key: 'fiscal',         label: 'Fiscal' },
+  { key: 'reports',        label: 'Relatórios' },
+  { key: 'settings',       label: 'Configurações' },
+  { key: 'returns',        label: 'Devoluções' },
+  { key: 'quality',        label: 'Qualidade' },
+  { key: 'crm',            label: 'CRM' },
+  { key: 'hr',             label: 'RH' },
+];
+
 const emptyAddress  = { street:'', number:'', complement:'', neighborhood:'', city:'', state:'', zip:'' };
-const emptyAdmission = { salary:'', father_name:'', mother_name:'', pis:'', sector:'', scale:'', monthly_hours:'', start_date:'', notes:'' };
+const emptyAdmission = {
+  salary:'', father_name:'', mother_name:'', pis:'', sector:'', scale:'', monthly_hours:'', start_date:'',
+  // Acesso ao sistema
+  has_access: false, access_email:'', access_password:'', work_start:'', work_end:'', allowed_modules:[],
+};
 
 function fileIcon(type) {
   if (type?.includes('pdf'))    return '📄';
@@ -39,7 +67,7 @@ function AttachmentsPanel({ customerId }) {
 
   function invalidate() {
     qc.invalidateQueries(['attachments', customerId]);
-    qc.invalidateQueries(['employees']); // mantém a lista sincronizada
+    qc.invalidateQueries(['employees']);
   }
 
   async function handleFileChange(e) {
@@ -123,9 +151,10 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
     admission_data: { ...emptyAdmission },
     is_active: true,
   });
-  const [loading, setLoading]     = useState(false);
+  const [loading, setLoading]       = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
-  const [duplicate, setDuplicate]  = useState(null);
+  const [duplicate, setDuplicate]   = useState(null);
+  const [showPass, setShowPass]     = useState(false);
 
   useEffect(() => {
     if (employee) {
@@ -136,7 +165,7 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
         phone:          employee.phone || '',
         instagram:      employee.instagram || '',
         address:        employee.address || { ...emptyAddress },
-        admission_data: employee.admission_data || { ...emptyAdmission },
+        admission_data: { ...emptyAdmission, ...(employee.admission_data || {}), access_password: '' },
         is_active:      employee.is_active !== false,
       });
     }
@@ -145,6 +174,12 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
   function set(f, v)    { setForm(p => ({ ...p, [f]: v })); }
   function setAddr(f,v) { setForm(p => ({ ...p, address: { ...p.address, [f]: v } })); }
   function setAdm(f,v)  { setForm(p => ({ ...p, admission_data: { ...p.admission_data, [f]: v } })); }
+
+  function toggleModule(key) {
+    const mods = form.admission_data.allowed_modules || [];
+    const next = mods.includes(key) ? mods.filter(m => m !== key) : [...mods, key];
+    setAdm('allowed_modules', next);
+  }
 
   async function handleCepBlur(e) {
     const cep = e.target.value.replace(/\D/g, '');
@@ -167,16 +202,44 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
     if (!form.name)                   { toast.error('Nome é obrigatório'); return; }
     if (!form.admission_data.sector)  { toast.error('Informe o setor'); return; }
 
+    if (form.admission_data.has_access) {
+      if (!form.admission_data.access_email) {
+        toast.error('Informe o e-mail de acesso'); return;
+      }
+      if (!employee?.id && !form.admission_data.access_password) {
+        toast.error('Informe a senha para criar o acesso'); return;
+      }
+    }
+
     setLoading(true);
     try {
       const payload = { ...form, type: 'CO' };
+      let savedId = employee?.id;
+
       if (employee?.id) {
         await api.put(`/customers/${employee.id}`, payload);
         toast.success('Colaborador atualizado!');
       } else {
-        await api.post('/customers', payload);
+        const saved = await api.post('/customers', payload);
+        savedId = saved.id;
         toast.success('Colaborador cadastrado!');
       }
+
+      // Criar/atualizar acesso ao sistema
+      if (form.admission_data.has_access && form.admission_data.access_password && savedId) {
+        try {
+          await api.post('/employees/access', {
+            customer_id: savedId,
+            email: form.admission_data.access_email,
+            password: form.admission_data.access_password,
+            name: form.name,
+          });
+          toast.success('Acesso ao sistema configurado!');
+        } catch (accessErr) {
+          toast.error('Erro ao configurar acesso: ' + (accessErr.error || 'verifique o e-mail'));
+        }
+      }
+
       onSaved();
     } catch (err) {
       if (err.duplicate) {
@@ -187,7 +250,6 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
     } finally { setLoading(false); }
   }
 
-  /* CPF duplicado */
   if (duplicate) {
     return (
       <div className="space-y-5 text-center py-4">
@@ -210,6 +272,8 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
       </div>
     );
   }
+
+  const allowedMods = form.admission_data.allowed_modules || [];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -337,11 +401,6 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
             <input className="input" value={form.admission_data.mother_name}
               onChange={e => setAdm('mother_name', e.target.value)} />
           </div>
-          <div className="col-span-2">
-            <label className="label">Observações</label>
-            <textarea rows={2} className="input resize-none"
-              value={form.admission_data.notes} onChange={e => setAdm('notes', e.target.value)} />
-          </div>
         </div>
 
         {/* Documentos — só quando editando */}
@@ -351,6 +410,112 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
           <p className="text-xs text-indigo-600 bg-indigo-100 rounded-lg px-3 py-2">
             💡 Salve o colaborador primeiro para adicionar documentos (CTPS, contratos, exames...)
           </p>
+        )}
+      </div>
+
+      {/* ── Acesso ao Sistema ── */}
+      <div className="border border-emerald-200 rounded-lg bg-emerald-50/20 p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-emerald-800 flex items-center gap-1.5">
+            <Shield size={15} /> Acesso ao Sistema
+          </p>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!form.admission_data.has_access}
+              onChange={e => setAdm('has_access', e.target.checked)}
+              className="w-4 h-4 rounded accent-emerald-600"
+            />
+            <span className="text-sm text-gray-700">Permitir acesso</span>
+          </label>
+        </div>
+
+        {form.admission_data.has_access && (
+          <div className="space-y-4">
+            {/* Credenciais */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">E-mail de acesso</label>
+                <input
+                  type="email" className="input"
+                  placeholder="colaborador@empresa.com"
+                  value={form.admission_data.access_email}
+                  onChange={e => setAdm('access_email', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="label">
+                  {employee?.id ? 'Nova senha (deixe em branco para não alterar)' : 'Senha *'}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPass ? 'text' : 'password'}
+                    className="input pr-10"
+                    placeholder="••••••••"
+                    value={form.admission_data.access_password}
+                    onChange={e => setAdm('access_password', e.target.value)}
+                  />
+                  <button type="button" onClick={() => setShowPass(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Horário de acesso */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Início do horário de acesso</label>
+                <input
+                  type="time" className="input"
+                  value={form.admission_data.work_start || ''}
+                  onChange={e => setAdm('work_start', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="label">Fim do horário de acesso</label>
+                <input
+                  type="time" className="input"
+                  value={form.admission_data.work_end || ''}
+                  onChange={e => setAdm('work_end', e.target.value)}
+                />
+              </div>
+            </div>
+            {(form.admission_data.work_start || form.admission_data.work_end) && (
+              <p className="text-xs text-emerald-600">
+                O colaborador só poderá fazer login entre {form.admission_data.work_start || '—'} e {form.admission_data.work_end || '—'}.
+              </p>
+            )}
+
+            {/* Módulos permitidos */}
+            <div>
+              <label className="label mb-2">Módulos permitidos</label>
+              {allowedMods.length === 0 && (
+                <p className="text-xs text-amber-600 mb-2">
+                  Nenhum módulo selecionado — o colaborador verá apenas o Dashboard.
+                </p>
+              )}
+              <div className="grid grid-cols-3 gap-2">
+                {MODULOS.map(mod => (
+                  <label key={mod.key}
+                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer transition-colors text-xs ${
+                      allowedMods.includes(mod.key)
+                        ? 'bg-emerald-100 border-emerald-300 text-emerald-800 font-medium'
+                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}>
+                    <input
+                      type="checkbox"
+                      className="w-3 h-3 accent-emerald-600"
+                      checked={allowedMods.includes(mod.key)}
+                      onChange={() => toggleModule(mod.key)}
+                    />
+                    {mod.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
       </div>
 

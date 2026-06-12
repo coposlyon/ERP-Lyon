@@ -125,7 +125,8 @@ router.post('/', async (req, res) => {
   const {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
-    height, weight, thickness, base_circumference, mouth_circumference, length, width
+    height, weight, thickness, base_circumference, mouth_circumference, length, width,
+    price_tiers
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Nome do produto é obrigatório' });
@@ -147,6 +148,7 @@ router.post('/', async (req, res) => {
         base_circumference: base_circumference || null,
         mouth_circumference: mouth_circumference || null,
         length: length || null, width: width || null,
+        price_tiers: price_tiers || [],
       })
       .select()
       .single();
@@ -162,7 +164,8 @@ router.put('/:id', async (req, res) => {
   const {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
-    height, weight, thickness, base_circumference, mouth_circumference, length, width
+    height, weight, thickness, base_circumference, mouth_circumference, length, width,
+    price_tiers
   } = req.body;
 
   try {
@@ -177,6 +180,7 @@ router.put('/:id', async (req, res) => {
         base_circumference: base_circumference || null,
         mouth_circumference: mouth_circumference || null,
         length: length || null, width: width || null,
+        price_tiers: price_tiers || [],
         updated_at: new Date().toISOString(),
       })
       .eq('id', req.params.id)

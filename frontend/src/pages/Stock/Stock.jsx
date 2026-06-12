@@ -337,6 +337,11 @@ export default function Stock() {
     [allProducts]
   );
 
+  const replenishmentCost = useMemo(
+    () => negativeProducts.reduce((sum, p) => sum + Math.abs(p.current_stock ?? 0) * (Number(p.cost_price) || 0), 0),
+    [negativeProducts]
+  );
+
   const supplierGroups = useMemo(() => {
     const map = {};
     negativeProducts.forEach(p => {
@@ -564,22 +569,24 @@ export default function Stock() {
             <p className="text-xs text-gray-500 mt-0.5">Perdas / 30d</p>
           </div>
 
-          {/* Valor de custo */}
+          {/* Valor total do estoque */}
           <div className="card p-4 text-center">
             <div className="flex justify-center mb-1">
               <PackageCheck size={18} className="text-gray-400" />
             </div>
             <p className="text-base font-bold text-gray-800 leading-tight">{fmt(summary.total_cost_value)}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Valor de custo</p>
+            <p className="text-xs text-gray-500 mt-0.5">Custo total estoque</p>
           </div>
 
-          {/* Valor de venda */}
-          <div className="card p-4 text-center">
+          {/* Custo de reposição (negativo) */}
+          <div className="card p-4 text-center border-l-4 border-red-400">
             <div className="flex justify-center mb-1">
-              <PackageCheck size={18} className="text-green-400" />
+              <PackageCheck size={18} className="text-red-400" />
             </div>
-            <p className="text-base font-bold text-green-700 leading-tight">{fmt(summary.total_sale_value)}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Valor de venda</p>
+            <p className="text-base font-bold text-red-600 leading-tight">
+              {replenishmentCost > 0 ? `-${fmt(replenishmentCost)}` : fmt(0)}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">Custo reposição</p>
           </div>
 
         </div>

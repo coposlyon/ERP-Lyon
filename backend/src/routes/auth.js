@@ -27,6 +27,49 @@ router.post('/login', async (req, res) => {
       .eq('id', data.user.id)
       .single();
 
+    // Restrição de horário: colaboradores só acessam dentro do seu horário de escala
+    if (userProfile && userProfile.role !== 'admin') {
+      const { data: empRecord } = await supabase
+        .from('CLIENTES')
+        .select('admission_data')
+        .eq('email', data.user.email)
+        .eq('type', 'CO')
+        .maybeSingle();
+
+      if (empRecord?.admission_data?.work_start && empRecord?.admission_data?.work_end) {
+        const currentTime = new Intl.DateTimeFormat('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).format(new Date());
+
+        const start = empRecord.admission_data.work_start;
+        const end   = empRecord.admission_data.work_end;
+
+        if (currentTime < start || currentTime > end) {
+          return res.status(403).json({
+            error: `Acesso permitido apenas das ${start} às ${end}`,
+            code: 'OUTSIDE_WORK_HOURS',
+          });
+        }
+      }
+    }
+
+    // Módulos permitidos (para colaboradores com acesso restrito)
+    let allowedModules = null;
+    if (userProfile && userProfile.role !== 'admin') {
+      const { data: empMods } = await supabase
+        .from('CLIENTES')
+        .select('admission_data')
+        .eq('email', data.user.email)
+        .eq('type', 'CO')
+        .maybeSingle();
+      if (empMods?.admission_data?.allowed_modules?.length) {
+        allowedModules = empMods.admission_data.allowed_modules;
+      }
+    }
+
     res.json({
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
@@ -36,6 +79,7 @@ router.post('/login', async (req, res) => {
         name: userProfile?.name,
         role: userProfile?.role,
         tenant: userProfile?.EMPRESAS,
+        allowed_modules: allowedModules,
       },
     });
   } catch (err) {

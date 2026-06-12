@@ -37,7 +37,11 @@ ALTER TABLE "PRODUTOS"
 -- SELECT storage.create_bucket('colaboradores-anexos', '{"public": true}');
 -- ============================================================
 
--- 3. Categorias padrão para Lyon Copos
+-- 3. Faixas de preço por quantidade nos produtos
+ALTER TABLE "PRODUTOS"
+  ADD COLUMN IF NOT EXISTS price_tiers JSONB DEFAULT '[]'::jsonb;
+
+-- 4. Categorias padrão para Lyon Copos
 INSERT INTO "CATEGORIAS" (tenant_id, name)
 VALUES
   ('a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'PRODUTO ACABADO'),

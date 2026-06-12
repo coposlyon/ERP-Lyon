@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
+
+const emptyTier = () => ({ min_qty: '', max_qty: '', price: '' });
 
 export default function ProductForm({ product, onSaved, onCancel }) {
   const [form, setForm] = useState({
-    name: '', code: '', ean: '', description: '', category_id: '',
+    name: '', code: '', ean: '', category_id: '',
     cost_price: '', sale_price: '', min_stock: '',
     ncm: '', cst: '', cfop: '', is_active: true,
     supplier_id: '',
@@ -16,6 +18,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     // Impresso
     length: '', width: '',
   });
+  const [priceTiers, setPriceTiers] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const { data: categories = [] } = useQuery({
@@ -29,7 +32,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   });
   const suppliers = suppliersData?.data || [];
 
-  // Descobre o nome da categoria selecionada para campos condicionais
   const selectedCat = categories.find(c => c.id === form.category_id);
   const catName = selectedCat?.name?.toUpperCase() || '';
   const isProdutoAcabado = catName === 'PRODUTO ACABADO';
@@ -41,7 +43,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         name: product.name || '',
         code: product.code || '',
         ean: product.ean || '',
-        description: product.description || '',
         category_id: product.category_id || '',
         cost_price: product.cost_price || '',
         sale_price: product.sale_price || '',
@@ -59,8 +60,8 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         length: product.length || '',
         width: product.width || '',
       });
+      setPriceTiers(Array.isArray(product.price_tiers) ? product.price_tiers : []);
     } else {
-      // Default: pré-seleciona PRODUTO ACABADO se existir
       const defaultCat = categories.find(c => c.name?.toUpperCase() === 'PRODUTO ACABADO');
       if (defaultCat) setForm(prev => ({ ...prev, category_id: defaultCat.id }));
     }
@@ -70,9 +71,29 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     setForm(prev => ({ ...prev, [field]: value }));
   }
 
+  function addTier() {
+    setPriceTiers(prev => [...prev, emptyTier()]);
+  }
+
+  function removeTier(idx) {
+    setPriceTiers(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function setTier(idx, field, value) {
+    setPriceTiers(prev => prev.map((t, i) => i === idx ? { ...t, [field]: value } : t));
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.name) { toast.error('Nome do produto é obrigatório'); return; }
+
+    // Valida faixas de preço
+    for (const tier of priceTiers) {
+      if (!tier.min_qty || !tier.price) {
+        toast.error('Preencha quantidade mínima e preço em todas as faixas');
+        return;
+      }
+    }
 
     setLoading(true);
     try {
@@ -91,6 +112,11 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         mouth_circumference: parseFloat(form.mouth_circumference) || null,
         length: parseFloat(form.length) || null,
         width: parseFloat(form.width) || null,
+        price_tiers: priceTiers.map(t => ({
+          min_qty: parseInt(t.min_qty) || 0,
+          max_qty: t.max_qty ? parseInt(t.max_qty) : null,
+          price: parseFloat(t.price) || 0,
+        })),
       };
 
       if (product?.id) {
@@ -149,7 +175,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         </div>
       </div>
 
-      {/* Preços */}
+      {/* Preços base */}
       <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="label">Preço de Custo (R$)</label>
@@ -166,6 +192,63 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           <input type="number" step="1" min="0" className="input"
             value={form.min_stock} onChange={e => set('min_stock', e.target.value)} placeholder="0" />
         </div>
+      </div>
+
+      {/* Faixas de preço por quantidade */}
+      <div className="border border-blue-200 rounded-lg bg-blue-50/30 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-blue-800">
+            💰 Faixas de Preço por Quantidade
+          </p>
+          <button
+            type="button"
+            onClick={addTier}
+            className="flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <Plus size={13} /> Adicionar faixa
+          </button>
+        </div>
+
+        {priceTiers.length === 0 && (
+          <p className="text-xs text-blue-500 text-center py-2">
+            Sem faixas de preço. O preço de venda padrão será usado.
+          </p>
+        )}
+
+        {priceTiers.map((tier, idx) => (
+          <div key={idx} className="flex items-center gap-2 bg-white rounded-lg border border-blue-100 px-3 py-2">
+            <div className="flex items-center gap-1.5 flex-1">
+              <span className="text-xs text-gray-500 whitespace-nowrap">De</span>
+              <input
+                type="number" min="0" step="1" className="input py-1 text-sm w-20 text-center"
+                placeholder="Qtd mín"
+                value={tier.min_qty}
+                onChange={e => setTier(idx, 'min_qty', e.target.value)}
+              />
+              <span className="text-xs text-gray-500 whitespace-nowrap">até</span>
+              <input
+                type="number" min="0" step="1" className="input py-1 text-sm w-20 text-center"
+                placeholder="Qtd máx"
+                value={tier.max_qty}
+                onChange={e => setTier(idx, 'max_qty', e.target.value)}
+              />
+              <span className="text-xs text-gray-500 whitespace-nowrap">unid. →</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500">R$</span>
+                <input
+                  type="number" min="0" step="0.01" className="input py-1 text-sm w-24"
+                  placeholder="0,00"
+                  value={tier.price}
+                  onChange={e => setTier(idx, 'price', e.target.value)}
+                />
+              </div>
+            </div>
+            <button type="button" onClick={() => removeTier(idx)}
+              className="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded">
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
       </div>
 
       {/* Campos dimensionais — PRODUTO ACABADO */}
@@ -241,13 +324,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           </div>
         </div>
       </details>
-
-      {/* Descrição */}
-      <div>
-        <label className="label">Descrição / Observações</label>
-        <textarea className="input resize-none" rows={2}
-          value={form.description} onChange={e => set('description', e.target.value)} />
-      </div>
 
       {/* Status */}
       <label className="flex items-center gap-2 cursor-pointer">
