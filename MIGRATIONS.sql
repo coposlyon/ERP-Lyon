@@ -55,6 +55,20 @@ ON CONFLICT DO NOTHING;
 --    daily_minutes = jornada esperada por dia (480 = 8h)
 --    weekdays      = dias úteis (0=Dom, 1=Seg ... 6=Sáb)
 -- ============================================================
+-- Se já existe um "stub" de ESCALAS criado à mão (sem as colunas do
+-- sistema), remove-o para recriar com o schema correto. Após a recriação
+-- a coluna daily_minutes existe, então re-execuções NÃO apagam dados.
+DO $$
+BEGIN
+  IF to_regclass('public."ESCALAS"') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'ESCALAS' AND column_name = 'daily_minutes'
+     ) THEN
+    DROP TABLE "ESCALAS" CASCADE;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS "ESCALAS" (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id         UUID NOT NULL,
@@ -98,6 +112,19 @@ ON CONFLICT (tenant_id, name) DO NOTHING;
 --    kind: work | debit | credit | neutral
 --    insertable = aparece no menu "Inserir situação"
 -- ============================================================
+-- A tabela SITUACOES criada manualmente tem uma coluna "Situação" NOT NULL
+-- que conflita com o schema do sistema. Remove o stub do usuário; como a
+-- tabela recriada NÃO tem a coluna "Situação", re-execuções não apagam nada.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'SITUACOES' AND column_name = 'Situação'
+  ) THEN
+    DROP TABLE "SITUACOES" CASCADE;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS "SITUACOES" (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id   UUID NOT NULL,
