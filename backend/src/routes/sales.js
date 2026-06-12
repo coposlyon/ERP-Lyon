@@ -78,6 +78,45 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'A venda deve ter ao menos um item' });
   }
 
+  // Apenas admin/gerente podem praticar preço abaixo da tabela;
+  // para os demais o servidor aplica o preço oficial (faixas/sale_price)
+  const allowOverride = ['admin', 'manager'].includes(req.userProfile?.role);
+
+  try {
+    const { data, error } = await supabase.rpc('criar_venda', {
+      _tenant_id:            req.tenantId,
+      _user_id:              req.user.id,
+      _customer_id:          customer_id || null,
+      _type:                 type || 'sale',
+      _items:                items,
+      _discount:             Number(discount) || 0,
+      _payment_method:       payment_method || null,
+      _notes:                notes || null,
+      _delivery_date:        delivery_date || null,
+      _artwork_url:          artwork_url || null,
+      _artwork_notes:        artwork_notes || null,
+      _allow_price_override: allowOverride,
+    });
+
+    if (error) {
+      // Função ainda não existe no banco (migração pendente) → caminho legado
+      if (/criar_venda/i.test(error.message) && /function|não existe|does not exist/i.test(error.message)) {
+        return legacyCreateSale(req, res);
+      }
+      // Erros de negócio da função (RAISE EXCEPTION) viram 400 legíveis
+      return res.status(400).json({ error: error.message.replace(/^.*?:\s*/, '') });
+    }
+
+    res.status(201).json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Caminho legado (não transacional) — usado apenas enquanto a função
+// criar_venda não tiver sido criada no banco via MIGRATIONS.sql
+async function legacyCreateSale(req, res) {
+  const { customer_id, type, items, notes, discount, delivery_date, artwork_url, artwork_notes, payment_method } = req.body;
   try {
     const { data: nextNumber } = await supabase
       .rpc('proximo_numero_venda', { p_tenant_id: req.tenantId });
@@ -138,7 +177,7 @@ router.post('/', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}
 
 router.patch('/:id/status', async (req, res) => {
   const { status } = req.body;

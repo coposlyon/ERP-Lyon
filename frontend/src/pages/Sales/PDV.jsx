@@ -8,6 +8,18 @@ function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 }
 
+// Preço oficial pela quantidade: faixa (price_tiers) ou preço de venda.
+// O backend recalcula do lado dele — isso aqui é para a UI mostrar certo.
+function tierPrice(tiers, salePrice, qty) {
+  let price = Number(salePrice) || 0;
+  for (const t of tiers || []) {
+    const min = Number(t.min_qty) || 0;
+    const max = (t.max_qty == null || t.max_qty === '') ? Infinity : Number(t.max_qty);
+    if (qty >= min && qty <= max) price = Number(t.price) || price;
+  }
+  return price;
+}
+
 export default function PDV() {
   const [items, setItems] = useState([]);
   const [productSearch, setProductSearch] = useState('');
@@ -48,17 +60,26 @@ export default function PDV() {
     setItems(prev => {
       const existing = prev.find(i => i.product_id === product.id);
       if (existing) {
-        return prev.map(i =>
-          i.product_id === product.id ? { ...i, quantity: i.quantity + 1 } : i
-        );
+        return prev.map(i => {
+          if (i.product_id !== product.id) return i;
+          const qty = i.quantity + 1;
+          return {
+            ...i,
+            quantity: qty,
+            unit_price: i.priceTouched ? i.unit_price : tierPrice(i.price_tiers, i.sale_price, qty),
+          };
+        });
       }
       return [...prev, {
         product_id: product.id,
         name: product.name,
         unit: product.unit,
-        unit_price: product.sale_price,
+        sale_price: product.sale_price,
+        price_tiers: product.price_tiers || [],
+        unit_price: tierPrice(product.price_tiers, product.sale_price, 1),
         quantity: 1,
         discount: 0,
+        priceTouched: false,
       }];
     });
     setTimeout(() => searchRef.current?.focus(), 50);
@@ -73,7 +94,16 @@ export default function PDV() {
   function setQty(idx, val) {
     const q = parseFloat(val);
     if (isNaN(q) || q <= 0) return;
-    setItems(prev => prev.map((item, i) => i === idx ? { ...item, quantity: q } : item));
+    setItems(prev => prev.map((item, i) => {
+      if (i !== idx) return item;
+      return {
+        ...item,
+        quantity: q,
+        // reaplica a faixa de preço automaticamente, a menos que o
+        // operador tenha editado o preço manualmente
+        unit_price: item.priceTouched ? item.unit_price : tierPrice(item.price_tiers, item.sale_price, q),
+      };
+    }));
   }
 
   function removeItem(idx) {
@@ -82,7 +112,7 @@ export default function PDV() {
 
   function updatePrice(idx, price) {
     setItems(prev => prev.map((item, i) =>
-      i === idx ? { ...item, unit_price: parseFloat(price) || 0 } : item
+      i === idx ? { ...item, unit_price: parseFloat(price) || 0, priceTouched: true } : item
     ));
   }
 
@@ -138,7 +168,14 @@ export default function PDV() {
                   className={`w-full flex items-center justify-between px-4 py-3 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 ? 'bg-blue-50/40' : ''}`}>
                   <div>
                     <p className="font-medium text-gray-900 text-sm">{p.name}</p>
-                    <p className="text-xs text-gray-400">Estoque: {p.current_stock}</p>
+                    <p className="text-xs text-gray-400">
+                      Estoque: {p.current_stock}
+                      {p.price_tiers?.length > 0 && (
+                        <span className="ml-2 text-blue-500 font-medium">
+                          {p.price_tiers.length} faixa{p.price_tiers.length > 1 ? 's' : ''} de preço
+                        </span>
+                      )}
+                    </p>
                   </div>
                   <span className="font-semibold text-primary-600">{fmt(p.sale_price)}</span>
                 </button>
@@ -188,6 +225,9 @@ export default function PDV() {
                         onChange={e => updatePrice(i, e.target.value)}
                         className="input text-right w-24 text-sm"
                       />
+                      {item.price_tiers?.length > 0 && !item.priceTouched && (
+                        <p className="text-[10px] text-blue-500 mt-0.5">faixa automática</p>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-right font-semibold">
                       {fmt(item.quantity * item.unit_price)}
