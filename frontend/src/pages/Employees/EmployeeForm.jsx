@@ -6,7 +6,6 @@ import { Loader2, Instagram, Paperclip, Trash2, Download, Upload, Shield, Eye, E
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 const SETORES = ['GRAVAÇÃO','MARKETING','LOGÍSTICA','DESIGNER','VENDAS','FINANCEIRO','ALMOXARIFADO','QUALIDADE'];
-const ESCALAS = ['Segunda a Sexta','Segunda a Sábado','6x1','5x2','12x36','Plantão'];
 
 const MODULOS = [
   { key: 'dashboard',      label: 'Dashboard' },
@@ -34,7 +33,7 @@ const MODULOS = [
 
 const emptyAddress  = { street:'', number:'', complement:'', neighborhood:'', city:'', state:'', zip:'' };
 const emptyAdmission = {
-  salary:'', father_name:'', mother_name:'', pis:'', sector:'', scale:'', monthly_hours:'', start_date:'',
+  salary:'', father_name:'', mother_name:'', pis:'', sector:'', scale:'', scale_id:'', monthly_hours:'', start_date:'',
   // Acesso ao sistema
   has_access: false, access_email:'', access_password:'', work_start:'', work_end:'', allowed_modules:[],
 };
@@ -156,6 +155,11 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
   const [duplicate, setDuplicate]   = useState(null);
   const [showPass, setShowPass]     = useState(false);
 
+  const { data: escalas = [] } = useQuery({
+    queryKey: ['escalas'],
+    queryFn: () => api.get('/escalas'),
+  });
+
   useEffect(() => {
     if (employee) {
       setForm({
@@ -199,8 +203,9 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.name)                   { toast.error('Nome é obrigatório'); return; }
-    if (!form.admission_data.sector)  { toast.error('Informe o setor'); return; }
+    if (!form.name)                    { toast.error('Nome é obrigatório'); return; }
+    if (!form.admission_data.sector)   { toast.error('Informe o setor'); return; }
+    if (!form.admission_data.scale_id) { toast.error('Selecione a escala de trabalho'); return; }
 
     if (form.admission_data.has_access) {
       if (!form.admission_data.access_email) {
@@ -374,12 +379,26 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
             </select>
           </div>
           <div>
-            <label className="label">Escala de trabalho</label>
-            <select className="input" value={form.admission_data.scale}
-              onChange={e => setAdm('scale', e.target.value)}>
+            <label className="label">Escala de trabalho *</label>
+            <select className="input" value={form.admission_data.scale_id || ''}
+              onChange={e => {
+                const esc = escalas.find(x => x.id === e.target.value);
+                setForm(p => ({ ...p, admission_data: {
+                  ...p.admission_data,
+                  scale_id: e.target.value,
+                  scale: esc?.name || '',
+                }}));
+              }}>
               <option value="">Selecione...</option>
-              {ESCALAS.map(s => <option key={s} value={s}>{s}</option>)}
+              {escalas.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name}{s.daily_minutes ? ` — ${Math.floor(s.daily_minutes/60)}h${s.daily_minutes%60 ? String(s.daily_minutes%60).padStart(2,'0') : ''}/dia` : ''}
+                </option>
+              ))}
             </select>
+            {escalas.length === 0 && (
+              <p className="text-xs text-amber-600 mt-1">Nenhuma escala cadastrada. Rode a migração ou cadastre em RH.</p>
+            )}
           </div>
           <div>
             <label className="label">Horas mensais</label>

@@ -28,6 +28,8 @@ const qualityRoutes         = require('./quality');
 const crmRoutes             = require('./crm');
 const hrRoutes              = require('./hr');
 const employeesRoutes       = require('./employees');
+const escalasRoutes         = require('./escalas');
+const situacoesRoutes       = require('./situacoes');
 
 router.use('/auth', authRoutes);
 router.use('/cnpj', cnpjRoutes);   // público — sem auth
@@ -57,5 +59,7 @@ router.use('/quality',         qualityRoutes);
 router.use('/crm',             crmRoutes);
 router.use('/hr',              hrRoutes);
 router.use('/employees',       employeesRoutes);
+router.use('/escalas',         escalasRoutes);
+router.use('/situacoes',       situacoesRoutes);
 
 module.exports = router;

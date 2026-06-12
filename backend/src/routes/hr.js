@@ -20,6 +20,49 @@ function calcIRRF(gross, inss) {
 }
 
 // ── PONTO ─────────────────────────────────────────────────
+
+// Busca a escala aplicável a um colaborador (por escala_id explícita,
+// ou via admission_data.scale_id / scale name). Fallback 8h / tol 10min.
+async function getEscala(tenantId, employee_id, escala_id) {
+  const fallback = { daily_minutes: 480, tolerance_minutes: 10, weekdays: [1,2,3,4,5], id: null };
+  try {
+    if (escala_id) {
+      const { data } = await supabase.from('ESCALAS').select('*')
+        .eq('tenant_id', tenantId).eq('id', escala_id).maybeSingle();
+      if (data) return data;
+    }
+    const { data: emp } = await supabase.from('CLIENTES').select('admission_data')
+      .eq('tenant_id', tenantId).eq('id', employee_id).maybeSingle();
+    const adm = emp?.admission_data || {};
+    if (adm.scale_id) {
+      const { data } = await supabase.from('ESCALAS').select('*')
+        .eq('tenant_id', tenantId).eq('id', adm.scale_id).maybeSingle();
+      if (data) return data;
+    }
+    if (adm.scale) {
+      const { data } = await supabase.from('ESCALAS').select('*')
+        .eq('tenant_id', tenantId).eq('name', adm.scale).maybeSingle();
+      if (data) return data;
+    }
+  } catch { /* usa fallback */ }
+  return fallback;
+}
+
+// Calcula apuração de um dia a partir das marcações + escala
+function apurarDia({ total_minutes, hasMarks, expected, tolerance }) {
+  const extra_minutes = Math.max(0, total_minutes - expected);
+  let late_minutes = 0;
+  let status = 'worked';
+  if (!hasMarks) {
+    status = 'absence';
+  } else {
+    const shortfall = expected - total_minutes;
+    if (shortfall > tolerance) { late_minutes = shortfall; status = 'late'; }
+    else                       { late_minutes = 0;         status = 'worked'; }
+  }
+  return { extra_minutes, late_minutes, status };
+}
+
 router.get('/timesheet', async (req, res) => {
   const { employee_id, month } = req.query;
   if (!employee_id || !month)
@@ -39,35 +82,92 @@ router.get('/timesheet', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+function timeDiff(s, e) {
+  if (!s || !e) return 0;
+  const [sh,sm] = s.split(':').map(Number);
+  const [eh,em] = e.split(':').map(Number);
+  return Math.max(0,(eh*60+em)-(sh*60+sm));
+}
+
 router.put('/timesheet', async (req, res) => {
-  const { employee_id, work_date, entry1, exit1, entry2, exit2, absence, justification, notes } = req.body;
+  const { employee_id, work_date, entry1, exit1, entry2, exit2, absence, justification, notes, escala_id } = req.body;
   if (!employee_id || !work_date)
     return res.status(400).json({ error: 'employee_id e work_date são obrigatórios' });
-  function timeDiff(s, e) {
-    if (!s || !e) return 0;
-    const [sh,sm] = s.split(':').map(Number);
-    const [eh,em] = e.split(':').map(Number);
-    return Math.max(0,(eh*60+em)-(sh*60+sm));
-  }
+
   const total_minutes = timeDiff(entry1,exit1) + timeDiff(entry2,exit2);
-  const extra_minutes = Math.max(0, total_minutes - 480);
+  const hasMarks = !!(entry1 || exit1 || entry2 || exit2);
+
   try {
+    const escala = await getEscala(req.tenantId, employee_id, escala_id);
+    const expected  = escala.daily_minutes ?? 480;
+    const tolerance = escala.tolerance_minutes ?? 10;
+    const { extra_minutes, late_minutes, status } = apurarDia({ total_minutes, hasMarks, expected, tolerance });
+
     const { data, error } = await supabase
       .from('RH_PONTO')
       .upsert({
-        tenant_id:    req.tenantId,
+        tenant_id:        req.tenantId,
         employee_id,
         work_date,
-        entry1:       entry1       || null,
-        exit1:        exit1        || null,
-        entry2:       entry2       || null,
-        exit2:        exit2        || null,
+        entry1:           entry1       || null,
+        exit1:            exit1        || null,
+        entry2:           entry2       || null,
+        exit2:            exit2        || null,
         total_minutes,
         extra_minutes,
-        absence:      absence      || false,
-        justification:justification|| null,
-        notes:        notes        || null,
+        expected_minutes: expected,
+        late_minutes,
+        status:           absence ? 'absence' : status,
+        escala_id:        escala.id || null,
+        absence:          absence      || false,
+        justification:    justification|| null,
+        notes:            notes        || null,
       }, { onConflict: 'tenant_id,employee_id,work_date' })
+      .select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Ajusta APENAS a situação do dia (abonar, atestado, justificar, etc).
+// Funciona mesmo em dias sem marcação (ex.: abonar uma falta).
+// Passar override_situation = null/'' remove o ajuste.
+router.put('/timesheet/situation', async (req, res) => {
+  const { employee_id, work_date, override_situation, override_note, override_minutes, escala_id } = req.body;
+  if (!employee_id || !work_date)
+    return res.status(400).json({ error: 'employee_id e work_date são obrigatórios' });
+  try {
+    // pega registro existente (se houver) para preservar marcações
+    const { data: existing } = await supabase
+      .from('RH_PONTO').select('*')
+      .eq('tenant_id', req.tenantId).eq('employee_id', employee_id).eq('work_date', work_date)
+      .maybeSingle();
+
+    const escala = await getEscala(req.tenantId, employee_id, escala_id || existing?.escala_id);
+
+    const payload = {
+      tenant_id:          req.tenantId,
+      employee_id,
+      work_date,
+      entry1:             existing?.entry1 || null,
+      exit1:              existing?.exit1  || null,
+      entry2:             existing?.entry2 || null,
+      exit2:              existing?.exit2  || null,
+      total_minutes:      existing?.total_minutes  || 0,
+      extra_minutes:      existing?.extra_minutes  || 0,
+      expected_minutes:   existing?.expected_minutes ?? (escala.daily_minutes ?? 480),
+      late_minutes:       existing?.late_minutes   || 0,
+      status:             existing?.status || (existing?.entry1 ? 'worked' : 'absence'),
+      escala_id:          escala.id || existing?.escala_id || null,
+      absence:            existing?.absence || false,
+      override_situation: override_situation || null,
+      override_note:      override_note      || null,
+      override_minutes:   override_minutes != null ? Number(override_minutes) : null,
+    };
+
+    const { data, error } = await supabase
+      .from('RH_PONTO')
+      .upsert(payload, { onConflict: 'tenant_id,employee_id,work_date' })
       .select().single();
     if (error) throw error;
     res.json(data);

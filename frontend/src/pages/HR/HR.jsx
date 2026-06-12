@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Users, Clock, Umbrella, DollarSign, FileText,
   Plus, Trash2, Check, ChevronLeft, ChevronRight,
+  AlertCircle, CheckCircle, PenLine, MoreVertical,
+  ArrowLeft, Search, X,
 } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
-import { format, parseISO, getDaysInMonth, startOfMonth, addMonths, subMonths } from 'date-fns';
+import { format, parseISO, getDaysInMonth, addMonths, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { HRProvider, useHR } from './HRContext';
 
@@ -47,7 +49,7 @@ export function EmployeeSelector({ selected, onSelect }) {
   });
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 flex-wrap">
       <div className="flex-1 max-w-xs relative">
         <input className="input text-sm" placeholder="Buscar colaborador..."
           value={search} onChange={e => setSearch(e.target.value)} />
@@ -81,117 +83,685 @@ export function EmployeeSelector({ selected, onSelect }) {
   );
 }
 
-// ══ TAB PONTO ════════════════════════════════════════════
-export function TabPonto({ employee }) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const qc = useQueryClient();
-  const monthStr    = format(currentMonth, 'yyyy-MM');
-  const daysInMonth = getDaysInMonth(currentMonth);
-  const monthLabel  = format(currentMonth, 'MMMM yyyy', { locale: ptBR });
+// ── helpers de ponto ──────────────────────────────────────
+function hm(mins) {
+  const x = Math.max(0, Math.round(mins || 0));
+  const h = Math.floor(x / 60), m = x % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
 
-  const { data: entries = [] } = useQuery({
-    queryKey: ['rh-ponto', employee?.id, monthStr],
-    queryFn: () => api.get(`/hr/timesheet?employee_id=${employee.id}&month=${monthStr}`),
-    enabled: !!employee,
+const COLOR_CLS = {
+  green:  'bg-green-100  text-green-700',
+  red:    'bg-red-100    text-red-700',
+  orange: 'bg-orange-100 text-orange-700',
+  blue:   'bg-blue-100   text-blue-700',
+  teal:   'bg-teal-100   text-teal-700',
+  indigo: 'bg-indigo-100 text-indigo-700',
+  amber:  'bg-amber-100  text-amber-700',
+  purple: 'bg-purple-100 text-purple-700',
+  gray:   'bg-gray-100   text-gray-600',
+};
+const DOT_CLS = {
+  green:'bg-green-500', red:'bg-red-500', orange:'bg-orange-400', blue:'bg-blue-500',
+  teal:'bg-teal-500', indigo:'bg-indigo-500', amber:'bg-amber-500', purple:'bg-purple-500', gray:'bg-gray-300',
+};
+
+// Apura um dia: calcula situação, atraso (com tolerância) e chips a exibir.
+function buildDay(date, entry, escala, admDate, todayStart, situMap) {
+  const dateStr   = format(date, 'yyyy-MM-dd');
+  const dow       = date.getDay();
+  const isPast    = date < todayStart;
+  const isToday   = date.getTime() === todayStart.getTime();
+  const isFuture  = date > todayStart;
+  const weekdays  = (escala.weekdays && escala.weekdays.length) ? escala.weekdays : [1,2,3,4,5];
+  const isWeekend = !weekdays.includes(dow);
+  const isBeforeAdm = admDate ? date < admDate : false;
+  const expected  = escala.daily_minutes ?? 480;
+  const tolerance = escala.tolerance_minutes ?? 10;
+
+  const workedMin = entry?.total_minutes || 0;
+  const extraMin  = entry?.extra_minutes || 0;
+  const hasMarks  = !!(entry?.entry1 || entry?.exit1 || entry?.entry2 || entry?.exit2);
+  const overrideCode = entry?.override_situation || null;
+  const override  = overrideCode ? (situMap[overrideCode] || { code:overrideCode, name:overrideCode, color:'blue' }) : null;
+
+  let type = 'future', lateMin = 0;
+  if (isBeforeAdm)       type = 'before';
+  else if (override)     type = 'override';
+  else if (hasMarks) {
+    const shortfall = expected - workedMin;
+    if (shortfall > tolerance) { lateMin = shortfall; type = 'late'; }
+    else                       { type = 'worked'; }
+  }
+  else if (entry?.absence) type = 'absence';
+  else if (isWeekend)      type = 'weekend';
+  else if (isPast || isToday) type = 'missing';
+  else                     type = 'future';
+
+  const chips = [];
+  if (type === 'before') { /* nada */ }
+  else if (type === 'override') {
+    chips.push({ label: override.name, color: override.color || 'blue' });
+    if (hasMarks) chips.push({ label: `Trabalhado ${hm(workedMin)}`, color: 'green' });
+  }
+  else if (type === 'weekend') chips.push({ label: 'Folga', color: 'gray' });
+  else if (type === 'worked')  chips.push({ label: `Trabalhando ${hm(workedMin)}`, color: 'green' });
+  else if (type === 'late') {
+    chips.push({ label: `Trabalhando ${hm(workedMin)}`, color: 'green' });
+    chips.push({ label: `Atraso ${hm(lateMin)}`, color: 'red' });
+  }
+  else if (type === 'absence') chips.push({ label: 'Falta Justificada', color: 'orange' });
+  else if (type === 'missing') chips.push({ label: 'Falta', color: 'red' });
+  else if (type === 'future')  chips.push({ label: 'Aguardando', color: 'gray' });
+
+  const isNegative = (type === 'missing' || type === 'late');
+  const canAct     = !isBeforeAdm && !isFuture;
+  const dotColor   = type === 'before' ? null : (chips[0]?.color || 'gray');
+
+  return {
+    date, dateStr, dow, isPast, isToday, isFuture, isWeekend, isBeforeAdm,
+    entry, expected, tolerance, workedMin, extraMin, lateMin, hasMarks,
+    override, type, chips, isNegative, canAct, dotColor,
+  };
+}
+
+// ══ LISTA PAGINADA DE COLABORADORES (entrada do ponto) ════
+function PontoEmployeeList({ onSelect }) {
+  const [page, setPage]     = useState(1);
+  const [search, setSearch] = useState('');
+  const limit = 10;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['ponto-emp-list', page, search],
+    queryFn: () => api.get(`/customers?type=CO&page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
   });
 
-  const entryMap = Object.fromEntries((entries||[]).map(e => [e.work_date, e]));
+  const list  = data?.data || [];
+  const total = data?.total || 0;
+  const pages = Math.max(1, Math.ceil(total / limit));
 
-  const saveMut = useMutation({
-    mutationFn: d => api.put('/hr/timesheet', d),
-    onSuccess: () => qc.invalidateQueries(['rh-ponto', employee?.id, monthStr]),
-  });
-
-  function handleChange(date, field, value) {
-    const existing = entryMap[date] || {};
-    saveMut.mutate({ employee_id: employee.id, work_date: date, ...existing, [field]: value || null });
-  }
-
-  function calcTotal(entry) {
-    if (!entry) return '—';
-    if (entry.absence) return 'Falta';
-    const total = entry.total_minutes || 0;
-    const h = Math.floor(total/60), m = total%60;
-    const extra = entry.extra_minutes || 0;
-    let s = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-    if (extra > 0) s += ` (+${Math.floor(extra/60)}h${extra%60?String(extra%60).padStart(2,'0'):''})`;
-    return s;
-  }
-
-  if (!employee) return (
-    <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-      <Clock size={40} className="mb-3 opacity-30"/>
-      <p className="text-sm">Selecione um colaborador acima para ver o ponto</p>
-    </div>
-  );
-
-  const totalHours = entries.reduce((s,e) => s + (e.total_minutes||0), 0);
-  const extraHours = entries.reduce((s,e) => s + (e.extra_minutes||0), 0);
-  const absences   = entries.filter(e => e.absence).length;
+  function onSearch(v) { setSearch(v); setPage(1); }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <button onClick={() => setCurrentMonth(p => subMonths(p,1))} className="btn-secondary btn-sm p-1.5"><ChevronLeft size={16}/></button>
-        <h3 className="font-semibold text-gray-700 capitalize min-w-36 text-center">{monthLabel}</h3>
-        <button onClick={() => setCurrentMonth(p => addMonths(p,1))} className="btn-secondary btn-sm p-1.5"><ChevronRight size={16}/></button>
-        <div className="flex gap-3 ml-4 text-sm text-gray-500">
-          <span>Total: <strong className="text-gray-800">{Math.floor(totalHours/60)}h{totalHours%60?String(totalHours%60).padStart(2,'0'):''}</strong></span>
-          <span>Extras: <strong className="text-green-700">{Math.floor(extraHours/60)}h{extraHours%60?String(extraHours%60).padStart(2,'0'):''}</strong></span>
-          <span>Faltas: <strong className="text-red-600">{absences}</strong></span>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="font-semibold text-gray-800">Colaboradores</h3>
+          <p className="text-xs text-gray-400">Selecione um colaborador para gerir o ponto · {total} no total</p>
+        </div>
+        <div className="relative max-w-xs w-full">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input className="input pl-9 text-sm" placeholder="Buscar por nome, CPF, código..."
+            value={search} onChange={e => onSearch(e.target.value)} />
         </div>
       </div>
 
-      <div className="card overflow-x-auto">
-        <table className="table-auto text-xs">
-          <thead>
-            <tr>
-              <th className="text-left">Dia</th>
-              <th>Entrada 1</th><th>Saída 1</th>
-              <th>Entrada 2</th><th>Saída 2</th>
-              <th>Total</th><th>Falta</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: daysInMonth }, (_,i) => {
-              const d   = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i+1);
-              const ds  = format(d, 'yyyy-MM-dd');
-              const dow = d.getDay();
-              const isWe = dow === 0 || dow === 6;
-              const en  = entryMap[ds];
-              const dow_l = format(d, 'EEE', { locale: ptBR });
-              return (
-                <tr key={ds} className={`${isWe ? 'bg-gray-50/80 text-gray-400' : ''} ${en?.absence ? 'bg-red-50/50' : ''}`}>
-                  <td className="whitespace-nowrap">
-                    <span className="font-semibold">{String(i+1).padStart(2,'0')}</span>
-                    <span className="text-gray-400 ml-1 capitalize">{dow_l}</span>
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Colaborador</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Setor</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Escala</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Admissão</th>
+                <th className="px-4 py-3 w-12"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={5} className="py-10 text-center text-gray-400 text-sm">Carregando...</td></tr>
+              ) : list.length === 0 ? (
+                <tr><td colSpan={5} className="py-10 text-center text-gray-400 text-sm">Nenhum colaborador encontrado</td></tr>
+              ) : list.map(emp => (
+                <tr key={emp.id}
+                  onClick={() => onSelect(emp)}
+                  className="border-b border-gray-50 last:border-0 hover:bg-indigo-50/40 cursor-pointer transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                        {emp.name?.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-800 text-sm">{emp.name}</p>
+                        <p className="text-xs text-gray-400">#{emp.display_id ?? '—'}</p>
+                      </div>
+                    </div>
                   </td>
-                  {['entry1','exit1','entry2','exit2'].map(field => (
-                    <td key={field} className="p-1">
-                      <input type="time"
-                        disabled={en?.absence || isWe}
-                        className="border border-gray-200 rounded px-1 py-0.5 text-xs w-24 disabled:opacity-40 disabled:bg-transparent focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                        defaultValue={en?.[field] || ''}
-                        onBlur={e => handleChange(ds, field, e.target.value)}
-                      />
-                    </td>
-                  ))}
-                  <td className={`text-center font-mono text-xs whitespace-nowrap ${en?.extra_minutes>0?'text-green-700':''}`}>
-                    {calcTotal(en)}
+                  <td className="px-4 py-3 text-sm text-gray-600">{emp.admission_data?.sector || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{emp.admission_data?.scale || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    {emp.admission_data?.start_date
+                      ? format(new Date(emp.admission_data.start_date + 'T00:00:00'), 'dd/MM/yyyy')
+                      : '—'}
                   </td>
-                  <td className="text-center">
-                    <input type="checkbox" checked={!!en?.absence}
-                      className="w-3.5 h-3.5 rounded text-red-500"
-                      onChange={e => handleChange(ds, 'absence', e.target.checked)} />
+                  <td className="px-4 py-3 text-right">
+                    <ChevronRight size={16} className="text-gray-300 inline" />
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {pages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+            <span className="text-xs text-gray-400">Página {page} de {pages}</span>
+            <div className="flex gap-1">
+              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}
+                className="btn-secondary p-1.5 disabled:opacity-40"><ChevronLeft size={15} /></button>
+              <button disabled={page >= pages} onClick={() => setPage(p => p + 1)}
+                className="btn-secondary p-1.5 disabled:opacity-40"><ChevronRight size={15} /></button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+// ══ MODAL DE AJUSTE DE SITUAÇÃO ═══════════════════════════
+function SituationModal({ day, employee, escala, situacoes, onClose }) {
+  const qc = useQueryClient();
+  const [code, setCode]       = useState(day.override?.code || '');
+  const [note, setNote]       = useState(day.entry?.override_note || '');
+  const [minutes, setMinutes] = useState(day.entry?.override_minutes || '');
+
+  const mut = useMutation({
+    mutationFn: d => api.put('/hr/timesheet/situation', d),
+    onSuccess: () => { qc.invalidateQueries(['rh-ponto', employee.id]); toast.success('Situação ajustada'); onClose(); },
+    onError:   () => toast.error('Erro ao ajustar situação'),
+  });
+
+  function apply(clear) {
+    mut.mutate({
+      employee_id: employee.id,
+      work_date:   day.dateStr,
+      escala_id:   escala.id || null,
+      override_situation: clear ? null : (code || null),
+      override_note:      clear ? null : (note || null),
+      override_minutes:   clear ? null : (minutes ? Number(minutes) : null),
+    });
+  }
+
+  return (
+    <Modal isOpen={!!day} onClose={onClose}
+      title={`Ajustar situação — ${format(day.date, "dd/MM/yyyy", { locale: ptBR })}`} size="md">
+      <div className="space-y-4">
+        <div className="bg-gray-50 rounded-xl p-3">
+          <p className="text-sm font-semibold text-gray-800">{employee.name}</p>
+          <p className="text-xs text-gray-500 capitalize">{format(day.date, "EEEE, dd 'de' MMMM", { locale: ptBR })}</p>
+          {day.type === 'late' && (
+            <p className="text-xs text-red-600 mt-1">Atualmente: Atraso de {hm(day.lateMin)} (trabalhou {hm(day.workedMin)} de {hm(day.expected)})</p>
+          )}
+          {day.type === 'missing' && <p className="text-xs text-red-600 mt-1">Atualmente: Falta</p>}
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Selecione a situação</p>
+          <div className="grid grid-cols-2 gap-2">
+            {situacoes.map(s => (
+              <button key={s.code} type="button" onClick={() => setCode(s.code)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-sm font-medium transition-colors text-left ${
+                  code === s.code
+                    ? `border-transparent ${COLOR_CLS[s.color] || COLOR_CLS.gray}`
+                    : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                }`}>
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${DOT_CLS[s.color] || DOT_CLS.gray}`} />
+                {s.name}
+              </button>
+            ))}
+            {situacoes.length === 0 && (
+              <p className="col-span-2 text-xs text-amber-600">Nenhuma situação cadastrada. Rode a migração SITUACOES.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label text-xs">Minutos (opcional)</label>
+            <input type="number" min="0" className="input" placeholder="Ex: 11"
+              value={minutes} onChange={e => setMinutes(e.target.value)} />
+          </div>
+          <div>
+            <label className="label text-xs">Observação</label>
+            <input className="input" placeholder="Motivo do ajuste"
+              value={note} onChange={e => setNote(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-2 border-t border-gray-100">
+          {day.override && (
+            <button type="button" onClick={() => apply(true)} disabled={mut.isPending}
+              className="btn-secondary text-red-600">Remover ajuste</button>
+          )}
+          <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
+          <button onClick={() => apply(false)} disabled={mut.isPending || !code} className="btn-primary flex-1">
+            {mut.isPending ? 'Aplicando...' : 'Aplicar'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ══ GESTÃO DO PONTO DE UM COLABORADOR ═════════════════════
+function PontoManager({ employee, onBack }) {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [filter, setFilter]   = useState('todos');
+  const [editDay, setEditDay] = useState(null);
+  const [editForm, setEditForm] = useState({ entry1:'', exit1:'', entry2:'', exit2:'', absence:false });
+  const [situationDay, setSituationDay] = useState(null);
+  const [openMenu, setOpenMenu] = useState(null);
+  const qc = useQueryClient();
+
+  const monthStr    = format(currentMonth, 'yyyy-MM');
+  const daysInMonth = getDaysInMonth(currentMonth);
+  const monthLabel  = format(currentMonth, 'MMMM yyyy', { locale: ptBR });
+  const todayStart  = useMemo(() => { const t = new Date(); t.setHours(0,0,0,0); return t; }, []);
+
+  const { data: escalas = [] }   = useQuery({ queryKey:['escalas'], queryFn:() => api.get('/escalas') });
+  const { data: situacoes = [] } = useQuery({ queryKey:['situacoes-insert'], queryFn:() => api.get('/situacoes?insertable=true') });
+  const { data: entries = [] }   = useQuery({
+    queryKey: ['rh-ponto', employee.id, monthStr],
+    queryFn:  () => api.get(`/hr/timesheet?employee_id=${employee.id}&month=${monthStr}`),
+  });
+
+  const escala = useMemo(() => {
+    const adm = employee.admission_data || {};
+    return escalas.find(e => e.id === adm.scale_id)
+        || escalas.find(e => e.name === adm.scale)
+        || { id:null, name: adm.scale || 'Padrão', daily_minutes:480, tolerance_minutes:10, weekdays:[1,2,3,4,5] };
+  }, [escalas, employee]);
+
+  const situMap = useMemo(() => {
+    const map = {};
+    [...situacoes].forEach(s => { map[s.code] = s; });
+    // garante rótulos das situações automáticas mesmo sem cadastro
+    map.atraso ??= { code:'atraso', name:'Atraso', color:'red' };
+    map.falta  ??= { code:'falta',  name:'Falta',  color:'red' };
+    return map;
+  }, [situacoes]);
+
+  const saveMut = useMutation({
+    mutationFn: d => api.put('/hr/timesheet', d),
+    onSuccess: () => { qc.invalidateQueries(['rh-ponto', employee.id]); setEditDay(null); toast.success('Ponto registrado!'); },
+    onError:   () => toast.error('Erro ao salvar ponto'),
+  });
+
+  const situMut = useMutation({
+    mutationFn: d => api.put('/hr/timesheet/situation', d),
+    onSuccess: () => { qc.invalidateQueries(['rh-ponto', employee.id]); setOpenMenu(null); toast.success('Situação ajustada'); },
+    onError:   () => toast.error('Erro ao ajustar situação'),
+  });
+
+  const entryMap = useMemo(() => Object.fromEntries((entries||[]).map(e => [e.work_date, e])), [entries]);
+
+  const days = useMemo(() => {
+    const admStr  = employee.admission_data?.start_date;
+    const admDate = admStr ? new Date(admStr + 'T00:00:00') : null;
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i + 1);
+      return buildDay(date, entryMap[format(date,'yyyy-MM-dd')], escala, admDate, todayStart, situMap);
+    });
+  }, [daysInMonth, currentMonth, entryMap, escala, employee, todayStart, situMap]);
+
+  const stats = useMemo(() => {
+    const worked    = days.filter(d => d.hasMarks).length;
+    const faltas    = days.filter(d => d.type === 'missing').length;
+    const justified = days.filter(d => d.type === 'absence' || (d.override && !d.hasMarks)).length;
+    const atrasos   = days.filter(d => d.type === 'late').length;
+    const atrasoMin = days.reduce((s,d) => s + (d.type === 'late' ? d.lateMin : 0), 0);
+    const totalMin  = days.reduce((s,d) => s + d.workedMin, 0);
+    const extraMin  = days.reduce((s,d) => s + d.extraMin, 0);
+    return { worked, faltas, justified, atrasos, atrasoMin, totalMin, extraMin };
+  }, [days]);
+
+  const filteredDays = useMemo(() => {
+    if (filter === 'pendencias') return days.filter(d => d.type === 'missing' || d.type === 'late');
+    if (filter === 'trabalhados') return days.filter(d => d.hasMarks);
+    return days;
+  }, [days, filter]);
+
+  const missingDays = useMemo(() => days.filter(d => d.type === 'missing'), [days]);
+
+  function openEdit(day) {
+    setOpenMenu(null);
+    setEditDay(day);
+    setEditForm({
+      entry1: day.entry?.entry1 || '', exit1: day.entry?.exit1 || '',
+      entry2: day.entry?.entry2 || '', exit2: day.entry?.exit2 || '',
+      absence: !!day.entry?.absence,
+    });
+  }
+
+  function saveEdit() {
+    if (!editDay) return;
+    saveMut.mutate({
+      employee_id: employee.id,
+      work_date:   editDay.dateStr,
+      escala_id:   escala.id || null,
+      absence:     editForm.absence,
+      entry1: editForm.absence ? null : (editForm.entry1 || null),
+      exit1:  editForm.absence ? null : (editForm.exit1  || null),
+      entry2: editForm.absence ? null : (editForm.entry2 || null),
+      exit2:  editForm.absence ? null : (editForm.exit2  || null),
+    });
+  }
+
+  function quickSituation(day, code) {
+    situMut.mutate({
+      employee_id: employee.id, work_date: day.dateStr,
+      escala_id: escala.id || null, override_situation: code,
+    });
+  }
+
+  const escalaHoras = `${hm(escala.daily_minutes)} /dia`;
+
+  return (
+    <div className="space-y-4">
+      {/* ── Voltar + Ficha do colaborador ── */}
+      <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-indigo-600 font-medium">
+        <ArrowLeft size={15} /> Voltar à lista
+      </button>
+
+      <div className="card p-4">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+            {employee.name?.charAt(0)}
+          </div>
+          <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2">
+            <div className="col-span-2 sm:col-span-4">
+              <p className="font-semibold text-gray-900 text-base">{employee.name}</p>
+              <p className="text-xs text-indigo-600 font-medium">{employee.admission_data?.sector || '—'}</p>
+            </div>
+            {[
+              ['Cadastro', `#${employee.display_id ?? '—'}`],
+              ['Escala',   escala.name],
+              ['Jornada',  escalaHoras],
+              ['Admissão', employee.admission_data?.start_date ? format(new Date(employee.admission_data.start_date + 'T00:00:00'), 'dd/MM/yyyy') : '—'],
+            ].map(([label, val]) => (
+              <div key={label}>
+                <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">{label}</p>
+                <p className="text-sm text-gray-700 font-medium">{val}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Navegação de mês ── */}
+      <div className="flex items-center gap-3">
+        <button onClick={() => setCurrentMonth(p => subMonths(p,1))} className="btn-secondary p-1.5"><ChevronLeft size={16}/></button>
+        <h3 className="font-semibold text-gray-700 capitalize min-w-44 text-center">{monthLabel}</h3>
+        <button onClick={() => setCurrentMonth(p => addMonths(p,1))} className="btn-secondary p-1.5"><ChevronRight size={16}/></button>
+      </div>
+
+      {/* ── KPIs ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="card p-3 text-center border-t-2 border-green-400">
+          <p className="text-2xl font-bold text-green-700">{stats.worked}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Dias trabalhados</p>
+        </div>
+        <div className="card p-3 text-center border-t-2 border-red-400">
+          <p className="text-2xl font-bold text-red-600">{stats.faltas}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Faltas{stats.justified ? ` · ${stats.justified} just.` : ''}</p>
+        </div>
+        <div className="card p-3 text-center border-t-2 border-amber-400">
+          <p className="text-2xl font-bold text-amber-600">{stats.atrasos}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Atrasos{stats.atrasoMin ? ` · ${hm(stats.atrasoMin)}` : ''}</p>
+        </div>
+        <div className="card p-3 text-center border-t-2 border-indigo-400">
+          <p className="text-2xl font-bold text-indigo-700">{hm(stats.totalMin)}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Horas{stats.extraMin ? ` · +${hm(stats.extraMin)} extra` : ''}</p>
+        </div>
+      </div>
+
+      {/* ── Alerta de faltas ── */}
+      {missingDays.length > 0 && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <AlertCircle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-800">
+              {missingDays.length} {missingDays.length === 1 ? 'dia com falta (sem marcação)' : 'dias com falta (sem marcação)'}
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              {missingDays.map(d => format(d.date, 'dd/MM')).slice(0,15).join(' · ')}
+              {missingDays.length > 15 ? ` e mais ${missingDays.length - 15}...` : ''}
+            </p>
+          </div>
+        </div>
+      )}
+      {missingDays.length === 0 && stats.worked > 0 && (
+        <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+          <CheckCircle size={16} className="text-green-500" />
+          <p className="text-sm font-medium text-green-700">Sem faltas pendentes neste mês</p>
+        </div>
+      )}
+
+      {/* ── Filtros ── */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        {[
+          { key:'todos',       label:`Todos · ${days.length}` },
+          { key:'pendencias',  label:`Pendências · ${stats.faltas + stats.atrasos}` },
+          { key:'trabalhados', label:`Trabalhados · ${stats.worked}` },
+        ].map(t => (
+          <button key={t.key} onClick={() => setFilter(t.key)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              filter === t.key ? 'bg-white shadow text-violet-700' : 'text-gray-500 hover:text-gray-700'
+            }`}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* ── Tabela de dias ── */}
+      <div className="card overflow-visible">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-32">Data</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Situação</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Marcações</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Total</th>
+                <th className="px-4 py-3 w-20 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredDays.map(day => {
+                const times = [day.entry?.entry1, day.entry?.exit1, day.entry?.entry2, day.entry?.exit2].filter(Boolean);
+                return (
+                  <tr key={day.dateStr}
+                    className={`border-b border-gray-50 last:border-0 transition-colors hover:bg-gray-50/50 ${
+                      day.isNegative ? 'bg-red-50/20' : ''
+                    } ${day.isToday ? 'bg-blue-50/30' : ''}`}>
+
+                    {/* Data */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {day.dotColor
+                          ? <div className={`w-2 h-2 rounded-full flex-shrink-0 ${DOT_CLS[day.dotColor]}`} />
+                          : <div className="w-2 h-2 flex-shrink-0" />}
+                        <div>
+                          <span className={`font-bold text-sm ${day.isWeekend || day.isBeforeAdm ? 'text-gray-400' : 'text-gray-800'}`}>
+                            {format(day.date, 'dd/MM')}
+                          </span>
+                          <span className="text-xs text-gray-400 ml-1.5 capitalize">{format(day.date, 'EEE', { locale: ptBR })}</span>
+                          {day.isToday && <span className="ml-1.5 text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">hoje</span>}
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Situação (chips clicáveis) */}
+                    <td className="px-4 py-3">
+                      {day.type === 'before' ? (
+                        <span className="text-gray-300 text-xs">—</span>
+                      ) : (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {day.chips.map((c, i) => (
+                            <button key={i} type="button"
+                              onClick={() => day.canAct && setSituationDay(day)}
+                              disabled={!day.canAct}
+                              className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${COLOR_CLS[c.color] || COLOR_CLS.gray} ${
+                                day.canAct ? 'hover:ring-2 hover:ring-offset-1 hover:ring-gray-200 cursor-pointer' : ''
+                              }`}>
+                              {c.label}
+                            </button>
+                          ))}
+                          {day.override?.note && <span className="text-xs text-gray-400 italic">· {day.override.note}</span>}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Marcações */}
+                    <td className="px-4 py-3">
+                      {times.length > 0 ? (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {times.map((t, i) => (
+                            <span key={i} className={`font-mono text-xs px-2 py-0.5 rounded-md ${
+                              i === 0 || i === times.length - 1 ? 'bg-green-100 text-green-800 font-semibold' : 'bg-gray-100 text-gray-600'
+                            }`}>{t}</span>
+                          ))}
+                        </div>
+                      ) : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
+
+                    {/* Total */}
+                    <td className="px-4 py-3 text-right">
+                      {day.workedMin > 0 ? (
+                        <div>
+                          <span className="font-mono text-xs font-semibold text-gray-700">{hm(day.workedMin)}</span>
+                          {day.extraMin > 0 && <span className="block font-mono text-xs text-amber-600">+{hm(day.extraMin)} extra</span>}
+                          {day.lateMin > 0 && <span className="block font-mono text-xs text-red-500">-{hm(day.lateMin)} atraso</span>}
+                        </div>
+                      ) : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
+
+                    {/* Ações */}
+                    <td className="px-4 py-3 text-right relative">
+                      {day.canAct && (
+                        <button onClick={() => setOpenMenu(openMenu === day.dateStr ? null : day.dateStr)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+                          <MoreVertical size={16} />
+                        </button>
+                      )}
+                      {openMenu === day.dateStr && (
+                        <>
+                          <div className="fixed inset-0 z-30" onClick={() => setOpenMenu(null)} />
+                          <div className="absolute right-2 top-10 z-40 w-52 bg-white border border-gray-200 rounded-xl shadow-xl py-1 text-left">
+                            <button onClick={() => openEdit(day)}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                              <PenLine size={13} /> Editar marcações
+                            </button>
+                            <button onClick={() => { setOpenMenu(null); setSituationDay(day); }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                              <Plus size={13} /> Inserir situação…
+                            </button>
+                            {situacoes.length > 0 && <div className="border-t border-gray-100 my-1" />}
+                            <div className="max-h-48 overflow-y-auto">
+                              {situacoes.map(s => (
+                                <button key={s.code} onClick={() => quickSituation(day, s.code)}
+                                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
+                                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${DOT_CLS[s.color] || DOT_CLS.gray}`} />
+                                  {s.name}
+                                </button>
+                              ))}
+                            </div>
+                            {day.override && (
+                              <>
+                                <div className="border-t border-gray-100 my-1" />
+                                <button onClick={() => quickSituation(day, null)}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
+                                  <X size={13} /> Remover ajuste
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {filteredDays.length === 0 && (
+          <div className="py-12 text-center text-gray-400 text-sm">Nenhum dia neste filtro</div>
+        )}
+      </div>
+
+      {/* ── Modal de marcações ── */}
+      <Modal isOpen={!!editDay} onClose={() => setEditDay(null)}
+        title={editDay ? `Ponto — ${format(editDay.date, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}` : ''} size="md">
+        {editDay && (
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold flex-shrink-0">
+                {employee.name?.charAt(0)}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">{employee.name}</p>
+                <p className="text-xs text-gray-500 capitalize">{format(editDay.date, "EEEE, dd 'de' MMMM", { locale: ptBR })}</p>
+              </div>
+            </div>
+
+            <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-colors ${
+              editForm.absence ? 'border-orange-300 bg-orange-50' : 'border-gray-200 hover:border-gray-300'
+            }`}>
+              <input type="checkbox" checked={editForm.absence}
+                onChange={e => setEditForm(p => ({...p, absence: e.target.checked}))}
+                className="w-4 h-4 rounded accent-orange-500" />
+              <div>
+                <p className="text-sm font-medium text-gray-800">Falta justificada</p>
+                <p className="text-xs text-gray-500">Marque se o colaborador faltou com justificativa</p>
+              </div>
+            </label>
+
+            {!editForm.absence && (
+              <>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Registros de horário</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    ['entry1', '1ª Entrada', 'text-green-700'],
+                    ['exit1',  '1ª Saída', 'text-gray-600'],
+                    ['entry2', 'Entrada após intervalo', 'text-gray-600'],
+                    ['exit2',  'Saída final', 'text-green-700'],
+                  ].map(([field, label, cls]) => (
+                    <div key={field}>
+                      <label className={`label text-xs ${cls}`}>{label}</label>
+                      <input type="time" className="input" value={editForm[field]}
+                        onChange={e => setEditForm(p => ({...p, [field]: e.target.value}))} />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400">Jornada da escala: {escalaHoras} · tolerância {escala.tolerance_minutes ?? 10} min.</p>
+              </>
+            )}
+
+            <div className="flex gap-2 pt-2 border-t border-gray-100">
+              <button type="button" onClick={() => setEditDay(null)} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={saveEdit} disabled={saveMut.isPending} className="btn-primary flex-1">
+                {saveMut.isPending ? 'Salvando...' : 'Salvar Ponto'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Modal de ajuste de situação ── */}
+      {situationDay && (
+        <SituationModal day={situationDay} employee={employee} escala={escala}
+          situacoes={situacoes} onClose={() => setSituationDay(null)} />
+      )}
+    </div>
+  );
+}
+
+// ══ TAB PONTO (lista ↔ gestão) ════════════════════════════
+export function TabPonto({ employee }) {
+  const { setEmployee } = useHR();
+  if (!employee) return <PontoEmployeeList onSelect={setEmployee} />;
+  return <PontoManager employee={employee} onBack={() => setEmployee(null)} />;
 }
 
 // ══ TAB FÉRIAS ════════════════════════════════════════════
@@ -582,7 +1152,7 @@ export function TabDocumentos({ employee }) {
   );
 }
 
-// ══ LAYOUT PRINCIPAL (com Outlet para sub-rotas) ══════════
+// ══ LAYOUT PRINCIPAL ══════════════════════════════════════
 function HRLayoutInner() {
   const { employee, setEmployee } = useHR();
 
@@ -593,7 +1163,6 @@ function HRLayoutInner() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="page-header">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-violet-100 rounded-lg flex items-center justify-center">
@@ -606,7 +1175,6 @@ function HRLayoutInner() {
         </div>
       </div>
 
-      {/* KPIs resumo */}
       {summary && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
@@ -623,15 +1191,13 @@ function HRLayoutInner() {
         </div>
       )}
 
-      {/* Seletor de colaborador (compartilhado entre sub-rotas) */}
       <div className="card p-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Colaborador</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Colaborador selecionado</p>
         <div className="relative">
           <EmployeeSelector selected={employee} onSelect={setEmployee}/>
         </div>
       </div>
 
-      {/* Conteúdo da sub-rota */}
       <Outlet />
     </div>
   );
