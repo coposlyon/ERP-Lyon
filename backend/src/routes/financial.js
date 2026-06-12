@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+const { audit } = require('../lib/audit');
 
 router.get('/receivables', async (req, res) => {
   const { page = 1, limit = 50, status, start_date, end_date } = req.query;
@@ -83,6 +84,9 @@ router.post('/pay/:id', async (req, res) => {
       .single();
 
     if (error) throw error;
+    audit(req, 'payment', 'financial', req.params.id, {
+      description: transaction.description, paid_amount, status, payment_method,
+    });
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -102,6 +106,7 @@ router.post('/', async (req, res) => {
       document_number: document_number || null, installment: 1, total_installments: 1,
     }).select().single();
     if (error) throw error;
+    audit(req, 'create', 'financial', data.id, { description, type, amount, due_date });
     res.status(201).json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

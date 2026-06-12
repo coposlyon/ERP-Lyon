@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const supabase = require('../config/supabase');
+const { audit } = require('../lib/audit');
 
 // ── Helpers INSS / IRRF Brasil (tabela 2024) ──────────────
 function calcINSS(gross) {
@@ -295,6 +296,10 @@ router.put('/timesheet/situation', async (req, res) => {
       .upsert(payload, { onConflict: 'tenant_id,employee_id,work_date' })
       .select().single();
     if (error) throw error;
+    audit(req, 'situation', 'ponto', `${employee_id}:${work_date}`, {
+      override_situation: override_situation || null,
+      override_note: override_note || null,
+    });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -448,6 +453,7 @@ router.patch('/payroll/:id/status', async (req, res) => {
       .eq('id', req.params.id).eq('tenant_id', req.tenantId)
       .select().single();
     if (error) throw error;
+    audit(req, 'status', 'payroll', req.params.id, { status, net_salary: data?.net_salary });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

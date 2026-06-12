@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+const { audit } = require('../lib/audit');
 
 /**
  * POST /api/employees/access
@@ -60,6 +61,11 @@ router.post('/access', async (req, res) => {
 
     if (profileError) throw profileError;
 
+    audit(req, 'access', 'employee', customer_id || authUserId, {
+      email,
+      password_changed: !!password,
+      modules: Array.isArray(allowed_modules) ? allowed_modules.length : 0,
+    });
     res.json({ success: true, user_id: authUserId });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Erro ao criar acesso' });
@@ -82,6 +88,7 @@ router.delete('/access/:userId', async (req, res) => {
       .eq('id', req.params.userId)
       .eq('tenant_id', req.tenantId);
 
+    audit(req, 'revoke', 'user', req.params.userId, null);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

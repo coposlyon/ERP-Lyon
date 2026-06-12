@@ -19,6 +19,7 @@ import Fiscal from '@/pages/Fiscal/Fiscal';
 import Reports from '@/pages/Reports/Reports';
 import Settings from '@/pages/Settings/Settings';
 import Users from '@/pages/Settings/Users';
+import Audit from '@/pages/Settings/Audit';
 import Quotes from '@/pages/Quotes/Quotes';
 import QuoteForm from '@/pages/Quotes/QuoteForm';
 import Customizations from '@/pages/Customizations/Customizations';
@@ -102,6 +103,7 @@ function AppRoutes() {
         {/* Config */}
         <Route path="settings" element={<Mod m="settings"><Settings /></Mod>} />
         <Route path="users" element={<AdminOnly><Users /></AdminOnly>} />
+        <Route path="audit" element={<AdminOnly><Audit /></AdminOnly>} />
         {/* Novos módulos */}
         <Route path="returns"  element={<Mod m="returns"><Returns /></Mod>}  />
         <Route path="quality"  element={<Mod m="quality"><Quality /></Mod>}  />

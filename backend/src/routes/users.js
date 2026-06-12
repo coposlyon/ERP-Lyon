@@ -1,6 +1,7 @@
 const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
+const { audit } = require('../lib/audit');
 
 // O index.js já aplica requireRole(['admin']) neste router inteiro.
 
@@ -47,6 +48,7 @@ router.post('/', async (req, res) => {
       .select('id, name, email, role, is_active, allowed_modules')
       .single();
     if (error) throw error;
+    audit(req, 'create', 'user', data.id, { email, role });
     res.status(201).json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -77,6 +79,7 @@ router.patch('/:id', async (req, res) => {
       .select('id, name, email, role, is_active, allowed_modules')
       .single();
     if (error) throw error;
+    audit(req, 'update', 'user', data.id, upd);
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -95,6 +98,7 @@ router.post('/:id/password', async (req, res) => {
 
     const { error } = await supabase.auth.admin.updateUserById(req.params.id, { password });
     if (error) throw error;
+    audit(req, 'password', 'user', req.params.id, null);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

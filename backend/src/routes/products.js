@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+const { audit } = require('../lib/audit');
 
 router.get('/', async (req, res) => {
   const { page = 1, limit = 50, search, category_id, is_active } = req.query;
@@ -157,6 +158,7 @@ router.post('/', async (req, res) => {
       .single();
 
     if (error) throw error;
+    audit(req, 'create', 'product', data.id, { name: data.name, code, sale_price, cost_price });
     res.status(201).json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -172,6 +174,14 @@ router.put('/:id', async (req, res) => {
   } = req.body;
 
   try {
+    // captura preços atuais para a trilha de auditoria
+    const { data: before } = await supabase
+      .from('PRODUTOS')
+      .select('cost_price, sale_price')
+      .eq('id', req.params.id)
+      .eq('tenant_id', req.tenantId)
+      .maybeSingle();
+
     const { data, error } = await supabase
       .from('PRODUTOS')
       .update({
@@ -192,6 +202,14 @@ router.put('/:id', async (req, res) => {
       .single();
 
     if (error) throw error;
+
+    const details = { name: data.name };
+    if (before && Number(before.sale_price) !== Number(data.sale_price))
+      details.sale_price = { de: before.sale_price, para: data.sale_price };
+    if (before && Number(before.cost_price) !== Number(data.cost_price))
+      details.cost_price = { de: before.cost_price, para: data.cost_price };
+    audit(req, 'update', 'product', data.id, details);
+
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -207,6 +225,7 @@ router.delete('/:id', async (req, res) => {
       .eq('tenant_id', req.tenantId);
 
     if (error) throw error;
+    audit(req, 'delete', 'product', req.params.id, null);
     res.json({ message: 'Produto desativado com sucesso' });
   } catch (err) {
     res.status(500).json({ error: err.message });

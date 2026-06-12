@@ -32,6 +32,7 @@ const employeesRoutes       = require('./employees');
 const escalasRoutes         = require('./escalas');
 const situacoesRoutes       = require('./situacoes');
 const usersRoutes           = require('./users');
+const auditRoutes           = require('./audit');
 
 router.use('/auth', authRoutes);
 router.use('/cnpj', cnpjRoutes);   // público — sem auth
@@ -66,8 +67,9 @@ router.use('/hr',        requireModules('hr'), hrRoutes);
 router.use('/escalas',   requireModules('hr','employees','settings'), escalasRoutes);
 router.use('/situacoes', requireModules('hr','settings'), situacoesRoutes);
 
-// Gestão de acessos/usuários — somente administradores
+// Gestão de acessos/usuários e auditoria — somente administradores
 router.use('/employees', requireRole(['admin']), employeesRoutes);
 router.use('/users',     requireRole(['admin']), usersRoutes);
+router.use('/audit',     requireRole(['admin']), auditRoutes);
 
 module.exports = router;

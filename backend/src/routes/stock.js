@@ -3,6 +3,7 @@ const router  = express.Router();
 const multer  = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const supabase = require('../config/supabase');
+const { audit } = require('../lib/audit');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -70,6 +71,7 @@ router.post('/adjustment', async (req, res) => {
       p_user_id:        req.user.id,
       p_notes:          notes,
     });
+    audit(req, 'adjustment', 'stock', product_id, { quantity, notes });
     res.json({ message: 'Ajuste de estoque aplicado com sucesso' });
   } catch (err) {
     res.status(500).json({ error: err.message });

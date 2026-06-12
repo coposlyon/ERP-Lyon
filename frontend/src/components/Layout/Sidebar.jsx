@@ -7,7 +7,7 @@ import {
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
-  Clock, Umbrella, DollarSign,
+  Clock, Umbrella, DollarSign, ScrollText,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -113,8 +113,9 @@ const menuItems = [
     label: 'Configurações',
     icon: Settings,
     children: [
-      { label: 'Geral',    path: '/settings', icon: Settings, module: 'settings' },
-      { label: 'Usuários', path: '/users',    icon: Users,    adminOnly: true },
+      { label: 'Geral',     path: '/settings', icon: Settings,   module: 'settings' },
+      { label: 'Usuários',  path: '/users',    icon: Users,      adminOnly: true },
+      { label: 'Auditoria', path: '/audit',    icon: ScrollText, adminOnly: true },
     ],
   },
 ];

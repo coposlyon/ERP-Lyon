@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+const { audit } = require('../lib/audit');
 
 router.get('/', async (req, res) => {
   const { page = 1, limit = 50, status, type, start_date, end_date, search } = req.query;
@@ -107,6 +108,9 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: error.message.replace(/^.*?:\s*/, '') });
     }
 
+    audit(req, 'create', 'sale', data?.id, {
+      number: data?.number, total: data?.total, items: items.length, payment_method,
+    });
     res.status(201).json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
