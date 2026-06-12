@@ -50,6 +50,87 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- ============================================================
+-- 4b. RH — TABELAS BASE (ponto, férias, folha, documentos)
+--     Precisam existir para o módulo de RH funcionar. A FK para
+--     CLIENTES habilita os JOINs (CLIENTES(...)) do PostgREST.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS "RH_PONTO" (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id          UUID NOT NULL,
+  employee_id        UUID NOT NULL REFERENCES "CLIENTES"(id) ON DELETE CASCADE,
+  work_date          DATE NOT NULL,
+  entry1             TIME,
+  exit1              TIME,
+  entry2             TIME,
+  exit2              TIME,
+  total_minutes      INT DEFAULT 0,
+  extra_minutes      INT DEFAULT 0,
+  expected_minutes   INT DEFAULT 0,
+  late_minutes       INT DEFAULT 0,
+  status             TEXT,
+  escala_id          UUID,
+  absence            BOOLEAN DEFAULT false,
+  justification      TEXT,
+  notes              TEXT,
+  override_situation TEXT,
+  override_note      TEXT,
+  override_minutes   INT,
+  created_at         TIMESTAMPTZ DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS rh_ponto_uniq_idx
+  ON "RH_PONTO" (tenant_id, employee_id, work_date);
+
+CREATE TABLE IF NOT EXISTS "RH_FERIAS" (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL,
+  employee_id UUID NOT NULL REFERENCES "CLIENTES"(id) ON DELETE CASCADE,
+  start_date  DATE NOT NULL,
+  end_date    DATE NOT NULL,
+  days        INT,
+  status      TEXT DEFAULT 'scheduled',
+  approved_by UUID,
+  notes       TEXT,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS "RH_SALARIOS" (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL,
+  employee_id      UUID NOT NULL REFERENCES "CLIENTES"(id) ON DELETE CASCADE,
+  reference_month  TEXT NOT NULL,
+  base_salary      NUMERIC(12,2) DEFAULT 0,
+  bonus            NUMERIC(12,2) DEFAULT 0,
+  overtime_pay     NUMERIC(12,2) DEFAULT 0,
+  other_additions  NUMERIC(12,2) DEFAULT 0,
+  gross_salary     NUMERIC(12,2) DEFAULT 0,
+  inss_deduction   NUMERIC(12,2) DEFAULT 0,
+  irrf_deduction   NUMERIC(12,2) DEFAULT 0,
+  other_deductions NUMERIC(12,2) DEFAULT 0,
+  fgts_value       NUMERIC(12,2) DEFAULT 0,
+  net_salary       NUMERIC(12,2) DEFAULT 0,
+  status           TEXT DEFAULT 'draft',
+  payment_method   TEXT,
+  payment_date     DATE,
+  notes            TEXT,
+  created_at       TIMESTAMPTZ DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS rh_salarios_uniq_idx
+  ON "RH_SALARIOS" (tenant_id, employee_id, reference_month);
+
+CREATE TABLE IF NOT EXISTS "RH_DOCUMENTOS" (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL,
+  employee_id   UUID NOT NULL REFERENCES "CLIENTES"(id) ON DELETE CASCADE,
+  type          TEXT NOT NULL,
+  description   TEXT,
+  document_date DATE,
+  file_url      TEXT,
+  notes         TEXT,
+  created_at    TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================================
 -- 5. RH — ESCALAS DE TRABALHO
 --    Define jornada diária esperada, dias da semana e tolerância.
 --    daily_minutes = jornada esperada por dia (480 = 8h)
@@ -190,7 +271,7 @@ ALTER TABLE "RH_PONTO"
 CREATE TABLE IF NOT EXISTS "RH_MARCACOES" (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id     UUID NOT NULL,
-  employee_id   UUID NOT NULL,
+  employee_id   UUID NOT NULL REFERENCES "CLIENTES"(id) ON DELETE CASCADE,
   work_date     DATE NOT NULL,
   punch_time    TIME NOT NULL,
   punched_at    TIMESTAMPTZ DEFAULT now(),
