@@ -9,6 +9,12 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    // O backend (Express) serve os arquivos estáticos de backend/public.
+    // Buildar direto lá garante que o que roda é sempre a versão atual.
+    outDir: path.resolve(__dirname, '../backend/public'),
+    emptyOutDir: true,
+  },
   server: {
     port: 5173,
     proxy: {

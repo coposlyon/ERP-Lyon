@@ -169,18 +169,20 @@ function buildDay(date, entry, escala, admDate, todayStart, situMap) {
 function PontoEmployeeList({ onSelect }) {
   const [page, setPage]     = useState(1);
   const [search, setSearch] = useState('');
+  const [sort, setSort]     = useState('name');
   const limit = 10;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['ponto-emp-list', page, search],
-    queryFn: () => api.get(`/customers?type=CO&page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
+    queryKey: ['ponto-emp-list', page, search, sort],
+    queryFn: () => api.get(`/customers?type=CO&sort=${sort}&page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
   });
 
   const list  = data?.data || [];
   const total = data?.total || 0;
   const pages = Math.max(1, Math.ceil(total / limit));
 
-  function onSearch(v) { setSearch(v); setPage(1); }
+  function onSearch(v)     { setSearch(v); setPage(1); }
+  function onSortChange(v) { setSort(v);   setPage(1); }
 
   return (
     <div className="space-y-4">
@@ -189,10 +191,23 @@ function PontoEmployeeList({ onSelect }) {
           <h3 className="font-semibold text-gray-800">Colaboradores</h3>
           <p className="text-xs text-gray-400">Selecione um colaborador para gerir o ponto · {total} no total</p>
         </div>
-        <div className="relative max-w-xs w-full">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input className="input pl-9 text-sm" placeholder="Buscar por nome, CPF, código..."
-            value={search} onChange={e => onSearch(e.target.value)} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {[
+              { key:'name',   label:'A–Z' },
+              { key:'recent', label:'Últimos admitidos' },
+            ].map(o => (
+              <button key={o.key} onClick={() => onSortChange(o.key)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  sort === o.key ? 'bg-white shadow text-violet-700' : 'text-gray-500 hover:text-gray-700'
+                }`}>{o.label}</button>
+            ))}
+          </div>
+          <div className="relative w-56">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input pl-9 text-sm" placeholder="Buscar..."
+              value={search} onChange={e => onSearch(e.target.value)} />
+          </div>
         </div>
       </div>
 

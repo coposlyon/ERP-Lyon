@@ -9,15 +9,23 @@ const upload = multer({
 });
 
 router.get('/', async (req, res) => {
-  const { page = 1, limit = 50, search, type, is_active, rating } = req.query;
+  const { page = 1, limit = 50, search, type, is_active, rating, sort } = req.query;
   const offset = (page - 1) * limit;
 
   try {
     let query = supabase
       .from('CLIENTES')
       .select('*', { count: 'exact' })
-      .eq('tenant_id', req.tenantId)
-      .order('display_id', { ascending: true });
+      .eq('tenant_id', req.tenantId);
+
+    // Ordenação: alfabética (padrão) | recent = últimos admitidos
+    if (sort === 'name') {
+      query = query.order('name', { ascending: true });
+    } else if (sort === 'recent') {
+      query = query.order('display_id', { ascending: false });
+    } else {
+      query = query.order('display_id', { ascending: true });
+    }
 
     if (search) {
       const isNumeric = /^\d+$/.test(search.trim());
