@@ -7,6 +7,7 @@ import {
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
+  Clock, Umbrella, DollarSign,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -92,9 +93,14 @@ const menuItems = [
     path: '/crm',
   },
   {
-    label: 'RH',
+    label: 'Recursos Humanos',
     icon: UserCog,
-    path: '/hr',
+    children: [
+      { label: 'Gestão de Pontos',    path: '/hr/ponto',      icon: Clock      },
+      { label: 'Férias',              path: '/hr/ferias',     icon: Umbrella   },
+      { label: 'Folha de Pagamento',  path: '/hr/folha',      icon: DollarSign },
+      { label: 'Documentos',          path: '/hr/documentos', icon: FileText   },
+    ],
   },
   {
     label: 'Configurações',

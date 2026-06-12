@@ -30,6 +30,10 @@ import Returns from '@/pages/Returns/Returns';
 import Quality from '@/pages/Quality/Quality';
 import CRM from '@/pages/CRM/CRM';
 import HR from '@/pages/HR/HR';
+import HRPonto from '@/pages/HR/HRPonto';
+import HRFerias from '@/pages/HR/HRFerias';
+import HRFolha from '@/pages/HR/HRFolha';
+import HRDocumentos from '@/pages/HR/HRDocumentos';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -88,7 +92,13 @@ function AppRoutes() {
         <Route path="returns"  element={<Returns />}  />
         <Route path="quality"  element={<Quality />}  />
         <Route path="crm"      element={<CRM />}      />
-        <Route path="hr"       element={<HR />}       />
+        <Route path="hr" element={<HR />}>
+          <Route index element={<Navigate to="ponto" replace />} />
+          <Route path="ponto"      element={<HRPonto />} />
+          <Route path="ferias"     element={<HRFerias />} />
+          <Route path="folha"      element={<HRFolha />} />
+          <Route path="documentos" element={<HRDocumentos />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

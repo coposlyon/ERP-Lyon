@@ -1,20 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { Outlet } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Users, Clock, Umbrella, DollarSign, FileText,
   Plus, Trash2, Check, ChevronLeft, ChevronRight,
-  AlertCircle, CheckCircle,
 } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
 import { format, parseISO, getDaysInMonth, startOfMonth, addMonths, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { HRProvider, useHR } from './HRContext';
 
-const fmt  = v => new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(v||0);
-const fmtDate = d => { try { return format(parseISO(d), 'dd/MM/yyyy', { locale:ptBR }); } catch { return d||'—'; } };
+export const fmt     = v => new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(v||0);
+export const fmtDate = d => { try { return format(parseISO(d), 'dd/MM/yyyy', { locale:ptBR }); } catch { return d||'—'; } };
 
-const DOC_TYPES = {
+export const DOC_TYPES = {
   ctps:        { l:'CTPS',         cls:'bg-blue-100   text-blue-700'  },
   aso:         { l:'ASO',          cls:'bg-teal-100   text-teal-700'  },
   contrato:    { l:'Contrato',     cls:'bg-indigo-100 text-indigo-700'},
@@ -24,21 +25,21 @@ const DOC_TYPES = {
   outros:      { l:'Outros',       cls:'bg-gray-100   text-gray-600'  },
 };
 
-const VACATION_STATUS = {
+export const VACATION_STATUS = {
   scheduled: { l:'Agendado', cls:'bg-blue-100   text-blue-700' },
   active:    { l:'Em curso', cls:'bg-green-100  text-green-700'},
   completed: { l:'Concluído',cls:'bg-gray-100   text-gray-500' },
   cancelled: { l:'Cancelado',cls:'bg-red-100    text-red-700'  },
 };
 
-const PAYROLL_STATUS = {
+export const PAYROLL_STATUS = {
   draft:    { l:'Rascunho', cls:'bg-gray-100   text-gray-600'  },
   approved: { l:'Aprovado', cls:'bg-blue-100   text-blue-700'  },
   paid:     { l:'Pago',     cls:'bg-green-100  text-green-700' },
 };
 
 // ── Selector de colaborador ───────────────────────────────
-function EmployeeSelector({ selected, onSelect }) {
+export function EmployeeSelector({ selected, onSelect }) {
   const [search, setSearch] = useState('');
   const { data } = useQuery({
     queryKey: ['employees-hr', search],
@@ -50,6 +51,18 @@ function EmployeeSelector({ selected, onSelect }) {
       <div className="flex-1 max-w-xs relative">
         <input className="input text-sm" placeholder="Buscar colaborador..."
           value={search} onChange={e => setSearch(e.target.value)} />
+        {data?.length > 0 && search && (
+          <div className="absolute z-20 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto" style={{ top: 44 }}>
+            {data.map(e => (
+              <button key={e.id} type="button"
+                className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0"
+                onClick={() => { onSelect(e); setSearch(''); }}>
+                <span className="font-medium">{e.name}</span>
+                <span className="text-gray-400 text-xs ml-2">{e.admission_data?.sector}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {selected && (
         <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 rounded-lg border border-indigo-100">
@@ -60,18 +73,8 @@ function EmployeeSelector({ selected, onSelect }) {
             <p className="text-sm font-medium text-indigo-900">{selected.name}</p>
             <p className="text-xs text-indigo-500">{selected.admission_data?.sector || 'Colaborador'}</p>
           </div>
-        </div>
-      )}
-      {data?.length > 0 && search && (
-        <div className="absolute z-20 top-full left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto" style={{ top: 44 }}>
-          {data.map(e => (
-            <button key={e.id} type="button"
-              className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0"
-              onClick={() => { onSelect(e); setSearch(''); }}>
-              <span className="font-medium">{e.name}</span>
-              <span className="text-gray-400 text-xs ml-2">{e.admission_data?.sector}</span>
-            </button>
-          ))}
+          <button type="button" onClick={() => onSelect(null)}
+            className="ml-1 text-indigo-300 hover:text-indigo-600 text-xs">✕</button>
         </div>
       )}
     </div>
@@ -79,12 +82,11 @@ function EmployeeSelector({ selected, onSelect }) {
 }
 
 // ══ TAB PONTO ════════════════════════════════════════════
-function TabPonto({ employee }) {
+export function TabPonto({ employee }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const qc = useQueryClient();
-  const monthStr = format(currentMonth, 'yyyy-MM');
+  const monthStr    = format(currentMonth, 'yyyy-MM');
   const daysInMonth = getDaysInMonth(currentMonth);
-  const firstDay    = startOfMonth(currentMonth);
   const monthLabel  = format(currentMonth, 'MMMM yyyy', { locale: ptBR });
 
   const { data: entries = [] } = useQuery({
@@ -119,17 +121,16 @@ function TabPonto({ employee }) {
   if (!employee) return (
     <div className="flex flex-col items-center justify-center py-16 text-gray-400">
       <Clock size={40} className="mb-3 opacity-30"/>
-      <p className="text-sm">Selecione um colaborador para ver o ponto</p>
+      <p className="text-sm">Selecione um colaborador acima para ver o ponto</p>
     </div>
   );
 
-  const totalHours  = entries.reduce((s,e) => s + (e.total_minutes||0), 0);
-  const extraHours  = entries.reduce((s,e) => s + (e.extra_minutes||0), 0);
-  const absences    = entries.filter(e => e.absence).length;
+  const totalHours = entries.reduce((s,e) => s + (e.total_minutes||0), 0);
+  const extraHours = entries.reduce((s,e) => s + (e.extra_minutes||0), 0);
+  const absences   = entries.filter(e => e.absence).length;
 
   return (
     <div className="space-y-4">
-      {/* Controle de mês */}
       <div className="flex items-center gap-3">
         <button onClick={() => setCurrentMonth(p => subMonths(p,1))} className="btn-secondary btn-sm p-1.5"><ChevronLeft size={16}/></button>
         <h3 className="font-semibold text-gray-700 capitalize min-w-36 text-center">{monthLabel}</h3>
@@ -141,7 +142,6 @@ function TabPonto({ employee }) {
         </div>
       </div>
 
-      {/* Grid de ponto */}
       <div className="card overflow-x-auto">
         <table className="table-auto text-xs">
           <thead>
@@ -154,11 +154,11 @@ function TabPonto({ employee }) {
           </thead>
           <tbody>
             {Array.from({ length: daysInMonth }, (_,i) => {
-              const d    = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i+1);
-              const ds   = format(d, 'yyyy-MM-dd');
-              const dow  = d.getDay();
+              const d   = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i+1);
+              const ds  = format(d, 'yyyy-MM-dd');
+              const dow = d.getDay();
               const isWe = dow === 0 || dow === 6;
-              const en   = entryMap[ds];
+              const en  = entryMap[ds];
               const dow_l = format(d, 'EEE', { locale: ptBR });
               return (
                 <tr key={ds} className={`${isWe ? 'bg-gray-50/80 text-gray-400' : ''} ${en?.absence ? 'bg-red-50/50' : ''}`}>
@@ -195,7 +195,7 @@ function TabPonto({ employee }) {
 }
 
 // ══ TAB FÉRIAS ════════════════════════════════════════════
-function TabFerias({ employee }) {
+export function TabFerias({ employee }) {
   const [modalNew, setModalNew] = useState(false);
   const [form, setForm] = useState({ start_date:'', end_date:'', notes:'' });
   const qc = useQueryClient();
@@ -222,7 +222,7 @@ function TabFerias({ employee }) {
   if (!employee) return (
     <div className="flex flex-col items-center justify-center py-16 text-gray-400">
       <Umbrella size={40} className="mb-3 opacity-30"/>
-      <p className="text-sm">Selecione um colaborador</p>
+      <p className="text-sm">Selecione um colaborador acima</p>
     </div>
   );
 
@@ -307,10 +307,10 @@ function TabFerias({ employee }) {
 }
 
 // ══ TAB FOLHA ═════════════════════════════════════════════
-function TabFolha({ employee }) {
+export function TabFolha({ employee }) {
   const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'));
-  const [form, setForm] = useState({ base_salary:'', bonus:'0', overtime_pay:'0', other_additions:'0', other_deductions:'0', payment_method:'', notes:'' });
-  const [preview, setPreview] = useState(null);
+  const [form, setForm]   = useState({ base_salary:'', bonus:'0', overtime_pay:'0', other_additions:'0', other_deductions:'0', payment_method:'', notes:'' });
+  const [preview, setPreview]   = useState(null);
   const [modalNew, setModalNew] = useState(false);
   const qc = useQueryClient();
 
@@ -331,7 +331,7 @@ function TabFolha({ employee }) {
         other_deductions: Number(form.other_deductions||0),
       });
       setPreview(res);
-    } catch(e) { toast.error('Erro ao simular'); }
+    } catch { toast.error('Erro ao simular'); }
   }
 
   const createMut = useMutation({
@@ -347,21 +347,18 @@ function TabFolha({ employee }) {
   if (!employee) return (
     <div className="flex flex-col items-center justify-center py-16 text-gray-400">
       <DollarSign size={40} className="mb-3 opacity-30"/>
-      <p className="text-sm">Selecione um colaborador</p>
+      <p className="text-sm">Selecione um colaborador acima</p>
     </div>
   );
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <input type="month" className="input w-40 text-sm" value={month}
-            onChange={e => setMonth(e.target.value)} />
-        </div>
+        <input type="month" className="input w-40 text-sm" value={month}
+          onChange={e => setMonth(e.target.value)} />
         <button onClick={() => setModalNew(true)} className="btn-primary btn-sm"><Plus size={14}/> Gerar Folha</button>
       </div>
 
-      {/* Lista folhas */}
       <div className="card overflow-x-auto">
         <table className="table-auto">
           <thead>
@@ -409,14 +406,12 @@ function TabFolha({ employee }) {
         </table>
       </div>
 
-      {/* Modal gerar folha */}
       <Modal isOpen={modalNew} onClose={() => { setModalNew(false); setPreview(null); }} title="Gerar Folha de Pagamento" size="lg">
         <div className="space-y-4">
           <div className="bg-indigo-50 rounded-xl p-3">
             <p className="text-sm font-semibold text-indigo-800">{employee.name}</p>
             <p className="text-xs text-indigo-500">Mês de referência: <strong>{month}</strong></p>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             {[
               ['base_salary', 'Salário base *', true],
@@ -441,12 +436,10 @@ function TabFolha({ employee }) {
               </select>
             </div>
           </div>
-
           <button type="button" onClick={simulate}
             className="w-full py-2 border-2 border-dashed border-indigo-300 text-indigo-700 rounded-xl text-sm font-medium hover:bg-indigo-50 transition-colors">
             Simular cálculo
           </button>
-
           {preview && (
             <div className="bg-gray-50 rounded-xl p-4 space-y-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Resultado da simulação</p>
@@ -462,7 +455,6 @@ function TabFolha({ employee }) {
               </div>
             </div>
           )}
-
           <div className="flex gap-2">
             <button type="button" onClick={() => { setModalNew(false); setPreview(null); }} className="btn-secondary flex-1">Cancelar</button>
             <button
@@ -479,7 +471,7 @@ function TabFolha({ employee }) {
 }
 
 // ══ TAB DOCUMENTOS ════════════════════════════════════════
-function TabDocumentos({ employee }) {
+export function TabDocumentos({ employee }) {
   const [modalNew, setModalNew] = useState(false);
   const [form, setForm] = useState({ type:'ctps', description:'', document_date:'', file_url:'', notes:'' });
   const qc = useQueryClient();
@@ -503,7 +495,7 @@ function TabDocumentos({ employee }) {
   if (!employee) return (
     <div className="flex flex-col items-center justify-center py-16 text-gray-400">
       <FileText size={40} className="mb-3 opacity-30"/>
-      <p className="text-sm">Selecione um colaborador</p>
+      <p className="text-sm">Selecione um colaborador acima</p>
     </div>
   );
 
@@ -590,17 +582,9 @@ function TabDocumentos({ employee }) {
   );
 }
 
-// ══ PÁGINA PRINCIPAL ══════════════════════════════════════
-const TABS = [
-  { key:'ponto',     label:'Ponto',      icon: Clock      },
-  { key:'ferias',    label:'Férias',     icon: Umbrella   },
-  { key:'folha',     label:'Folha',      icon: DollarSign },
-  { key:'docs',      label:'Documentos', icon: FileText   },
-];
-
-export default function HR() {
-  const [tab, setTab]             = useState('ponto');
-  const [employee, setEmployee]   = useState(null);
+// ══ LAYOUT PRINCIPAL (com Outlet para sub-rotas) ══════════
+function HRLayoutInner() {
+  const { employee, setEmployee } = useHR();
 
   const { data: summary } = useQuery({
     queryKey: ['rh-summary'],
@@ -617,19 +601,19 @@ export default function HR() {
           </div>
           <div>
             <h1 className="page-title">Recursos Humanos</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Ponto, Férias, Folha de Pagamento e Documentos</p>
+            <p className="text-sm text-gray-500 mt-0.5">Ponto · Férias · Folha · Documentos</p>
           </div>
         </div>
       </div>
 
-      {/* Resumo mês */}
+      {/* KPIs resumo */}
       {summary && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label:'Folha líquida (mês)', val: fmt(summary.payroll?.total_net),     cls:'text-green-700 text-lg' },
-            { label:'Folha bruta (mês)',   val: fmt(summary.payroll?.total_gross),   cls:'text-gray-800 text-lg' },
-            { label:'Férias agendadas',    val: summary.vacation  || 0,              cls:'text-blue-700'          },
-            { label:'Horas extras (mês)',  val: `${summary.extra_hours||0}h`,        cls:'text-orange-700'        },
+            { label:'Folha líquida (mês)', val: fmt(summary.payroll?.total_net),   cls:'text-green-700 text-lg' },
+            { label:'Folha bruta (mês)',   val: fmt(summary.payroll?.total_gross), cls:'text-gray-800 text-lg'  },
+            { label:'Férias agendadas',    val: summary.vacation || 0,             cls:'text-blue-700'           },
+            { label:'Horas extras (mês)',  val: `${summary.extra_hours||0}h`,      cls:'text-orange-700'         },
           ].map((s,i) => (
             <div key={i} className="card p-4 text-center">
               <p className={`font-bold ${s.cls}`}>{s.val}</p>
@@ -639,7 +623,7 @@ export default function HR() {
         </div>
       )}
 
-      {/* Seletor de colaborador */}
+      {/* Seletor de colaborador (compartilhado entre sub-rotas) */}
       <div className="card p-4">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Colaborador</p>
         <div className="relative">
@@ -647,26 +631,16 @@ export default function HR() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        {TABS.map(t => {
-          const Icon = t.icon;
-          return (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                tab===t.key ? 'bg-white shadow text-violet-700' : 'text-gray-500 hover:text-gray-800'
-              }`}>
-              <Icon size={14}/>{t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Conteúdo */}
-      {tab === 'ponto'  && <TabPonto     employee={employee}/>}
-      {tab === 'ferias' && <TabFerias    employee={employee}/>}
-      {tab === 'folha'  && <TabFolha     employee={employee}/>}
-      {tab === 'docs'   && <TabDocumentos employee={employee}/>}
+      {/* Conteúdo da sub-rota */}
+      <Outlet />
     </div>
+  );
+}
+
+export default function HR() {
+  return (
+    <HRProvider>
+      <HRLayoutInner />
+    </HRProvider>
   );
 }
