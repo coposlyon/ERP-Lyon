@@ -38,6 +38,7 @@ import HRFerias from '@/pages/HR/HRFerias';
 import HRFolha from '@/pages/HR/HRFolha';
 import HRDocumentos from '@/pages/HR/HRDocumentos';
 import MarcacaoPonto from '@/pages/Ponto/MarcacaoPonto';
+import StoreApp from '@/store/StoreApp';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -66,6 +67,8 @@ function AppRoutes() {
 
   return (
     <Routes>
+      {/* Loja pública — sem login, fora do ERP */}
+      <Route path="/loja/*" element={<StoreApp />} />
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       {/* App de marcação de ponto — tela cheia, todo colaborador acessa */}
       <Route path="/marcacao" element={<PrivateRoute><MarcacaoPonto /></PrivateRoute>} />
