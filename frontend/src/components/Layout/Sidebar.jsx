@@ -7,7 +7,7 @@ import {
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
-  Clock, Umbrella, DollarSign, ScrollText,
+  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -19,6 +19,12 @@ const menuItems = [
     path: '/',
     exact: true,
     // sem module: visível para todos
+  },
+  {
+    label: 'Bater Ponto',
+    icon: Fingerprint,
+    path: '/marcacao',
+    // sem module: todo colaborador pode marcar o próprio ponto
   },
   {
     label: 'Comercial',
@@ -113,9 +119,10 @@ const menuItems = [
     label: 'Configurações',
     icon: Settings,
     children: [
-      { label: 'Geral',     path: '/settings', icon: Settings,   module: 'settings' },
-      { label: 'Usuários',  path: '/users',    icon: Users,      adminOnly: true },
-      { label: 'Auditoria', path: '/audit',    icon: ScrollText, adminOnly: true },
+      { label: 'Geral',     path: '/settings', icon: Settings,     module: 'settings' },
+      { label: 'Feriados',  path: '/feriados', icon: CalendarDays, module: 'settings' },
+      { label: 'Usuários',  path: '/users',    icon: Users,        adminOnly: true },
+      { label: 'Auditoria', path: '/audit',    icon: ScrollText,   adminOnly: true },
     ],
   },
 ];

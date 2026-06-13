@@ -20,6 +20,7 @@ import Reports from '@/pages/Reports/Reports';
 import Settings from '@/pages/Settings/Settings';
 import Users from '@/pages/Settings/Users';
 import Audit from '@/pages/Settings/Audit';
+import Feriados from '@/pages/Settings/Feriados';
 import Quotes from '@/pages/Quotes/Quotes';
 import QuoteForm from '@/pages/Quotes/QuoteForm';
 import Customizations from '@/pages/Customizations/Customizations';
@@ -36,6 +37,7 @@ import HRPonto from '@/pages/HR/HRPonto';
 import HRFerias from '@/pages/HR/HRFerias';
 import HRFolha from '@/pages/HR/HRFolha';
 import HRDocumentos from '@/pages/HR/HRDocumentos';
+import MarcacaoPonto from '@/pages/Ponto/MarcacaoPonto';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -65,6 +67,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+      {/* App de marcação de ponto — tela cheia, todo colaborador acessa */}
+      <Route path="/marcacao" element={<PrivateRoute><MarcacaoPonto /></PrivateRoute>} />
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
         <Route index element={<Dashboard />} />
         {/* Produtos / Clientes / Fornecedores */}
@@ -104,6 +108,7 @@ function AppRoutes() {
         <Route path="settings" element={<Mod m="settings"><Settings /></Mod>} />
         <Route path="users" element={<AdminOnly><Users /></AdminOnly>} />
         <Route path="audit" element={<AdminOnly><Audit /></AdminOnly>} />
+        <Route path="feriados" element={<Mod m={['settings','hr']}><Feriados /></Mod>} />
         {/* Novos módulos */}
         <Route path="returns"  element={<Mod m="returns"><Returns /></Mod>}  />
         <Route path="quality"  element={<Mod m="quality"><Quality /></Mod>}  />

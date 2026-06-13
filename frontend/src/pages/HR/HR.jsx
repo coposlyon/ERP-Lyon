@@ -107,7 +107,7 @@ const DOT_CLS = {
 };
 
 // Apura um dia: calcula situação, atraso (com tolerância) e chips a exibir.
-function buildDay(date, entry, escala, admDate, todayStart, situMap) {
+function buildDay(date, entry, escala, admDate, todayStart, situMap, holidays) {
   const dateStr   = format(date, 'yyyy-MM-dd');
   const dow       = date.getDay();
   const isPast    = date < todayStart;
@@ -116,6 +116,7 @@ function buildDay(date, entry, escala, admDate, todayStart, situMap) {
   const weekdays  = (escala.weekdays && escala.weekdays.length) ? escala.weekdays : [1,2,3,4,5];
   const isWeekend = !weekdays.includes(dow);
   const isBeforeAdm = admDate ? date < admDate : false;
+  const holidayName = holidays?.[dateStr] || null;
   const expected  = escala.daily_minutes ?? 480;
   const tolerance = escala.tolerance_minutes ?? 10;
 
@@ -138,6 +139,7 @@ function buildDay(date, entry, escala, admDate, todayStart, situMap) {
   }
   else if (entry?.absence) type = 'absence';
   else if (isWeekend)      type = 'weekend';
+  else if (holidayName)    type = 'holiday';
   else if (isPast || isToday) type = 'missing';
   else                     type = 'future';
 
@@ -147,6 +149,7 @@ function buildDay(date, entry, escala, admDate, todayStart, situMap) {
     chips.push({ label: override.name, color: override.color || 'blue' });
     if (hasMarks) chips.push({ label: `Trabalhado ${hm(workedMin)}`, color: 'green' });
   }
+  else if (type === 'holiday') chips.push({ label: 'Feriado', color: 'purple' });
   else if (type === 'weekend') chips.push({ label: 'Folga', color: 'gray' });
   else if (type === 'worked')  chips.push({ label: `Trabalhando ${hm(workedMin)}`, color: 'green' });
   else if (type === 'late') {
@@ -162,7 +165,7 @@ function buildDay(date, entry, escala, admDate, todayStart, situMap) {
   const dotColor   = type === 'before' ? null : (chips[0]?.color || 'gray');
 
   return {
-    date, dateStr, dow, isPast, isToday, isFuture, isWeekend, isBeforeAdm,
+    date, dateStr, dow, isPast, isToday, isFuture, isWeekend, isBeforeAdm, holidayName,
     entry, expected, tolerance, workedMin, extraMin, lateMin, hasMarks, markTimes,
     override, type, chips, isNegative, canAct, dotColor,
   };
@@ -378,12 +381,20 @@ function PontoManager({ employee, onBack }) {
   const monthLabel  = format(currentMonth, 'MMMM yyyy', { locale: ptBR });
   const todayStart  = useMemo(() => { const t = new Date(); t.setHours(0,0,0,0); return t; }, []);
 
+  const year = currentMonth.getFullYear();
   const { data: escalas = [] }   = useQuery({ queryKey:['escalas'], queryFn:() => api.get('/escalas') });
   const { data: situacoes = [] } = useQuery({ queryKey:['situacoes-insert'], queryFn:() => api.get('/situacoes?insertable=true') });
+  const { data: holidaysList = [] } = useQuery({ queryKey:['feriados', year], queryFn:() => api.get(`/feriados?year=${year}`) });
+  const { data: hourBank }       = useQuery({ queryKey:['hour-bank', employee.id], queryFn:() => api.get(`/hr/hour-bank?employee_id=${employee.id}`) });
   const { data: entries = [] }   = useQuery({
     queryKey: ['rh-ponto', employee.id, monthStr],
     queryFn:  () => api.get(`/hr/timesheet?employee_id=${employee.id}&month=${monthStr}`),
   });
+
+  const holidays = useMemo(
+    () => Object.fromEntries((holidaysList || []).map(h => [h.date, h.name])),
+    [holidaysList]
+  );
 
   const escala = useMemo(() => {
     const adm = employee.admission_data || {};
@@ -420,9 +431,9 @@ function PontoManager({ employee, onBack }) {
     const admDate = admStr ? new Date(admStr + 'T00:00:00') : null;
     return Array.from({ length: daysInMonth }, (_, i) => {
       const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i + 1);
-      return buildDay(date, entryMap[format(date,'yyyy-MM-dd')], escala, admDate, todayStart, situMap);
+      return buildDay(date, entryMap[format(date,'yyyy-MM-dd')], escala, admDate, todayStart, situMap, holidays);
     });
-  }, [daysInMonth, currentMonth, entryMap, escala, employee, todayStart, situMap]);
+  }, [daysInMonth, currentMonth, entryMap, escala, employee, todayStart, situMap, holidays]);
 
   const stats = useMemo(() => {
     const worked    = days.filter(d => d.hasMarks).length;
@@ -533,6 +544,29 @@ function PontoManager({ employee, onBack }) {
           <p className="text-xs text-gray-500 mt-0.5">Horas{stats.extraMin ? ` · +${hm(stats.extraMin)} extra` : ''}</p>
         </div>
       </div>
+
+      {/* ── Banco de Horas ── */}
+      {hourBank && (
+        <div className="card p-3 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Clock size={16} className="text-violet-500" />
+            <span className="text-sm font-medium text-gray-600">Banco de horas (saldo acumulado)</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {(hourBank.months || []).slice(-3).map(m => (
+              <span key={m.month} className="text-xs text-gray-400">
+                {format(new Date(m.month + '-01T00:00:00'), 'MMM', { locale: ptBR })}:{' '}
+                <span className={m.liquido >= 0 ? 'text-green-600' : 'text-red-500'}>
+                  {m.liquido >= 0 ? '+' : '−'}{hm(Math.abs(m.liquido))}
+                </span>
+              </span>
+            ))}
+            <span className={`text-lg font-bold ${hourBank.saldo_atual >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+              {hourBank.saldo_atual >= 0 ? '+' : '−'}{hm(Math.abs(hourBank.saldo_atual))}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ── Alerta de faltas ── */}
       {missingDays.length > 0 && (

@@ -1,0 +1,15 @@
+{
+  "name": "Lyon Copos — Gestão Comercial",
+  "short_name": "Ponto Lyon",
+  "description": "Gestão comercial e marcação de ponto da Lyon Copos",
+  "start_url": "/marcacao",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#4338ca",
+  "theme_color": "#4338ca",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/lyon-logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/lyon-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

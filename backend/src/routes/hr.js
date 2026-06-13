@@ -311,6 +311,44 @@ router.delete('/timesheet/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── BANCO DE HORAS ─────────────────────────────────────────
+// Crédito = horas extras; Débito = atrasos + faltas (dia esperado)
+// não justificadas. Retorna saldo por mês e saldo acumulado.
+router.get('/hour-bank', async (req, res) => {
+  const { employee_id } = req.query;
+  if (!employee_id) return res.status(400).json({ error: 'employee_id é obrigatório' });
+  try {
+    const { data, error } = await supabase
+      .from('RH_PONTO')
+      .select('work_date, extra_minutes, late_minutes, expected_minutes, status, absence, override_situation')
+      .eq('tenant_id', req.tenantId).eq('employee_id', employee_id)
+      .order('work_date');
+    if (error) throw error;
+
+    const byMonth = {};
+    for (const r of (data || [])) {
+      const m = r.work_date.slice(0, 7);
+      if (!byMonth[m]) byMonth[m] = { credito: 0, debito: 0 };
+      byMonth[m].credito += r.extra_minutes || 0;
+      byMonth[m].debito  += r.late_minutes || 0;
+      // falta não abonada debita o dia esperado
+      if ((r.status === 'absence' || r.absence) && !r.override_situation) {
+        byMonth[m].debito += r.expected_minutes || 0;
+      }
+    }
+
+    let saldo = 0;
+    const rows = Object.keys(byMonth).sort().map(m => {
+      const c = byMonth[m];
+      const liquido = c.credito - c.debito;
+      saldo += liquido;
+      return { month: m, credito: c.credito, debito: c.debito, liquido, saldo };
+    });
+
+    res.json({ saldo_atual: saldo, months: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── FÉRIAS ─────────────────────────────────────────────────
 router.get('/vacation', async (req, res) => {
   const { employee_id, status } = req.query;

@@ -31,6 +31,8 @@ const hrRoutes              = require('./hr');
 const employeesRoutes       = require('./employees');
 const escalasRoutes         = require('./escalas');
 const situacoesRoutes       = require('./situacoes');
+const feriadosRoutes        = require('./feriados');
+const pontoAppRoutes        = require('./ponto-app');
 const usersRoutes           = require('./users');
 const auditRoutes           = require('./audit');
 
@@ -41,8 +43,10 @@ router.use('/cep',  cepRoutes);    // público — sem auth
 router.use(authMiddleware);
 router.use(tenantMiddleware);
 
-// Dashboard é a página inicial de todos os usuários — sem restrição de módulo.
+// Dashboard e marcação de ponto: disponíveis a todo usuário logado,
+// sem restrição de módulo (todo colaborador bate o próprio ponto).
 router.use('/dashboard', dashboardRoutes);
+router.use('/me', pontoAppRoutes);
 
 // Rotas usadas por vários módulos aceitam qualquer um deles (basta ter um).
 router.use('/products',  requireModules('products','sales','pdv','quotes','purchases','stock','customizations','price-tables','returns'), productsRoutes);
@@ -66,6 +70,7 @@ router.use('/crm',       requireModules('crm'), crmRoutes);
 router.use('/hr',        requireModules('hr'), hrRoutes);
 router.use('/escalas',   requireModules('hr','employees','settings'), escalasRoutes);
 router.use('/situacoes', requireModules('hr','settings'), situacoesRoutes);
+router.use('/feriados',  requireModules('hr','settings'), feriadosRoutes);
 
 // Gestão de acessos/usuários e auditoria — somente administradores
 router.use('/employees', requireRole(['admin']), employeesRoutes);
