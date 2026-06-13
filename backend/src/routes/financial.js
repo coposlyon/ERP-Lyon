@@ -130,4 +130,73 @@ router.get('/cashflow', async (req, res) => {
   }
 });
 
+// Fluxo de caixa PROJETADO: saldo inicial (bancos) + entradas/saídas
+// previstas (lançamentos em aberto) agrupados por mês, com saldo acumulado.
+router.get('/cashflow-projection', async (req, res) => {
+  const months = Math.min(Math.max(parseInt(req.query.months) || 6, 1), 24);
+  try {
+    // Saldo inicial = soma dos saldos das contas bancárias
+    const { data: banks } = await supabase
+      .from('CONTAS_BANCARIAS').select('balance')
+      .eq('tenant_id', req.tenantId).eq('is_active', true);
+    const saldoInicial = (banks || []).reduce((s, b) => s + (Number(b.balance) || 0), 0);
+
+    // Lançamentos em aberto (pendentes/parciais/vencidos)
+    const today = new Date();
+    const horizon = new Date(today.getFullYear(), today.getMonth() + months + 1, 0);
+    const { data: lancs, error } = await supabase
+      .from('LANCAMENTOS')
+      .select('type, amount, paid_amount, due_date, status')
+      .eq('tenant_id', req.tenantId)
+      .in('status', ['pending', 'partial', 'overdue'])
+      .lte('due_date', horizon.toISOString().split('T')[0]);
+    if (error) throw error;
+
+    const todayStr = today.toISOString().split('T')[0];
+    const monthKey = d => d.slice(0, 7); // 'YYYY-MM'
+
+    // Estrutura de meses
+    const periods = {};
+    for (let i = 0; i < months; i++) {
+      const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+      periods[monthKey(d.toISOString())] = { entradas: 0, saidas: 0 };
+    }
+
+    const vencidos = { entradas: 0, saidas: 0 };
+
+    for (const l of (lancs || [])) {
+      const restante = Math.max(0, (Number(l.amount) || 0) - (Number(l.paid_amount) || 0));
+      if (restante <= 0) continue;
+      const isEntrada = l.type === 'receivable';
+      const bucket = l.due_date < todayStr ? vencidos : periods[monthKey(l.due_date)];
+      if (!bucket) continue; // fora do horizonte
+      if (isEntrada) bucket.entradas += restante;
+      else           bucket.saidas += restante;
+    }
+
+    // Monta a série com saldo acumulado
+    let saldo = saldoInicial;
+    const rows = [];
+
+    // Vencidos entram como ajuste inicial (já deveriam ter sido pagos/recebidos)
+    saldo += vencidos.entradas - vencidos.saidas;
+
+    const meses = Object.keys(periods).sort();
+    for (const m of meses) {
+      const p = periods[m];
+      const liquido = p.entradas - p.saidas;
+      saldo += liquido;
+      rows.push({ month: m, entradas: p.entradas, saidas: p.saidas, liquido, saldo });
+    }
+
+    res.json({
+      saldo_inicial: saldoInicial,
+      vencidos,
+      periods: rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

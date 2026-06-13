@@ -236,6 +236,96 @@ function DREView() {
   );
 }
 
+// ─── Fluxo de Caixa Projetado ─────────────────────────────────────
+function CashflowView() {
+  const [months, setMonths] = useState(6);
+  const { data, isLoading } = useQuery({
+    queryKey: ['cashflow-projection', months],
+    queryFn: () => api.get(`/financial/cashflow-projection?months=${months}`),
+  });
+
+  if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary-500" /></div>;
+
+  const periods = data?.periods || [];
+  const vencidos = data?.vencidos || { entradas: 0, saidas: 0 };
+  const maxAbs = Math.max(1, ...periods.map(p => Math.max(p.entradas, p.saidas)));
+  const fmtMonth = m => { try { return format(parseISO(m + '-01'), "MMM/yy", { locale: ptBR }); } catch { return m; } };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="card px-4 py-2">
+            <p className="text-xs text-gray-500">Saldo inicial (bancos)</p>
+            <p className="font-bold text-gray-800">{fmt(data?.saldo_inicial)}</p>
+          </div>
+          {(vencidos.entradas > 0 || vencidos.saidas > 0) && (
+            <div className="card px-4 py-2 border-l-4 border-amber-400">
+              <p className="text-xs text-amber-600">Vencidos em aberto</p>
+              <p className="text-sm font-medium">
+                <span className="text-green-600">+{fmt(vencidos.entradas)}</span>
+                {' / '}
+                <span className="text-red-500">−{fmt(vencidos.saidas)}</span>
+              </p>
+            </div>
+          )}
+        </div>
+        <select className="input w-40 text-sm" value={months} onChange={e => setMonths(parseInt(e.target.value))}>
+          {[3, 6, 12].map(n => <option key={n} value={n}>Próximos {n} meses</option>)}
+        </select>
+      </div>
+
+      <div className="card overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-28">Mês</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Entradas × Saídas</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-32">Entradas</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-32">Saídas</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-32">Líquido</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-36">Saldo Projetado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {periods.map(p => (
+              <tr key={p.month} className="border-b border-gray-50 last:border-0">
+                <td className="px-4 py-3 text-sm font-medium capitalize">{fmtMonth(p.month)}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1 h-6">
+                    <div className="flex-1 flex justify-end">
+                      <div className="bg-green-400 h-3 rounded-l" style={{ width: `${(p.entradas / maxAbs) * 100}%` }} />
+                    </div>
+                    <div className="w-px h-4 bg-gray-300" />
+                    <div className="flex-1">
+                      <div className="bg-red-400 h-3 rounded-r" style={{ width: `${(p.saidas / maxAbs) * 100}%` }} />
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-right text-sm text-green-600 font-medium">{fmt(p.entradas)}</td>
+                <td className="px-4 py-3 text-right text-sm text-red-500 font-medium">{fmt(p.saidas)}</td>
+                <td className={`px-4 py-3 text-right text-sm font-semibold ${p.liquido >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                  {p.liquido >= 0 ? '+' : ''}{fmt(p.liquido)}
+                </td>
+                <td className={`px-4 py-3 text-right font-bold ${p.saldo >= 0 ? 'text-gray-800' : 'text-red-600'}`}>
+                  {fmt(p.saldo)}
+                </td>
+              </tr>
+            ))}
+            {periods.length === 0 && (
+              <tr><td colSpan={6} className="py-10 text-center text-gray-400 text-sm">Sem lançamentos previstos no período</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-400">
+        Projeção baseada nos lançamentos em aberto. O saldo de cada mês considera o saldo dos meses anteriores.
+        Configure o saldo das contas em <strong>Config. Financeira → Contas Bancárias</strong>.
+      </p>
+    </div>
+  );
+}
+
 // ─── Principal ────────────────────────────────────────────────────
 export default function Financial() {
   const [tab, setTab] = useState('receivable');
@@ -248,7 +338,7 @@ export default function Financial() {
   const { data, isLoading } = useQuery({
     queryKey: ['financial', tab, page, status],
     queryFn: () => api.get(`/financial/${tab === 'receivable' ? 'receivables' : 'payables'}?page=${page}&limit=20${status ? `&status=${status}` : ''}`),
-    enabled: tab !== 'dre',
+    enabled: tab === 'receivable' || tab === 'payable',
   });
 
   const statusClass = { pending: 'badge-yellow', partial: 'badge-blue', paid: 'badge-green', overdue: 'badge-red', cancelled: 'badge-gray' };
@@ -291,7 +381,7 @@ export default function Financial() {
         )}
       </div>
 
-      {tab !== 'dre' && (
+      {(tab === 'receivable' || tab === 'payable') && (
         <div className="grid grid-cols-3 gap-4">
           <div className="card p-4 flex items-center gap-3">
             <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center"><DollarSign size={18} className="text-gray-600" /></div>
@@ -313,16 +403,19 @@ export default function Financial() {
           {[
             ['receivable','Contas a Receber'],
             ['payable','Contas a Pagar'],
+            ['cashflow','Fluxo de Caixa'],
             ['dre','DRE / Resultado'],
           ].map(([k, l]) => (
             <button key={k} onClick={() => { setTab(k); setPage(1); }}
               className={`pb-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
-              {k === 'dre' && <FileBarChart2 size={14} />}{l}
+              {k === 'dre' && <FileBarChart2 size={14} />}{k === 'cashflow' && <TrendingUp size={14} />}{l}
             </button>
           ))}
         </div>
 
-        {tab === 'dre' ? (
+        {tab === 'cashflow' ? (
+          <div className="card-body"><CashflowView /></div>
+        ) : tab === 'dre' ? (
           <div className="card-body"><DREView /></div>
         ) : (
           <>

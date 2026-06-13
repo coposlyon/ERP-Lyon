@@ -73,10 +73,16 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { customer_id, type, items, notes, discount, delivery_date, artwork_url, artwork_notes, payment_method } = req.body;
+  const {
+    customer_id, type, items, notes, discount, delivery_date,
+    artwork_url, artwork_notes, payment_method, installments, first_due_date,
+  } = req.body;
 
   if (!items || items.length === 0) {
     return res.status(400).json({ error: 'A venda deve ter ao menos um item' });
+  }
+  if (payment_method === 'a_prazo' && !customer_id) {
+    return res.status(400).json({ error: 'Venda a prazo exige um cliente identificado' });
   }
 
   // Apenas admin/gerente podem praticar preço abaixo da tabela;
@@ -97,11 +103,13 @@ router.post('/', async (req, res) => {
       _artwork_url:          artwork_url || null,
       _artwork_notes:        artwork_notes || null,
       _allow_price_override: allowOverride,
+      _installments:         payment_method === 'a_prazo' ? Math.max(parseInt(installments) || 1, 1) : 1,
+      _first_due_date:       payment_method === 'a_prazo' ? (first_due_date || null) : null,
     });
 
     if (error) {
       // Função ainda não existe no banco (migração pendente) → caminho legado
-      if (/criar_venda/i.test(error.message) && /function|não existe|does not exist/i.test(error.message)) {
+      if (/criar_venda/i.test(error.message) && /function|não existe|does not exist|schema cache/i.test(error.message)) {
         return legacyCreateSale(req, res);
       }
       // Erros de negócio da função (RAISE EXCEPTION) viram 400 legíveis
@@ -175,6 +183,30 @@ async function legacyCreateSale(req, res) {
         p_reference_id: sale.id,
         p_user_id: req.user.id,
       });
+    }
+
+    // Venda a prazo → gera contas a receber (parcelas mensais)
+    if (payment_method === 'a_prazo' && customer_id) {
+      const n = Math.max(parseInt(req.body.installments) || 1, 1);
+      const parcela = Math.round((total / n) * 100) / 100;
+      const base = req.body.first_due_date ? new Date(req.body.first_due_date) : new Date(Date.now() + 30 * 86400000);
+      const rows = [];
+      for (let i = 0; i < n; i++) {
+        const due = new Date(base);
+        due.setMonth(due.getMonth() + i);
+        rows.push({
+          tenant_id: req.tenantId, user_id: req.user.id,
+          description: `Venda #${nextNumber}${n > 1 ? ` (${i + 1}/${n})` : ''}`,
+          type: 'receivable',
+          amount: i === n - 1 ? total - parcela * (n - 1) : parcela,
+          paid_amount: 0, due_date: due.toISOString().split('T')[0],
+          status: 'pending', customer_id,
+          document_number: `Venda #${nextNumber}`,
+          installment: i + 1, total_installments: n,
+          reference_type: 'sale', reference_id: sale.id,
+        });
+      }
+      await supabase.from('LANCAMENTOS').insert(rows);
     }
 
     res.status(201).json(sale);

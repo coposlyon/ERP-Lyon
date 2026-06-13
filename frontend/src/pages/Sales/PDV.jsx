@@ -28,6 +28,11 @@ export default function PDV() {
   const [discount, setDiscount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [receivedAmount, setReceivedAmount] = useState('');
+  const [installments, setInstallments] = useState(1);
+  const [firstDueDate, setFirstDueDate] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() + 30);
+    return d.toISOString().split('T')[0];
+  });
   const searchRef = useRef();
 
   const { data: productResults } = useQuery({
@@ -128,6 +133,10 @@ export default function PDV() {
       toast.error(`Valor insuficiente! Faltam ${fmt(total - received)}`);
       return;
     }
+    if (paymentMethod === 'a_prazo' && !selectedCustomer) {
+      toast.error('Venda a prazo exige um cliente. Selecione o cliente.');
+      return;
+    }
     saleMutation.mutate({
       customer_id: selectedCustomer?.id || null,
       type: 'sale',
@@ -139,6 +148,7 @@ export default function PDV() {
       })),
       discount: discountValue,
       payment_method: paymentMethod,
+      ...(paymentMethod === 'a_prazo' ? { installments, first_due_date: firstDueDate } : {}),
     });
   }
 
@@ -302,7 +312,7 @@ export default function PDV() {
               { value: 'card_debit', label: '💳 Débito' },
               { value: 'card_credit', label: '💳 Crédito' },
               { value: 'transfer', label: '🏦 Transf.' },
-              { value: 'check', label: '📄 Cheque' },
+              { value: 'a_prazo', label: '🧾 A prazo' },
             ].map(pm => (
               <button key={pm.value}
                 onClick={() => { setPaymentMethod(pm.value); setReceivedAmount(''); }}
@@ -332,6 +342,30 @@ export default function PDV() {
                   <span>{fmt(Math.abs(change))}</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {paymentMethod === 'a_prazo' && (
+            <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+              {!selectedCustomer && (
+                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5">
+                  ⚠️ Selecione o cliente — a prazo gera conta a receber no nome dele.
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-gray-700">Parcelas</span>
+                <select className="input w-32 text-sm" value={installments}
+                  onChange={e => setInstallments(parseInt(e.target.value))}>
+                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
+                    <option key={n} value={n}>{n}x de {fmt(total / n)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-gray-700">1º vencimento</span>
+                <input type="date" className="input w-40 text-sm" value={firstDueDate}
+                  onChange={e => setFirstDueDate(e.target.value)} />
+              </div>
             </div>
           )}
         </div>
