@@ -91,6 +91,13 @@ router.post('/', async (req, res) => {
 
     await supabase.from('COMPRA_ITENS').insert(purchaseItems);
 
+    // Custo médio ponderado: lê o estoque/custo atual ANTES da entrada
+    const productIds = [...new Set(items.map(i => i.product_id))];
+    const { data: currentProducts } = await supabase
+      .from('PRODUTOS').select('id, current_stock, cost_price')
+      .eq('tenant_id', req.tenantId).in('id', productIds);
+    const before = Object.fromEntries((currentProducts || []).map(p => [p.id, p]));
+
     for (const item of items) {
       await supabase.rpc('atualizar_estoque', {
         p_tenant_id: req.tenantId,
@@ -101,6 +108,22 @@ router.post('/', async (req, res) => {
         p_reference_id: purchase.id,
         p_user_id: req.user.id,
       });
+
+      // Recalcula o custo: (estoque*custo_antigo + qtd*custo_compra) / (estoque+qtd)
+      const prev = before[item.product_id];
+      if (prev && Number(item.unit_price) > 0) {
+        const estoqueAnterior = Math.max(Number(prev.current_stock) || 0, 0);
+        const custoAnterior   = Number(prev.cost_price) || 0;
+        const qtd             = Number(item.quantity) || 0;
+        const custoCompra     = Number(item.unit_price) || 0;
+        const denom = estoqueAnterior + qtd;
+        const novoCusto = denom > 0
+          ? (estoqueAnterior * custoAnterior + qtd * custoCompra) / denom
+          : custoCompra;
+        await supabase.from('PRODUTOS')
+          .update({ cost_price: Math.round(novoCusto * 100) / 100 })
+          .eq('id', item.product_id).eq('tenant_id', req.tenantId);
+      }
     }
 
     res.status(201).json(purchase);

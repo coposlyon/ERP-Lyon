@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   AlertTriangle, MessageCircle, FileText, Loader2,
   PackageX, CheckCircle2, ChevronDown, ChevronRight,
@@ -275,6 +275,173 @@ function openSupplierWhatsApp(product) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Stock page
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Sugestão de Compra — itens no/abaixo do mínimo, agrupados por fornecedor
+// ─────────────────────────────────────────────────────────────────────────────
+function PurchaseSuggestion() {
+  const { data: groups = [], isLoading } = useQuery({
+    queryKey: ['purchase-suggestion'],
+    queryFn: () => api.get('/stock/purchase-suggestion'),
+  });
+
+  if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary-500" /></div>;
+  if (groups.length === 0) return (
+    <div className="text-center py-12">
+      <PackageCheck size={40} className="text-green-500 mx-auto mb-3" />
+      <p className="text-green-600 font-medium">Tudo em dia — nenhum produto abaixo do mínimo.</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4 p-4">
+      {groups.map(g => (
+        <div key={g.supplier_id || 'none'} className="border border-gray-200 rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between bg-gray-50 px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <Package size={16} className="text-indigo-600" />
+              <p className="font-semibold text-gray-800">{g.supplier_name}</p>
+              <span className="text-xs text-gray-400">· {g.items.length} {g.items.length === 1 ? 'item' : 'itens'}</span>
+            </div>
+            <span className="font-bold text-indigo-700">{fmt(g.total_estimado)}</span>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="text-xs text-gray-500 uppercase">
+                <th className="text-left px-4 py-2 font-semibold">Produto</th>
+                <th className="text-right px-4 py-2 font-semibold w-24">Estoque</th>
+                <th className="text-right px-4 py-2 font-semibold w-24">Mínimo</th>
+                <th className="text-right px-4 py-2 font-semibold w-28">Comprar</th>
+                <th className="text-right px-4 py-2 font-semibold w-28">Custo est.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {g.items.map(it => (
+                <tr key={it.id} className="border-t border-gray-50">
+                  <td className="px-4 py-2 text-sm">
+                    <span className="font-medium text-gray-800">{it.name}</span>
+                    <span className="text-xs text-gray-400 ml-2">{it.code}</span>
+                  </td>
+                  <td className={`px-4 py-2 text-right text-sm font-medium ${it.current_stock < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                    {it.current_stock} {it.unit}
+                  </td>
+                  <td className="px-4 py-2 text-right text-sm text-gray-500">{it.min_stock}</td>
+                  <td className="px-4 py-2 text-right text-sm font-bold text-indigo-700">+{it.suggested_qty} {it.unit}</td>
+                  <td className="px-4 py-2 text-right text-sm text-gray-600">{fmt(it.estimated_cost)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+      <p className="text-xs text-gray-400">
+        Sugestão para repor cada produto até o estoque mínimo. Use estes números para criar os pedidos de compra.
+      </p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inventário — contagem física com ajuste automático das diferenças
+// ─────────────────────────────────────────────────────────────────────────────
+function InventoryCount() {
+  const qc = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [counts, setCounts] = useState({}); // { product_id: '12' }
+
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ['count-sheet', search],
+    queryFn: () => api.get(`/stock/count-sheet${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  });
+
+  const applyMut = useMutation({
+    mutationFn: items => api.post('/stock/inventory', { items }),
+    onSuccess: res => {
+      toast.success(res.adjusted > 0 ? `${res.adjusted} produto(s) ajustado(s)!` : 'Nenhuma diferença encontrada');
+      setCounts({});
+      qc.invalidateQueries(['count-sheet']);
+      qc.invalidateQueries(['stock-report']);
+      qc.invalidateQueries(['stock-movements']);
+    },
+    onError: e => toast.error(e.error || 'Erro ao aplicar inventário'),
+  });
+
+  const pending = Object.entries(counts).filter(([id, v]) => {
+    if (v === '' || v == null) return false;
+    const p = products.find(x => x.id === id);
+    return p && Number(v) !== Number(p.current_stock);
+  });
+
+  function apply() {
+    const items = pending.map(([product_id, counted]) => ({ product_id, counted: Number(counted) }));
+    if (items.length === 0) { toast.error('Nenhuma contagem diferente do sistema'); return; }
+    if (!window.confirm(`Aplicar ${items.length} ajuste(s) de inventário? Isso altera o estoque.`)) return;
+    applyMut.mutate(items);
+  }
+
+  return (
+    <div className="space-y-4 p-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <input className="input max-w-xs text-sm" placeholder="Buscar produto para contar..."
+          value={search} onChange={e => setSearch(e.target.value)} />
+        <button onClick={apply} disabled={applyMut.isPending || pending.length === 0}
+          className="btn-primary btn-sm disabled:opacity-40">
+          {applyMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <PackageCheck size={14} />}
+          Aplicar inventário {pending.length > 0 ? `(${pending.length})` : ''}
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary-500" /></div>
+      ) : (
+        <div className="overflow-x-auto border border-gray-100 rounded-xl">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr className="text-xs text-gray-500 uppercase">
+                <th className="text-left px-4 py-2 font-semibold">Produto</th>
+                <th className="text-right px-4 py-2 font-semibold w-28">Sistema</th>
+                <th className="text-right px-4 py-2 font-semibold w-32">Contado</th>
+                <th className="text-right px-4 py-2 font-semibold w-28">Diferença</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map(p => {
+                const counted = counts[p.id];
+                const has = counted !== '' && counted != null;
+                const diff = has ? Number(counted) - Number(p.current_stock) : null;
+                return (
+                  <tr key={p.id} className="border-t border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-4 py-2 text-sm">
+                      <span className="font-medium text-gray-800">{p.name}</span>
+                      <span className="text-xs text-gray-400 ml-2">{p.code}</span>
+                    </td>
+                    <td className="px-4 py-2 text-right text-sm font-mono text-gray-600">{p.current_stock} {p.unit}</td>
+                    <td className="px-4 py-2 text-right">
+                      <input type="number" step="any" className="input w-24 text-right text-sm py-1"
+                        value={counted ?? ''} placeholder="—"
+                        onChange={e => setCounts(c => ({ ...c, [p.id]: e.target.value }))} />
+                    </td>
+                    <td className="px-4 py-2 text-right text-sm font-bold">
+                      {diff === null ? <span className="text-gray-300">—</span>
+                        : diff === 0 ? <span className="text-green-600">0</span>
+                        : <span className={diff > 0 ? 'text-blue-600' : 'text-red-600'}>{diff > 0 ? '+' : ''}{diff}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+              {products.length === 0 && (
+                <tr><td colSpan={4} className="py-8 text-center text-gray-400 text-sm">Nenhum produto</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="text-xs text-gray-400">
+        Digite a quantidade contada fisicamente. Ao aplicar, o sistema ajusta o estoque e registra cada diferença como movimentação de inventário.
+      </p>
+    </div>
+  );
+}
+
 export default function Stock() {
   const { tenant } = useAuth();
   const [tab, setTab]             = useState('position');
@@ -516,6 +683,8 @@ export default function Stock() {
   const TABS = [
     { key: 'position',      label: 'Lista Completa'  },
     { key: 'replenishment', label: '📦 Reposição'    },
+    { key: 'suggestion',    label: '🛒 Sugestão de Compra' },
+    { key: 'inventory',     label: '📋 Inventário'   },
     { key: 'movements',     label: 'Movimentações'   },
   ];
 
@@ -648,6 +817,12 @@ export default function Stock() {
             <Table columns={posColumns} data={displayProducts} loading={repLoading} />
           </>
         )}
+
+        {/* ── Aba: Sugestão de Compra ───────────────────────────── */}
+        {tab === 'suggestion' && <PurchaseSuggestion />}
+
+        {/* ── Aba: Inventário ───────────────────────────────────── */}
+        {tab === 'inventory' && <InventoryCount />}
 
         {/* ── Aba: Reposição ────────────────────────────────────── */}
         {tab === 'replenishment' && (

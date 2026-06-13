@@ -43,11 +43,122 @@ router.get('/alerts', async (req, res) => {
       .from('PRODUTOS')
       .select('id, name, code, current_stock, min_stock, unit')
       .eq('tenant_id', req.tenantId)
-      .eq('is_active', true)
-      .lte('current_stock', supabase.raw('min_stock'));
-
+      .eq('is_active', true);
     if (error) throw error;
-    res.json(data);
+    // filtra em JS (PostgREST não compara duas colunas diretamente)
+    const alerts = (data || []).filter(p =>
+      Number(p.current_stock) <= Number(p.min_stock || 0) && Number(p.min_stock || 0) > 0
+    );
+    res.json(alerts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Sugestão de compra: itens no/abaixo do mínimo, agrupados por fornecedor ────
+router.get('/purchase-suggestion', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('PRODUTOS')
+      .select('id, code, name, unit, current_stock, min_stock, cost_price, supplier_id, FORNECEDORES(id, name, phone)')
+      .eq('tenant_id', req.tenantId)
+      .eq('is_active', true);
+    if (error) throw error;
+
+    const groups = {};
+    for (const p of (data || [])) {
+      const stock = Number(p.current_stock) || 0;
+      const min   = Number(p.min_stock) || 0;
+      // necessidade: repor até o mínimo (ou zerar o negativo)
+      let needed = 0;
+      if (min > 0 && stock <= min) needed = Math.ceil(min - stock);
+      else if (stock < 0)          needed = Math.ceil(-stock);
+      if (needed <= 0) continue;
+
+      const key = p.supplier_id || 'sem_fornecedor';
+      if (!groups[key]) {
+        groups[key] = {
+          supplier_id:   p.supplier_id || null,
+          supplier_name: p.FORNECEDORES?.name || 'Sem fornecedor',
+          supplier_phone: p.FORNECEDORES?.phone || null,
+          items: [], total_estimado: 0,
+        };
+      }
+      const estimado = needed * (Number(p.cost_price) || 0);
+      groups[key].items.push({
+        id: p.id, code: p.code, name: p.name, unit: p.unit,
+        current_stock: stock, min_stock: min, cost_price: Number(p.cost_price) || 0,
+        suggested_qty: needed, estimated_cost: estimado,
+      });
+      groups[key].total_estimado += estimado;
+    }
+
+    res.json(Object.values(groups).sort((a, b) => b.total_estimado - a.total_estimado));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Folha de contagem para inventário ──────────────────────────────────────────
+router.get('/count-sheet', async (req, res) => {
+  const { search } = req.query;
+  try {
+    let query = supabase
+      .from('PRODUTOS')
+      .select('id, code, name, unit, current_stock, cost_price')
+      .eq('tenant_id', req.tenantId)
+      .eq('is_active', true)
+      .order('name');
+    if (search) {
+      const s = String(search).replace(/[,()]/g, ' ').trim();
+      query = query.or(`name.ilike.%${s}%,code.ilike.%${s}%`);
+    }
+    const { data, error } = await query.limit(1000);
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Inventário: aplica a contagem física, ajustando as diferenças ──────────────
+router.post('/inventory', async (req, res) => {
+  const { items, notes } = req.body; // items: [{ product_id, counted }]
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Informe ao menos um produto contado' });
+  }
+  try {
+    const ids = items.map(i => i.product_id);
+    const { data: products } = await supabase
+      .from('PRODUTOS').select('id, name, current_stock')
+      .eq('tenant_id', req.tenantId).in('id', ids);
+    const stockMap = Object.fromEntries((products || []).map(p => [p.id, Number(p.current_stock) || 0]));
+
+    const adjustments = [];
+    for (const it of items) {
+      if (it.counted === '' || it.counted == null) continue;
+      const counted = Number(it.counted);
+      if (Number.isNaN(counted)) continue;
+      const atual = stockMap[it.product_id];
+      if (atual === undefined) continue;
+      const diff = counted - atual;
+      if (diff === 0) continue;
+
+      await supabase.rpc('atualizar_estoque', {
+        p_tenant_id:      req.tenantId,
+        p_product_id:     it.product_id,
+        p_quantity:       diff,
+        p_type:           'adjustment',
+        p_reference_type: 'inventory',
+        p_reference_id:   null,
+        p_user_id:        req.user.id,
+        p_notes:          `Inventário: contado ${counted}, sistema ${atual}${notes ? ` — ${notes}` : ''}`,
+      });
+      adjustments.push({ product_id: it.product_id, de: atual, para: counted, diff });
+    }
+
+    audit(req, 'inventory', 'stock', null, { ajustados: adjustments.length, itens: adjustments });
+    res.json({ success: true, adjusted: adjustments.length, adjustments });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
