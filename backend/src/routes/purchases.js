@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+const { custoMedio } = require('../lib/calc');
 
 router.get('/', async (req, res) => {
   const { page = 1, limit = 50, status, start_date, end_date } = req.query;
@@ -109,19 +110,12 @@ router.post('/', async (req, res) => {
         p_user_id: req.user.id,
       });
 
-      // Recalcula o custo: (estoque*custo_antigo + qtd*custo_compra) / (estoque+qtd)
+      // Recalcula o custo médio ponderado a cada entrada de compra
       const prev = before[item.product_id];
       if (prev && Number(item.unit_price) > 0) {
-        const estoqueAnterior = Math.max(Number(prev.current_stock) || 0, 0);
-        const custoAnterior   = Number(prev.cost_price) || 0;
-        const qtd             = Number(item.quantity) || 0;
-        const custoCompra     = Number(item.unit_price) || 0;
-        const denom = estoqueAnterior + qtd;
-        const novoCusto = denom > 0
-          ? (estoqueAnterior * custoAnterior + qtd * custoCompra) / denom
-          : custoCompra;
+        const novoCusto = custoMedio(prev.current_stock, prev.cost_price, item.quantity, item.unit_price);
         await supabase.from('PRODUTOS')
-          .update({ cost_price: Math.round(novoCusto * 100) / 100 })
+          .update({ cost_price: novoCusto })
           .eq('id', item.product_id).eq('tenant_id', req.tenantId);
       }
     }

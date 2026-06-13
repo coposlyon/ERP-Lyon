@@ -111,9 +111,23 @@ export default function Reports() {
     enabled: reportType === 'profitability',
   });
 
+  const [commRate, setCommRate] = useState(5);
+  const { data: abcReport } = useQuery({
+    queryKey: ['report-abc', startDate, endDate],
+    queryFn: () => api.get(`/reports/abc-products?start_date=${startDate}&end_date=${endDate}`),
+    enabled: reportType === 'abc',
+  });
+  const { data: commReport } = useQuery({
+    queryKey: ['report-commissions', startDate, endDate, commRate],
+    queryFn: () => api.get(`/reports/commissions?start_date=${startDate}&end_date=${endDate}&rate=${commRate}`),
+    enabled: reportType === 'commissions',
+  });
+
   const reportTypes = [
     { key:'sales',         label:'Vendas',         icon:TrendingUp,      color:'blue'   },
     { key:'profitability', label:'Rentabilidade',   icon:BarChart2,       color:'pink'   },
+    { key:'abc',           label:'Curva ABC',       icon:BarChart2,       color:'orange' },
+    { key:'commissions',   label:'Comissões',       icon:Users,           color:'green'  },
     { key:'products',      label:'Top Produtos',    icon:ShoppingBag,     color:'orange' },
     { key:'customers',     label:'Top Clientes',    icon:Users,           color:'purple' },
     { key:'quotes',        label:'Orçamentos',      icon:ArrowDownCircle, color:'indigo' },
@@ -166,6 +180,21 @@ export default function Reports() {
     const rows = (topProducts||[]).map((p,i) => [i+1, p.product?.code, p.product?.name, p.total_qty, fmt(p.total_value)]);
     if (type==='pdf') exportPDF('Top Produtos', ['#','Código','Produto','Qtd','Total'], rows);
     else exportCSV('top-produtos.csv', ['#','Código','Produto','Qtd','Total'], rows);
+  }
+
+  function exportABC(type) {
+    const headers = ['Classe','Código','Produto','Qtd','Faturamento','Part.%','Acum.%','Lucro','Margem%'];
+    const rows = (abcReport?.data||[]).map(p => [p.abc, p.code, p.name, p.qty, fmt(p.revenue), p.share, p.cumulative, fmt(p.profit), p.margin]);
+    if (type==='pdf') exportPDF('Curva ABC de Produtos', headers, rows);
+    else exportCSV('curva-abc.csv', headers, rows);
+  }
+
+  function exportCommissions(type) {
+    const headers = ['Vendedor','Vendas','Total Vendido','Taxa%','Comissão'];
+    const rows = (commReport?.data||[]).map(v => [v.name, v.sales_count, fmt(v.total), commReport?.rate, fmt(v.commission)]);
+    if (type==='pdf') exportPDF('Comissões de Vendedores', headers, rows,
+      `Total vendido: ${fmt(commReport?.summary?.total_sold)} · Comissões (${commReport?.rate}%): ${fmt(commReport?.summary?.total_commission)}`);
+    else exportCSV('comissoes.csv', headers, rows);
   }
 
   function exportCashflow(type) {
@@ -364,6 +393,105 @@ export default function Reports() {
             ))}
             {!topProducts?.length && <p className="text-sm text-gray-400 text-center py-8">Nenhum dado disponível</p>}
           </div>
+        </div>
+      )}
+
+      {/* ─── CURVA ABC ─── */}
+      {reportType === 'abc' && (
+        <div className="card">
+          <div className="card-header flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold">Curva ABC de Produtos</h3>
+              <p className="text-xs text-gray-400">
+                A = 80% do faturamento · B = 80–95% · C = 95–100%
+                {abcReport?.summary?.classes && (
+                  <span className="ml-2">
+                    ({abcReport.summary.classes.A||0} A · {abcReport.summary.classes.B||0} B · {abcReport.summary.classes.C||0} C)
+                  </span>
+                )}
+              </p>
+            </div>
+            <ExportButtons onPDF={() => exportABC('pdf')} onCSV={() => exportABC('csv')}/>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                <tr>
+                  <th className="text-left px-4 py-2 w-16">Classe</th>
+                  <th className="text-left px-4 py-2">Produto</th>
+                  <th className="text-right px-4 py-2">Qtd</th>
+                  <th className="text-right px-4 py-2">Faturamento</th>
+                  <th className="text-right px-4 py-2">Part.</th>
+                  <th className="text-right px-4 py-2">Acum.</th>
+                  <th className="text-right px-4 py-2">Margem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(abcReport?.data||[]).map(p => (
+                  <tr key={p.product_id} className="border-t border-gray-50">
+                    <td className="px-4 py-2">
+                      <span className={`badge text-xs font-bold ${
+                        p.abc==='A'?'bg-green-100 text-green-700':p.abc==='B'?'bg-amber-100 text-amber-700':'bg-gray-100 text-gray-500'
+                      }`}>{p.abc}</span>
+                    </td>
+                    <td className="px-4 py-2"><span className="font-medium">{p.name}</span> <span className="text-xs text-gray-400">{p.code}</span></td>
+                    <td className="px-4 py-2 text-right text-gray-600">{Number(p.qty).toLocaleString('pt-BR')}</td>
+                    <td className="px-4 py-2 text-right font-semibold">{fmt(p.revenue)}</td>
+                    <td className="px-4 py-2 text-right text-gray-500">{p.share}%</td>
+                    <td className="px-4 py-2 text-right text-gray-500">{p.cumulative}%</td>
+                    <td className={`px-4 py-2 text-right font-medium ${p.margin >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{p.margin}%</td>
+                  </tr>
+                ))}
+                {!abcReport?.data?.length && <tr><td colSpan={7} className="text-center py-8 text-gray-400 text-sm">Nenhuma venda no período</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ─── COMISSÕES ─── */}
+      {reportType === 'commissions' && (
+        <div className="card">
+          <div className="card-header flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <h3 className="font-semibold">Comissões de Vendedores</h3>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-500">Taxa</span>
+                <input type="number" min="0" step="0.5" value={commRate}
+                  onChange={e => setCommRate(Number(e.target.value) || 0)}
+                  className="input w-20 text-sm py-1" />
+                <span className="text-xs text-gray-500">%</span>
+              </div>
+            </div>
+            <ExportButtons onPDF={() => exportCommissions('pdf')} onCSV={() => exportCommissions('csv')}/>
+          </div>
+          {commReport?.summary && (
+            <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex gap-6 text-sm">
+              <span className="text-gray-500">Total vendido: <strong className="text-gray-800">{fmt(commReport.summary.total_sold)}</strong></span>
+              <span className="text-gray-500">Total comissões: <strong className="text-green-700">{fmt(commReport.summary.total_commission)}</strong></span>
+            </div>
+          )}
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+              <tr>
+                <th className="text-left px-6 py-2">Vendedor</th>
+                <th className="text-right px-6 py-2">Vendas</th>
+                <th className="text-right px-6 py-2">Total Vendido</th>
+                <th className="text-right px-6 py-2">Comissão ({commReport?.rate}%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(commReport?.data||[]).map((v,i) => (
+                <tr key={v.user_id || i} className="border-t border-gray-50">
+                  <td className="px-6 py-3 font-medium">{v.name}</td>
+                  <td className="px-6 py-3 text-right text-gray-600">{v.sales_count}</td>
+                  <td className="px-6 py-3 text-right font-semibold">{fmt(v.total)}</td>
+                  <td className="px-6 py-3 text-right font-bold text-green-700">{fmt(v.commission)}</td>
+                </tr>
+              ))}
+              {!commReport?.data?.length && <tr><td colSpan={4} className="text-center py-8 text-gray-400 text-sm">Nenhuma venda no período</td></tr>}
+            </tbody>
+          </table>
         </div>
       )}
 

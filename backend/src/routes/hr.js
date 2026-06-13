@@ -2,23 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
-
-// ── Helpers INSS / IRRF Brasil (tabela 2024) ──────────────
-function calcINSS(gross) {
-  if (gross <= 1412.00) return parseFloat((gross * 0.075).toFixed(2));
-  if (gross <= 2666.68) return parseFloat((gross * 0.09).toFixed(2));
-  if (gross <= 4000.03) return parseFloat((gross * 0.12).toFixed(2));
-  if (gross <= 7786.02) return parseFloat((gross * 0.14).toFixed(2));
-  return 908.86; // teto INSS 2024
-}
-function calcIRRF(gross, inss) {
-  const base = gross - inss;
-  if (base <= 2259.20) return 0;
-  if (base <= 2826.65) return parseFloat((base * 0.075 - 169.44).toFixed(2));
-  if (base <= 3751.05) return parseFloat((base * 0.15  - 381.44).toFixed(2));
-  if (base <= 4664.68) return parseFloat((base * 0.225 - 662.77).toFixed(2));
-  return parseFloat((base * 0.275 - 896.00).toFixed(2));
-}
+const { calcINSS, calcIRRF } = require('../lib/calc');
 
 // ── PONTO ─────────────────────────────────────────────────
 

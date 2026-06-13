@@ -268,4 +268,101 @@ router.get('/profitability', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Curva ABC de produtos (com margem) ────────────────────
+// Classe A = primeiros 80% do faturamento, B = 80–95%, C = 95–100%.
+router.get('/abc-products', async (req, res) => {
+  const { start_date, end_date } = req.query;
+  const startDate = start_date || new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
+  const endDate   = (end_date || new Date().toISOString().split('T')[0]) + 'T23:59:59';
+  try {
+    const { data: sales } = await supabase
+      .from('VENDAS').select('id')
+      .eq('tenant_id', req.tenantId).neq('status', 'cancelled')
+      .gte('created_at', startDate).lte('created_at', endDate);
+    const saleIds = (sales || []).map(s => s.id);
+    if (saleIds.length === 0) return res.json({ data: [], summary: { revenue: 0, classes: {} } });
+
+    const { data: items } = await supabase
+      .from('VENDA_ITENS')
+      .select('product_id, quantity, total, PRODUTOS(id, name, code, unit, cost_price)')
+      .in('sale_id', saleIds);
+
+    const grouped = {};
+    for (const it of (items || [])) {
+      const pid = it.product_id;
+      if (!pid) continue;
+      if (!grouped[pid]) {
+        grouped[pid] = {
+          product_id: pid, name: it.PRODUTOS?.name, code: it.PRODUTOS?.code, unit: it.PRODUTOS?.unit,
+          qty: 0, revenue: 0, cost: 0,
+        };
+      }
+      grouped[pid].qty     += Number(it.quantity) || 0;
+      grouped[pid].revenue += Number(it.total) || 0;
+      grouped[pid].cost    += (Number(it.quantity) || 0) * (Number(it.PRODUTOS?.cost_price) || 0);
+    }
+
+    const list = Object.values(grouped).sort((a, b) => b.revenue - a.revenue);
+    const totalRevenue = list.reduce((s, p) => s + p.revenue, 0) || 1;
+
+    let acc = 0;
+    const data = list.map(p => {
+      acc += p.revenue;
+      const cumPct = (acc / totalRevenue) * 100;
+      const klass = cumPct <= 80 ? 'A' : cumPct <= 95 ? 'B' : 'C';
+      const profit = p.revenue - p.cost;
+      return {
+        ...p,
+        profit,
+        margin: p.revenue > 0 ? Number((profit / p.revenue * 100).toFixed(1)) : 0,
+        share: Number((p.revenue / totalRevenue * 100).toFixed(1)),
+        cumulative: Number(cumPct.toFixed(1)),
+        abc: klass,
+      };
+    });
+
+    const classes = data.reduce((acc2, p) => {
+      acc2[p.abc] = (acc2[p.abc] || 0) + 1;
+      return acc2;
+    }, {});
+
+    res.json({ data, summary: { revenue: totalRevenue, classes, products: data.length } });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Comissão de vendedores ────────────────────────────────
+router.get('/commissions', async (req, res) => {
+  const { start_date, end_date } = req.query;
+  const rate = Math.max(0, Number(req.query.rate) || 0); // % de comissão
+  const startDate = start_date || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const endDate   = (end_date || new Date().toISOString().split('T')[0]) + 'T23:59:59';
+  try {
+    const { data: sales } = await supabase
+      .from('VENDAS')
+      .select('id, number, total, user_id, created_at, USUARIOS(id, name)')
+      .eq('tenant_id', req.tenantId).neq('status', 'cancelled')
+      .gte('created_at', startDate).lte('created_at', endDate);
+
+    const grouped = {};
+    for (const s of (sales || [])) {
+      const uid = s.user_id || 'sem_vendedor';
+      if (!grouped[uid]) {
+        grouped[uid] = { user_id: s.user_id || null, name: s.USUARIOS?.name || 'Sem vendedor', sales_count: 0, total: 0 };
+      }
+      grouped[uid].sales_count += 1;
+      grouped[uid].total       += Number(s.total) || 0;
+    }
+
+    const data = Object.values(grouped)
+      .map(v => ({ ...v, commission: Number((v.total * rate / 100).toFixed(2)) }))
+      .sort((a, b) => b.total - a.total);
+
+    const totalSold = data.reduce((s, v) => s + v.total, 0);
+    res.json({
+      data, rate,
+      summary: { total_sold: totalSold, total_commission: Number((totalSold * rate / 100).toFixed(2)) },
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
