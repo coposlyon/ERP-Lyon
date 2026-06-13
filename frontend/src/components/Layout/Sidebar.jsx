@@ -7,7 +7,7 @@ import {
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
-  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays,
+  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -34,6 +34,7 @@ const menuItems = [
       { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart, module: 'sales' },
       { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
       { label: 'Personalização', path: '/customizations', icon: Palette, module: 'customizations' },
+      { label: 'Estúdio 3D', path: '/studio', icon: Box, module: 'customizations' },
     ],
   },
   {

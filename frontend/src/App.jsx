@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
@@ -39,6 +40,18 @@ import HRFolha from '@/pages/HR/HRFolha';
 import HRDocumentos from '@/pages/HR/HRDocumentos';
 import MarcacaoPonto from '@/pages/Ponto/MarcacaoPonto';
 import StoreApp from '@/store/StoreApp';
+
+// Estúdio 3D — carregado sob demanda (three.js fica em chunk separado)
+const CustomizationStudio = lazy(() => import('@/pages/Studio/CustomizationStudio'));
+
+function StudioLoading() {
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center text-gray-400">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-violet-600 mb-3" />
+      <p className="text-sm">Carregando estúdio 3D...</p>
+    </div>
+  );
+}
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -94,6 +107,7 @@ function AppRoutes() {
         {/* Personalização */}
         <Route path="customizations" element={<Mod m="customizations"><Customizations /></Mod>} />
         <Route path="customizations/:id" element={<Mod m="customizations"><CustomizationDetail /></Mod>} />
+        <Route path="studio" element={<Mod m="customizations"><Suspense fallback={<StudioLoading />}><CustomizationStudio /></Suspense></Mod>} />
         {/* Compras */}
         <Route path="purchases" element={<Mod m="purchases"><Purchases /></Mod>} />
         <Route path="purchases/new" element={<Mod m="purchases"><PurchaseForm /></Mod>} />

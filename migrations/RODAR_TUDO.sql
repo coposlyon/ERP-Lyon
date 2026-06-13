@@ -1,7 +1,6 @@
 ﻿-- ==============================================================
--- RODAR TUDO - cole este arquivo inteiro no Supabase SQL Editor
--- e clique em RUN. E idempotente: pode rodar mais de uma vez.
--- Gerado automaticamente a partir das migracoes 000 a 008.
+-- RODAR TUDO - cole no Supabase SQL Editor e clique em RUN.
+-- Idempotente: pode rodar mais de uma vez sem problema.
 -- ==============================================================
 
 -- >>>>>>>>>>>>>>>>>>>> 000_controle.sql <<<<<<<<<<<<<<<<<<<<
@@ -805,5 +804,17 @@ INSERT INTO "FERIADOS" (tenant_id, date, name, type) VALUES
 ON CONFLICT (tenant_id, date) DO NOTHING;
 
 INSERT INTO "_MIGRATIONS" (version, name) VALUES ('008', 'feriados')
+ON CONFLICT (version) DO NOTHING;
+
+-- >>>>>>>>>>>>>>>>>>>> 009_design_3d.sql <<<<<<<<<<<<<<<<<<<<
+-- ============================================================
+-- 009. ESTÚDIO 3D — guarda a configuração do design no produto
+--      personalizado (modelo, cores por parte, acabamento, logo).
+-- ============================================================
+ALTER TABLE "PERSONALIZACOES"
+  ADD COLUMN IF NOT EXISTS design_3d   JSONB,
+  ADD COLUMN IF NOT EXISTS preview_url TEXT;
+
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('009', 'design_3d')
 ON CONFLICT (version) DO NOTHING;
 

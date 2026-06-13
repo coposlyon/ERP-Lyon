@@ -33,7 +33,7 @@ router.get('/:id', async (req, res) => {
 
 // Criar
 router.post('/', async (req, res) => {
-  const { sale_id, customer_id, title, priority, deadline, artwork_url, artwork_notes, customer_notes, internal_notes, assigned_to } = req.body;
+  const { sale_id, customer_id, title, priority, deadline, artwork_url, artwork_notes, customer_notes, internal_notes, assigned_to, design_3d, preview_url } = req.body;
   if (!title) return res.status(400).json({ error: 'Título obrigatório' });
   try {
     const { data, error } = await supabase.from('PERSONALIZACOES').insert({
@@ -42,6 +42,7 @@ router.post('/', async (req, res) => {
       priority: priority || 'normal', deadline: deadline || null,
       artwork_url, artwork_notes, customer_notes, internal_notes,
       assigned_to: assigned_to || null,
+      design_3d: design_3d || null, preview_url: preview_url || null,
     }).select().single();
     if (error) throw error;
     res.status(201).json(data);
@@ -50,10 +51,13 @@ router.post('/', async (req, res) => {
 
 // Atualizar
 router.put('/:id', async (req, res) => {
-  const { title, priority, deadline, artwork_url, artwork_notes, customer_notes, internal_notes, assigned_to } = req.body;
+  const { title, priority, deadline, artwork_url, artwork_notes, customer_notes, internal_notes, assigned_to, design_3d, preview_url } = req.body;
   try {
+    const upd = { title, priority, deadline, artwork_url, artwork_notes, customer_notes, internal_notes, assigned_to, updated_at: new Date().toISOString() };
+    if (design_3d !== undefined)   upd.design_3d = design_3d;
+    if (preview_url !== undefined) upd.preview_url = preview_url;
     const { data, error } = await supabase.from('PERSONALIZACOES')
-      .update({ title, priority, deadline, artwork_url, artwork_notes, customer_notes, internal_notes, assigned_to, updated_at: new Date().toISOString() })
+      .update(upd)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     if (error) throw error;
     res.json(data);
