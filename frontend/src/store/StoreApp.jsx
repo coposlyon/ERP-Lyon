@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import './store.css';
 import { CartProvider } from './CartContext';
 import StoreLayout from './StoreLayout';
 import StoreHome from './StoreHome';

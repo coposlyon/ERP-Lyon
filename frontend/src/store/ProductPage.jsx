@@ -72,8 +72,12 @@ export default function ProductPage() {
 
       <div className="grid md:grid-cols-2 gap-8">
         {/* Visual */}
-        <div className="bg-white rounded-2xl border border-gray-100 flex items-center justify-center py-12">
-          <Bottle color={bottleColor} gradient={gradient} size={230} />
+        <div className="relative rounded-3xl overflow-hidden flex items-center justify-center py-16 bg-gray-900">
+          <div className="st-blob" style={{ width: 240, height: 240, background: bottleColor, top: '8%', left: '6%', opacity: .5 }} />
+          <div className="st-blob" style={{ width: 200, height: 200, background: bottleColor, bottom: '4%', right: '8%', opacity: .35, animationDelay: '3s' }} />
+          <div className="relative st-float">
+            <Bottle color={bottleColor} gradient={gradient} size={240} />
+          </div>
         </div>
 
         {/* Info */}

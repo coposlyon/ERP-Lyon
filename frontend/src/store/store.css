@@ -1,0 +1,69 @@
+/* ============================================================
+   Animações e utilitários da loja (escopo .st-*)
+   Sem dependências — só CSS + IntersectionObserver.
+   ============================================================ */
+
+/* Reveal no scroll */
+.st-reveal { opacity: 0; transform: translateY(34px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
+.st-reveal.st-in { opacity: 1; transform: none; }
+.st-reveal-scale { opacity: 0; transform: scale(.82); transition: opacity .6s ease, transform .6s cubic-bezier(.34,1.56,.64,1); }
+.st-reveal-scale.st-in { opacity: 1; transform: none; }
+
+/* Flutuar */
+@keyframes st-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-22px); } }
+.st-float { animation: st-float 5s ease-in-out infinite; }
+
+/* Blobs de fundo */
+@keyframes st-blob {
+  0%,100% { transform: translate(0,0) scale(1); }
+  33%     { transform: translate(30px,-40px) scale(1.12); }
+  66%     { transform: translate(-25px,25px) scale(.92); }
+}
+.st-blob { animation: st-blob 14s ease-in-out infinite; filter: blur(46px); border-radius: 50%; position: absolute; }
+
+/* Gradiente animado */
+@keyframes st-gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+.st-animated-gradient { background-size: 300% 300%; animation: st-gradient 12s ease infinite; }
+
+/* Marquee infinito */
+@keyframes st-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.st-marquee-track { display: inline-flex; white-space: nowrap; animation: st-marquee 22s linear infinite; }
+
+/* Brilho passando no texto */
+@keyframes st-shine { to { background-position: 200% center; } }
+.st-shine {
+  background: linear-gradient(90deg,#fff 0%,#ffd9b8 25%,#fff 50%,#ffd9b8 75%,#fff 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: st-shine 4s linear infinite;
+}
+
+/* Texto com gradiente fixo */
+.st-gradient-text {
+  background: linear-gradient(100deg,#ff7a18,#ff2d75 45%,#8a2be2 90%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Pulso suave */
+@keyframes st-pulse { 0%,100% { transform: scale(1); opacity:.9; } 50% { transform: scale(1.06); opacity:1; } }
+.st-pulse { animation: st-pulse 2.4s ease-in-out infinite; }
+
+/* Giro lento */
+@keyframes st-spin { to { transform: rotate(360deg); } }
+.st-spin-slow { animation: st-spin 28s linear infinite; }
+
+/* Hover de card (lift) */
+.st-card { transition: transform .35s cubic-bezier(.16,1,.3,1), box-shadow .35s ease; }
+.st-card:hover { transform: translateY(-8px); box-shadow: 0 24px 50px -20px rgba(0,0,0,.28); }
+
+/* Seta de scroll */
+@keyframes st-bob { 0%,100% { transform: translateY(0); opacity:.6; } 50% { transform: translateY(8px); opacity:1; } }
+.st-bob { animation: st-bob 1.8s ease-in-out infinite; }
+
+/* Respeita quem prefere menos movimento */
+@media (prefers-reduced-motion: reduce) {
+  .st-float,.st-blob,.st-animated-gradient,.st-marquee-track,.st-shine,.st-pulse,.st-spin-slow,.st-bob { animation: none !important; }
+  .st-reveal,.st-reveal-scale { opacity: 1 !important; transform: none !important; }
+}
