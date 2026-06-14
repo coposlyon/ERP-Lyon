@@ -204,8 +204,14 @@ export function buildModel(type) {
     mk(new THREE.CylinderGeometry(0.6, 0.64, 3.1, seg, 1, true), 0, bodyMeshes); // openEnded
     const bottom = mk(new THREE.CircleGeometry(0.64, seg), -1.55, bodyMeshes);
     bottom.rotation.x = -Math.PI / 2;
-    const handle = mk(new THREE.TorusGeometry(0.5, 0.07, 16, 44, Math.PI * 1.1), 0.05, bodyMeshes);
-    handle.rotation.z = -Math.PI / 2; handle.position.x = 0.66;
+    // alça: tubo em "D" conectado no corpo (cima e baixo)
+    const sCurve = new THREE.CubicBezierCurve3(
+      new THREE.Vector3(0.54, 1.20, 0),
+      new THREE.Vector3(1.18, 0.95, 0),
+      new THREE.Vector3(1.18, -0.25, 0),
+      new THREE.Vector3(0.54, 0.00, 0),
+    );
+    mk(new THREE.TubeGeometry(sCurve, 64, 0.07, 16, false), 0, bodyMeshes);
   } else if (type === 'taca') {
     // taça: bojo (pintável) + haste + base
     mk(new THREE.CylinderGeometry(0.44, 0.13, 1.6, seg), 1.7, bodyMeshes);   // bojo (mainBody)
@@ -226,8 +232,14 @@ export function buildModel(type) {
       new THREE.Vector2(0.61, 1.66),
     ];
     mk(new THREE.LatheGeometry(pts, seg), 0, bodyMeshes); // corpo (mainBody)
-    const handle = mk(new THREE.TorusGeometry(0.42, 0.07, 18, 46, Math.PI * 1.2), 0.85, bodyMeshes);
-    handle.rotation.z = -Math.PI / 2; handle.position.x = 0.78;
+    // alça: tubo em "D" que conecta no corpo em cima e embaixo
+    const hCurve = new THREE.CubicBezierCurve3(
+      new THREE.Vector3(0.58, 1.25, 0),
+      new THREE.Vector3(1.22, 1.05, 0),
+      new THREE.Vector3(1.22, 0.25, 0),
+      new THREE.Vector3(0.58, 0.35, 0),
+    );
+    mk(new THREE.TubeGeometry(hCurve, 64, 0.075, 16, false), 0, bodyMeshes);
   } else { // shaker
     mk(new THREE.CylinderGeometry(0.92, 0.80, 2.4, seg), 0, bodyMeshes);
     mk(new THREE.CylinderGeometry(0.62, 0.92, 0.22, seg), 1.31, bodyMeshes);
