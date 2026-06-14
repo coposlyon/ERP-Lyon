@@ -67,11 +67,11 @@ export default function StoreHome() {
               e receba o orçamento na hora — sem complicação.
             </Reveal>
             <Reveal delay={240} className="flex flex-wrap gap-3 mt-8">
-              <a href="#catalogo" className="group bg-orange-500 hover:bg-orange-600 transition-all px-7 py-3.5 rounded-2xl font-bold flex items-center gap-2 shadow-xl shadow-orange-500/30 hover:scale-105">
-                Ver catálogo <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-              </a>
-              <a href="#cores" className="bg-white/10 backdrop-blur border border-white/20 hover:bg-white/20 transition-colors px-7 py-3.5 rounded-2xl font-bold flex items-center gap-2">
-                <Palette size={18} /> Ver as cores
+              <Link to="/loja/personalizar" className="group bg-orange-500 hover:bg-orange-600 transition-all px-7 py-3.5 rounded-2xl font-bold flex items-center gap-2 shadow-xl shadow-orange-500/30 hover:scale-105">
+                <Wand2 size={18} /> Personalizar em 3D <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+              </Link>
+              <a href="#catalogo" className="bg-white/10 backdrop-blur border border-white/20 hover:bg-white/20 transition-colors px-7 py-3.5 rounded-2xl font-bold flex items-center gap-2">
+                <Palette size={18} /> Ver catálogo
               </a>
             </Reveal>
           </div>
@@ -161,6 +161,28 @@ export default function StoreHome() {
             ))}
           </div>
         </div>
+      </section>
+
+      {/* ══ BANNER ESTÚDIO 3D ══ */}
+      <section className="max-w-6xl mx-auto px-4 pt-16">
+        <Reveal scale className="relative rounded-[2rem] overflow-hidden bg-gray-900 text-white grid md:grid-cols-2 items-center">
+          <div className="st-blob" style={{ width: 280, height: 280, background: '#7E3FF2', top: '-10%', left: '20%', opacity: .35 }} />
+          <div className="relative p-8 sm:p-12">
+            <span className="inline-block bg-orange-500 text-xs font-bold px-3 py-1 rounded-full mb-4">NOVO · 3D</span>
+            <h2 className="text-3xl sm:text-4xl font-black leading-tight">Crie seu copo em <span className="st-gradient-text">3D</span></h2>
+            <p className="text-white/70 mt-3 max-w-sm">Escolha o modelo, pinte cada parte, aplique sua logo e veja girando em tempo real. Depois é só pedir o orçamento.</p>
+            <Link to="/loja/personalizar" className="inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-600 transition-all px-6 py-3.5 rounded-2xl font-bold mt-6 hover:scale-105">
+              <Wand2 size={18} /> Abrir estúdio 3D <ArrowRight size={18} />
+            </Link>
+          </div>
+          <div className="relative flex justify-center items-center gap-2 pb-8 md:pb-0 md:pr-8">
+            {[['#F26522', true], ['#1E4FD8', false], ['#EC1C8E', true]].map(([c, g], i) => (
+              <div key={i} className="st-float" style={{ animationDelay: `${i * 0.5}s` }}>
+                <Bottle color={c} gradient={g} size={i === 1 ? 150 : 110} />
+              </div>
+            ))}
+          </div>
+        </Reveal>
       </section>
 
       {/* ══ CATÁLOGO ══ */}

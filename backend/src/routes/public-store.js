@@ -132,7 +132,11 @@ router.post('/quote', async (req, res) => {
       const p = prodMap[it.product_id];
       const qty = Math.max(parseInt(it.quantity) || 0, 1);
       if (!p) {
-        orderItems.push({ product_id: null, product_name: it.product_name || 'Item', quantity: qty, unit_price: 0, color: it.color || null });
+        orderItems.push({
+          product_id: null, product_name: it.product_name || 'Personalizado',
+          quantity: qty, unit_price: 0, color: it.color || null,
+          design: it.design || null, preview: it.preview || null,
+        });
         continue;
       }
       const unit = precoFaixa(p.price_tiers, p.sale_price, qty);
@@ -142,6 +146,7 @@ router.post('/quote', async (req, res) => {
         quantity: qty,
         unit_price: unit,
         color: it.color || null,
+        design: it.design || null, preview: it.preview || null,
       });
     }
 
@@ -192,7 +197,11 @@ router.post('/quote', async (req, res) => {
       quote_id: quote.id, product_id: i.product_id, product_name: i.product_name,
       quantity: i.quantity, unit_price: i.unit_price,
       discount: 0, total: i.quantity * i.unit_price,
-      customization: i.color ? { cor: i.color } : {},
+      customization: {
+        ...(i.color ? { cor: i.color } : {}),
+        ...(i.design ? { design: i.design } : {}),
+        ...(i.preview ? { preview: i.preview } : {}),
+      },
     }));
     await supabase.from('ORCAMENTO_ITENS').insert(quoteItems);
 

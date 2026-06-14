@@ -50,8 +50,41 @@ export function disposeObject(obj) {
   });
 }
 
-// Textura da superfície do corpo: base (sólida ou degradê) + logo (imagem/texto)
-export function composeBodyTexture({ color1, color2, gradient, image, text, logoX = 0.5, logoY = 0.55, logoScale = 1, logoRot = 0 }) {
+export const FONTS = [
+  { key: 'Inter',      label: 'Inter',      weight: '700' },
+  { key: 'Montserrat', label: 'Montserrat', weight: '900' },
+  { key: 'Bebas Neue', label: 'Bebas Neue', weight: '400' },
+  { key: 'Anton',      label: 'Anton',      weight: '400' },
+  { key: 'Oswald',     label: 'Oswald',     weight: '700' },
+  { key: 'Poppins',    label: 'Poppins',    weight: '800' },
+  { key: 'Pacifico',   label: 'Pacifico',   weight: '400' },
+  { key: 'Lobster',    label: 'Lobster',    weight: '400' },
+];
+const FONT_WEIGHT = Object.fromEntries(FONTS.map(f => [f.key, f.weight]));
+
+// Desenha uma arte (texto ou imagem) na superfície já transladada/rotacionada
+function drawArt(ctx, art) {
+  if (art.kind === 'image' && art._img) {
+    const base = 700 * (art.scale || 1);
+    const ratio = art._img.height / art._img.width;
+    ctx.drawImage(art._img, -base / 2, -(base * ratio) / 2, base, base * ratio);
+  } else if (art.kind === 'text' && art.text) {
+    const size = 170 * (art.scale || 1);
+    const w = FONT_WEIGHT[art.font] || '700';
+    ctx.font = `${w} ${size}px "${art.font || 'Inter'}", Arial, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = art.color || '#ffffff';
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = size * 0.03;
+    const lines = String(art.text).slice(0, 30).split('\n').slice(0, 2);
+    lines.forEach((ln, i) => {
+      const y = (i + 0.5) * size * 1.04 - (lines.length * size * 1.04) / 2;
+      ctx.strokeText(ln, 0, y); ctx.fillText(ln, 0, y);
+    });
+  }
+}
+
+// Textura do corpo: base (sólida/degradê) + várias artes posicionadas
+export function composeBodyTexture({ color1, color2, gradient, arts = [] }) {
   const W = 2048, H = 1024;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const ctx = c.getContext('2d');
@@ -63,33 +96,13 @@ export function composeBodyTexture({ color1, color2, gradient, image, text, logo
   } else ctx.fillStyle = color1;
   ctx.fillRect(0, 0, W, H);
 
-  const cx = logoX * W;
-  const cy = (1 - logoY) * H;
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate((logoRot || 0) * Math.PI / 180);
-
-  let cursorY = 0;
-  if (image) {
-    const maxW = W * 0.34 * logoScale;
-    const ratio = image.height / image.width;
-    const dw = maxW, dh = maxW * ratio;
-    ctx.drawImage(image, -dw / 2, -dh / 2 - (text ? dh * 0.15 : 0), dw, dh);
-    cursorY = dh / 2 + 30;
+  for (const art of arts) {
+    ctx.save();
+    ctx.translate((art.x ?? 0.25) * W, (1 - (art.y ?? 0.55)) * H);
+    ctx.rotate((art.rot || 0) * Math.PI / 180);
+    drawArt(ctx, art);
+    ctx.restore();
   }
-  if (text) {
-    const size = 150 * logoScale;
-    ctx.font = `bold ${size}px Inter, Arial, sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = size * 0.05;
-    const lines = String(text).slice(0, 28).split('\n').slice(0, 2);
-    lines.forEach((ln, i) => {
-      const y = cursorY + (i + 0.5) * size * 1.05 - (lines.length * size * 1.05) / 2 + (image ? size * 0.6 : 0);
-      ctx.strokeText(ln, 0, y); ctx.fillText(ln, 0, y);
-    });
-  }
-  ctx.restore();
 
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
