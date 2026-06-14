@@ -942,7 +942,7 @@ export function TabFerias({ employee }) {
 // ══ TAB FOLHA ═════════════════════════════════════════════
 export function TabFolha({ employee }) {
   const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'));
-  const [form, setForm]   = useState({ base_salary:'', bonus:'0', overtime_pay:'0', other_additions:'0', other_deductions:'0', payment_method:'', notes:'' });
+  const [form, setForm]   = useState({ base_salary:'', bonus:'0', overtime_pay:'0', other_additions:'0', other_deductions:'0', payment_method:'', notes:'', kind:'mensal' });
   const [preview, setPreview]   = useState(null);
   const [modalNew, setModalNew] = useState(false);
   const qc = useQueryClient();
@@ -957,6 +957,7 @@ export function TabFolha({ employee }) {
     if (!form.base_salary) return;
     try {
       const res = await api.post('/hr/payroll/simulate', {
+        kind: form.kind,
         base_salary: Number(form.base_salary),
         bonus: Number(form.bonus||0),
         overtime_pay: Number(form.overtime_pay||0),
@@ -1012,7 +1013,14 @@ export function TabFolha({ employee }) {
               const st = PAYROLL_STATUS[p.status];
               return (
                 <tr key={p.id}>
-                  <td className="font-mono text-sm">{p.reference_month}</td>
+                  <td className="font-mono text-sm">
+                    {p.reference_month}
+                    {p.kind && p.kind !== 'mensal' && (
+                      <span className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${p.kind === '13' ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700'}`}>
+                        {p.kind === '13' ? '13º' : 'FÉRIAS'}
+                      </span>
+                    )}
+                  </td>
                   <td className="font-medium text-sm">{p.CLIENTES?.name}</td>
                   <td className="text-right">{fmt(p.gross_salary)}</td>
                   <td className="text-right text-red-600">-{fmt(p.inss_deduction)}</td>
@@ -1045,6 +1053,14 @@ export function TabFolha({ employee }) {
             <p className="text-sm font-semibold text-indigo-800">{employee.name}</p>
             <p className="text-xs text-indigo-500">Mês de referência: <strong>{month}</strong></p>
           </div>
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+            {[['mensal','Mensal'],['13','13º Salário'],['ferias','Férias']].map(([k,l]) => (
+              <button key={k} type="button" onClick={() => { setForm(p=>({...p,kind:k})); setPreview(null); }}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${form.kind===k ? 'bg-white shadow text-violet-700' : 'text-gray-500'}`}>{l}</button>
+            ))}
+          </div>
+          {form.kind === 'ferias' && <p className="text-xs text-teal-600">Inclui 1/3 constitucional automaticamente sobre o salário base.</p>}
+          {form.kind === '13' && <p className="text-xs text-amber-600">13º integral (ajuste o salário base se for proporcional).</p>}
           <div className="grid grid-cols-2 gap-3">
             {[
               ['base_salary', 'Salário base *', true],

@@ -2,37 +2,70 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 
+// meta de vendas mensal
+router.get('/goal', async (req, res) => {
+  try {
+    const { data } = await supabase.from('METAS').select('monthly_sales')
+      .eq('tenant_id', req.tenantId).maybeSingle();
+    res.json({ monthly_sales: Number(data?.monthly_sales) || 0 });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.put('/goal', async (req, res) => {
+  if (!['admin', 'manager'].includes(req.userProfile?.role)) {
+    return res.status(403).json({ error: 'Apenas gestores podem definir a meta' });
+  }
+  const monthly_sales = Math.max(Number(req.body.monthly_sales) || 0, 0);
+  try {
+    const { data, error } = await supabase.from('METAS')
+      .upsert({ tenant_id: req.tenantId, monthly_sales, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id' })
+      .select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/', async (req, res) => {
-  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
   const firstDayOfMonth = today.substring(0, 8) + '01';
+  // mês anterior
+  const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+  const prevEnd   = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0] + 'T23:59:59';
   const tenantId = req.tenantId;
 
   try {
     const [
       { data: salesToday },
       { data: salesMonth },
+      { data: salesPrevMonth },
       { count: pendingOrders },
       { data: recentSales },
       { data: receivables },
       { data: openQuotes },
       { data: customizations },
       { data: overduePayables },
+      { data: meta },
     ] = await Promise.all([
       supabase.from('VENDAS').select('total').eq('tenant_id', tenantId).neq('status', 'cancelled').gte('created_at', today),
       supabase.from('VENDAS').select('total').eq('tenant_id', tenantId).neq('status', 'cancelled').gte('created_at', firstDayOfMonth),
+      supabase.from('VENDAS').select('total').eq('tenant_id', tenantId).neq('status', 'cancelled').gte('created_at', prevStart).lte('created_at', prevEnd),
       supabase.from('VENDAS').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['open', 'confirmed', 'in_production']),
       supabase.from('VENDAS').select('id, number, total, status, created_at, CLIENTES(name)').eq('tenant_id', tenantId).order('created_at', { ascending: false }).limit(10),
       supabase.from('LANCAMENTOS').select('amount').eq('tenant_id', tenantId).eq('type', 'receivable').eq('status', 'pending'),
       supabase.from('ORCAMENTOS').select('total').eq('tenant_id', tenantId).in('status', ['open', 'sent']),
       supabase.from('PERSONALIZACOES').select('status').eq('tenant_id', tenantId).in('status', ['briefing', 'design', 'approval', 'printing', 'finishing', 'ready']),
       supabase.from('LANCAMENTOS').select('amount').eq('tenant_id', tenantId).eq('type', 'payable').in('status', ['pending', 'partial']).lt('due_date', today),
+      supabase.from('METAS').select('monthly_sales').eq('tenant_id', tenantId).maybeSingle(),
     ]);
 
     const totalSalesToday = (salesToday || []).reduce((s, v) => s + (v.total || 0), 0);
     const totalSalesMonth = (salesMonth || []).reduce((s, v) => s + (v.total || 0), 0);
+    const totalSalesPrevMonth = (salesPrevMonth || []).reduce((s, v) => s + (v.total || 0), 0);
     const totalReceivables = (receivables || []).reduce((s, t) => s + (t.amount || 0), 0);
     const totalOpenQuotesValue = (openQuotes || []).reduce((s, q) => s + (q.total || 0), 0);
     const totalOverduePayables = (overduePayables || []).reduce((s, t) => s + (t.amount || 0), 0);
+    const goal = Number(meta?.monthly_sales) || 0;
 
     const customizationsByStatus = {};
     (customizations || []).forEach(c => {
@@ -43,6 +76,10 @@ router.get('/', async (req, res) => {
       kpis: {
         sales_today: totalSalesToday,
         sales_month: totalSalesMonth,
+        sales_prev_month: totalSalesPrevMonth,
+        sales_mom_pct: totalSalesPrevMonth > 0 ? Number((((totalSalesMonth - totalSalesPrevMonth) / totalSalesPrevMonth) * 100).toFixed(1)) : null,
+        monthly_goal: goal,
+        goal_progress: goal > 0 ? Number(((totalSalesMonth / goal) * 100).toFixed(1)) : null,
         pending_orders: pendingOrders || 0,
         receivables_pending: totalReceivables,
         open_quotes_count: (openQuotes || []).length,

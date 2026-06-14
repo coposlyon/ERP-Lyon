@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Line, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement,
@@ -14,6 +14,9 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
+import toast from 'react-hot-toast';
+import { Target, Pencil, TrendingUp } from 'lucide-react';
 
 ChartJS.register(
   CategoryScale, LinearScale, PointElement,
@@ -135,6 +138,72 @@ function KPI({ title, value, subtitle, Icon, iconBg, iconColor, onClick, red }) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+function MetaCard({ kpis }) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const canEdit = ['admin', 'manager'].includes(user?.role);
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState('');
+  const goal = kpis.monthly_goal || 0;
+  const progress = kpis.goal_progress;
+  const mom = kpis.sales_mom_pct;
+  const fmtBRL = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+
+  const saveMut = useMutation({
+    mutationFn: monthly_sales => api.put('/dashboard/goal', { monthly_sales }),
+    onSuccess: () => { toast.success('Meta atualizada'); setEditing(false); qc.invalidateQueries(['dashboard']); },
+    onError: e => toast.error(e.error || 'Erro ao salvar meta'),
+  });
+
+  const pct = Math.min(progress || 0, 100);
+  const barColor = pct >= 100 ? 'bg-green-500' : pct >= 70 ? 'bg-blue-500' : pct >= 40 ? 'bg-amber-500' : 'bg-red-400';
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <Target size={18} className="text-violet-500" />
+          <span className="font-semibold text-gray-700 dark:text-gray-200">Meta do mês</span>
+          {mom != null && (
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${mom >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+              <TrendingUp size={11} className="inline -mt-0.5" /> {mom >= 0 ? '+' : ''}{mom}% vs mês anterior
+            </span>
+          )}
+        </div>
+        {canEdit && !editing && (
+          <button onClick={() => { setVal(goal || ''); setEditing(true); }} className="text-gray-400 hover:text-violet-600 flex items-center gap-1 text-xs font-medium">
+            <Pencil size={13} /> {goal > 0 ? 'Editar' : 'Definir'} meta
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="flex items-center gap-2">
+          <span className="text-gray-400">R$</span>
+          <input type="number" min="0" className="input flex-1" value={val} onChange={e => setVal(e.target.value)} placeholder="Meta de vendas do mês" autoFocus />
+          <button onClick={() => saveMut.mutate(Number(val) || 0)} disabled={saveMut.isPending} className="btn-primary btn-sm">Salvar</button>
+          <button onClick={() => setEditing(false)} className="btn-secondary btn-sm">Cancelar</button>
+        </div>
+      ) : goal > 0 ? (
+        <>
+          <div className="flex items-end justify-between mb-1.5">
+            <span className="text-2xl font-bold text-gray-900 dark:text-white">{fmtBRL(kpis.sales_month)}</span>
+            <span className="text-sm text-gray-400">de {fmtBRL(goal)}</span>
+          </div>
+          <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div className={`h-full ${barColor} transition-all duration-500`} style={{ width: `${pct}%` }} />
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            {progress >= 100 ? '🎉 Meta batida!' : `${progress}% da meta · faltam ${fmtBRL(Math.max(0, goal - (kpis.sales_month || 0)))}`}
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-gray-400">Defina uma meta de vendas para acompanhar o progresso do mês em tempo real.</p>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const navigate    = useNavigate();
   const { isDark }  = useTheme();
@@ -355,6 +424,9 @@ export default function Dashboard() {
         <KPI title="A Receber"       value={fmt(kpis.receivables_pending)} subtitle="Contas pendentes"
           Icon={AlertTriangle} iconBg="rgba(123,47,190,0.15)" iconColor="#7B2FBE" />
       </div>
+
+      {/* ── Meta do mês ────────────────────────────────────────────────────── */}
+      <MetaCard kpis={kpis} />
 
       {/* ── KPIs linha 2 ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

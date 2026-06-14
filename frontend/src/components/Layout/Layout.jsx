@@ -3,6 +3,7 @@ import { useState, useEffect, Suspense } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import GlobalSearch from '@/components/GlobalSearch';
 
 function PageLoading() {
   return (
@@ -24,6 +25,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
+      <GlobalSearch />
       {/* Overlay escuro no mobile quando sidebar aberto */}
       {mobileSidebarOpen && (
         <div

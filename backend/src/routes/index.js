@@ -45,10 +45,11 @@ router.use('/public', publicStoreRoutes); // loja pública — sem auth
 router.use(authMiddleware);
 router.use(tenantMiddleware);
 
-// Dashboard e marcação de ponto: disponíveis a todo usuário logado,
-// sem restrição de módulo (todo colaborador bate o próprio ponto).
+// Dashboard, marcação de ponto e busca global: disponíveis a todo
+// usuário logado, sem restrição de módulo.
 router.use('/dashboard', dashboardRoutes);
 router.use('/me', pontoAppRoutes);
+router.use('/search', require('./search'));
 
 // Rotas usadas por vários módulos aceitam qualquer um deles (basta ter um).
 router.use('/products',  requireModules('products','sales','pdv','quotes','purchases','stock','customizations','price-tables','returns'), productsRoutes);

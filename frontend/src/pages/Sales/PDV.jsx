@@ -153,9 +153,9 @@ export default function PDV() {
   }
 
   return (
-    <div className="h-full flex gap-4" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+    <div className="flex flex-col lg:flex-row gap-4 lg:h-full" style={{ maxHeight: 'none' }}>
       {/* Esquerda — Produtos */}
-      <div className="flex-1 flex flex-col gap-3 overflow-hidden">
+      <div className="flex-1 flex flex-col gap-3 lg:overflow-hidden">
         <h1 className="page-title">PDV — Ponto de Venda</h1>
 
         {/* Busca produto */}
@@ -256,7 +256,7 @@ export default function PDV() {
       </div>
 
       {/* Direita — Checkout */}
-      <div className="w-80 flex flex-col gap-3">
+      <div className="w-full lg:w-80 flex flex-col gap-3">
 
         {/* Cliente — sempre visível */}
         <div className="card p-4">

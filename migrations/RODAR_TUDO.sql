@@ -930,3 +930,36 @@ END $$;
 
 INSERT INTO "_MIGRATIONS" (version, name) VALUES ('011', 'rls')
 ON CONFLICT (version) DO NOTHING;
+
+-- >>>>>>>>>>>>>>>>>>>> 012_metas.sql <<<<<<<<<<<<<<<<<<<<
+-- ============================================================
+-- 012. METAS — meta de vendas mensal por tenant
+-- ============================================================
+CREATE TABLE IF NOT EXISTS "METAS" (
+  tenant_id      UUID PRIMARY KEY,
+  monthly_sales  NUMERIC(14,2) DEFAULT 0,
+  updated_at     TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE "METAS" ENABLE ROW LEVEL SECURITY;
+
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('012', 'metas')
+ON CONFLICT (version) DO NOTHING;
+
+-- >>>>>>>>>>>>>>>>>>>> 013_folha_kind.sql <<<<<<<<<<<<<<<<<<<<
+-- ============================================================
+-- 013. FOLHA — tipo de folha (mensal, 13º, férias)
+--      Permite 13º e férias no mesmo mês de referência sem
+--      sobrescrever o salário mensal.
+-- ============================================================
+ALTER TABLE "RH_SALARIOS"
+  ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'mensal';
+
+UPDATE "RH_SALARIOS" SET kind = 'mensal' WHERE kind IS NULL;
+
+DROP INDEX IF EXISTS rh_salarios_uniq_idx;
+CREATE UNIQUE INDEX IF NOT EXISTS rh_salarios_uniq_idx
+  ON "RH_SALARIOS" (tenant_id, employee_id, reference_month, kind);
+
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('013', 'folha_kind')
+ON CONFLICT (version) DO NOTHING;

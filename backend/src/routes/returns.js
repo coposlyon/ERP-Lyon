@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const supabase = require('../config/supabase');
+const { audit } = require('../lib/audit');
 
 // ── Listar devoluções ─────────────────────────────────────
 router.get('/', async (req, res) => {
@@ -111,29 +112,51 @@ router.patch('/:id/status', async (req, res) => {
   const valid = ['pending','approved','rejected','processed','cancelled'];
   if (!valid.includes(status)) return res.status(400).json({ error: 'Status inválido' });
   try {
-    // Ao aprovar: gera crédito financeiro para o cliente
-    if (status === 'approved') {
-      const { data: ret } = await supabase
-        .from('DEVOLUCOES').select('*')
-        .eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
-      if (ret?.credit_amount > 0 && ret?.customer_id) {
+    const { data: ret } = await supabase
+      .from('DEVOLUCOES').select('*')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
+    if (!ret) return res.status(404).json({ error: 'Devolução não encontrada' });
+
+    const jaProcessada = ['approved', 'processed'].includes(ret.status);
+    const vaiProcessar = ['approved', 'processed'].includes(status);
+
+    // Na 1ª vez que entra em aprovado/processado: reestoca + estorna
+    if (vaiProcessar && !jaProcessada) {
+      const { data: items } = await supabase
+        .from('DEVOLUCAO_ITENS').select('*').eq('devolucao_id', ret.id);
+
+      // reestoca apenas itens com produto e em bom estado
+      for (const it of (items || [])) {
+        if (it.product_id && (it.condition === 'ok' || !it.condition) && Number(it.quantity) > 0) {
+          await supabase.rpc('atualizar_estoque', {
+            p_tenant_id:      req.tenantId,
+            p_product_id:     it.product_id,
+            p_quantity:       Number(it.quantity),
+            p_type:           'entry',
+            p_reference_type: 'return',
+            p_reference_id:   ret.id,
+            p_user_id:        req.user.id,
+            p_notes:          `Devolução #${ret.number}`,
+          });
+        }
+      }
+
+      // estorno financeiro: crédito ao cliente (conta a pagar)
+      if (ret.credit_amount > 0 && ret.customer_id) {
         await supabase.from('LANCAMENTOS').insert({
-          tenant_id:        req.tenantId,
-          user_id:          req.user.id,
-          description:      `Crédito por devolução #${String(ret.number).padStart(4,'0')}`,
-          type:             'payable',
-          amount:           ret.credit_amount,
-          paid_amount:      0,
-          due_date:         new Date().toISOString().split('T')[0],
-          status:           'pending',
-          customer_id:      ret.customer_id,
-          reference_type:   'return',
-          reference_id:     ret.id,
-          installment:      1,
-          total_installments: 1,
+          tenant_id: req.tenantId, user_id: req.user.id,
+          description: `Crédito por devolução #${String(ret.number).padStart(4, '0')}`,
+          type: 'payable', amount: ret.credit_amount, paid_amount: 0,
+          due_date: new Date().toISOString().split('T')[0], status: 'pending',
+          customer_id: ret.customer_id, reference_type: 'return', reference_id: ret.id,
+          installment: 1, total_installments: 1,
         });
       }
+      audit(req, 'status', 'return', ret.id, { status, restock: true, credit: ret.credit_amount });
+    } else {
+      audit(req, 'status', 'return', ret.id, { status });
     }
+
     const { data, error } = await supabase
       .from('DEVOLUCOES')
       .update({ status, updated_at: new Date().toISOString() })

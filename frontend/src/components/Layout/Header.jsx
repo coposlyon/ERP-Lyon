@@ -73,26 +73,22 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
         </span>
       </div>
 
-      {/* Busca — desktop */}
-      <form onSubmit={handleSearch} className="hidden lg:flex flex-1 max-w-md">
-        <div className="relative w-full">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2"
-            style={{ color: searchIconColor }} />
-          <input
-            type="text"
-            placeholder="Buscar produtos, clientes..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={inputStyle}
-          />
-        </div>
-      </form>
+      {/* Busca global — desktop (abre a paleta Ctrl+K) */}
+      <div className="hidden lg:flex flex-1 max-w-md">
+        <button type="button" onClick={() => window.dispatchEvent(new Event('open-global-search'))}
+          className="relative w-full flex items-center" style={inputStyle}>
+          <Search size={15} className="absolute left-3" style={{ color: searchIconColor }} />
+          <span className="text-sm" style={{ color: searchIconColor }}>Buscar produtos, clientes, vendas...</span>
+          <kbd className="absolute right-2 text-xs px-1.5 py-0.5 rounded"
+            style={{ background: isDark ? '#374151' : '#e5e7eb', color: searchIconColor }}>Ctrl K</kbd>
+        </button>
+      </div>
 
       {/* Ações direita */}
       <div className="flex items-center gap-1 lg:gap-1.5 ml-auto">
-        {/* Busca mobile — ícone */}
-        <button onClick={() => setSearchOpen(v => !v)} className={`${iconCls} lg:hidden`} aria-label="Buscar">
-          {searchOpen ? <X size={18} /> : <Search size={18} />}
+        {/* Busca mobile — abre a paleta global */}
+        <button onClick={() => window.dispatchEvent(new Event('open-global-search'))} className={`${iconCls} lg:hidden`} aria-label="Buscar">
+          <Search size={18} />
         </button>
 
         {/* Toggle Tema — Sol / Lua */}

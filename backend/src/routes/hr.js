@@ -412,30 +412,40 @@ router.get('/payroll', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Salário-base de cálculo conforme o tipo de folha
+//  mensal → base; 13º → base * meses/12; férias → base + 1/3 constitucional
+function basePorTipo(kind, base, months) {
+  const b = Number(base) || 0;
+  if (kind === '13')     return Math.round(b * (Math.min(Number(months) || 12, 12) / 12) * 100) / 100;
+  if (kind === 'ferias') return Math.round((b + b / 3) * 100) / 100;
+  return b;
+}
+
+function calcFolha({ kind = 'mensal', base_salary = 0, bonus = 0, overtime_pay = 0, other_additions = 0, other_deductions = 0, months = 12 }) {
+  const baseCalc = basePorTipo(kind, base_salary, months);
+  const gross = baseCalc + Number(bonus) + Number(overtime_pay) + Number(other_additions);
+  const inss  = calcINSS(gross);
+  const irrf  = Math.max(0, calcIRRF(gross, inss));
+  const fgts  = parseFloat((gross * 0.08).toFixed(2));
+  const net   = parseFloat((gross - inss - irrf - Number(other_deductions)).toFixed(2));
+  return { gross_salary: gross, inss_deduction: inss, irrf_deduction: irrf, fgts_value: fgts, net_salary: net };
+}
+
 // Simula folha (sem salvar) para preview
 router.post('/payroll/simulate', async (req, res) => {
-  const { base_salary=0, bonus=0, overtime_pay=0, other_additions=0, other_deductions=0 } = req.body;
-  const gross         = Number(base_salary)+Number(bonus)+Number(overtime_pay)+Number(other_additions);
-  const inss          = calcINSS(gross);
-  const irrf          = Math.max(0, calcIRRF(gross, inss));
-  const fgts          = parseFloat((gross * 0.08).toFixed(2));
-  const net           = parseFloat((gross - inss - irrf - Number(other_deductions)).toFixed(2));
-  res.json({ gross_salary:gross, inss_deduction:inss, irrf_deduction:irrf, fgts_value:fgts, net_salary:net });
+  res.json(calcFolha(req.body));
 });
 
 router.post('/payroll', async (req, res) => {
   const {
     employee_id, reference_month, base_salary,
-    bonus=0, overtime_pay=0, other_additions=0, other_deductions=0,
-    payment_method, notes
+    bonus = 0, overtime_pay = 0, other_additions = 0, other_deductions = 0,
+    payment_method, notes, kind = 'mensal', months = 12,
   } = req.body;
   if (!employee_id || !reference_month || !base_salary)
     return res.status(400).json({ error: 'Colaborador, mês e salário base são obrigatórios' });
-  const gross = Number(base_salary)+Number(bonus)+Number(overtime_pay)+Number(other_additions);
-  const inss  = calcINSS(gross);
-  const irrf  = Math.max(0, calcIRRF(gross, inss));
-  const fgts  = parseFloat((gross * 0.08).toFixed(2));
-  const net   = parseFloat((gross - inss - irrf - Number(other_deductions)).toFixed(2));
+
+  const calc = calcFolha({ kind, base_salary, bonus, overtime_pay, other_additions, other_deductions, months });
   try {
     const { data, error } = await supabase
       .from('RH_SALARIOS')
@@ -443,22 +453,24 @@ router.post('/payroll', async (req, res) => {
         tenant_id:       req.tenantId,
         employee_id,
         reference_month,
+        kind,
         base_salary:     Number(base_salary),
         bonus:           Number(bonus),
         overtime_pay:    Number(overtime_pay),
         other_additions: Number(other_additions),
-        gross_salary:    gross,
-        inss_deduction:  inss,
-        irrf_deduction:  irrf,
+        gross_salary:    calc.gross_salary,
+        inss_deduction:  calc.inss_deduction,
+        irrf_deduction:  calc.irrf_deduction,
         other_deductions:Number(other_deductions),
-        fgts_value:      fgts,
-        net_salary:      net,
+        fgts_value:      calc.fgts_value,
+        net_salary:      calc.net_salary,
         status:          'draft',
         payment_method:  payment_method || null,
         notes:           notes || null,
-      }, { onConflict: 'tenant_id,employee_id,reference_month' })
+      }, { onConflict: 'tenant_id,employee_id,reference_month,kind' })
       .select().single();
     if (error) throw error;
+    audit(req, 'create', 'payroll', data.id, { reference_month, kind, net: calc.net_salary });
     res.status(201).json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
