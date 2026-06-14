@@ -28,15 +28,18 @@ router.get('/', async (req, res) => {
     }
 
     if (search) {
-      const isNumeric = /^\d+$/.test(search.trim());
+      const s = search.trim();
+      const isNumeric = /^\d+$/.test(s);
       if (isNumeric) {
-        // Busca por ID numérico OU campos texto
-        query = query.or(
-          `display_id.eq.${parseInt(search)},name.ilike.%${search}%,cpf_cnpj.ilike.%${search}%,phone.ilike.%${search}%,mobile.ilike.%${search}%`
-        );
+        // Número curto = busca pelo CÓDIGO (display_id) exato. Só inclui
+        // documento/telefone quando é longo o bastante p/ ser CPF/CNPJ/fone
+        // (evita que "4" case no telefone "43 9952-3972" de outro cliente).
+        const conds = [`display_id.eq.${parseInt(s)}`];
+        if (s.length >= 5) conds.push(`cpf_cnpj.ilike.%${s}%`, `phone.ilike.%${s}%`, `mobile.ilike.%${s}%`);
+        query = query.or(conds.join(','));
       } else {
         query = query.or(
-          `name.ilike.%${search}%,cpf_cnpj.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,mobile.ilike.%${search}%`
+          `name.ilike.%${s}%,cpf_cnpj.ilike.%${s}%,email.ilike.%${s}%,phone.ilike.%${s}%,mobile.ilike.%${s}%`
         );
       }
     }
