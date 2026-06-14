@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
+const { createPix } = require('../lib/pix');
 
 router.get('/receivables', async (req, res) => {
   const { page = 1, limit = 50, status, start_date, end_date } = req.query;
@@ -197,6 +198,35 @@ router.get('/cashflow-projection', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Gerar cobrança PIX para uma conta a receber ───────────
+router.post('/:id/pix', async (req, res) => {
+  try {
+    const { data: lanc } = await supabase
+      .from('LANCAMENTOS').select('*, CLIENTES(name, email)')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!lanc) return res.status(404).json({ error: 'Lançamento não encontrado' });
+    if (lanc.type !== 'receivable') return res.status(400).json({ error: 'PIX disponível apenas para contas a receber' });
+    const remaining = Number(lanc.amount) - Number(lanc.paid_amount || 0);
+    if (remaining <= 0) return res.status(400).json({ error: 'Lançamento já está quitado' });
+
+    const pix = await createPix({
+      amount: remaining,
+      description: lanc.description || 'Cobrança',
+      payerEmail: lanc.CLIENTES?.email,
+      payerName: lanc.CLIENTES?.name,
+      externalRef: lanc.id,
+    });
+    if (!pix.ok) return res.status(400).json({ error: pix.error });
+
+    await supabase.from('LANCAMENTOS').update({
+      gateway_payment_id: pix.id, pix_qr: pix.qr_code_base64 || null, pix_copy_paste: pix.qr_code || null,
+    }).eq('id', lanc.id);
+
+    audit(req, 'pix', 'financial', lanc.id, { amount: remaining });
+    res.json({ qr_code_base64: pix.qr_code_base64, copy_paste: pix.qr_code, ticket_url: pix.ticket_url });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

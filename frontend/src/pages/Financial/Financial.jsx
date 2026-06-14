@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DollarSign, TrendingUp, TrendingDown, Check, Plus, Loader2, FileBarChart2, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
 import api from '@/lib/api';
@@ -236,6 +236,45 @@ function DREView() {
   );
 }
 
+// ─── Modal: Cobrança PIX ──────────────────────────────────────────
+function PixModal({ transaction, onClose }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    api.post(`/financial/${transaction.id}/pix`, {})
+      .then(d => { if (alive) setData(d); })
+      .catch(e => { if (alive) setErr(e.error || 'Erro ao gerar PIX'); });
+    return () => { alive = false; };
+  }, [transaction.id]);
+
+  function copy() {
+    navigator.clipboard?.writeText(data.copy_paste || '').then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  }
+
+  if (err) return (
+    <div className="text-center py-6">
+      <p className="text-sm text-red-600">{err}</p>
+      <p className="text-xs text-gray-400 mt-2">Configure o Mercado Pago (variável MP_ACCESS_TOKEN) para gerar cobranças PIX.</p>
+      <button onClick={onClose} className="btn-secondary mt-4">Fechar</button>
+    </div>
+  );
+  if (!data) return <div className="py-10 text-center text-gray-400"><Loader2 className="animate-spin mx-auto mb-2" /> Gerando PIX...</div>;
+
+  return (
+    <div className="text-center space-y-3">
+      <p className="text-sm text-gray-500">{transaction.description}</p>
+      <p className="text-2xl font-bold text-gray-900">{fmt((transaction.amount || 0) - (transaction.paid_amount || 0))}</p>
+      {data.qr_code_base64 && <img src={`data:image/png;base64,${data.qr_code_base64}`} alt="QR PIX" className="w-48 h-48 mx-auto rounded-lg border border-gray-100" />}
+      {data.copy_paste && <div className="bg-gray-50 rounded-xl p-2 text-xs text-gray-600 break-all font-mono">{data.copy_paste}</div>}
+      <button onClick={copy} className="btn-primary w-full">{copied ? '✓ Copiado!' : 'Copiar código PIX'}</button>
+      <p className="text-xs text-gray-400">A baixa é automática quando o cliente pagar (webhook Mercado Pago).</p>
+    </div>
+  );
+}
+
 // ─── Fluxo de Caixa Projetado ─────────────────────────────────────
 function CashflowView() {
   const [months, setMonths] = useState(6);
@@ -332,6 +371,7 @@ export default function Financial() {
   const [page, setPage] = useState(1);
   const [payModal, setPayModal] = useState(null);
   const [newModal, setNewModal] = useState(null);
+  const [pixModal, setPixModal] = useState(null);
   const [status, setStatus] = useState('');
   const qc = useQueryClient();
 
@@ -355,11 +395,16 @@ export default function Financial() {
     { key: 'paid_amount', label: 'Pago', width: 110, render: v => <span className="text-green-600">{fmt(v)}</span> },
     { key: 'status', label: 'Status', width: 100,
       render: v => <span className={`badge ${statusClass[v] || 'badge-gray'}`}>{statusLabel[v] || v}</span> },
-    { key: 'id', label: '', width: 80,
+    { key: 'id', label: '', width: 130,
       render: (_, row) => row.status !== 'paid' && row.status !== 'cancelled' ? (
-        <button onClick={() => setPayModal(row)} className="btn-primary btn-sm">
-          <Check size={12} /> Pagar
-        </button>
+        <div className="flex gap-1 justify-end">
+          {tab === 'receivable' && (
+            <button onClick={() => setPixModal(row)} className="btn-secondary btn-sm" title="Gerar cobrança PIX">PIX</button>
+          )}
+          <button onClick={() => setPayModal(row)} className="btn-primary btn-sm">
+            <Check size={12} /> Pagar
+          </button>
+        </div>
       ) : null },
   ];
 
@@ -434,6 +479,10 @@ export default function Financial() {
       <Modal isOpen={!!payModal} onClose={() => setPayModal(null)} title="Registrar Pagamento" size="sm">
         {payModal && <PayModal transaction={payModal} onClose={() => setPayModal(null)}
           onPaid={() => { setPayModal(null); qc.invalidateQueries(['financial']); }} />}
+      </Modal>
+
+      <Modal isOpen={!!pixModal} onClose={() => setPixModal(null)} title="Cobrança PIX" size="sm">
+        {pixModal && <PixModal transaction={pixModal} onClose={() => setPixModal(null)} />}
       </Modal>
 
       <Modal isOpen={!!newModal} onClose={() => setNewModal(null)}

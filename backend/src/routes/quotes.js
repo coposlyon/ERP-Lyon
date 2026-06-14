@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+const { sendEmail } = require('../lib/email');
+const { sendWhatsApp } = require('../lib/whatsapp');
+
+const brl = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
 // Listar orçamentos
 router.get('/', async (req, res) => {
@@ -136,6 +140,47 @@ router.patch('/:id/status', async (req, res) => {
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     if (error) throw error;
     res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Enviar orçamento ao cliente por e-mail ou WhatsApp
+router.post('/:id/send', async (req, res) => {
+  const channel = req.body.channel === 'whatsapp' ? 'whatsapp' : 'email';
+  try {
+    const { data: quote } = await supabase
+      .from('ORCAMENTOS')
+      .select('*, CLIENTES(name, email, phone), ORCAMENTO_ITENS(product_name, quantity, unit_price, total)')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!quote) return res.status(404).json({ error: 'Orçamento não encontrado' });
+
+    const cust = quote.CLIENTES || {};
+    const items = quote.ORCAMENTO_ITENS || [];
+    const num = String(quote.number || '').padStart(4, '0');
+
+    if (channel === 'whatsapp') {
+      if (!cust.phone) return res.status(400).json({ error: 'Cliente sem telefone cadastrado' });
+      const lines = items.map(i => `• ${i.quantity}x ${i.product_name} — ${brl(i.total)}`).join('\n');
+      const msg = `Olá ${cust.name || ''}! 👋\n\nSegue seu orçamento Nº ${num}:\n\n${lines}\n\n*Total: ${brl(quote.total)}*\nPrazo de entrega: ${quote.delivery_days || 10} dias.\n\nQualquer dúvida, estou à disposição!`;
+      const r = await sendWhatsApp(cust.phone, msg);
+      if (!r.ok) return res.status(400).json({ error: r.error });
+    } else {
+      if (!cust.email) return res.status(400).json({ error: 'Cliente sem e-mail cadastrado' });
+      const rows = items.map(i => `<tr><td style="padding:6px;border-bottom:1px solid #eee">${i.quantity}x ${i.product_name}</td><td style="padding:6px;border-bottom:1px solid #eee" align="right">${brl(i.total)}</td></tr>`).join('');
+      const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
+        <h2 style="color:#E8187A">Orçamento Nº ${num}</h2>
+        <p>Olá ${cust.name || ''}, segue o seu orçamento:</p>
+        <table style="width:100%;border-collapse:collapse">${rows}</table>
+        <h3 style="text-align:right">Total: ${brl(quote.total)}</h3>
+        <p style="color:#666">Prazo de entrega: ${quote.delivery_days || 10} dias.</p>
+      </div>`;
+      const r = await sendEmail({ to: cust.email, subject: `Seu orçamento Nº ${num}`, html });
+      if (!r.ok) return res.status(400).json({ error: r.error });
+    }
+
+    if (quote.status === 'open') {
+      await supabase.from('ORCAMENTOS').update({ status: 'sent' }).eq('id', quote.id);
+    }
+    res.json({ ok: true, channel });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

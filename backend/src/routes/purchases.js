@@ -3,6 +3,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const { custoMedio } = require('../lib/calc');
 const { audit } = require('../lib/audit');
+const { parseNFe } = require('../lib/nfe');
 
 router.get('/', async (req, res) => {
   const { page = 1, limit = 50, status, start_date, end_date } = req.query;
@@ -152,5 +153,100 @@ async function legacyCreatePurchase(req, res) {
     res.status(500).json({ error: err.message });
   }
 }
+
+// ── Importar NF-e de entrada (XML do fornecedor) ──────────
+
+// Pré-visualização: parseia e mostra o que vai casar/criar (não grava)
+router.post('/import-nfe/preview', async (req, res) => {
+  const { xml } = req.body;
+  if (!xml) return res.status(400).json({ error: 'Envie o XML da NF-e' });
+  try {
+    const nfe = parseNFe(xml);
+    let supplierId = null;
+    if (nfe.supplier.cnpj) {
+      const { data } = await supabase.from('FORNECEDORES').select('id, name')
+        .eq('tenant_id', req.tenantId).eq('cnpj', nfe.supplier.cnpj).maybeSingle();
+      supplierId = data?.id || null;
+    }
+    const codes = nfe.items.map(i => i.code).filter(Boolean);
+    const eans  = nfe.items.map(i => i.ean).filter(Boolean);
+    const [{ data: byCode }, { data: byEan }] = await Promise.all([
+      codes.length ? supabase.from('PRODUTOS').select('id, name, code').eq('tenant_id', req.tenantId).in('code', codes) : Promise.resolve({ data: [] }),
+      eans.length  ? supabase.from('PRODUTOS').select('id, name, ean').eq('tenant_id', req.tenantId).in('ean', eans)   : Promise.resolve({ data: [] }),
+    ]);
+    const codeMap = Object.fromEntries((byCode || []).map(p => [p.code, p]));
+    const eanMap  = Object.fromEntries((byEan  || []).map(p => [p.ean, p]));
+    const items = nfe.items.map(it => {
+      const m = (it.code && codeMap[it.code]) || (it.ean && eanMap[it.ean]) || null;
+      return { ...it, matched_product_id: m?.id || null, matched_name: m?.name || null };
+    });
+    res.json({
+      ...nfe,
+      supplier: { ...nfe.supplier, matched_id: supplierId },
+      summary: {
+        new_products: items.filter(i => !i.matched_product_id).length,
+        new_supplier: !supplierId,
+      },
+      items,
+    });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Importa: cria fornecedor/produtos faltantes + compra transacional
+router.post('/import-nfe', async (req, res) => {
+  const { xml } = req.body;
+  if (!xml) return res.status(400).json({ error: 'Envie o XML da NF-e' });
+  try {
+    const nfe = parseNFe(xml);
+
+    // fornecedor
+    let supplierId = null, createdSupplier = false;
+    if (nfe.supplier.cnpj) {
+      const { data } = await supabase.from('FORNECEDORES').select('id')
+        .eq('tenant_id', req.tenantId).eq('cnpj', nfe.supplier.cnpj).maybeSingle();
+      supplierId = data?.id || null;
+    }
+    if (!supplierId) {
+      const { data, error } = await supabase.from('FORNECEDORES').insert({
+        tenant_id: req.tenantId, name: nfe.supplier.name, cnpj: nfe.supplier.cnpj || null,
+        phone: nfe.supplier.phone || null, address: nfe.supplier.address || {}, is_active: true,
+      }).select('id').single();
+      if (error) throw error;
+      supplierId = data.id; createdSupplier = true;
+    }
+
+    // produtos
+    let createdProducts = 0;
+    const items = [];
+    for (const it of nfe.items) {
+      let prod = null;
+      if (it.code) { const { data } = await supabase.from('PRODUTOS').select('id').eq('tenant_id', req.tenantId).eq('code', it.code).maybeSingle(); prod = data; }
+      if (!prod && it.ean) { const { data } = await supabase.from('PRODUTOS').select('id').eq('tenant_id', req.tenantId).eq('ean', it.ean).maybeSingle(); prod = data; }
+      let productId = prod?.id;
+      if (!productId) {
+        const { data, error } = await supabase.from('PRODUTOS').insert({
+          tenant_id: req.tenantId, name: (it.name || 'Produto').toUpperCase(),
+          code: it.code || null, ean: it.ean || null, ncm: it.ncm || null, cfop: it.cfop || null,
+          unit: it.unit || 'UN', cost_price: it.unit_price || 0, sale_price: 0,
+          supplier_id: supplierId, is_active: true,
+        }).select('id').single();
+        if (error) throw error;
+        productId = data.id; createdProducts++;
+      }
+      items.push({ product_id: productId, quantity: it.quantity, unit_price: it.unit_price });
+    }
+
+    // compra transacional (entrada de estoque + custo médio)
+    const { data: purchase, error: pErr } = await supabase.rpc('criar_compra', {
+      _tenant_id: req.tenantId, _user_id: req.user.id, _supplier_id: supplierId,
+      _items: items, _discount: nfe.discount || 0,
+      _notes: `Importado da NF-e ${nfe.number || ''}`.trim(),
+    });
+    if (pErr) return res.status(400).json({ error: 'Rode a migração 010 (criar_compra) antes de importar NF-e. ' + pErr.message });
+
+    audit(req, 'import', 'purchase', purchase?.id, { nfe: nfe.number, items: items.length, created_products: createdProducts, created_supplier: createdSupplier });
+    res.status(201).json({ purchase, created_products: createdProducts, created_supplier: createdSupplier, items: items.length });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 
 module.exports = router;

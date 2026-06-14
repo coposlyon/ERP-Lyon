@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Eye, ArrowRightCircle, FileText } from 'lucide-react';
+import { Plus, Search, Eye, ArrowRightCircle, FileText, Mail, MessageCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import { format, parseISO } from 'date-fns';
@@ -49,6 +49,15 @@ export default function Quotes() {
     } catch (err) { toast.error(err.error || 'Erro'); }
   }
 
+  async function handleSend(id, channel) {
+    const t = toast.loading(`Enviando por ${channel === 'whatsapp' ? 'WhatsApp' : 'e-mail'}...`);
+    try {
+      await api.post(`/quotes/${id}/send`, { channel });
+      toast.success('Orçamento enviado!', { id: t });
+      qc.invalidateQueries(['quotes']);
+    } catch (err) { toast.error(err.error || 'Erro ao enviar', { id: t }); }
+  }
+
   const columns = [
     { key: 'number', label: '#', width: 60,
       render: v => <span className="font-mono font-bold">#{String(v).padStart(4,'0')}</span> },
@@ -60,12 +69,18 @@ export default function Quotes() {
       render: v => v ? format(parseISO(v), 'dd/MM/yyyy', { locale: ptBR }) : '—' },
     { key: 'status', label: 'Status', width: 110,
       render: v => { const s = STATUS[v] || { label: v, cls: 'badge-gray' }; return <span className={`badge ${s.cls}`}>{s.label}</span>; } },
-    { key: 'id', label: '', width: 120,
+    { key: 'id', label: '', width: 160,
       render: (id, row) => (
         <div className="flex items-center gap-1">
           <Link to={`/quotes/${id}`} className="btn-ghost p-1.5 tooltip" title="Ver">
             <Eye size={14} />
           </Link>
+          <button onClick={() => handleSend(id, 'whatsapp')} className="btn-ghost p-1.5 text-green-600" title="Enviar por WhatsApp">
+            <MessageCircle size={14} />
+          </button>
+          <button onClick={() => handleSend(id, 'email')} className="btn-ghost p-1.5 text-indigo-600" title="Enviar por e-mail">
+            <Mail size={14} />
+          </button>
           {row.status === 'open' && (
             <button onClick={() => handleStatus(id, 'sent')} className="btn-ghost p-1.5 text-blue-600" title="Marcar como Enviado">
               <FileText size={14} />

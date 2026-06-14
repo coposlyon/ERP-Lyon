@@ -41,6 +41,7 @@ router.use('/auth', authRoutes);
 router.use('/cnpj', cnpjRoutes);   // público — sem auth
 router.use('/cep',  cepRoutes);    // público — sem auth
 router.use('/public', publicStoreRoutes); // loja pública — sem auth
+router.use('/webhooks', require('./webhooks')); // webhooks externos — sem auth
 
 router.use(authMiddleware);
 router.use(tenantMiddleware);
