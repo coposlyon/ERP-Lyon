@@ -56,9 +56,17 @@ app.get('/health', (req, res) => {
 // ── Serve frontend buildado (produção / Discloud) ─────────────────
 const frontendDist = path.join(__dirname, '../public');
 if (fs.existsSync(frontendDist)) {
-  app.use(express.static(frontendDist));
-  // SPA fallback — qualquer rota não-API devolve o index.html
+  app.use(express.static(frontendDist, {
+    setHeaders: (res, filePath) => {
+      // index.html nunca em cache (aponta sempre p/ os chunks da versão atual);
+      // assets têm hash no nome → podem ser cacheados "para sempre".
+      if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+      else if (filePath.includes(`${path.sep}assets${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    },
+  }));
+  // SPA fallback — qualquer rota não-API devolve o index.html (sem cache)
   app.get('*', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 }
