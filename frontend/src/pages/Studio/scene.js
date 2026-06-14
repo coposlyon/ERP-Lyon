@@ -165,7 +165,9 @@ export function composeBodyCanvas(opts, scale = 2) {
 }
 
 export function bodyMaterial(finish, { map = null, color = '#ffffff' } = {}) {
-  const common = { color: map ? '#ffffff' : color, map };
+  // DoubleSide: canecas/copos abertos no topo mostram a parede interna em vez
+  // de "vazar" o fundo (some o bug de fundo transparente nos translúcidos).
+  const common = { color: map ? '#ffffff' : color, map, side: THREE.DoubleSide };
   if (finish === 'metalico')   return new THREE.MeshPhysicalMaterial({ ...common, roughness: 0.26, metalness: 0.9, clearcoat: 0.4, clearcoatRoughness: 0.25 });
   if (finish === 'brilhante')  return new THREE.MeshPhysicalMaterial({ ...common, roughness: 0.12, metalness: 0.04, clearcoat: 0.9, clearcoatRoughness: 0.08 });
   if (finish === 'translucido')return new THREE.MeshPhysicalMaterial({ ...common, roughness: 0.14, metalness: 0, transmission: 0.88, thickness: 0.6, transparent: true, opacity: 0.94, ior: 1.34, clearcoat: 0.3 });
@@ -198,9 +200,11 @@ export function buildModel(type) {
     mk(new THREE.CylinderGeometry(0.78, 0.56, 2.9, seg), 0, bodyMeshes);
     mk(new THREE.TorusGeometry(0.78, 0.06, 18, seg), 1.45, capMeshes, {}).rotation.x = Math.PI / 2;
   } else if (type === 'slim') {
-    // caneca slim: corpo alto e reto (ideal p/ bicolor) + alça
-    mk(new THREE.CylinderGeometry(0.6, 0.64, 3.1, seg), 0, bodyMeshes);
-    const handle = mk(new THREE.TorusGeometry(0.46, 0.06, 16, 44, Math.PI * 1.15), 0.1, bodyMeshes);
+    // caneca slim: tubo alto ABERTO no topo + fundo sólido + alça
+    mk(new THREE.CylinderGeometry(0.6, 0.64, 3.1, seg, 1, true), 0, bodyMeshes); // openEnded
+    const bottom = mk(new THREE.CircleGeometry(0.64, seg), -1.55, bodyMeshes);
+    bottom.rotation.x = -Math.PI / 2;
+    const handle = mk(new THREE.TorusGeometry(0.5, 0.07, 16, 44, Math.PI * 1.1), 0.05, bodyMeshes);
     handle.rotation.z = -Math.PI / 2; handle.position.x = 0.66;
   } else if (type === 'taca') {
     // taça: bojo (pintável) + haste + base
