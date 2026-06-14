@@ -43,8 +43,8 @@ export default function PDV() {
 
   const { data: customerResults } = useQuery({
     queryKey: ['pdv-customers', customerSearch],
-    queryFn: () => api.get(`/customers?search=${customerSearch}&limit=8&is_active=true`),
-    enabled: customerSearch.length >= 2,
+    queryFn: () => api.get(`/customers?search=${encodeURIComponent(customerSearch.trim())}&limit=8&is_active=true`),
+    enabled: customerSearch.trim().length >= 1,
   });
 
   const saleMutation = useMutation({
@@ -279,23 +279,29 @@ export default function PDV() {
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Buscar cliente..."
+                  placeholder="Nome, ID ou telefone..."
                   value={customerSearch}
                   onChange={e => setCustomerSearch(e.target.value)}
                   className="input text-sm pl-8"
                 />
               </div>
-              {customerSearch.length >= 2 && customerResults?.data?.length > 0 && (
+              {customerSearch.trim().length >= 1 && customerResults?.data?.length > 0 && (
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   {customerResults.data.map(c => (
                     <button key={c.id}
                       onClick={() => { setSelectedCustomer(c); setCustomerSearch(''); }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0">
-                      <p className="font-medium">{c.name}</p>
-                      <p className="text-xs text-gray-400">{c.cpf_cnpj || c.phone}</p>
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
+                      {c.display_id != null && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 shrink-0">#{c.display_id}</span>}
+                      <span className="min-w-0">
+                        <span className="font-medium block truncate">{c.name}</span>
+                        <span className="text-xs text-gray-400">{c.cpf_cnpj || c.phone}</span>
+                      </span>
                     </button>
                   ))}
                 </div>
+              )}
+              {customerSearch.trim().length >= 1 && customerResults?.data?.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-1">Nenhum cliente encontrado.</p>
               )}
               <p className="text-xs text-gray-400 text-center">ou deixe em branco (consumidor final)</p>
             </div>
