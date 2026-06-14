@@ -8,54 +8,60 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
 });
 
+// Monta as condições de busca (.or do PostgREST).
+// useDigits=true usa as colunas geradas *_digits (migration 015), que
+// comparam só os dígitos — assim "4399523972" acha o telefone "43 9952-3972".
+function buildSearchOr(search, useDigits) {
+  const s = String(search).trim();
+  const digits = s.replace(/\D/g, '');
+  const isNumeric = /^\d+$/.test(s);
+  const conds = [];
+  // número = busca pelo CÓDIGO (display_id) exato — evita que "4" traga
+  // todo mundo cujo telefone/CPF contém "4".
+  if (isNumeric) conds.push(`display_id.eq.${parseInt(s)}`);
+  // documento/telefone só entram com 5+ dígitos (fragmento plausível)
+  if (digits.length >= 5) {
+    if (useDigits) conds.push(`doc_digits.ilike.%${digits}%`, `phone_digits.ilike.%${digits}%`, `mobile_digits.ilike.%${digits}%`);
+    else conds.push(`cpf_cnpj.ilike.%${s}%`, `phone.ilike.%${s}%`, `mobile.ilike.%${s}%`);
+  }
+  // texto = nome / documento / e-mail
+  if (!isNumeric) conds.push(`name.ilike.%${s}%`, `cpf_cnpj.ilike.%${s}%`, `email.ilike.%${s}%`);
+  if (!conds.length) conds.push(`display_id.eq.0`); // segurança: nunca .or() vazio
+  return conds.join(',');
+}
+
 router.get('/', async (req, res) => {
   const { page = 1, limit = 50, search, type, is_active, rating, sort } = req.query;
   const offset = (page - 1) * limit;
 
-  try {
+  const buildQuery = (useDigits) => {
     let query = supabase
       .from('CLIENTES')
       .select('*', { count: 'exact' })
       .eq('tenant_id', req.tenantId);
 
     // Ordenação: alfabética (padrão) | recent = últimos admitidos
-    if (sort === 'name') {
-      query = query.order('name', { ascending: true });
-    } else if (sort === 'recent') {
-      query = query.order('display_id', { ascending: false });
-    } else {
-      query = query.order('display_id', { ascending: true });
-    }
+    if (sort === 'name') query = query.order('name', { ascending: true });
+    else if (sort === 'recent') query = query.order('display_id', { ascending: false });
+    else query = query.order('display_id', { ascending: true });
 
-    if (search) {
-      const s = search.trim();
-      const isNumeric = /^\d+$/.test(s);
-      if (isNumeric) {
-        // Número curto = busca pelo CÓDIGO (display_id) exato. Só inclui
-        // documento/telefone quando é longo o bastante p/ ser CPF/CNPJ/fone
-        // (evita que "4" case no telefone "43 9952-3972" de outro cliente).
-        const conds = [`display_id.eq.${parseInt(s)}`];
-        if (s.length >= 5) conds.push(`cpf_cnpj.ilike.%${s}%`, `phone.ilike.%${s}%`, `mobile.ilike.%${s}%`);
-        query = query.or(conds.join(','));
-      } else {
-        query = query.or(
-          `name.ilike.%${s}%,cpf_cnpj.ilike.%${s}%,email.ilike.%${s}%,phone.ilike.%${s}%,mobile.ilike.%${s}%`
-        );
-      }
-    }
+    if (search) query = query.or(buildSearchOr(search, useDigits));
 
     // type=CO → só colaboradores | type=cliente → PF e PJ | sem type → todos
-    if (type === 'CO') {
-      query = query.eq('type', 'CO');
-    } else if (type === 'cliente') {
-      query = query.in('type', ['PF', 'PJ']);
-    }
+    if (type === 'CO') query = query.eq('type', 'CO');
+    else if (type === 'cliente') query = query.in('type', ['PF', 'PJ']);
 
-    if (rating)     query = query.eq('rating', parseInt(rating));
+    if (rating) query = query.eq('rating', parseInt(rating));
     if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
-    query = query.range(offset, offset + limit - 1);
+    return query.range(offset, offset + limit - 1);
+  };
 
-    const { data, error, count } = await query;
+  try {
+    let { data, error, count } = await buildQuery(true);
+    // Fallback se a migration 015 (colunas *_digits) ainda não foi aplicada
+    if (error && /digits|does not exist|column|42703/i.test(error.message || '')) {
+      ({ data, error, count } = await buildQuery(false));
+    }
     if (error) throw error;
     res.json({ data, total: count, page: Number(page), limit: Number(limit) });
   } catch (err) {
