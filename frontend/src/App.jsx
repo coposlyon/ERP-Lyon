@@ -1,57 +1,50 @@
-import { lazy, Suspense } from 'react';
+import { lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import Layout from '@/components/Layout/Layout';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import Login from '@/pages/Auth/Login';
-import Dashboard from '@/pages/Dashboard/Dashboard';
-import Products from '@/pages/Products/Products';
-import Customers from '@/pages/Customers/Customers';
-import Suppliers from '@/pages/Suppliers/Suppliers';
-import Sales from '@/pages/Sales/Sales';
-import SaleForm from '@/pages/Sales/SaleForm';
-import PDV from '@/pages/Sales/PDV';
-import Purchases from '@/pages/Purchases/Purchases';
-import PurchaseForm from '@/pages/Purchases/PurchaseForm';
-import Stock from '@/pages/Stock/Stock';
-import Financial from '@/pages/Financial/Financial';
-import FinancialConfig from '@/pages/Financial/FinancialConfig';
-import Fiscal from '@/pages/Fiscal/Fiscal';
-import Reports from '@/pages/Reports/Reports';
-import Settings from '@/pages/Settings/Settings';
-import Users from '@/pages/Settings/Users';
-import Audit from '@/pages/Settings/Audit';
-import Feriados from '@/pages/Settings/Feriados';
-import Quotes from '@/pages/Quotes/Quotes';
-import QuoteForm from '@/pages/Quotes/QuoteForm';
-import Customizations from '@/pages/Customizations/Customizations';
-import CustomizationDetail from '@/pages/Customizations/CustomizationDetail';
-import PriceTables from '@/pages/PriceTable/PriceTables';
-import CustomerDetail from '@/pages/Customers/CustomerDetail';
-import Employees from '@/pages/Employees/Employees';
-import Logistics from '@/pages/Logistics/Logistics';
-import Returns from '@/pages/Returns/Returns';
-import Quality from '@/pages/Quality/Quality';
-import CRM from '@/pages/CRM/CRM';
-import HR from '@/pages/HR/HR';
-import HRPonto from '@/pages/HR/HRPonto';
-import HRFerias from '@/pages/HR/HRFerias';
-import HRFolha from '@/pages/HR/HRFolha';
-import HRDocumentos from '@/pages/HR/HRDocumentos';
 import MarcacaoPonto from '@/pages/Ponto/MarcacaoPonto';
 import StoreApp from '@/store/StoreApp';
 
-// Estúdio 3D — carregado sob demanda (three.js fica em chunk separado)
+// Páginas do ERP carregadas sob demanda (code-splitting por rota) —
+// cada uma vira um chunk próprio, deixando a carga inicial leve.
+const Dashboard          = lazy(() => import('@/pages/Dashboard/Dashboard'));
+const Products           = lazy(() => import('@/pages/Products/Products'));
+const Customers          = lazy(() => import('@/pages/Customers/Customers'));
+const CustomerDetail     = lazy(() => import('@/pages/Customers/CustomerDetail'));
+const Suppliers          = lazy(() => import('@/pages/Suppliers/Suppliers'));
+const Sales              = lazy(() => import('@/pages/Sales/Sales'));
+const SaleForm           = lazy(() => import('@/pages/Sales/SaleForm'));
+const PDV                = lazy(() => import('@/pages/Sales/PDV'));
+const Purchases          = lazy(() => import('@/pages/Purchases/Purchases'));
+const PurchaseForm       = lazy(() => import('@/pages/Purchases/PurchaseForm'));
+const Stock              = lazy(() => import('@/pages/Stock/Stock'));
+const Financial          = lazy(() => import('@/pages/Financial/Financial'));
+const FinancialConfig    = lazy(() => import('@/pages/Financial/FinancialConfig'));
+const Fiscal             = lazy(() => import('@/pages/Fiscal/Fiscal'));
+const Reports            = lazy(() => import('@/pages/Reports/Reports'));
+const Settings           = lazy(() => import('@/pages/Settings/Settings'));
+const Users              = lazy(() => import('@/pages/Settings/Users'));
+const Audit              = lazy(() => import('@/pages/Settings/Audit'));
+const Feriados           = lazy(() => import('@/pages/Settings/Feriados'));
+const Quotes             = lazy(() => import('@/pages/Quotes/Quotes'));
+const QuoteForm          = lazy(() => import('@/pages/Quotes/QuoteForm'));
+const Customizations     = lazy(() => import('@/pages/Customizations/Customizations'));
+const CustomizationDetail = lazy(() => import('@/pages/Customizations/CustomizationDetail'));
 const CustomizationStudio = lazy(() => import('@/pages/Studio/CustomizationStudio'));
-
-function StudioLoading() {
-  return (
-    <div className="min-h-[60vh] flex flex-col items-center justify-center text-gray-400">
-      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-violet-600 mb-3" />
-      <p className="text-sm">Carregando estúdio 3D...</p>
-    </div>
-  );
-}
+const PriceTables        = lazy(() => import('@/pages/PriceTable/PriceTables'));
+const Employees          = lazy(() => import('@/pages/Employees/Employees'));
+const Logistics          = lazy(() => import('@/pages/Logistics/Logistics'));
+const Returns            = lazy(() => import('@/pages/Returns/Returns'));
+const Quality            = lazy(() => import('@/pages/Quality/Quality'));
+const CRM                = lazy(() => import('@/pages/CRM/CRM'));
+const HR                 = lazy(() => import('@/pages/HR/HR'));
+const HRPonto            = lazy(() => import('@/pages/HR/HRPonto'));
+const HRFerias           = lazy(() => import('@/pages/HR/HRFerias'));
+const HRFolha            = lazy(() => import('@/pages/HR/HRFolha'));
+const HRDocumentos       = lazy(() => import('@/pages/HR/HRDocumentos'));
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -107,7 +100,7 @@ function AppRoutes() {
         {/* Personalização */}
         <Route path="customizations" element={<Mod m="customizations"><Customizations /></Mod>} />
         <Route path="customizations/:id" element={<Mod m="customizations"><CustomizationDetail /></Mod>} />
-        <Route path="studio" element={<Mod m="customizations"><Suspense fallback={<StudioLoading />}><CustomizationStudio /></Suspense></Mod>} />
+        <Route path="studio" element={<Mod m="customizations"><CustomizationStudio /></Mod>} />
         {/* Compras */}
         <Route path="purchases" element={<Mod m="purchases"><Purchases /></Mod>} />
         <Route path="purchases/new" element={<Mod m="purchases"><PurchaseForm /></Mod>} />
@@ -147,7 +140,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <AppRoutes />
+        <ErrorBoundary>
+          <AppRoutes />
+        </ErrorBoundary>
       </AuthProvider>
     </ThemeProvider>
   );

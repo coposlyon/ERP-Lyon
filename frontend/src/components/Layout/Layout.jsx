@@ -1,7 +1,16 @@
 import { Outlet, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import ErrorBoundary from '@/components/ErrorBoundary';
+
+function PageLoading() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="animate-spin rounded-full h-9 w-9 border-b-2 border-primary-600" />
+    </div>
+  );
+}
 
 export default function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -36,7 +45,11 @@ export default function Layout() {
           onToggleMobileSidebar={() => setMobileSidebarOpen(v => !v)}
         />
         <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
-          <Outlet />
+          <ErrorBoundary key={location.pathname}>
+            <Suspense fallback={<PageLoading />}>
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
     </div>

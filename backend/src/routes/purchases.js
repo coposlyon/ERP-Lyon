@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 const { custoMedio } = require('../lib/calc');
+const { audit } = require('../lib/audit');
 
 router.get('/', async (req, res) => {
   const { page = 1, limit = 50, status, start_date, end_date } = req.query;
@@ -56,6 +57,32 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'A compra deve ter ao menos um item' });
   }
 
+  try {
+    const { data, error } = await supabase.rpc('criar_compra', {
+      _tenant_id:   req.tenantId,
+      _user_id:     req.user.id,
+      _supplier_id: supplier_id || null,
+      _items:       items,
+      _discount:    Number(discount) || 0,
+      _notes:       notes || null,
+    });
+    if (error) {
+      if (/criar_compra/i.test(error.message) && /function|does not exist|não existe|schema cache/i.test(error.message)) {
+        return legacyCreatePurchase(req, res);
+      }
+      return res.status(400).json({ error: error.message.replace(/^.*?:\s*/, '') });
+    }
+    audit(req, 'create', 'purchase', data?.id, { number: data?.number, total: data?.total, items: items.length });
+    res.status(201).json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Caminho legado (não transacional) — usado só enquanto a função
+// criar_compra não existir no banco (migração 010 pendente).
+async function legacyCreatePurchase(req, res) {
+  const { supplier_id, items, notes, discount } = req.body;
   try {
     const { data: nextNumber } = await supabase
       .rpc('proximo_numero_compra', { p_tenant_id: req.tenantId });
@@ -124,6 +151,6 @@ router.post('/', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}
 
 module.exports = router;

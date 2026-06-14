@@ -2,6 +2,7 @@ const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
 const { precoFaixa } = require('../lib/calc');
+const { uploadDataUrl } = require('../lib/storage');
 
 // Loja pública: serve UM tenant (a empresa dona da loja).
 // Sem autenticação — montada antes do authMiddleware.
@@ -192,6 +193,11 @@ router.post('/quote', async (req, res) => {
       notes: fullNotes, status: 'open', delivery_days: 10,
     }).select('id, number').single();
     if (qErr) throw qErr;
+
+    // sobe os previews dos itens personalizados para o Storage (não no banco)
+    for (const i of orderItems) {
+      if (i.preview) i.preview = await uploadDataUrl(i.preview, 'pedidos');
+    }
 
     const quoteItems = orderItems.map(i => ({
       quote_id: quote.id, product_id: i.product_id, product_name: i.product_name,

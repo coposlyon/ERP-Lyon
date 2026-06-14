@@ -1,7 +1,16 @@
 const express = require('express');
 const router = express.Router();
+const Joi = require('joi');
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
+const { validate } = require('../middleware/validate');
+
+const productSchema = Joi.object({
+  name:       Joi.string().min(1).required(),
+  sale_price: Joi.number().min(0),
+  cost_price: Joi.number().min(0),
+  min_stock:  Joi.number().min(0),
+}).unknown(true);
 
 router.get('/', async (req, res) => {
   const { page = 1, limit = 50, search, category_id, is_active } = req.query;
@@ -125,7 +134,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', validate(productSchema), async (req, res) => {
   const {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,

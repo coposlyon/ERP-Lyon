@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+const { uploadDataUrl } = require('../lib/storage');
 
 // Listar personalizações (kanban)
 router.get('/', async (req, res) => {
@@ -36,13 +37,14 @@ router.post('/', async (req, res) => {
   const { sale_id, customer_id, title, priority, deadline, artwork_url, artwork_notes, customer_notes, internal_notes, assigned_to, design_3d, preview_url } = req.body;
   if (!title) return res.status(400).json({ error: 'Título obrigatório' });
   try {
+    const preview = await uploadDataUrl(preview_url, 'personalizacoes');
     const { data, error } = await supabase.from('PERSONALIZACOES').insert({
       tenant_id: req.tenantId, sale_id: sale_id || null,
       customer_id: customer_id || null, title, status: 'briefing',
       priority: priority || 'normal', deadline: deadline || null,
       artwork_url, artwork_notes, customer_notes, internal_notes,
       assigned_to: assigned_to || null,
-      design_3d: design_3d || null, preview_url: preview_url || null,
+      design_3d: design_3d || null, preview_url: preview,
     }).select().single();
     if (error) throw error;
     res.status(201).json(data);
@@ -55,7 +57,7 @@ router.put('/:id', async (req, res) => {
   try {
     const upd = { title, priority, deadline, artwork_url, artwork_notes, customer_notes, internal_notes, assigned_to, updated_at: new Date().toISOString() };
     if (design_3d !== undefined)   upd.design_3d = design_3d;
-    if (preview_url !== undefined) upd.preview_url = preview_url;
+    if (preview_url !== undefined) upd.preview_url = await uploadDataUrl(preview_url, 'personalizacoes');
     const { data, error } = await supabase.from('PERSONALIZACOES')
       .update(upd)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();

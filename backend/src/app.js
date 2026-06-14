@@ -8,6 +8,7 @@ const path    = require('path');
 const fs      = require('fs');
 
 const routes = require('./routes');
+const { captureError } = require('./lib/observability');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -63,7 +64,7 @@ if (fs.existsSync(frontendDist)) {
 }
 
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  captureError(err, { path: req.originalUrl, method: req.method, tenant: req.tenantId, user: req.user?.id });
   res.status(err.status || 500).json({
     error: err.message || 'Internal server error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),

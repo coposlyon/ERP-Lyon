@@ -1,7 +1,22 @@
 const express = require('express');
 const router = express.Router();
+const Joi = require('joi');
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
+const { validate } = require('../middleware/validate');
+
+const saleSchema = Joi.object({
+  items: Joi.array().min(1).items(
+    Joi.object({
+      product_id: Joi.string().uuid().required(),
+      quantity:   Joi.number().positive().required(),
+      unit_price: Joi.number().min(0),
+    }).unknown(true)
+  ).required(),
+  customer_id: Joi.string().uuid().allow(null, ''),
+  discount:    Joi.number().min(0),
+  installments: Joi.number().integer().min(1),
+}).unknown(true);
 
 router.get('/', async (req, res) => {
   const { page = 1, limit = 50, status, type, start_date, end_date, search } = req.query;
@@ -72,7 +87,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', validate(saleSchema), async (req, res) => {
   const {
     customer_id, type, items, notes, discount, delivery_date,
     artwork_url, artwork_notes, payment_method, installments, first_due_date,
