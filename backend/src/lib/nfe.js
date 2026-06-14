@@ -1,13 +1,21 @@
-const { XMLParser } = require('fast-xml-parser');
-
-const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', trimValues: true });
+// Importação preguiçosa: se o fast-xml-parser não estiver instalado no
+// servidor, só a importação de NF-e fica indisponível — o app NÃO cai.
+let _parser = null;
+function getParser() {
+  if (_parser) return _parser;
+  let XMLParser;
+  try { ({ XMLParser } = require('fast-xml-parser')); }
+  catch { throw new Error('Importação de NF-e indisponível: dependência "fast-xml-parser" não instalada no servidor.'); }
+  _parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', trimValues: true });
+  return _parser;
+}
 
 function arr(x) { return Array.isArray(x) ? x : x != null ? [x] : []; }
 function digits(s) { return String(s || '').replace(/\D/g, ''); }
 
 // Lê uma NF-e (XML) e devolve emitente + itens + totais.
 function parseNFe(xml) {
-  const obj = parser.parse(xml);
+  const obj = getParser().parse(xml);
   const inf = obj?.nfeProc?.NFe?.infNFe || obj?.NFe?.infNFe || obj?.infNFe;
   if (!inf) throw new Error('XML não parece ser uma NF-e válida');
 
