@@ -14,14 +14,15 @@ export const PALETTE = [
 ];
 
 // printW/printH = área de impressão (rótulo desenrolado) em mm, usada no PDF de produção
+// rim:true → a 3ª cor pinta a BORDA (em vez da tampa). defaultFinish = acabamento padrão.
 export const MODELS = [
   { key: 'shaker',    label: 'Acqua Plus 500ml',    spec: 'shaker · tampa flip', printW: 230, printH: 90 },
-  { key: 'twister',   label: 'Copo Twister 400ml',  spec: 'acrílico texturizado', noCap: true, pattern: 'twist', printW: 215, printH: 100 },
-  { key: 'longdrink', label: 'Long Drink 350ml',    spec: 'acrílico', noCap: true, printW: 235, printH: 100 },
+  { key: 'twister',   label: 'Copo Twister 400ml',  spec: 'acrílico · borda colorida', noCap: true, rim: true, defaultFinish: 'translucido', printW: 215, printH: 100 },
+  { key: 'longdrink', label: 'Long Drink 350ml',    spec: 'acrílico', noCap: true, defaultFinish: 'translucido', printW: 235, printH: 100 },
   { key: 'caneca',    label: 'Caneca Alumínio 500ml', spec: 'alumínio · com alça', noCap: true, defaultFinish: 'metalico', printW: 250, printH: 100 },
-  { key: 'taca',      label: 'Taça 180ml',          spec: 'taça com pé', noCap: true, printW: 160, printH: 70 },
+  { key: 'slim',      label: 'Caneca Slim 400ml',   spec: 'acrílico · com alça', noCap: true, defaultFinish: 'translucido', printW: 215, printH: 110 },
+  { key: 'taca',      label: 'Taça 180ml',          spec: 'taça com pé', noCap: true, defaultFinish: 'translucido', printW: 160, printH: 70 },
   { key: 'garrafa',   label: 'Garrafa 700ml',       spec: 'tampa rosca', printW: 235, printH: 115 },
-  { key: 'squeeze',   label: 'Squeeze 750ml',       spec: 'bico esporte', printW: 235, printH: 115 },
 ];
 
 export const FINISHES = [
@@ -45,8 +46,10 @@ export const TEMPLATES = [
     arts: [{ kind: 'text', text: 'NO PAIN\nNO GAIN', font: 'Anton', color: '#FFFFFF', x: 0.25, y: 0.55, scale: 0.85, rot: 0 }] },
   { name: 'Verão Tropical', model: 'longdrink', color1: '#2BB7B3', color2: '#FFD400', gradient: true, finish: 'translucido', bg: 'warm',
     arts: [{ kind: 'text', text: 'SUMMER', font: 'Pacifico', color: '#FFFFFF', x: 0.25, y: 0.55, scale: 1, rot: -6 }] },
-  { name: 'Festa Neon', model: 'twister', color1: '#A020F0', color2: '#FF2D95', gradient: true, finish: 'brilhante', bg: 'dark',
-    arts: [{ kind: 'text', text: 'PARTY', font: 'Bebas Neue', color: '#39FF14', x: 0.25, y: 0.55, scale: 1.1, rot: 0 }] },
+  { name: 'Twister Borda Ouro', model: 'twister', color1: '#F4F4F4', color2: '#F4F4F4', gradient: false, finish: 'translucido', capColor: '#D4AF37', bg: 'dark',
+    arts: [{ kind: 'text', text: 'PARTY', font: 'Bebas Neue', color: '#1A1A1A', x: 0.25, y: 0.55, scale: 1.1, rot: 0 }] },
+  { name: 'Slim Neon Bicolor', model: 'slim', color1: '#FF2D95', color2: '#2E7BFF', gradient: true, finish: 'translucido', bg: 'dark',
+    arts: [{ kind: 'text', text: 'NEON', font: 'Anton', color: '#FFFFFF', x: 0.25, y: 0.55, scale: 0.9, rot: 0 }] },
   { name: 'Corporativo Clean', model: 'shaker', color1: '#F4F4F4', color2: '#1E4FD8', gradient: false, finish: 'brilhante', capColor: '#1E4FD8', bg: 'studio',
     arts: [{ kind: 'text', text: 'SUA MARCA', font: 'Montserrat', color: '#1E4FD8', x: 0.25, y: 0.55, scale: 0.7, rot: 0 }] },
   { name: 'Café Aço', model: 'caneca', color1: '#3A3F45', color2: '#1A1A1A', gradient: true, finish: 'metalico', bg: 'dark',
@@ -191,8 +194,14 @@ export function buildModel(type) {
     mk(new THREE.CylinderGeometry(0.82, 0.66, 3.0, seg), 0, bodyMeshes);
     mk(new THREE.TorusGeometry(0.8, 0.05, 16, seg), 1.5, bodyMeshes, {}).rotation.x = Math.PI / 2;
   } else if (type === 'twister') {
-    mk(new THREE.CylinderGeometry(0.74, 0.54, 2.8, seg), 0, bodyMeshes);
-    mk(new THREE.TorusGeometry(0.74, 0.045, 14, seg), 1.4, bodyMeshes, {}).rotation.x = Math.PI / 2;
+    // corpo cônico liso (acrílico) + BORDA colorida no topo (3ª cor / capColor)
+    mk(new THREE.CylinderGeometry(0.78, 0.56, 2.9, seg), 0, bodyMeshes);
+    mk(new THREE.TorusGeometry(0.78, 0.06, 18, seg), 1.45, capMeshes, {}).rotation.x = Math.PI / 2;
+  } else if (type === 'slim') {
+    // caneca slim: corpo alto e reto (ideal p/ bicolor) + alça
+    mk(new THREE.CylinderGeometry(0.6, 0.64, 3.1, seg), 0, bodyMeshes);
+    const handle = mk(new THREE.TorusGeometry(0.46, 0.06, 16, 44, Math.PI * 1.15), 0.1, bodyMeshes);
+    handle.rotation.z = -Math.PI / 2; handle.position.x = 0.66;
   } else if (type === 'taca') {
     // taça: bojo (pintável) + haste + base
     mk(new THREE.CylinderGeometry(0.44, 0.13, 1.6, seg), 1.7, bodyMeshes);   // bojo (mainBody)
@@ -215,12 +224,6 @@ export function buildModel(type) {
     mk(new THREE.LatheGeometry(pts, seg), 0, bodyMeshes); // corpo (mainBody)
     const handle = mk(new THREE.TorusGeometry(0.42, 0.07, 18, 46, Math.PI * 1.2), 0.85, bodyMeshes);
     handle.rotation.z = -Math.PI / 2; handle.position.x = 0.78;
-  } else if (type === 'squeeze') {
-    mk(new THREE.CylinderGeometry(0.72, 0.78, 2.6, seg), 0, bodyMeshes);
-    mk(new THREE.CylinderGeometry(0.5, 0.72, 0.4, seg), 1.5, bodyMeshes);
-    mk(new THREE.CylinderGeometry(0.42, 0.5, 0.3, seg), 1.82, capMeshes);
-    mk(new THREE.CylinderGeometry(0.16, 0.22, 0.5, 40), 2.12, capMeshes);
-    mk(new THREE.CylinderGeometry(0.1, 0.13, 0.22, 32), 2.42, capMeshes);
   } else { // shaker
     mk(new THREE.CylinderGeometry(0.92, 0.80, 2.4, seg), 0, bodyMeshes);
     mk(new THREE.CylinderGeometry(0.62, 0.92, 0.22, seg), 1.31, bodyMeshes);

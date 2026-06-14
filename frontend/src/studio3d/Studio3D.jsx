@@ -66,7 +66,8 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
     arts: arts.map(({ _img, ...a }) => a) };
 
   const modelDef = MODELS.find(m => m.key === model);
-  const hasCap = !modelDef?.noCap;
+  const hasCap = !!modelDef?.rim || !modelDef?.noCap; // rim conta como "tampa" pintável
+  const capLabel = modelDef?.rim ? 'Borda' : 'Tampa';
   const selArt = arts.find(a => a.id === selId) || null;
 
   // carrega imagens das artes que ainda não têm Image
@@ -410,7 +411,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
           <div className="flex gap-2 flex-wrap">
             <PartBtn active={activePart === 'body'} onClick={() => setActive('body')} color={color1} label="Corpo" />
             {gradient && <PartBtn active={activePart === 'body2'} onClick={() => setActive('body2')} color={color2} label="Cor 2" />}
-            {hasCap && <PartBtn active={activePart === 'cap'} onClick={() => setActive('cap')} color={capColor} label="Tampa" />}
+            {hasCap && <PartBtn active={activePart === 'cap'} onClick={() => setActive('cap')} color={capColor} label={capLabel} />}
           </div>
           <label className="flex items-center gap-2 mt-3 text-sm text-gray-600 cursor-pointer">
             <input type="checkbox" checked={gradient} onChange={e => { setGradient(e.target.checked); if (!e.target.checked && activePart === 'body2') setActive('body'); }} className="w-4 h-4 accent-violet-600" />
@@ -418,7 +419,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
           </label>
         </Sec>
 
-        <Sec icon={Sparkles} title={`Cor — ${activePart === 'cap' ? 'Tampa' : activePart === 'body2' ? 'Cor 2' : 'Corpo'}`}>
+        <Sec icon={Sparkles} title={`Cor — ${activePart === 'cap' ? capLabel : activePart === 'body2' ? 'Cor 2' : 'Corpo'}`}>
           <div className="grid grid-cols-10 gap-1.5">
             {PALETTE.map(([name, hex]) => (
               <button key={hex} title={name} onClick={() => pickColor(hex)}
