@@ -13,14 +13,15 @@ export const PALETTE = [
   ['Cobre', '#B87333'], ['Prata', '#C7CBD1'], ['Dourado', '#D4AF37'],
 ];
 
+// printW/printH = área de impressão (rótulo desenrolado) em mm, usada no PDF de produção
 export const MODELS = [
-  { key: 'shaker',    label: 'Acqua Plus 500ml',    spec: 'shaker · tampa flip' },
-  { key: 'twister',   label: 'Copo Twister 400ml',  spec: 'acrílico texturizado', noCap: true, pattern: 'twist' },
-  { key: 'longdrink', label: 'Long Drink 350ml',    spec: 'acrílico', noCap: true },
-  { key: 'caneca',    label: 'Caneca Alumínio 500ml', spec: 'alumínio · com alça', noCap: true, defaultFinish: 'metalico' },
-  { key: 'taca',      label: 'Taça 180ml',          spec: 'taça com pé', noCap: true },
-  { key: 'garrafa',   label: 'Garrafa 700ml',       spec: 'tampa rosca' },
-  { key: 'squeeze',   label: 'Squeeze 750ml',       spec: 'bico esporte' },
+  { key: 'shaker',    label: 'Acqua Plus 500ml',    spec: 'shaker · tampa flip', printW: 230, printH: 90 },
+  { key: 'twister',   label: 'Copo Twister 400ml',  spec: 'acrílico texturizado', noCap: true, pattern: 'twist', printW: 215, printH: 100 },
+  { key: 'longdrink', label: 'Long Drink 350ml',    spec: 'acrílico', noCap: true, printW: 235, printH: 100 },
+  { key: 'caneca',    label: 'Caneca Alumínio 500ml', spec: 'alumínio · com alça', noCap: true, defaultFinish: 'metalico', printW: 250, printH: 100 },
+  { key: 'taca',      label: 'Taça 180ml',          spec: 'taça com pé', noCap: true, printW: 160, printH: 70 },
+  { key: 'garrafa',   label: 'Garrafa 700ml',       spec: 'tampa rosca', printW: 235, printH: 115 },
+  { key: 'squeeze',   label: 'Squeeze 750ml',       spec: 'bico esporte', printW: 235, printH: 115 },
 ];
 
 export const FINISHES = [
@@ -36,6 +37,22 @@ export const PRESETS = [
   { label: 'Tropical',  c1: '#2BB7B3', c2: '#FFD400', grad: true,  finish: 'translucido' },
   { label: 'Sunset',    c1: '#F26522', c2: '#D6006E', grad: true,  finish: 'brilhante' },
   { label: 'Black',     c1: '#1A1A1A', c2: '#3A3F45', grad: true,  finish: 'metalico'  },
+];
+
+// Modelos prontos — designs completos que o usuário aplica com 1 clique.
+export const TEMPLATES = [
+  { name: 'Academia Power', model: 'shaker', color1: '#1A1A1A', color2: '#F26522', gradient: true, finish: 'metalico', capColor: '#F26522', bg: 'dark',
+    arts: [{ kind: 'text', text: 'NO PAIN\nNO GAIN', font: 'Anton', color: '#FFFFFF', x: 0.25, y: 0.55, scale: 0.85, rot: 0 }] },
+  { name: 'Verão Tropical', model: 'longdrink', color1: '#2BB7B3', color2: '#FFD400', gradient: true, finish: 'translucido', bg: 'warm',
+    arts: [{ kind: 'text', text: 'SUMMER', font: 'Pacifico', color: '#FFFFFF', x: 0.25, y: 0.55, scale: 1, rot: -6 }] },
+  { name: 'Festa Neon', model: 'twister', color1: '#A020F0', color2: '#FF2D95', gradient: true, finish: 'brilhante', bg: 'dark',
+    arts: [{ kind: 'text', text: 'PARTY', font: 'Bebas Neue', color: '#39FF14', x: 0.25, y: 0.55, scale: 1.1, rot: 0 }] },
+  { name: 'Corporativo Clean', model: 'shaker', color1: '#F4F4F4', color2: '#1E4FD8', gradient: false, finish: 'brilhante', capColor: '#1E4FD8', bg: 'studio',
+    arts: [{ kind: 'text', text: 'SUA MARCA', font: 'Montserrat', color: '#1E4FD8', x: 0.25, y: 0.55, scale: 0.7, rot: 0 }] },
+  { name: 'Café Aço', model: 'caneca', color1: '#3A3F45', color2: '#1A1A1A', gradient: true, finish: 'metalico', bg: 'dark',
+    arts: [{ kind: 'text', text: 'COFFEE\nFIRST', font: 'Oswald', color: '#D4AF37', x: 0.25, y: 0.55, scale: 0.8, rot: 0 }] },
+  { name: 'Comemoração', model: 'taca', color1: '#7B1E2B', color2: '#D4AF37', gradient: true, finish: 'brilhante', bg: 'warm',
+    arts: [{ kind: 'text', text: 'CHEERS', font: 'Lobster', color: '#FFFFFF', x: 0.25, y: 0.55, scale: 0.7, rot: 0 }] },
 ];
 
 export const BACKGROUNDS = {
@@ -90,12 +107,12 @@ function drawArt(ctx, art) {
   }
 }
 
-// Textura do corpo: base (sólida/degradê) + textura do modelo + artes
-export function composeBodyTexture({ color1, color2, gradient, arts = [], pattern = null }) {
-  const W = 2048, H = 1024;
-  const c = document.createElement('canvas'); c.width = W; c.height = H;
-  const ctx = c.getContext('2d');
+// Espaço lógico de pintura (todas as artes são posicionadas neste sistema).
+const BASE_W = 2048, BASE_H = 1024;
 
+// Pinta o rótulo desenrolado no contexto (já escalado para BASE_W × BASE_H).
+function paintBody(ctx, { color1, color2, gradient, arts = [], pattern = null }) {
+  const W = BASE_W, H = BASE_H;
   if (gradient) {
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, color1); g.addColorStop(1, color2);
@@ -121,12 +138,27 @@ export function composeBodyTexture({ color1, color2, gradient, arts = [], patter
     drawArt(ctx, art);
     ctx.restore();
   }
+}
 
+// Textura do corpo p/ o 3D: base (sólida/degradê) + textura do modelo + artes
+export function composeBodyTexture(opts) {
+  const c = document.createElement('canvas'); c.width = BASE_W; c.height = BASE_H;
+  paintBody(c.getContext('2d'), opts);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
   t.wrapS = THREE.RepeatWrapping;
   return t;
+}
+
+// Canvas em alta resolução (rótulo desenrolado) p/ exportar PDF de produção.
+export function composeBodyCanvas(opts, scale = 2) {
+  const c = document.createElement('canvas');
+  c.width = BASE_W * scale; c.height = BASE_H * scale;
+  const ctx = c.getContext('2d');
+  ctx.scale(scale, scale);
+  paintBody(ctx, opts);
+  return c;
 }
 
 export function bodyMaterial(finish, { map = null, color = '#ffffff' } = {}) {

@@ -3,11 +3,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import {
-  Box, Rotate3d, Layers, Sparkles, Wand2, Image as ImageIcon, Type, X, ArrowLeftRight,
+  Box, Rotate3d, Layers, Sparkles, Wand2, Image as ImageIcon, Type, X, ArrowLeftRight, LayoutGrid,
 } from 'lucide-react';
 import {
-  PALETTE, MODELS, FINISHES, PRESETS, BACKGROUNDS, FONTS,
-  buildModel, bodyMaterial, capMaterial, composeBodyTexture, disposeObject,
+  PALETTE, MODELS, FINISHES, PRESETS, TEMPLATES, BACKGROUNDS, FONTS,
+  buildModel, bodyMaterial, capMaterial, composeBodyTexture, composeBodyCanvas, disposeObject,
 } from '../pages/Studio/scene';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -118,6 +118,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.xr.enabled = true; // habilita Realidade Aumentada (WebXR)
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -150,12 +151,12 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
       camera.aspect = W / H; camera.updateProjectionMatrix(); renderer.setSize(W, H);
     });
     ro.observe(mount);
-    const loop = () => { three.current.raf = requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); };
-    loop();
+    // setAnimationLoop é obrigatório p/ WebXR (e funciona igual fora da sessão)
+    renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
     if (document.fonts?.ready) document.fonts.ready.then(() => setFontV(v => v + 1));
 
     return () => {
-      cancelAnimationFrame(three.current.raf); ro.disconnect(); controls.dispose();
+      renderer.setAnimationLoop(null); ro.disconnect(); controls.dispose();
       if (three.current.model) { scene.remove(three.current.model); disposeObject(three.current.model); }
       ground.geometry.dispose(); ground.material.dispose();
       envTex.dispose(); pmrem.dispose(); renderer.dispose();
@@ -163,13 +164,34 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
     };
   }, []);
 
-  // rebuild ao trocar modelo
+  // rebuild ao trocar modelo (procedural; ou carrega .glb real se o modelo tiver)
   useEffect(() => {
     const t = three.current; if (!t.scene) return;
-    if (t.model) { t.scene.remove(t.model); disposeObject(t.model); }
-    t.model = buildModel(model); t.scene.add(t.model);
-    applyBody(); applyCap();
-    if (!t.model.userData.capMeshes.length && activePart === 'cap') setActive('body');
+    if (t.model) { t.scene.remove(t.model); disposeObject(t.model); t.model = null; }
+    const def = MODELS.find(m => m.key === model);
+    let cancelled = false;
+
+    const procedural = () => {
+      if (cancelled) return;
+      const m = buildModel(model); t.model = m; t.scene.add(m);
+      applyBody(); applyCap();
+      if (!m.userData.capMeshes.length && activePart === 'cap') setActive('body');
+    };
+
+    if (def?.glb) {
+      import('three/addons/loaders/GLTFLoader.js').then(({ GLTFLoader }) => {
+        new GLTFLoader().load(def.glb, (gltf) => {
+          if (cancelled) { disposeObject(gltf.scene); return; }
+          const g = gltf.scene, bodyMeshes = [], capMeshes = [];
+          g.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; (/(cap|tampa|lid)/i.test(o.name) ? capMeshes : bodyMeshes).push(o); } });
+          g.userData = { bodyMeshes, capMeshes, mainBody: bodyMeshes[0] };
+          t.model = g; t.scene.add(g); applyBody(); applyCap();
+          if (!capMeshes.length && activePart === 'cap') setActive('body');
+        }, undefined, procedural);
+      }).catch(procedural);
+    } else procedural();
+
+    return () => { cancelled = true; };
   }, [model, applyBody, applyCap]);
 
   // acabamento padrão por modelo (ex.: caneca de alumínio = metálico)
@@ -181,6 +203,36 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   useEffect(() => { applyBody(); }, [color1, color2, gradient, finish, arts, imgV, fontV, applyBody]);
   useEffect(() => { applyCap(); }, [capColor, applyCap]);
   useEffect(() => { if (three.current.controls) three.current.controls.autoRotate = autoRotate; }, [autoRotate]);
+
+  // Botão de Realidade Aumentada — só aparece em dispositivos compatíveis (Android/Chrome)
+  useEffect(() => {
+    const t = three.current; if (!t.renderer || !navigator.xr?.isSessionSupported) return;
+    let cancelled = false, cleanup = () => {};
+    navigator.xr.isSessionSupported('immersive-ar').then(ok => {
+      if (!ok || cancelled) return;
+      import('three/addons/webxr/ARButton.js').then(({ ARButton }) => {
+        if (cancelled) return;
+        const btn = ARButton.createButton(t.renderer);
+        btn.textContent = 'Ver em AR';
+        btn.style.background = 'rgba(124,58,237,0.9)';
+        btn.style.borderRadius = '10px';
+        t.mount.appendChild(btn);
+        const onStart = () => {
+          t.controls.autoRotate = false;
+          if (t.model) { t.model.userData._pose = { p: t.model.position.clone(), s: t.model.scale.clone() }; t.model.position.set(0, -0.25, -0.7); t.model.scale.setScalar(0.22); }
+        };
+        const onEnd = () => { if (t.model?.userData._pose) { t.model.position.copy(t.model.userData._pose.p); t.model.scale.copy(t.model.userData._pose.s); } };
+        t.renderer.xr.addEventListener('sessionstart', onStart);
+        t.renderer.xr.addEventListener('sessionend', onEnd);
+        cleanup = () => {
+          t.renderer.xr.removeEventListener('sessionstart', onStart);
+          t.renderer.xr.removeEventListener('sessionend', onEnd);
+          if (btn.parentNode) btn.parentNode.removeChild(btn);
+        };
+      }).catch(() => {});
+    }).catch(() => {});
+    return () => { cancelled = true; cleanup(); };
+  }, []);
 
   // carregar design externo (reabrir salvo)
   useEffect(() => {
@@ -208,6 +260,13 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
     const url = t.renderer.domElement.toDataURL('image/png'); t.renderer.setSize(cw, ch, false);
     return url;
   }, []);
+  // rótulo desenrolado em alta resolução (p/ PDF de produção com sangria)
+  const getPrintCanvas = useCallback((scale = 3) => {
+    const C = cfg.current;
+    const def = MODELS.find(x => x.key === designRef.current.model);
+    const artsTex = designRef.current.arts.map(a => a.kind === 'image' ? { ...a, _img: artImages.current[a.id] } : a);
+    return composeBodyCanvas({ color1: C.color1, color2: C.gradient ? C.color2 : C.color1, gradient: C.gradient, arts: artsTex, pattern: def?.pattern }, scale);
+  }, []);
 
   // ── ações de UI ──
   function pickColor(hex) {
@@ -234,6 +293,13 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   }
   function removeArt(id) { delete artImages.current[id]; setArts(a => a.filter(x => x.id !== id)); if (selId === id) setSelId(null); }
   function applyPreset(p) { setColor1(p.c1); setColor2(p.c2); setGradient(p.grad); setFinish(p.finish); }
+  function applyTemplate(t) {
+    artImages.current = {};
+    setModel(t.model); setColor1(t.color1); setColor2(t.color2); setGradient(!!t.gradient);
+    setFinish(t.finish); setCapColor(t.capColor || '#1A1A1A'); setBg(t.bg || 'studio');
+    const next = (t.arts || []).map(a => ({ id: uid(), ...a }));
+    setArts(next); setSelId(next[0]?.id || null); setImgV(v => v + 1);
+  }
 
   const FINISH_KEYS = ['opaco', 'brilhante', 'metalico', 'translucido'];
   function applyPalette(p, fin) {
@@ -318,6 +384,18 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
             )}
           </Sec>
         )}
+
+        <Sec icon={LayoutGrid} title="Modelos prontos">
+          <div className="grid grid-cols-2 gap-2">
+            {TEMPLATES.map(t => (
+              <button key={t.name} onClick={() => applyTemplate(t)}
+                className="flex items-center gap-2 px-2 py-2 rounded-xl border border-gray-200 hover:border-violet-400 transition-colors text-left">
+                <span className="w-6 h-6 rounded-md shrink-0" style={{ background: t.gradient ? `linear-gradient(135deg,${t.color1},${t.color2})` : t.color1, border: '1px solid rgba(0,0,0,.12)' }} />
+                <span className="text-xs font-medium truncate">{t.name}</span>
+              </button>
+            ))}
+          </div>
+        </Sec>
 
         <Sec icon={Layers} title="Modelo">
           <div className="grid grid-cols-2 gap-2">
@@ -414,7 +492,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
           )}
         </Sec>
 
-        <div className="pb-4">{actions?.({ getDesign, getThumb, getPNG })}</div>
+        <div className="pb-4">{actions?.({ getDesign, getThumb, getPNG, getPrintCanvas })}</div>
       </div>
     </div>
   );

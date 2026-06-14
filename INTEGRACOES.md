@@ -33,7 +33,19 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   fornecedor e os produtos que faltarem, dá entrada no estoque e atualiza o
   custo médio (compra transacional). Requer a migração **010**.
 
-## 5. Erros em produção (Sentry) — opcional
+## 5. IA (Claude / Anthropic)
+- **Onde usar:**
+  - **Assistente de gestão** — botão flutuante roxo (canto inferior direito do ERP).
+    Responde perguntas sobre o negócio ("quanto vendi esse mês?", "o que está
+    acabando?") usando **somente os dados reais** da empresa.
+  - **Sugerir com IA** no Estúdio 3D (ERP e loja) — descreva a marca/evento e a IA
+    sugere 3 paletas de cores + acabamento, aplicáveis com um clique.
+- **Variáveis:**
+  - `ANTHROPIC_API_KEY` — chave da API (console.anthropic.com → API Keys).
+  - `ANTHROPIC_MODEL` — opcional; modelo a usar (padrão `claude-sonnet-4-6`).
+- **Obs.:** sem a chave, os recursos de IA mostram "IA não configurada" — nada quebra.
+
+## 6. Erros em produção (Sentry) — opcional
 - `SENTRY_DSN` — DSN do projeto no sentry.io. Com isso, todo erro de servidor é
   reportado automaticamente.
 

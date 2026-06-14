@@ -1,10 +1,12 @@
 import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Box, Download, Save, FilePlus } from 'lucide-react';
+import { Box, Download, Save, FilePlus, FileText } from 'lucide-react';
+import jsPDF from 'jspdf';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
 import Studio3D from '@/studio3d/Studio3D';
+import { MODELS } from '@/pages/Studio/scene';
 
 export default function CustomizationStudio() {
   const qc = useQueryClient();
@@ -57,6 +59,59 @@ export default function CustomizationStudio() {
     Object.assign(document.createElement('a'), { href: url, download: 'personalizacao.png' }).click();
   }
 
+  // PDF pronto para produção: rótulo desenrolado + sangria 3mm + marcas de corte
+  function exportProductionPDF() {
+    const a = apiRef.current; if (!a) return;
+    try {
+      const design = a.getDesign();
+      const canvas = a.getPrintCanvas(3);
+      const def = MODELS.find(m => m.key === design.model);
+      const trimW = def?.printW || 230, trimH = def?.printH || 95;
+      const bleed = 3, mark = 6, gap = 1.5, margin = 16, footer = 18;
+      const bleedW = trimW + bleed * 2, bleedH = trimH + bleed * 2;
+      const pw = bleedW + margin * 2, ph = bleedH + margin * 2 + footer;
+
+      const doc = new jsPDF({ unit: 'mm', format: [pw, ph], orientation: pw >= ph ? 'l' : 'p' });
+      const pageW = doc.internal.pageSize.getWidth(), pageH = doc.internal.pageSize.getHeight();
+      const titleH = 12;
+      const bx = (pageW - bleedW) / 2;
+      const by = titleH + (pageH - titleH - footer - bleedH) / 2;
+      const tx = bx + bleed, ty = by + bleed; // trim box
+
+      // arte (preenche a sangria — fundo "vaza" até a borda)
+      doc.addImage(canvas, 'PNG', bx, by, bleedW, bleedH);
+
+      // linha de corte (tracejada)
+      doc.setDrawColor(120); doc.setLineWidth(0.2);
+      doc.setLineDashPattern([1.2, 1.2], 0);
+      doc.rect(tx, ty, trimW, trimH);
+      doc.setLineDashPattern([], 0);
+
+      // marcas de corte nos 4 cantos
+      doc.setDrawColor(0); doc.setLineWidth(0.25);
+      const corner = (cx, cy, sx, sy) => {
+        doc.line(cx + sx * gap, cy, cx + sx * (gap + mark), cy);
+        doc.line(cx, cy + sy * gap, cx, cy + sy * (gap + mark));
+      };
+      corner(tx, ty, -1, -1); corner(tx + trimW, ty, 1, -1);
+      corner(tx, ty + trimH, -1, 1); corner(tx + trimW, ty + trimH, 1, 1);
+
+      // título
+      doc.setTextColor(20); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+      doc.text(`Arte para produção — ${def?.label || design.model}`, pageW / 2, 8, { align: 'center' });
+
+      // rodapé técnico
+      const finishLabel = { opaco: 'Opaco', brilhante: 'Brilhante', metalico: 'Metálico', translucido: 'Translúcido' }[design.finish] || design.finish;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
+      const fy = pageH - footer + 6;
+      doc.text(`Área de impressão: ${trimW} × ${trimH} mm  ·  Sangria: ${bleed} mm  ·  Acabamento: ${finishLabel}`, pageW / 2, fy, { align: 'center' });
+      doc.text(`Linha tracejada = corte  ·  Resolução da arte: ${canvas.width} × ${canvas.height} px  ·  Gerado em ${new Date().toLocaleDateString('pt-BR')} — Lyon Copos`, pageW / 2, fy + 5, { align: 'center' });
+
+      doc.save(`producao-${design.model}.pdf`);
+      toast.success('PDF de produção gerado!');
+    } catch (e) { toast.error('Erro ao gerar PDF'); }
+  }
+
   return (
     <div className="space-y-4">
       <div className="page-header flex items-center justify-between flex-wrap gap-3">
@@ -81,6 +136,7 @@ export default function CustomizationStudio() {
             <div className="grid grid-cols-2 gap-2">
               <button onClick={downloadPNG} className="btn-secondary"><Download size={14} /> Baixar PNG</button>
               <button onClick={() => setSaveOpen(true)} className="btn-primary"><Save size={15} /> {currentId ? 'Atualizar' : 'Salvar'}</button>
+              <button onClick={exportProductionPDF} className="btn-secondary col-span-2"><FileText size={14} /> PDF para produção (com sangria)</button>
             </div>
           );
         }}
