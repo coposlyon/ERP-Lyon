@@ -88,8 +88,9 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions })
   const applyBody = useCallback(() => {
     const m = three.current.model; if (!m) return;
     const C = cfg.current;
+    const def = MODELS.find(x => x.key === designRef.current.model);
     const artsTex = designRef.current.arts.map(a => a.kind === 'image' ? { ...a, _img: artImages.current[a.id] } : a);
-    const tex = composeBodyTexture({ color1: C.color1, color2: C.gradient ? C.color2 : C.color1, gradient: C.gradient, arts: artsTex });
+    const tex = composeBodyTexture({ color1: C.color1, color2: C.gradient ? C.color2 : C.color1, gradient: C.gradient, arts: artsTex, pattern: def?.pattern });
     m.userData.bodyMeshes.forEach((mesh, i) => {
       const old = mesh.material;
       mesh.material = i === 0 ? bodyMaterial(C.finish, { map: tex }) : bodyMaterial(C.finish, { color: C.color1 });
@@ -164,6 +165,12 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions })
     applyBody(); applyCap();
     if (!t.model.userData.capMeshes.length && activePart === 'cap') setActive('body');
   }, [model, applyBody, applyCap]);
+
+  // acabamento padrão por modelo (ex.: caneca de alumínio = metálico)
+  useEffect(() => {
+    const d = MODELS.find(m => m.key === model);
+    if (d?.defaultFinish) setFinish(d.defaultFinish);
+  }, [model]);
 
   useEffect(() => { applyBody(); }, [color1, color2, gradient, finish, arts, imgV, fontV, applyBody]);
   useEffect(() => { applyCap(); }, [capColor, applyCap]);

@@ -1,19 +1,26 @@
 import * as THREE from 'three';
 
 export const PALETTE = [
-  ['Amarelo', '#FFD400'], ['Laranja', '#F26522'], ['Laranja Neon', '#FF6A00'], ['Vermelho', '#E11D22'],
-  ['Magenta', '#D6006E'], ['Pink', '#EC1C8E'], ['Rosa Bebê', '#F4B6C2'], ['Roxo', '#7E3FF2'],
-  ['Violeta', '#8E44AD'], ['Azul Royal', '#1E4FD8'], ['Azul Bebê', '#9EC4E8'], ['Azul Tifanny', '#2BB7B3'],
-  ['Azul Ultramar', '#1B2A8C'], ['Verde Folha', '#2E9E32'], ['Verde Bandeira', '#0E6B4F'], ['Marsala', '#7B1E2B'],
+  ['Amarelo', '#FFD400'], ['Laranja', '#F26522'], ['Vermelho', '#E11D22'], ['Magenta', '#D6006E'],
+  ['Pink', '#EC1C8E'], ['Rosa Bebê', '#F4B6C2'], ['Roxo', '#7E3FF2'], ['Violeta', '#8E44AD'],
+  ['Azul Royal', '#1E4FD8'], ['Azul Bebê', '#9EC4E8'], ['Tiffany', '#2BB7B3'], ['Azul Ultramar', '#1B2A8C'],
+  ['Verde Folha', '#2E9E32'], ['Verde Bandeira', '#0E6B4F'], ['Marsala', '#7B1E2B'], ['Rubi', '#9B111E'],
   ['Preto', '#1A1A1A'], ['Grafite', '#3A3F45'], ['Branco', '#F4F4F4'], ['Palha', '#E3DCC4'],
+  // Neon
+  ['Laranja Neon', '#FF6A00'], ['Verde Neon', '#39FF14'], ['Azul Neon', '#2E7BFF'], ['Roxo Neon', '#A020F0'],
+  ['Rosa Neon', '#FF2D95'], ['Amarelo Neon', '#E6FF00'],
+  // Metálicas (alumínio)
+  ['Cobre', '#B87333'], ['Prata', '#C7CBD1'], ['Dourado', '#D4AF37'],
 ];
 
 export const MODELS = [
-  { key: 'shaker',    label: 'Shaker 500ml', spec: '500 ml · tampa flip' },
-  { key: 'longdrink', label: 'Long Drink',   spec: '350 ml · sem tampa', noCap: true },
-  { key: 'garrafa',   label: 'Garrafa',      spec: '700 ml · tampa rosca' },
-  { key: 'caneca',    label: 'Caneca',       spec: '400 ml · com alça', noCap: true },
-  { key: 'squeeze',   label: 'Squeeze',      spec: '750 ml · bico esporte' },
+  { key: 'shaker',    label: 'Acqua Plus 500ml',    spec: 'shaker · tampa flip' },
+  { key: 'twister',   label: 'Copo Twister 400ml',  spec: 'acrílico texturizado', noCap: true, pattern: 'twist' },
+  { key: 'longdrink', label: 'Long Drink 350ml',    spec: 'acrílico', noCap: true },
+  { key: 'caneca',    label: 'Caneca Alumínio 500ml', spec: 'alumínio · com alça', noCap: true, defaultFinish: 'metalico' },
+  { key: 'taca',      label: 'Taça 180ml',          spec: 'taça com pé', noCap: true },
+  { key: 'garrafa',   label: 'Garrafa 700ml',       spec: 'tampa rosca' },
+  { key: 'squeeze',   label: 'Squeeze 750ml',       spec: 'bico esporte' },
 ];
 
 export const FINISHES = [
@@ -83,8 +90,8 @@ function drawArt(ctx, art) {
   }
 }
 
-// Textura do corpo: base (sólida/degradê) + várias artes posicionadas
-export function composeBodyTexture({ color1, color2, gradient, arts = [] }) {
+// Textura do corpo: base (sólida/degradê) + textura do modelo + artes
+export function composeBodyTexture({ color1, color2, gradient, arts = [], pattern = null }) {
   const W = 2048, H = 1024;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const ctx = c.getContext('2d');
@@ -95,6 +102,17 @@ export function composeBodyTexture({ color1, color2, gradient, arts = [] }) {
     ctx.fillStyle = g;
   } else ctx.fillStyle = color1;
   ctx.fillRect(0, 0, W, H);
+
+  // textura do copo twister (estrias diagonais)
+  if (pattern === 'twist') {
+    ctx.lineWidth = 10;
+    for (let x = -H; x < W; x += 64) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + H, H); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+      ctx.beginPath(); ctx.moveTo(x + 22, 0); ctx.lineTo(x + 22 + H, H); ctx.stroke();
+    }
+  }
 
   for (const art of arts) {
     ctx.save();
@@ -140,15 +158,31 @@ export function buildModel(type) {
   if (type === 'longdrink') {
     mk(new THREE.CylinderGeometry(0.82, 0.66, 3.0, seg), 0, bodyMeshes);
     mk(new THREE.TorusGeometry(0.8, 0.05, 16, seg), 1.5, bodyMeshes, {}).rotation.x = Math.PI / 2;
+  } else if (type === 'twister') {
+    mk(new THREE.CylinderGeometry(0.74, 0.54, 2.8, seg), 0, bodyMeshes);
+    mk(new THREE.TorusGeometry(0.74, 0.045, 14, seg), 1.4, bodyMeshes, {}).rotation.x = Math.PI / 2;
+  } else if (type === 'taca') {
+    // taça: bojo (pintável) + haste + base
+    mk(new THREE.CylinderGeometry(0.44, 0.13, 1.6, seg), 1.7, bodyMeshes);   // bojo (mainBody)
+    mk(new THREE.CylinderGeometry(0.05, 0.05, 1.3, seg), 0.75, bodyMeshes);  // haste
+    mk(new THREE.CylinderGeometry(0.3, 0.06, 0.12, seg), 0.18, bodyMeshes);  // cone da base
+    mk(new THREE.CylinderGeometry(0.52, 0.52, 0.05, seg), 0.07, bodyMeshes); // base
   } else if (type === 'garrafa') {
     mk(new THREE.CylinderGeometry(0.9, 0.9, 1.8, seg), 0, bodyMeshes);
     mk(new THREE.CylinderGeometry(0.4, 0.9, 0.55, seg), 1.17, bodyMeshes);
     mk(new THREE.CylinderGeometry(0.37, 0.4, 0.5, seg), 1.7, bodyMeshes);
     mk(new THREE.CylinderGeometry(0.43, 0.43, 0.4, seg), 2.05, capMeshes);
   } else if (type === 'caneca') {
-    mk(new THREE.CylinderGeometry(0.9, 0.86, 2.0, seg), 0, bodyMeshes);
-    const handle = mk(new THREE.TorusGeometry(0.55, 0.11, 18, 40, Math.PI * 1.1), 0, bodyMeshes);
-    handle.rotation.z = -Math.PI / 2; handle.position.x = 1.0;
+    // caneca de alumínio: corpo barril (LatheGeometry) + alça
+    const pts = [
+      new THREE.Vector2(0.00, 0.00), new THREE.Vector2(0.44, 0.00),
+      new THREE.Vector2(0.62, 0.14), new THREE.Vector2(0.72, 0.55),
+      new THREE.Vector2(0.69, 1.10), new THREE.Vector2(0.63, 1.62),
+      new THREE.Vector2(0.61, 1.66),
+    ];
+    mk(new THREE.LatheGeometry(pts, seg), 0, bodyMeshes); // corpo (mainBody)
+    const handle = mk(new THREE.TorusGeometry(0.42, 0.07, 18, 46, Math.PI * 1.2), 0.85, bodyMeshes);
+    handle.rotation.z = -Math.PI / 2; handle.position.x = 0.78;
   } else if (type === 'squeeze') {
     mk(new THREE.CylinderGeometry(0.72, 0.78, 2.6, seg), 0, bodyMeshes);
     mk(new THREE.CylinderGeometry(0.5, 0.72, 0.4, seg), 1.5, bodyMeshes);
