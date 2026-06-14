@@ -20,6 +20,7 @@ const SaleForm           = lazy(() => import('@/pages/Sales/SaleForm'));
 const PDV                = lazy(() => import('@/pages/Sales/PDV'));
 const Purchases          = lazy(() => import('@/pages/Purchases/Purchases'));
 const PurchaseForm       = lazy(() => import('@/pages/Purchases/PurchaseForm'));
+const Forecast           = lazy(() => import('@/pages/Forecast/Forecast'));
 const Stock              = lazy(() => import('@/pages/Stock/Stock'));
 const Financial          = lazy(() => import('@/pages/Financial/Financial'));
 const FinancialConfig    = lazy(() => import('@/pages/Financial/FinancialConfig'));
@@ -105,6 +106,7 @@ function AppRoutes() {
         <Route path="purchases" element={<Mod m="purchases"><Purchases /></Mod>} />
         <Route path="purchases/new" element={<Mod m="purchases"><PurchaseForm /></Mod>} />
         <Route path="purchases/:id" element={<Mod m="purchases"><PurchaseForm /></Mod>} />
+        <Route path="forecast" element={<Mod m="reports"><Forecast /></Mod>} />
         {/* Estoque */}
         <Route path="stock" element={<Mod m="stock"><Stock /></Mod>} />
         {/* Financeiro */}

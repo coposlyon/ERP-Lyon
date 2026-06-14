@@ -65,5 +65,21 @@ router.post('/design', async (req, res) => {
   res.json(out);
 });
 
+// ── Análise da previsão de demanda (narrativa curta) ──
+router.post('/forecast-insight', async (req, res) => {
+  const items = Array.isArray(req.body.items) ? req.body.items.slice(0, 20) : [];
+  if (!items.length) return res.status(400).json({ error: 'Sem dados de previsão' });
+  const linhas = items.map(p =>
+    `${p.name}: média/mês ${p.avg_month}, previsão próximo mês ${p.forecast}, tendência ${p.trend}, estoque ${p.current_stock}, sugestão compra ${p.suggested_purchase}`
+  ).join('\n');
+  const r = await askClaude({
+    system: 'Você é o analista de compras de uma fábrica de copos personalizados (Lyon Copos). Com base na previsão de demanda, escreva uma análise curta em português do Brasil (no máximo 6 linhas): destaque o que comprar com prioridade, riscos de ruptura de estoque e produtos em queda. Seja prático e direto.',
+    prompt: `Previsão por produto:\n${linhas}`,
+    max_tokens: 500,
+  });
+  if (!r.ok) return res.status(400).json({ error: r.error });
+  res.json({ insight: r.text });
+});
+
 module.exports = router;
 module.exports.designSuggestion = designSuggestion;

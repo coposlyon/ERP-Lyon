@@ -7,7 +7,7 @@ import {
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
-  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box,
+  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -85,8 +85,10 @@ const menuItems = [
   {
     label: 'Relatórios',
     icon: BarChart3,
-    path: '/reports',
-    module: 'reports',
+    children: [
+      { label: 'Relatórios', path: '/reports', icon: BarChart3, module: 'reports' },
+      { label: 'Previsão de Demanda', path: '/forecast', icon: LineChart, module: 'reports' },
+    ],
   },
   {
     label: 'Devoluções',

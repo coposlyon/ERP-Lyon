@@ -365,4 +365,83 @@ router.get('/commissions', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Previsão de demanda ───────────────────────────────────
+// Histórico mensal por produto → projeta o próximo mês por regressão linear
+// (tendência) com piso na média móvel. Sugere quanto comprar vs. estoque atual.
+router.get('/forecast', async (req, res) => {
+  const months = Math.min(Math.max(parseInt(req.query.months) || 6, 3), 12);
+  const t = req.tenantId;
+  try {
+    const now = new Date();
+    // início = primeiro dia do mês, `months` meses atrás
+    const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+    const startISO = start.toISOString();
+
+    const { data: sales } = await supabase
+      .from('VENDAS').select('id, created_at')
+      .eq('tenant_id', t).neq('status', 'cancelled')
+      .gte('created_at', startISO);
+    const saleMonth = {};
+    for (const s of (sales || [])) saleMonth[s.id] = String(s.created_at).slice(0, 7); // YYYY-MM
+    const saleIds = Object.keys(saleMonth);
+
+    // rótulos dos meses do período (ordenados)
+    const labels = [];
+    for (let i = 0; i < months; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+      labels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    const idx = Object.fromEntries(labels.map((m, i) => [m, i]));
+
+    const grouped = {};
+    // busca itens em lotes (limite do .in)
+    for (let i = 0; i < saleIds.length; i += 300) {
+      const chunk = saleIds.slice(i, i + 300);
+      if (!chunk.length) break;
+      const { data: items } = await supabase
+        .from('VENDA_ITENS')
+        .select('sale_id, product_id, quantity, PRODUTOS(id, name, code, unit, current_stock, min_stock)')
+        .in('sale_id', chunk);
+      for (const it of (items || [])) {
+        const pid = it.product_id; if (!pid) continue;
+        const m = saleMonth[it.sale_id]; const j = idx[m]; if (j === undefined) continue;
+        if (!grouped[pid]) {
+          grouped[pid] = {
+            product_id: pid, name: it.PRODUTOS?.name, code: it.PRODUTOS?.code, unit: it.PRODUTOS?.unit,
+            current_stock: Number(it.PRODUTOS?.current_stock) || 0,
+            min_stock: Number(it.PRODUTOS?.min_stock) || 0,
+            series: new Array(months).fill(0),
+          };
+        }
+        grouped[pid].series[j] += Number(it.quantity) || 0;
+      }
+    }
+
+    const data = Object.values(grouped).map(p => {
+      const y = p.series, n = y.length;
+      const avg = y.reduce((a, b) => a + b, 0) / n;
+      // regressão linear simples (x = 0..n-1)
+      const xm = (n - 1) / 2;
+      let num = 0, den = 0;
+      for (let i = 0; i < n; i++) { num += (i - xm) * (y[i] - avg); den += (i - xm) ** 2; }
+      const slope = den ? num / den : 0;
+      const linpred = avg + slope * ((n - 1) + 1 - xm); // projeção p/ x = n
+      // piso na média dos últimos 3 meses p/ não subestimar
+      const recent = y.slice(-3);
+      const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
+      const forecast = Math.max(0, Math.round(Math.max(linpred, recentAvg)));
+      const trend = slope > 0.15 ? 'up' : slope < -0.15 ? 'down' : 'flat';
+      const suggested = Math.max(0, Math.round(forecast + p.min_stock - p.current_stock));
+      return {
+        ...p, avg_month: Number(avg.toFixed(1)), forecast, trend, suggested_purchase: suggested,
+        total_period: y.reduce((a, b) => a + b, 0),
+      };
+    })
+    .filter(p => p.total_period > 0)
+    .sort((a, b) => b.forecast - a.forecast);
+
+    res.json({ months: labels, count: data.length, data });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
