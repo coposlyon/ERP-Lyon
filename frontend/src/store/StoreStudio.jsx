@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import Studio3D from '@/studio3d/Studio3D';
 import { MODELS } from '@/pages/Studio/scene';
 import { useCart } from './CartContext';
+import storeApi from './storeApi';
 
 export default function StoreStudio() {
   const navigate = useNavigate();
@@ -31,7 +32,7 @@ export default function StoreStudio() {
       </div>
       <p className="text-gray-500 mb-6">Escolha o modelo, as cores, o acabamento e coloque sua arte (frente e verso). Depois é só pedir o orçamento.</p>
 
-      <Studio3D actions={(a) => (
+      <Studio3D aiSuggest={(brief) => storeApi.post('/ai-design', { brief })} actions={(a) => (
         <div className="grid grid-cols-2 gap-2">
           <button onClick={() => { const u = a.getPNG(); Object.assign(document.createElement('a'), { href: u, download: 'meu-copo.png' }).click(); }}
             className="btn-secondary"><Download size={14} /> Baixar imagem</button>

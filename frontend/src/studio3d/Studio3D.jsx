@@ -32,7 +32,7 @@ const DEFAULT = {
   finish: 'brilhante', capColor: '#1A1A1A', bg: 'studio', arts: [],
 };
 
-export default function Studio3D({ initialDesign, saved, onPickSaved, actions }) {
+export default function Studio3D({ initialDesign, saved, onPickSaved, actions, aiSuggest }) {
   const mountRef = useRef(null);
   const three = useRef({});
   const cfg = useRef({});
@@ -54,6 +54,12 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions })
   const [autoRotate, setAuto]   = useState(true);
   const [imgV, setImgV]         = useState(0);
   const [fontV, setFontV]       = useState(0);
+
+  // assistente de IA (sugestão de cores/acabamento)
+  const [aiBrief, setAiBrief]   = useState('');
+  const [aiBusy, setAiBusy]     = useState(false);
+  const [aiErr, setAiErr]       = useState('');
+  const [aiOut, setAiOut]       = useState(null);
 
   cfg.current = { color1, color2, gradient, finish, capColor };
   designRef.current = { model, color1, color2, gradient, finish, capColor, bg,
@@ -229,6 +235,27 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions })
   function removeArt(id) { delete artImages.current[id]; setArts(a => a.filter(x => x.id !== id)); if (selId === id) setSelId(null); }
   function applyPreset(p) { setColor1(p.c1); setColor2(p.c2); setGradient(p.grad); setFinish(p.finish); }
 
+  const FINISH_KEYS = ['opaco', 'brilhante', 'metalico', 'translucido'];
+  function applyPalette(p, fin) {
+    if (p?.color1) setColor1(p.color1);
+    if (p?.color2) setColor2(p.color2);
+    setGradient(!!p?.gradient && !!p?.color2);
+    if (fin && FINISH_KEYS.includes(fin)) setFinish(fin);
+  }
+  async function runAi() {
+    const brief = aiBrief.trim();
+    if (!brief || aiBusy || !aiSuggest) return;
+    setAiBusy(true); setAiErr(''); setAiOut(null);
+    try {
+      const out = await aiSuggest(brief);
+      const palettes = Array.isArray(out?.palettes) ? out.palettes.filter(p => p && p.color1) : [];
+      setAiOut({ palettes, finish: out?.finish, idea: out?.idea });
+      if (palettes[0]) applyPalette(palettes[0], out?.finish);
+    } catch (e) {
+      setAiErr(e?.error || e?.response?.data?.error || 'IA não configurada. Defina ANTHROPIC_API_KEY no servidor.');
+    } finally { setAiBusy(false); }
+  }
+
   return (
     <div className="grid lg:grid-cols-[1fr_340px] gap-4">
       {/* Viewport */}
@@ -260,6 +287,35 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions })
                 </button>
               ))}
             </div>
+          </Sec>
+        )}
+
+        {aiSuggest && (
+          <Sec icon={Sparkles} title="Sugerir com IA">
+            <p className="text-xs text-gray-400 mb-2">Descreva a marca ou o evento e a IA sugere cores e acabamento.</p>
+            <textarea className="input text-sm" rows={2} value={aiBrief} maxLength={200}
+              onChange={e => setAiBrief(e.target.value)}
+              placeholder="Ex.: academia jovem, energia, preto e laranja" />
+            <button onClick={runAi} disabled={aiBusy || !aiBrief.trim()}
+              className="btn-primary w-full mt-2 text-sm disabled:opacity-50">
+              <Wand2 size={14} /> {aiBusy ? 'Pensando...' : 'Gerar sugestão'}
+            </button>
+            {aiErr && <p className="text-xs text-red-500 mt-2">{aiErr}</p>}
+            {aiOut?.palettes?.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {aiOut.idea && <p className="text-xs text-gray-600 italic">💡 {aiOut.idea}</p>}
+                <div className="space-y-1.5">
+                  {aiOut.palettes.map((p, i) => (
+                    <button key={i} onClick={() => applyPalette(p, aiOut.finish)}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-gray-200 hover:border-violet-400 transition-colors text-left">
+                      <span className="w-7 h-7 rounded-md shrink-0" style={{ background: p.gradient && p.color2 ? `linear-gradient(135deg,${p.color1},${p.color2})` : p.color1, border: '1px solid rgba(0,0,0,.12)' }} />
+                      <span className="text-xs font-medium flex-1 truncate">{p.name || `Paleta ${i + 1}`}</span>
+                      <span className="text-[10px] text-gray-400">aplicar</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </Sec>
         )}
 

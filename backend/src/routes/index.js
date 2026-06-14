@@ -51,6 +51,7 @@ router.use(tenantMiddleware);
 router.use('/dashboard', dashboardRoutes);
 router.use('/me', pontoAppRoutes);
 router.use('/search', require('./search'));
+router.use('/ai', require('./ai'));
 
 // Rotas usadas por vários módulos aceitam qualquer um deles (basta ter um).
 router.use('/products',  requireModules('products','sales','pdv','quotes','purchases','stock','customizations','price-tables','returns'), productsRoutes);

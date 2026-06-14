@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import GlobalSearch from '@/components/GlobalSearch';
+import AIAssistant from '@/components/AIAssistant';
 
 function PageLoading() {
   return (
@@ -26,6 +27,7 @@ export default function Layout() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <GlobalSearch />
+      <AIAssistant />
       {/* Overlay escuro no mobile quando sidebar aberto */}
       {mobileSidebarOpen && (
         <div

@@ -74,6 +74,7 @@ export default function CustomizationStudio() {
         initialDesign={loaded}
         saved={saved}
         onPickSaved={pickSaved}
+        aiSuggest={(brief) => api.post('/ai/design', { brief })}
         actions={(a) => {
           apiRef.current = a;
           return (

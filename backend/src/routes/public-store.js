@@ -215,4 +215,16 @@ router.post('/quote', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Sugestão de design com IA (cliente descreve a marca)
+router.post('/ai-design', async (req, res) => {
+  const brief = String(req.body.brief || '').trim();
+  if (!brief) return res.status(400).json({ error: 'Descreva sua marca ou evento' });
+  try {
+    const { designSuggestion } = require('./ai');
+    const out = await designSuggestion(brief);
+    if (out.error) return res.status(400).json({ error: out.error });
+    res.json(out);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

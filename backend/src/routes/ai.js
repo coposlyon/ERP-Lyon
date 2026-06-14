@@ -1,0 +1,69 @@
+const express  = require('express');
+const router   = express.Router();
+const supabase = require('../config/supabase');
+const { askClaude, extractJSON } = require('../lib/ai');
+
+const brl = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+
+// ── Assistente de gestão (responde com base nos dados da empresa) ──
+router.post('/assistant', async (req, res) => {
+  const question = String(req.body.question || '').trim();
+  if (!question) return res.status(400).json({ error: 'Faça uma pergunta' });
+  const t = req.tenantId;
+  const today = new Date().toISOString().split('T')[0];
+  const monthStart = today.slice(0, 8) + '01';
+
+  try {
+    const [{ data: salesMonth }, { data: lowStock }, { data: recv }, { data: overdue }, { data: openOrders }] = await Promise.all([
+      supabase.from('VENDAS').select('total').eq('tenant_id', t).neq('status', 'cancelled').gte('created_at', monthStart),
+      supabase.from('PRODUTOS').select('name, current_stock, min_stock').eq('tenant_id', t).eq('is_active', true),
+      supabase.from('LANCAMENTOS').select('amount').eq('tenant_id', t).eq('type', 'receivable').eq('status', 'pending'),
+      supabase.from('LANCAMENTOS').select('amount').eq('tenant_id', t).eq('type', 'payable').in('status', ['pending', 'partial']).lt('due_date', today),
+      supabase.from('VENDAS').select('id', { count: 'exact', head: true }).eq('tenant_id', t).in('status', ['open', 'confirmed', 'in_production']),
+    ]);
+
+    const totalMes = (salesMonth || []).reduce((s, v) => s + (v.total || 0), 0);
+    const baixo = (lowStock || []).filter(p => Number(p.current_stock) <= Number(p.min_stock || 0) && Number(p.min_stock) > 0);
+    const totalRecv = (recv || []).reduce((s, v) => s + (v.amount || 0), 0);
+    const totalOver = (overdue || []).reduce((s, v) => s + (v.amount || 0), 0);
+
+    const context = [
+      `Período atual: ${monthStart} a ${today}.`,
+      `Vendas no mês (confirmadas): ${brl(totalMes)} em ${(salesMonth || []).length} vendas.`,
+      `Pedidos abertos/em produção: ${openOrders?.length || 0}.`,
+      `Contas a receber pendentes: ${brl(totalRecv)}.`,
+      `Contas a pagar vencidas: ${brl(totalOver)}.`,
+      `Produtos abaixo do estoque mínimo (${baixo.length}): ${baixo.slice(0, 15).map(p => `${p.name} (${p.current_stock}/${p.min_stock})`).join('; ') || 'nenhum'}.`,
+    ].join('\n');
+
+    const r = await askClaude({
+      system: 'Você é o assistente de gestão de um ERP de copos personalizados (Lyon Copos). Responda em português do Brasil, curto, direto e prático, usando SOMENTE os dados fornecidos. Use R$ e seja específico com números. Se algum dado necessário não estiver no contexto, diga que não tem essa informação.',
+      prompt: `Dados atuais da empresa:\n${context}\n\nPergunta do gestor: ${question}`,
+      max_tokens: 700,
+    });
+    if (!r.ok) return res.status(400).json({ error: r.error });
+    res.json({ answer: r.text });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Sugestão de design (briefing de marca → cores/acabamento) ──
+async function designSuggestion(brief) {
+  const r = await askClaude({
+    system: 'Você é um designer de produtos promocionais (copos e garrafas personalizados). Dado um briefing de marca/evento, sugira combinações de cores e acabamento. Responda APENAS um JSON válido, sem texto fora dele, no formato: {"palettes":[{"name":"nome curto","color1":"#RRGGBB","color2":"#RRGGBB","gradient":true|false}],"finish":"opaco|brilhante|metalico|translucido","idea":"sugestão curta de arte/texto"}. Dê 3 paletas.',
+    prompt: `Briefing: ${brief}`,
+    max_tokens: 500,
+  });
+  if (!r.ok) return { error: r.error };
+  return extractJSON(r.text) || { idea: r.text, palettes: [] };
+}
+
+router.post('/design', async (req, res) => {
+  const brief = String(req.body.brief || '').trim();
+  if (!brief) return res.status(400).json({ error: 'Descreva a marca ou evento' });
+  const out = await designSuggestion(brief);
+  if (out.error) return res.status(400).json({ error: out.error });
+  res.json(out);
+});
+
+module.exports = router;
+module.exports.designSuggestion = designSuggestion;
