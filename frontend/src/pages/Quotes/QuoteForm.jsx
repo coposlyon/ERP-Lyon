@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Trash2, Save, ArrowRightCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, ArrowRightCircle, Loader2, Globe, Check, Ban } from 'lucide-react';
 import api from '@/lib/api';
+import CustomerPicker from '@/components/CustomerPicker';
 import toast from 'react-hot-toast';
 
 function fmt(v) {
@@ -14,6 +15,15 @@ const PAYMENT_METHODS = [
   ['card_debit','Cartão Débito'], ['transfer','Transferência'], ['check','Cheque'], ['boleto','Boleto'],
 ];
 
+const STATUS = {
+  open:      { label: 'Pendente',   cls: 'bg-blue-100 text-blue-700' },
+  sent:      { label: 'Enviado',    cls: 'bg-yellow-100 text-yellow-700' },
+  approved:  { label: 'Aprovado',   cls: 'bg-green-100 text-green-700' },
+  rejected:  { label: 'Recusado',   cls: 'bg-red-100 text-red-700' },
+  expired:   { label: 'Expirado',   cls: 'bg-gray-100 text-gray-600' },
+  converted: { label: 'Convertido', cls: 'bg-violet-100 text-violet-700' },
+};
+
 export default function QuoteForm() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -21,13 +31,12 @@ export default function QuoteForm() {
 
   const [form, setForm] = useState({
     customer_id: '', notes: '', artwork_notes: '', payment_method: 'pix',
-    valid_until: '', delivery_days: 10, discount: 0,
+    valid_until: '', delivery_days: 10, discount: 0, status: 'open',
   });
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [productSearch, setProductSearch] = useState('');
 
-  const { data: customers } = useQuery({ queryKey: ['customers-all'], queryFn: () => api.get('/customers?limit=500') });
   const { data: products } = useQuery({
     queryKey: ['products-search', productSearch],
     queryFn: () => api.get(`/products?search=${productSearch}&limit=20`),
@@ -50,6 +59,7 @@ export default function QuoteForm() {
         valid_until: existingQuote.valid_until || '',
         delivery_days: existingQuote.delivery_days || 10,
         discount: existingQuote.discount || 0,
+        status: existingQuote.status || 'open',
       });
       setItems((existingQuote.ORCAMENTO_ITENS || []).map(i => ({
         product_id: i.product_id, product_name: i.product_name,
@@ -76,6 +86,17 @@ export default function QuoteForm() {
 
   const subtotal = items.reduce((s, i) => s + (i.quantity * i.unit_price) - (i.discount || 0), 0);
   const total = subtotal - (parseFloat(form.discount) || 0);
+
+  const isSiteOrder = (existingQuote?.notes || '').includes('PEDIDO PELO SITE');
+  const siteContact = isSiteOrder ? (existingQuote.notes.match(/Contato:\s*([^\n]+)/)?.[1]?.trim() || '') : '';
+
+  async function quickStatus(newStatus) {
+    setForm(p => ({ ...p, status: newStatus }));
+    if (isEditing) {
+      try { await api.patch(`/quotes/${id}/status`, { status: newStatus }); toast.success('Status atualizado!'); }
+      catch (err) { toast.error(err.error || 'Erro ao atualizar status'); }
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -114,7 +135,11 @@ export default function QuoteForm() {
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h1 className="page-title">{isEditing ? `Orçamento #${String(existingQuote?.number || '').padStart(4,'0')}` : 'Novo Orçamento'}</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="page-title">{isEditing ? `Orçamento #${String(existingQuote?.number || '').padStart(4,'0')}` : 'Novo Orçamento'}</h1>
+              {isEditing && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${(STATUS[form.status] || STATUS.open).cls}`}>{(STATUS[form.status] || STATUS.open).label}</span>}
+              {isSiteOrder && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 inline-flex items-center gap-1"><Globe size={11} /> Site</span>}
+            </div>
             <p className="text-sm text-gray-500">Proposta comercial para cliente</p>
           </div>
         </div>
@@ -231,14 +256,44 @@ export default function QuoteForm() {
 
         {/* Right: Details */}
         <div className="space-y-4">
+          {/* Solicitado pelo Site */}
+          {isSiteOrder && (
+            <div className="card border-l-4 border-orange-400">
+              <div className="card-body">
+                <div className="flex items-center gap-2 text-orange-700 font-semibold">
+                  <Globe size={16} /> Solicitado pelo Site
+                </div>
+                {siteContact && <p className="text-sm text-gray-600 mt-1.5">{siteContact}</p>}
+                <div className="flex gap-2 mt-3">
+                  <button type="button" onClick={() => quickStatus('approved')}
+                    className="flex-1 text-xs font-medium px-2 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 inline-flex items-center justify-center gap-1">
+                    <Check size={13} /> Aprovar
+                  </button>
+                  <button type="button" onClick={() => quickStatus('rejected')}
+                    className="flex-1 text-xs font-medium px-2 py-1.5 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 inline-flex items-center justify-center gap-1">
+                    <Ban size={13} /> Recusar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Cliente */}
           <div className="card">
-            <div className="card-header"><h2 className="font-semibold">Dados do Orçamento</h2></div>
+            <div className="card-header"><h2 className="font-semibold">Cliente</h2></div>
+            <div className="card-body">
+              <CustomerPicker customerId={form.customer_id} onSelect={c => setForm(p => ({ ...p, customer_id: c?.id || '' }))} />
+            </div>
+          </div>
+
+          {/* Status & condições */}
+          <div className="card">
+            <div className="card-header"><h2 className="font-semibold">Status & Condições</h2></div>
             <div className="card-body space-y-3">
               <div>
-                <label className="label">Cliente</label>
-                <select className="input" value={form.customer_id} onChange={e => setForm(p => ({ ...p, customer_id: e.target.value }))}>
-                  <option value="">Consumidor Final</option>
-                  {(customers?.data || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                <label className="label">Status</label>
+                <select className="input" value={form.status} onChange={e => quickStatus(e.target.value)}>
+                  {Object.entries(STATUS).map(([v, s]) => <option key={v} value={v}>{s.label}</option>)}
                 </select>
               </div>
               <div>
@@ -247,14 +302,23 @@ export default function QuoteForm() {
                   {PAYMENT_METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="label">Válido até</label>
-                <input type="date" className="input" value={form.valid_until} onChange={e => setForm(p => ({ ...p, valid_until: e.target.value }))} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Válido até</label>
+                  <input type="date" className="input" value={form.valid_until} onChange={e => setForm(p => ({ ...p, valid_until: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="label">Entrega (dias)</label>
+                  <input type="number" min="1" className="input" value={form.delivery_days} onChange={e => setForm(p => ({ ...p, delivery_days: parseInt(e.target.value) || 10 }))} />
+                </div>
               </div>
-              <div>
-                <label className="label">Prazo de entrega (dias)</label>
-                <input type="number" min="1" className="input" value={form.delivery_days} onChange={e => setForm(p => ({ ...p, delivery_days: parseInt(e.target.value) || 10 }))} />
-              </div>
+            </div>
+          </div>
+
+          {/* Observações */}
+          <div className="card">
+            <div className="card-header"><h2 className="font-semibold">Observações</h2></div>
+            <div className="card-body space-y-3">
               <div>
                 <label className="label">Observações da Arte</label>
                 <textarea rows={3} className="input" placeholder="Descreva as personalizações desejadas..."
@@ -262,7 +326,7 @@ export default function QuoteForm() {
               </div>
               <div>
                 <label className="label">Observações Gerais</label>
-                <textarea rows={2} className="input"
+                <textarea rows={3} className="input"
                   value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
               </div>
             </div>
