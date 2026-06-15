@@ -58,7 +58,24 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   As dimensões/peso usados vêm do cadastro do produto (altura/largura/compr. em mm,
   peso em g); sem isso, usa um padrão de copo.
 
-## 7. Erros em produção (Sentry) — opcional
+## 7. Marketing — Instagram e Facebook (Meta Graph API)
+- **Onde usa:** módulo **Marketing** → escreve a mensagem/legenda, anexa imagem e
+  escolhe os canais (WhatsApp / Instagram / Facebook). WhatsApp dispara para a
+  audiência filtrada; Instagram/Facebook publicam um post.
+- **Variáveis:**
+  - `FB_PAGE_ID` — ID da Página do Facebook.
+  - `FB_PAGE_TOKEN` — token de acesso da Página (Meta for Developers → seu app →
+    Graph API → Page Access Token; serve para Facebook **e** Instagram).
+  - `IG_USER_ID` — ID da conta Instagram **Business** vinculada à Página.
+- **Pré-requisitos:** conta Instagram Business conectada a uma Página do Facebook;
+  app na Meta com as permissões `pages_manage_posts`, `pages_read_engagement`,
+  `instagram_basic`, `instagram_content_publish`.
+- **Importante:** o Instagram exige **imagem com URL pública** — o bucket do
+  Supabase Storage (`STORAGE_BUCKET`) precisa ser **público** para a Meta baixar a imagem.
+- **WhatsApp em massa:** usa as mesmas variáveis do item 2. Envios proativos
+  (fora da janela de 24h) podem exigir **template aprovado** na Meta.
+
+## 8. Erros em produção (Sentry) — opcional
 - `SENTRY_DSN` — DSN do projeto no sentry.io. Com isso, todo erro de servidor é
   reportado automaticamente.
 

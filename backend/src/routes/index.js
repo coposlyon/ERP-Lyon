@@ -72,6 +72,7 @@ router.use('/logistics', requireModules('logistics'), logisticsRoutes);
 router.use('/returns',   requireModules('returns','sales'), returnsRoutes);
 router.use('/quality',   requireModules('quality'), qualityRoutes);
 router.use('/crm',       requireModules('crm'), crmRoutes);
+router.use('/marketing', requireModules('marketing','crm'), require('./marketing'));
 router.use('/hr',        requireModules('hr'), hrRoutes);
 router.use('/escalas',   requireModules('hr','employees','settings'), escalasRoutes);
 router.use('/situacoes', requireModules('hr','settings'), situacoesRoutes);

@@ -7,7 +7,7 @@ import {
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
-  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart,
+  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -107,6 +107,12 @@ const menuItems = [
     icon: Target,
     path: '/crm',
     module: 'crm',
+  },
+  {
+    label: 'Marketing',
+    icon: Megaphone,
+    path: '/marketing',
+    module: 'marketing',
   },
   {
     label: 'Recursos Humanos',
