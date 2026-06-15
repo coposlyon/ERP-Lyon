@@ -15,15 +15,35 @@ export default function CartPage() {
   const [form, setForm] = useState({ name: '', phone: '', email: '', company: '', notes: '' });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(null);
+  const [cep, setCep] = useState('');
+  const [freteOpts, setFreteOpts] = useState(null);
+  const [freteSel, setFreteSel] = useState(null);
+  const [freteLoading, setFreteLoading] = useState(false);
+
+  async function calcFrete() {
+    const c = cep.replace(/\D/g, '');
+    if (c.length !== 8) { toast.error('Informe um CEP válido (8 dígitos)'); return; }
+    setFreteLoading(true); setFreteOpts(null); setFreteSel(null);
+    try {
+      const res = await storeApi.post('/frete', { cep: c, items: items.map(i => ({ product_id: i.product_id, quantity: i.quantity })) });
+      setFreteOpts(res.options || []);
+      if ((res.options || []).length) setFreteSel(res.options[0]);
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Não foi possível calcular o frete');
+    } finally { setFreteLoading(false); }
+  }
 
   async function submit(e) {
     e.preventDefault();
     if (!form.name || !form.phone) { toast.error('Informe nome e telefone'); return; }
     setSending(true);
     try {
+      const freteNote = freteSel
+        ? `\nFrete: ${freteSel.company} ${freteSel.service} — ${fmt(freteSel.price)}${freteSel.days ? ` (${freteSel.days} dias)` : ''} para CEP ${cep}`
+        : '';
       const res = await storeApi.post('/quote', {
         customer: form,
-        notes: form.notes,
+        notes: (form.notes || '') + freteNote,
         items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, color: i.color, print_method: i.print_method || null, quantity: i.quantity, design: i.design || null, preview: i.preview || null })),
       });
       setDone(res);
@@ -102,10 +122,40 @@ export default function CartPage() {
         {/* Checkout */}
         <div>
           <form onSubmit={submit} className="bg-white rounded-2xl border border-gray-100 p-5 sticky top-20 space-y-3">
-            <div className="flex justify-between items-center pb-3 border-b border-gray-100">
-              <span className="text-gray-500">Total estimado</span>
-              <span className="text-2xl font-extrabold text-gray-900">{fmt(total)}</span>
+            <div className="pb-3 border-b border-gray-100 space-y-1">
+              <div className="flex justify-between text-sm text-gray-500"><span>Produtos</span><span>{fmt(total)}</span></div>
+              {freteSel && <div className="flex justify-between text-sm text-gray-500"><span>Frete ({freteSel.service})</span><span>{fmt(freteSel.price)}</span></div>}
+              <div className="flex justify-between items-center pt-1">
+                <span className="font-semibold text-gray-600">Total estimado</span>
+                <span className="text-2xl font-extrabold text-gray-900">{fmt(total + (freteSel?.price || 0))}</span>
+              </div>
             </div>
+
+            {/* Frete por CEP */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-1.5">Calcular frete</p>
+              <div className="flex gap-2">
+                <input className={INPUT} placeholder="CEP de entrega" value={cep}
+                  onChange={e => setCep(e.target.value)} />
+                <button type="button" onClick={calcFrete} disabled={freteLoading}
+                  className="px-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-medium whitespace-nowrap disabled:opacity-60">
+                  {freteLoading ? '...' : 'Calcular'}
+                </button>
+              </div>
+              {freteOpts && freteOpts.length === 0 && <p className="text-xs text-gray-400 mt-2">Nenhuma opção de frete encontrada para esse CEP.</p>}
+              {freteOpts && freteOpts.length > 0 && (
+                <div className="space-y-1.5 mt-2">
+                  {freteOpts.map(o => (
+                    <label key={o.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm ${freteSel?.id === o.id ? 'border-orange-400 bg-orange-50' : 'border-gray-200'}`}>
+                      <input type="radio" checked={freteSel?.id === o.id} onChange={() => setFreteSel(o)} className="accent-orange-500" />
+                      <span className="flex-1 truncate">{o.company} {o.service}{o.days ? ` · ${o.days} dias` : ''}</span>
+                      <span className="font-bold whitespace-nowrap">{fmt(o.price)}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <p className="text-xs text-gray-400">Preencha seus dados para receber o orçamento:</p>
             <input className={INPUT} placeholder="Nome *" value={form.name}
               onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />

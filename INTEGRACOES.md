@@ -45,7 +45,20 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   - `ANTHROPIC_MODEL` — opcional; modelo a usar (padrão `claude-sonnet-4-6`).
 - **Obs.:** sem a chave, os recursos de IA mostram "IA não configurada" — nada quebra.
 
-## 6. Erros em produção (Sentry) — opcional
+## 6. Frete por CEP (Melhor Envio)
+- **Onde usa:** loja (`/loja`) → carrinho → "Calcular frete" (cliente digita o CEP
+  e escolhe a opção; o valor entra no total estimado e vai junto no pedido).
+- **Variáveis:**
+  - `MELHORENVIO_TOKEN` — token da API do Melhor Envio
+    (melhorenvio.com.br → Configurações → Tokens / Integrações).
+  - `STORE_ORIGIN_CEP` — CEP de origem (de onde sai a encomenda). Se vazio, tenta
+    usar o CEP do endereço da empresa.
+  - `MELHORENVIO_BASE` — opcional; use `https://sandbox.melhorenvio.com.br` para testes.
+- **Obs.:** sem o token, o cálculo mostra "Frete não configurado" — nada quebra.
+  As dimensões/peso usados vêm do cadastro do produto (altura/largura/compr. em mm,
+  peso em g); sem isso, usa um padrão de copo.
+
+## 7. Erros em produção (Sentry) — opcional
 - `SENTRY_DSN` — DSN do projeto no sentry.io. Com isso, todo erro de servidor é
   reportado automaticamente.
 

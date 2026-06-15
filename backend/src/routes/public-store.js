@@ -3,6 +3,7 @@ const router   = express.Router();
 const supabase = require('../config/supabase');
 const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
 const { uploadDataUrl } = require('../lib/storage');
+const { calcularFrete, packItem } = require('../lib/frete');
 
 // Loja pública: serve UM tenant (a empresa dona da loja).
 // Sem autenticação — montada antes do authMiddleware.
@@ -232,6 +233,37 @@ router.post('/quote', async (req, res) => {
     await supabase.from('ORCAMENTO_ITENS').insert(quoteItems);
 
     res.status(201).json({ success: true, number: quote.number, items: orderItems.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Frete por CEP (Melhor Envio) ──────────────────────────
+router.post('/frete', async (req, res) => {
+  const cep = String(req.body.cep || '').replace(/\D/g, '');
+  const items = Array.isArray(req.body.items) ? req.body.items : [];
+  if (cep.length !== 8) return res.status(400).json({ error: 'CEP inválido' });
+  try {
+    // CEP de origem: env STORE_ORIGIN_CEP ou endereço da empresa
+    let fromCep = process.env.STORE_ORIGIN_CEP || '';
+    if (!fromCep) {
+      const { data: emp } = await supabase.from('EMPRESAS').select('address').eq('id', STORE_TENANT).maybeSingle();
+      const addr = emp?.address;
+      if (addr && typeof addr === 'object') fromCep = addr.zip || addr.cep || '';
+    }
+
+    const ids = [...new Set(items.map(i => i.product_id).filter(Boolean))];
+    let products = [];
+    if (ids.length) {
+      const { data: prods } = await supabase
+        .from('PRODUTOS').select('id, sale_price, height, weight, length, width')
+        .eq('tenant_id', STORE_TENANT).in('id', ids);
+      const pm = Object.fromEntries((prods || []).map(p => [p.id, p]));
+      products = items.filter(i => pm[i.product_id]).map(i => packItem(pm[i.product_id], i.quantity));
+    }
+    if (!products.length) return res.status(400).json({ error: 'Carrinho sem produtos do catálogo para calcular frete.' });
+
+    const out = await calcularFrete({ fromCep, toCep: cep, products });
+    if (!out.ok) return res.status(400).json({ error: out.error });
+    res.json({ options: out.options });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
