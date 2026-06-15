@@ -239,14 +239,20 @@ router.patch('/:id/status', async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabase
-      .from('VENDAS')
-      .update({ status })
-      .eq('id', req.params.id)
-      .eq('tenant_id', req.tenantId)
-      .select()
-      .single();
+    // registra a mudança de status no histórico do pedido (se a coluna existir)
+    const { data: cur } = await supabase.from('VENDAS')
+      .select('production_log').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    const log = Array.isArray(cur?.production_log) ? cur.production_log : [];
+    log.push({ stage: 'status', action: status, at: new Date().toISOString(), user_id: req.user?.id || null, user: req.user?.name || req.user?.email || 'Usuário' });
 
+    let upd = { status, production_log: log };
+    let { data, error } = await supabase.from('VENDAS').update(upd)
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
+    // se a coluna production_log ainda não existir, atualiza só o status
+    if (error && /production_log|column|does not exist/i.test(error.message || '')) {
+      ({ data, error } = await supabase.from('VENDAS').update({ status })
+        .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single());
+    }
     if (error) throw error;
     res.json(data);
   } catch (err) {

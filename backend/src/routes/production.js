@@ -72,9 +72,17 @@ router.get('/:id', async (req, res) => {
       .from('VENDA_ITENS').select('*, PRODUTOS(name, code, unit)')
       .eq('sale_id', req.params.id);
 
+    const { data: perdas } = await supabase
+      .from('PRODUCAO_PERDAS').select('*')
+      .eq('tenant_id', req.tenantId).eq('sale_id', req.params.id)
+      .order('created_at', { ascending: false });
+
     res.json({
       ...sale,
+      history: Array.isArray(sale.production_log) ? sale.production_log : [],
+      perdas: perdas || [],
       items: (items || []).map(it => ({
+        product_id: it.product_id,
         product_code: it.PRODUTOS?.code, product_name: it.product_name || it.PRODUTOS?.name,
         quantity: it.quantity, unit: it.PRODUTOS?.unit,
         color: it.customization?.cor || null,
@@ -89,7 +97,7 @@ router.get('/:id', async (req, res) => {
 
 // ── Editar dados de produção (datas, transportadora, arte, obs) ──
 router.patch('/:id', async (req, res) => {
-  const allowed = ['event_date', 'ship_date', 'ship_time', 'carrier', 'art_file', 'production_obs', 'production_stage'];
+  const allowed = ['event_date', 'ship_date', 'ship_time', 'carrier', 'art_file', 'production_obs', 'production_stage', 'freight'];
   const patch = {};
   for (const k of allowed) if (k in req.body) patch[k] = req.body[k] || null;
   if (!Object.keys(patch).length) return res.status(400).json({ error: 'Nada para atualizar' });
@@ -130,6 +138,42 @@ router.post('/:id/stage', async (req, res) => {
     if (error) throw error;
     audit(req, 'update', 'production', req.params.id, { stage, action });
     res.json({ ok: true, stage: patch.production_stage || sale.production_stage });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Registrar perda na produção ───────────────────────────
+router.post('/:id/perda', async (req, res) => {
+  const { product_id, product_name, quantity, deduct_stock, notes } = req.body;
+  const qty = Number(quantity);
+  if (!qty || qty <= 0) return res.status(400).json({ error: 'Informe a quantidade perdida' });
+  try {
+    const actor = req.user?.name || req.user?.email || 'Usuário';
+    const { data, error } = await supabase.from('PRODUCAO_PERDAS').insert({
+      tenant_id: req.tenantId, sale_id: req.params.id,
+      product_id: product_id || null, product_name: product_name || null,
+      quantity: qty, user_id: req.user?.id || null, user_name: actor, notes: notes || null,
+    }).select().single();
+    if (error) throw error;
+
+    // baixa no estoque (quantidade negativa) se solicitado e houver produto
+    if (deduct_stock && product_id) {
+      try {
+        await supabase.rpc('atualizar_estoque', {
+          p_tenant_id: req.tenantId, p_product_id: product_id, p_quantity: -Math.abs(qty),
+          p_type: 'adjustment', p_reference_type: 'production', p_reference_id: req.params.id,
+          p_user_id: req.user?.id || null, p_notes: `Perda na produção${notes ? ' — ' + notes : ''}`,
+        });
+      } catch { /* ignora se a RPC não existir */ }
+    }
+
+    // adiciona ao histórico do pedido
+    const { data: sale } = await supabase.from('VENDAS').select('production_log').eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
+    const log = Array.isArray(sale?.production_log) ? sale.production_log : [];
+    log.push({ stage: 'perda', action: 'registro', at: new Date().toISOString(), user_id: req.user?.id || null, user: actor, detail: `${qty} un${product_name ? ' — ' + product_name : ''}` });
+    await supabase.from('VENDAS').update({ production_log: log }).eq('id', req.params.id).eq('tenant_id', req.tenantId);
+
+    audit(req, 'create', 'production_loss', req.params.id, { product_id, quantity: qty });
+    res.status(201).json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -1,8 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Factory, Play, Check, Search, RefreshCw, Loader2, Save, Image as ImageIcon } from 'lucide-react';
+import { Factory, Play, Check, Search, RefreshCw, Loader2, Save, Image as ImageIcon, AlertTriangle, Clock, Plus } from 'lucide-react';
 import api from '@/lib/api';
+import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
+
+const fmtMoney = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+const fmtDT = s => s ? new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+const STEP_LABEL = { revelacao: 'Revelação', producao: 'Produção', embalagem: 'Embalagem', perda: 'Perda', status: 'Status' };
+const ACT_LABEL = { start: 'iniciou', finish: 'finalizou', registro: 'registrou' };
 
 const STAGES = {
   aguardando_arte:     { label: 'Aguardando Arte',     cls: 'bg-gray-100 text-gray-600' },
@@ -58,6 +64,22 @@ export default function Production() {
     mutationFn: () => api.patch(`/production/${selId}`, edit),
     onSuccess: () => { qc.invalidateQueries(['production']); qc.invalidateQueries(['production-detail', selId]); toast.success('Salvo!'); },
     onError: e => toast.error(e.error || 'Erro ao salvar'),
+  });
+
+  // Perda na produção
+  const [perdaOpen, setPerdaOpen] = useState(false);
+  const [perda, setPerda] = useState({ product_id: '', quantity: '', deduct_stock: true, notes: '' });
+  const perdaMut = useMutation({
+    mutationFn: () => {
+      const it = (detail?.items || []).find(i => i.product_id === perda.product_id);
+      return api.post(`/production/${selId}/perda`, { ...perda, product_name: it?.product_name || null });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries(['production-detail', selId]);
+      setPerdaOpen(false); setPerda({ product_id: '', quantity: '', deduct_stock: true, notes: '' });
+      toast.success('Perda registrada!');
+    },
+    onError: e => toast.error(e.error || 'Erro (rodou a migration 020?)'),
   });
   // sincroniza campos editáveis quando troca de pedido
   const d = detail || {};
@@ -191,6 +213,7 @@ export default function Production() {
                 <div><label className="label">Data de saída</label><input type="date" className="input" value={ef('ship_date') || ''} onChange={e => setEdit(s => ({ ...s, ship_date: e.target.value }))} /></div>
                 <div><label className="label">Transportadora</label><input className="input" value={ef('carrier') || ''} onChange={e => setEdit(s => ({ ...s, carrier: e.target.value }))} /></div>
                 <div><label className="label">Horário</label><input className="input" value={ef('ship_time') || ''} onChange={e => setEdit(s => ({ ...s, ship_time: e.target.value }))} placeholder="10:00" /></div>
+                <div><label className="label">Frete (R$)</label><input type="number" step="0.01" className="input" value={ef('freight') ?? ''} onChange={e => setEdit(s => ({ ...s, freight: e.target.value }))} placeholder="0,00" /></div>
               </div>
               <div><label className="label">Observações de produção</label><textarea rows={2} className="input resize-none" value={ef('production_obs') || ''} onChange={e => setEdit(s => ({ ...s, production_obs: e.target.value }))} /></div>
               <button onClick={() => saveFields.mutate()} disabled={saveFields.isPending || !Object.keys(edit).length} className="btn-primary disabled:opacity-50">
@@ -199,24 +222,99 @@ export default function Production() {
             </div>
           </div>
 
-          {/* Arte */}
-          <div className="card p-4">
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5"><ImageIcon size={13} /> Arte / Layout</p>
-            {(detail?.items || []).some(it => it.art) ? (
-              <div className="space-y-3">
-                {(detail?.items || []).filter(it => it.art).map((it, i) => (
-                  <div key={i}>
-                    <img src={it.art} alt="" className="w-full rounded-xl border border-gray-200" />
-                    <p className="text-xs text-gray-400 mt-1">{it.product_name} · {it.color || ''}{it.art_file ? ` · ${it.art_file}` : ''}</p>
-                  </div>
-                ))}
+          {/* Arte + Perdas + Histórico */}
+          <div className="space-y-4">
+            <div className="card p-4">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5"><ImageIcon size={13} /> Arte / Layout</p>
+              {(detail?.items || []).some(it => it.art) ? (
+                <div className="space-y-3">
+                  {(detail?.items || []).filter(it => it.art).map((it, i) => (
+                    <div key={i}>
+                      <img src={it.art} alt="" className="w-full rounded-xl border border-gray-200" />
+                      <p className="text-xs text-gray-400 mt-1">{it.product_name} · {it.color || ''}{it.art_file ? ` · ${it.art_file}` : ''}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400 text-center py-10">Sem arte anexada neste pedido.</div>
+              )}
+            </div>
+
+            {/* Perdas na produção */}
+            <div className="card p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5"><AlertTriangle size={13} /> Perdas na produção</p>
+                <button onClick={() => setPerdaOpen(true)} className="btn-secondary text-xs"><Plus size={13} /> Registrar perda</button>
               </div>
-            ) : (
-              <div className="text-sm text-gray-400 text-center py-10">Sem arte anexada neste pedido.</div>
-            )}
+              {(detail?.perdas || []).length === 0 ? (
+                <p className="text-sm text-gray-400">Nenhuma perda registrada.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {(detail.perdas).map(p => (
+                    <div key={p.id} className="flex items-center justify-between text-sm border-b border-gray-50 pb-1.5">
+                      <span className="truncate">{p.product_name || 'Produto'}</span>
+                      <span className="text-red-600 font-semibold shrink-0 ml-2">-{Number(p.quantity)} un</span>
+                      <span className="text-xs text-gray-400 shrink-0 ml-2">{p.user_name} · {fmtDT(p.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Histórico / timeline */}
+            <div className="card p-4">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5"><Clock size={13} /> Histórico</p>
+              {(detail?.history || []).length === 0 ? (
+                <p className="text-sm text-gray-400">Sem movimentações ainda.</p>
+              ) : (
+                <ol className="space-y-2">
+                  {[...(detail.history)].reverse().map((h, i) => (
+                    <li key={i} className="flex gap-2 text-sm">
+                      <span className="w-1.5 h-1.5 rounded-full bg-orange-400 mt-1.5 shrink-0" />
+                      <div>
+                        <span className="font-medium">{STEP_LABEL[h.stage] || h.stage}</span>
+                        <span className="text-gray-500"> — {ACT_LABEL[h.action] || h.action}{h.detail ? ` (${h.detail})` : ''}</span>
+                        <div className="text-xs text-gray-400">{h.user || '—'} · {fmtDT(h.at)}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
           </div>
         </div>
       )}
+
+      {/* Modal: registrar perda */}
+      <Modal isOpen={perdaOpen} onClose={() => setPerdaOpen(false)} title="Registrar perda na produção" size="sm">
+        <div className="space-y-3">
+          <div>
+            <label className="label">Produto</label>
+            <select className="input" value={perda.product_id} onChange={e => setPerda(s => ({ ...s, product_id: e.target.value }))}>
+              <option value="">Selecione o produto...</option>
+              {(detail?.items || []).map((it, i) => <option key={i} value={it.product_id || ''}>{it.product_name}{it.color ? ` — ${it.color}` : ''}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Quantidade perdida</label>
+            <input type="number" min="1" className="input" value={perda.quantity} onChange={e => setPerda(s => ({ ...s, quantity: e.target.value }))} placeholder="0" />
+          </div>
+          <div>
+            <label className="label">Observação</label>
+            <input className="input" value={perda.notes} onChange={e => setPerda(s => ({ ...s, notes: e.target.value }))} placeholder="Ex.: quebra na revelação" />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input type="checkbox" checked={perda.deduct_stock} onChange={e => setPerda(s => ({ ...s, deduct_stock: e.target.checked }))} className="w-4 h-4 accent-orange-600" />
+            Dar baixa no estoque
+          </label>
+          <div className="flex gap-2 justify-end pt-2">
+            <button onClick={() => setPerdaOpen(false)} className="btn-secondary">Cancelar</button>
+            <button onClick={() => perdaMut.mutate()} disabled={perdaMut.isPending || !perda.quantity} className="btn-primary disabled:opacity-50">
+              {perdaMut.isPending ? 'Salvando...' : 'Registrar'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
