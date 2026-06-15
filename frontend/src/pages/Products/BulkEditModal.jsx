@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Loader2, Plus, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
+import PrintPricingEditor, { cleanPrintPricing } from './PrintPricingEditor';
 import toast from 'react-hot-toast';
 
 export default function BulkEditModal({ isOpen, onClose }) {
@@ -21,6 +22,8 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [cfop, setCfop] = useState('');
   const [applyTiers, setApplyTiers] = useState(false);
   const [tiers, setTiers] = useState([{ min: '', max: '', price: '' }]);
+  const [applyPrint, setApplyPrint] = useState(false);
+  const [printPricing, setPrintPricing] = useState({});
 
   const { data: cats } = useQuery({
     queryKey: ['categories-list'],
@@ -58,6 +61,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
   if (cst.trim()) fields.cst = cst.trim();
   if (cfop.trim()) fields.cfop = cfop.trim();
   if (applyTiers) fields.price_tiers = tiers.filter(t => t.min && t.price).map(t => ({ min: t.min, max: t.max, price: t.price }));
+  if (applyPrint) fields.print_pricing = cleanPrintPricing(printPricing);
   const hasFields = Object.keys(fields).length > 0;
 
   const apply = useMutation({
@@ -163,6 +167,15 @@ export default function BulkEditModal({ isOpen, onClose }) {
               <p className="text-xs text-gray-400">Deixe sem faixas (e marcado) para limpar as faixas dos selecionados.</p>
             </div>
           )}
+        </div>
+
+        {/* Preço por tipo de impressão */}
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+            <input type="checkbox" checked={applyPrint} onChange={e => setApplyPrint(e.target.checked)} className="w-4 h-4 accent-violet-600" />
+            Substituir preços por tipo de impressão (Serigrafia / Transfer / DTF)
+          </label>
+          {applyPrint && <PrintPricingEditor value={printPricing} onChange={setPrintPricing} />}
         </div>
 
         {/* Fiscal */}

@@ -74,13 +74,34 @@ router.patch('/bulk', async (req, res) => {
       })
       .filter(t => t.min_qty > 0 && t.price > 0);
   }
+  // preço por tipo de impressão (Serigrafia/Transfer/DTF) — substitui as 3 tabelas
+  if (fields.print_pricing && typeof fields.print_pricing === 'object' && !Array.isArray(fields.print_pricing)) {
+    const pp = {};
+    for (const key of ['serigrafia', 'transfer', 'dtf']) {
+      const d = fields.print_pricing[key];
+      if (!d || typeof d !== 'object') continue;
+      const price = (d.price != null && d.price !== '') ? Number(d.price) : null;
+      const tiers = Array.isArray(d.tiers)
+        ? d.tiers.map(t => ({ min_qty: parseInt(t.min_qty) || 0, max_qty: (t.max_qty === '' || t.max_qty == null) ? null : (parseInt(t.max_qty) || null), price: Number(t.price) || 0 })).filter(t => t.min_qty > 0 && t.price > 0)
+        : [];
+      if ((price != null && !Number.isNaN(price)) || tiers.length) pp[key] = { ...(price != null && !Number.isNaN(price) ? { price } : {}), tiers };
+    }
+    patch.print_pricing = pp;
+  }
   if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nada para aplicar — preencha ao menos um campo' });
   patch.updated_at = new Date().toISOString();
+
+  const runUpdate = (p) => supabase
+    .from('PRODUTOS').update(p)
+    .eq('tenant_id', req.tenantId).in('id', ids.slice(0, 2000))
+    .select('id');
   try {
-    const { data, error } = await supabase
-      .from('PRODUTOS').update(patch)
-      .eq('tenant_id', req.tenantId).in('id', ids.slice(0, 2000))
-      .select('id');
+    let { data, error } = await runUpdate(patch);
+    // resiliência: se min_order_qty/print_pricing ainda não existem, aplica o resto
+    if (error && /print_pricing|min_order_qty|does not exist|column|42703/i.test(error.message || '')) {
+      const { print_pricing, min_order_qty, ...rest } = patch;
+      ({ data, error } = await runUpdate(rest));
+    }
     if (error) throw error;
     audit(req, 'update', 'product', null, { bulk: Object.keys(patch), count: (data || []).length });
     res.json({ updated: (data || []).length });
