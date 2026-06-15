@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Receipt } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import ProductForm from './ProductForm';
-import BulkFiscalModal from './BulkFiscalModal';
+import BulkEditModal from './BulkEditModal';
 import toast from 'react-hot-toast';
 
 function fmt(v) {
@@ -90,7 +90,7 @@ export default function Products() {
         </div>
         <div className="flex gap-2">
           <button onClick={() => setBulkOpen(true)} className="btn-secondary">
-            <Receipt size={16} /> Fiscal em massa
+            <Layers size={16} /> Edição em massa
           </button>
           <button onClick={openNew} className="btn-primary">
             <Plus size={16} /> Novo Produto
@@ -128,7 +128,7 @@ export default function Products() {
         <ProductForm product={editing} onSaved={onSaved} onCancel={closeModal} />
       </Modal>
 
-      <BulkFiscalModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
+      <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
     </div>
   );
 }

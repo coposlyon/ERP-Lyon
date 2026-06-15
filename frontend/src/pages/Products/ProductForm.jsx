@@ -9,7 +9,7 @@ const emptyTier = () => ({ min_qty: '', max_qty: '', price: '' });
 export default function ProductForm({ product, onSaved, onCancel }) {
   const [form, setForm] = useState({
     name: '', code: '', ean: '', category_id: '',
-    cost_price: '', sale_price: '', min_stock: '',
+    cost_price: '', sale_price: '', min_stock: '', min_order_qty: '',
     ncm: '', cst: '', cfop: '', is_active: true,
     supplier_id: '',
     // Produto Acabado
@@ -47,6 +47,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         cost_price: product.cost_price || '',
         sale_price: product.sale_price || '',
         min_stock: product.min_stock || '',
+        min_order_qty: product.min_order_qty || '',
         ncm: product.ncm || '',
         cst: product.cst || '',
         cfop: product.cfop || '',
@@ -191,6 +192,15 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           <label className="label">Estoque Mínimo</label>
           <input type="number" step="1" min="0" className="input"
             value={form.min_stock} onChange={e => set('min_stock', e.target.value)} placeholder="0" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <label className="label">Qtd. mínima de pedido (loja)</label>
+          <input type="number" step="1" min="1" className="input"
+            value={form.min_order_qty} onChange={e => set('min_order_qty', e.target.value)} placeholder="1" />
+          <p className="text-xs text-gray-400 mt-1">Mínimo que o cliente pode pedir na loja.</p>
         </div>
       </div>
 

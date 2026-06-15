@@ -41,16 +41,40 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Atualização fiscal em massa (NCM / CST / CFOP) para vários produtos de uma vez.
-// Só aplica os campos preenchidos — deixa em branco os que não quer alterar.
+// Edição em massa: aplica os campos enviados (fiscal, preço, qtd mínima,
+// faixas de preço) a vários produtos de uma vez. Só altera o que for enviado.
 router.patch('/bulk', async (req, res) => {
-  const { ids, fields } = req.body;
+  const { ids, fields = {} } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'Selecione ao menos um produto' });
   const patch = {};
+  // texto fiscal
   for (const k of ['ncm', 'cst', 'cfop']) {
-    if (fields && fields[k] != null && String(fields[k]).trim() !== '') patch[k] = String(fields[k]).trim();
+    if (fields[k] != null && String(fields[k]).trim() !== '') patch[k] = String(fields[k]).trim();
   }
-  if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Informe NCM, CST ou CFOP' });
+  // numéricos (preço de custo/venda)
+  for (const k of ['cost_price', 'sale_price']) {
+    if (fields[k] != null && fields[k] !== '') {
+      const n = Number(fields[k]);
+      if (!Number.isNaN(n) && n >= 0) patch[k] = n;
+    }
+  }
+  // quantidade mínima de pedido (inteiro >= 1)
+  if (fields.min_order_qty != null && fields.min_order_qty !== '') {
+    const n = parseInt(fields.min_order_qty);
+    if (!Number.isNaN(n)) patch.min_order_qty = Math.max(1, n);
+  }
+  // faixas de preço por quantidade (substitui as faixas dos selecionados).
+  // Salva no formato lido pela loja: { min_qty, max_qty, price }.
+  if (Array.isArray(fields.price_tiers)) {
+    patch.price_tiers = fields.price_tiers
+      .map(t => {
+        const min = parseInt(t.min_qty ?? t.min) || 0;
+        const maxRaw = t.max_qty ?? t.max;
+        return { min_qty: min, max_qty: (maxRaw === '' || maxRaw == null) ? null : (parseInt(maxRaw) || null), price: Number(t.price) || 0 };
+      })
+      .filter(t => t.min_qty > 0 && t.price > 0);
+  }
+  if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nada para aplicar — preencha ao menos um campo' });
   patch.updated_at = new Date().toISOString();
   try {
     const { data, error } = await supabase
@@ -58,7 +82,7 @@ router.patch('/bulk', async (req, res) => {
       .eq('tenant_id', req.tenantId).in('id', ids.slice(0, 2000))
       .select('id');
     if (error) throw error;
-    audit(req, 'update', 'product', null, { bulk_fiscal: patch, count: (data || []).length });
+    audit(req, 'update', 'product', null, { bulk: Object.keys(patch), count: (data || []).length });
     res.json({ updated: (data || []).length });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -161,7 +185,7 @@ router.post('/', validate(productSchema), async (req, res) => {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers
+    price_tiers, min_order_qty
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Nome do produto é obrigatório' });
@@ -184,6 +208,7 @@ router.post('/', validate(productSchema), async (req, res) => {
         mouth_circumference: mouth_circumference || null,
         length: length || null, width: width || null,
         price_tiers: price_tiers || [],
+        min_order_qty: Math.max(1, parseInt(min_order_qty) || 1),
       })
       .select()
       .single();
@@ -201,7 +226,7 @@ router.put('/:id', async (req, res) => {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers
+    price_tiers, min_order_qty
   } = req.body;
 
   try {
@@ -225,6 +250,7 @@ router.put('/:id', async (req, res) => {
         mouth_circumference: mouth_circumference || null,
         length: length || null, width: width || null,
         price_tiers: price_tiers || [],
+        ...(min_order_qty != null ? { min_order_qty: Math.max(1, parseInt(min_order_qty) || 1) } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq('id', req.params.id)

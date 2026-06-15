@@ -33,9 +33,16 @@ export default function ProductPage() {
     retry: false,
   });
 
+  const minQty = Math.max(1, product?.min_order_qty || 1);
+
   useEffect(() => {
     if (product?.variants?.length && !selVariant) setSelVariant(product.variants[0]);
   }, [product, selVariant]);
+
+  // ao carregar o produto, garante a quantidade mínima do pedido
+  useEffect(() => {
+    if (product) setQty(q => Math.max(q, minQty));
+  }, [product, minQty]);
 
   const gradient = /degrad/i.test(product?.name || '');
   const bottleColor = selVariant ? resolveColor(selVariant) : '#F26522';
@@ -128,11 +135,14 @@ export default function ProductPage() {
 
           {/* Quantidade + adicionar */}
           <div className="mt-6 flex items-center gap-3">
-            <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
-              <button onClick={() => setQty(q => Math.max(1, q - 1))} className="px-3 py-3 hover:bg-gray-50"><Minus size={15} /></button>
-              <input type="number" min="1" value={qty} onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-16 text-center font-bold outline-none" />
-              <button onClick={() => setQty(q => q + 1)} className="px-3 py-3 hover:bg-gray-50"><Plus size={15} /></button>
+            <div className="flex flex-col">
+              <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
+                <button onClick={() => setQty(q => Math.max(minQty, q - 1))} className="px-3 py-3 hover:bg-gray-50"><Minus size={15} /></button>
+                <input type="number" min={minQty} value={qty} onChange={e => setQty(Math.max(minQty, parseInt(e.target.value) || minQty))}
+                  className="w-16 text-center font-bold outline-none" />
+                <button onClick={() => setQty(q => q + 1)} className="px-3 py-3 hover:bg-gray-50"><Plus size={15} /></button>
+              </div>
+              {minQty > 1 && <p className="text-[11px] text-orange-600 mt-1">Pedido mínimo: {minQty} un.</p>}
             </div>
             <div className="flex-1">
               <p className="text-xs text-gray-400">Total</p>

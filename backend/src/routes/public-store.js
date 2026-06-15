@@ -46,7 +46,7 @@ router.get('/products', async (req, res) => {
   try {
     let query = supabase
       .from('PRODUTOS')
-      .select('id, name, code, unit, description, sale_price, price_tiers, category_id, CATEGORIAS(name)')
+      .select('id, name, code, unit, description, sale_price, price_tiers, min_order_qty, category_id, CATEGORIAS(name)')
       .eq('tenant_id', STORE_TENANT)
       .eq('is_active', true)
       .order('name');
@@ -77,6 +77,7 @@ router.get('/products', async (req, res) => {
       from_price: fromPrice(p),
       has_tiers: Array.isArray(p.price_tiers) && p.price_tiers.length > 0,
       colors: variantCount[p.id] || 0,
+      min_order_qty: p.min_order_qty || 1,
     })));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -86,7 +87,7 @@ router.get('/products/:id', async (req, res) => {
   try {
     const { data: p, error } = await supabase
       .from('PRODUTOS')
-      .select('id, name, code, unit, description, sale_price, price_tiers, CATEGORIAS(name)')
+      .select('id, name, code, unit, description, sale_price, price_tiers, min_order_qty, CATEGORIAS(name)')
       .eq('tenant_id', STORE_TENANT).eq('id', req.params.id).eq('is_active', true)
       .maybeSingle();
     if (error) throw error;
@@ -104,6 +105,7 @@ router.get('/products/:id', async (req, res) => {
       sale_price: Number(p.sale_price) || 0,
       price_tiers: Array.isArray(p.price_tiers) ? p.price_tiers : [],
       from_price: fromPrice(p),
+      min_order_qty: p.min_order_qty || 1,
       variants: variants || [],
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -124,14 +126,16 @@ router.post('/quote', async (req, res) => {
     // Busca produtos do carrinho para recalcular o preço no servidor
     const ids = [...new Set(items.map(i => i.product_id).filter(Boolean))];
     const { data: prods } = await supabase
-      .from('PRODUTOS').select('id, name, unit, sale_price, price_tiers')
+      .from('PRODUTOS').select('id, name, unit, sale_price, price_tiers, min_order_qty')
       .eq('tenant_id', STORE_TENANT).in('id', ids);
     const prodMap = Object.fromEntries((prods || []).map(p => [p.id, p]));
 
     const orderItems = [];
     for (const it of items) {
       const p = prodMap[it.product_id];
-      const qty = Math.max(parseInt(it.quantity) || 0, 1);
+      // respeita a quantidade mínima do produto (definida no ERP)
+      const minQ = Math.max(1, p?.min_order_qty || 1);
+      const qty = Math.max(parseInt(it.quantity) || 0, minQ);
       if (!p) {
         orderItems.push({
           product_id: null, product_name: it.product_name || 'Personalizado',
