@@ -108,6 +108,65 @@ router.patch('/bulk', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Importação de produtos/estoque a partir de planilha (linhas já parseadas no cliente).
+// rows: [{ code, name, unit, saldo }]. Cria os que não existem (por código) e/ou
+// atualiza o estoque (saldo) dos existentes.
+router.post('/import', async (req, res) => {
+  const { rows, create = true, update_stock = true } = req.body;
+  if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ error: 'Sem linhas para importar' });
+  let created = 0, updated = 0, skipped = 0;
+  try {
+    // agrega por código (soma saldo de duplicados)
+    const byCode = new Map();
+    for (const r of rows) {
+      const code = String(r.code || '').trim();
+      const name = String(r.name || '').trim();
+      if (!code || !name) { skipped++; continue; }
+      const saldo = Number(r.saldo) || 0;
+      let unit = String(r.unit || 'UN').trim(); if (!unit || unit.length > 6) unit = 'UN';
+      if (byCode.has(code)) byCode.get(code).saldo += saldo;
+      else byCode.set(code, { code, name: name.toUpperCase(), unit, saldo });
+    }
+    const items = [...byCode.values()];
+    const codes = items.map(i => i.code);
+
+    // mapeia códigos existentes
+    const existing = {};
+    for (let i = 0; i < codes.length; i += 300) {
+      const { data } = await supabase.from('PRODUTOS').select('id, code')
+        .eq('tenant_id', req.tenantId).in('code', codes.slice(i, i + 300));
+      for (const p of (data || [])) existing[p.code] = p.id;
+    }
+
+    // categoria padrão
+    const { data: cat } = await supabase.from('CATEGORIAS').select('id')
+      .eq('tenant_id', req.tenantId).ilike('name', 'PRODUTO ACABADO').limit(1).maybeSingle();
+    const catId = cat?.id || null;
+
+    const toInsert = [], toUpdate = [];
+    for (const it of items) {
+      if (existing[it.code]) {
+        if (update_stock) toUpdate.push({ id: existing[it.code], current_stock: it.saldo });
+      } else if (create) {
+        toInsert.push({ tenant_id: req.tenantId, code: it.code, name: it.name, unit: it.unit, current_stock: it.saldo, category_id: catId, is_active: true });
+      } else skipped++;
+    }
+
+    for (let i = 0; i < toInsert.length; i += 500) {
+      const batch = toInsert.slice(i, i + 500);
+      const { error } = await supabase.from('PRODUTOS').insert(batch);
+      if (error) throw error;
+      created += batch.length;
+    }
+    for (const u of toUpdate) {
+      const { error } = await supabase.from('PRODUTOS').update({ current_stock: u.current_stock }).eq('id', u.id).eq('tenant_id', req.tenantId);
+      if (!error) updated++;
+    }
+    audit(req, 'import', 'product', null, { created, updated, skipped });
+    res.json({ created, updated, skipped, total: items.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/categories/list', async (req, res) => {
   try {
     const { data, error } = await supabase

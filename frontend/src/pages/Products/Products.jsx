@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import ProductForm from './ProductForm';
 import BulkEditModal from './BulkEditModal';
+import ImportStockModal from './ImportStockModal';
 import toast from 'react-hot-toast';
 
 function fmt(v) {
@@ -18,6 +19,7 @@ export default function Products() {
   const [searchInput, setSearchInput] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const qc = useQueryClient();
 
@@ -89,6 +91,9 @@ export default function Products() {
           <p className="text-sm text-gray-500 mt-1">{data?.total || 0} produtos cadastrados</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => setImportOpen(true)} className="btn-secondary">
+            <Upload size={16} /> Importar
+          </button>
           <button onClick={() => setBulkOpen(true)} className="btn-secondary">
             <Layers size={16} /> Edição em massa
           </button>
@@ -129,6 +134,7 @@ export default function Products() {
       </Modal>
 
       <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
+      <ImportStockModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }
