@@ -255,6 +255,49 @@ router.post('/quote', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Autocadastro de cliente (link público) ────────────────
+router.post('/cadastro', async (req, res) => {
+  const { type, name, cpf_cnpj, email, phone, instagram, address } = req.body;
+  const nm = String(name || '').trim();
+  const ph = String(phone || '').trim();
+  const em = String(email || '').trim();
+  if (!nm) return res.status(400).json({ error: 'Informe seu nome' });
+  if (!ph && !em) return res.status(400).json({ error: 'Informe telefone ou e-mail' });
+  try {
+    const payload = {
+      tenant_id: STORE_TENANT,
+      type: type === 'PJ' ? 'PJ' : 'PF',
+      name: nm,
+      cpf_cnpj: String(cpf_cnpj || '').trim() || null,
+      email: em || null,
+      phone: ph || null,
+      instagram: String(instagram || '').trim() || null,
+      address: address && typeof address === 'object' ? address : {},
+      is_active: true,
+    };
+
+    // reaproveita o cadastro se já existir por telefone/e-mail (atualiza os dados)
+    let existing = null;
+    if (ph) {
+      const { data } = await supabase.from('CLIENTES').select('id')
+        .eq('tenant_id', STORE_TENANT).eq('phone', ph).limit(1).maybeSingle();
+      existing = data;
+    }
+    if (!existing && em) {
+      const { data } = await supabase.from('CLIENTES').select('id')
+        .eq('tenant_id', STORE_TENANT).eq('email', em).limit(1).maybeSingle();
+      existing = data;
+    }
+    if (existing) {
+      await supabase.from('CLIENTES').update(payload).eq('id', existing.id).eq('tenant_id', STORE_TENANT);
+      return res.json({ success: true });
+    }
+    const { error } = await supabase.from('CLIENTES').insert(payload);
+    if (error) throw error;
+    res.status(201).json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Frete por CEP (Melhor Envio) ──────────────────────────
 router.post('/frete', async (req, res) => {
   const cep = String(req.body.cep || '').replace(/\D/g, '');
