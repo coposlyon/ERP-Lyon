@@ -41,6 +41,28 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Atualização fiscal em massa (NCM / CST / CFOP) para vários produtos de uma vez.
+// Só aplica os campos preenchidos — deixa em branco os que não quer alterar.
+router.patch('/bulk', async (req, res) => {
+  const { ids, fields } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'Selecione ao menos um produto' });
+  const patch = {};
+  for (const k of ['ncm', 'cst', 'cfop']) {
+    if (fields && fields[k] != null && String(fields[k]).trim() !== '') patch[k] = String(fields[k]).trim();
+  }
+  if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Informe NCM, CST ou CFOP' });
+  patch.updated_at = new Date().toISOString();
+  try {
+    const { data, error } = await supabase
+      .from('PRODUTOS').update(patch)
+      .eq('tenant_id', req.tenantId).in('id', ids.slice(0, 2000))
+      .select('id');
+    if (error) throw error;
+    audit(req, 'update', 'product', null, { bulk_fiscal: patch, count: (data || []).length });
+    res.json({ updated: (data || []).length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/categories/list', async (req, res) => {
   try {
     const { data, error } = await supabase

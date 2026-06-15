@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Receipt } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import ProductForm from './ProductForm';
+import BulkFiscalModal from './BulkFiscalModal';
 import toast from 'react-hot-toast';
 
 function fmt(v) {
@@ -16,6 +17,7 @@ export default function Products() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const qc = useQueryClient();
 
@@ -86,9 +88,14 @@ export default function Products() {
           <h1 className="page-title">Produtos</h1>
           <p className="text-sm text-gray-500 mt-1">{data?.total || 0} produtos cadastrados</p>
         </div>
-        <button onClick={openNew} className="btn-primary">
-          <Plus size={16} /> Novo Produto
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setBulkOpen(true)} className="btn-secondary">
+            <Receipt size={16} /> Fiscal em massa
+          </button>
+          <button onClick={openNew} className="btn-primary">
+            <Plus size={16} /> Novo Produto
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -120,6 +127,8 @@ export default function Products() {
       <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Editar Produto' : 'Novo Produto'} size="lg">
         <ProductForm product={editing} onSaved={onSaved} onCancel={closeModal} />
       </Modal>
+
+      <BulkFiscalModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
     </div>
   );
 }

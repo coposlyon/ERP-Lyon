@@ -175,6 +175,16 @@ router.post('/emit/:sale_id', async (req, res) => {
     const cfopPad   = interna ? (cfg.cfop_interno || '5102') : (cfg.cfop_interestadual || '6102');
     const simples   = (cfg.regime_tributario || 'simples') === 'simples';
 
+    // CFOP por destino: o CFOP do produto é tratado como interno (5xxx);
+    // em venda interestadual o 1º dígito vira 6 automaticamente (5101→6101).
+    const cfopByDest = (cfopProd) => {
+      let c = String(cfopProd || '').replace(/\D/g, '');
+      if (c.length < 4) return cfopPad;            // sem CFOP no produto → padrão da config
+      if (interna && c[0] === '6') c = '5' + c.slice(1);
+      else if (!interna && c[0] === '5') c = '6' + c.slice(1);
+      return c;
+    };
+
     const payload = {
       natureza_operacao: cfg.natureza_operacao || 'Venda de mercadoria',
       data_emissao:      new Date().toISOString(),
@@ -208,7 +218,7 @@ router.post('/emit/:sale_id', async (req, res) => {
           codigo_produto:            p.code || p.id,
           descricao:                 p.name,
           codigo_ncm:                (p.ncm || cfg.ncm_padrao || '39241000').replace(/\D/g, ''),
-          cfop:                      p.cfop || cfopPad,
+          cfop:                      cfopByDest(p.cfop),
           unidade_comercial:         p.unit || 'UN',
           quantidade_comercial:      Number(it.quantity),
           valor_unitario_comercial:  Number(it.unit_price),
