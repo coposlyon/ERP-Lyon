@@ -128,7 +128,7 @@ export default function QuoteForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-5xl">
+    <form onSubmit={handleSubmit} className="space-y-6 max-w-6xl mx-auto">
       <div className="page-header">
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => navigate('/quotes')} className="btn-ghost p-2">
@@ -233,22 +233,22 @@ export default function QuoteForm() {
                   </table>
                 </div>
               )}
+            </div>
+          </div>
 
-              {/* Totals */}
-              <div className="border-t border-gray-100 pt-3 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Subtotal</span>
-                  <span className="font-medium">{fmt(subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm items-center">
-                  <span className="text-gray-500">Desconto geral (R$)</span>
-                  <input type="number" min="0" step="0.01" className="input text-right w-28"
-                    value={form.discount} onChange={e => setForm(p => ({ ...p, discount: parseFloat(e.target.value) || 0 }))} />
-                </div>
-                <div className="flex justify-between font-bold text-lg border-t pt-2">
-                  <span>Total</span>
-                  <span className="text-primary-600">{fmt(total)}</span>
-                </div>
+          {/* Observações */}
+          <div className="card">
+            <div className="card-header"><h2 className="font-semibold">Observações</h2></div>
+            <div className="card-body grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Observações da Arte</label>
+                <textarea rows={4} className="input resize-none" placeholder="Descreva as personalizações desejadas..."
+                  value={form.artwork_notes} onChange={e => setForm(p => ({ ...p, artwork_notes: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label">Observações Gerais</label>
+                <textarea rows={4} className="input resize-none"
+                  value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
               </div>
             </div>
           </div>
@@ -315,19 +315,22 @@ export default function QuoteForm() {
             </div>
           </div>
 
-          {/* Observações */}
+          {/* Resumo */}
           <div className="card">
-            <div className="card-header"><h2 className="font-semibold">Observações</h2></div>
-            <div className="card-body space-y-3">
-              <div>
-                <label className="label">Observações da Arte</label>
-                <textarea rows={3} className="input" placeholder="Descreva as personalizações desejadas..."
-                  value={form.artwork_notes} onChange={e => setForm(p => ({ ...p, artwork_notes: e.target.value }))} />
+            <div className="card-header"><h2 className="font-semibold">Resumo</h2></div>
+            <div className="card-body space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Subtotal</span>
+                <span className="font-medium">{fmt(subtotal)}</span>
               </div>
-              <div>
-                <label className="label">Observações Gerais</label>
-                <textarea rows={3} className="input"
-                  value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
+              <div className="flex justify-between text-sm items-center">
+                <span className="text-gray-500">Desconto geral (R$)</span>
+                <input type="number" min="0" step="0.01" className="input text-right w-28"
+                  value={form.discount} onChange={e => setForm(p => ({ ...p, discount: parseFloat(e.target.value) || 0 }))} />
+              </div>
+              <div className="flex justify-between font-bold text-lg border-t border-gray-100 pt-2">
+                <span>Total</span>
+                <span className="text-primary-600">{fmt(total)}</span>
               </div>
             </div>
           </div>
