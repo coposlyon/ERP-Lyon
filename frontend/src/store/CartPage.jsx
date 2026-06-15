@@ -24,7 +24,7 @@ export default function CartPage() {
       const res = await storeApi.post('/quote', {
         customer: form,
         notes: form.notes,
-        items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, color: i.color, quantity: i.quantity, design: i.design || null, preview: i.preview || null })),
+        items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, color: i.color, print_method: i.print_method || null, quantity: i.quantity, design: i.design || null, preview: i.preview || null })),
       });
       setDone(res);
       clear();

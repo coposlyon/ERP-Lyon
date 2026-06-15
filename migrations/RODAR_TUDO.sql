@@ -1007,3 +1007,13 @@ UPDATE "PRODUTOS" SET min_order_qty = 1 WHERE min_order_qty IS NULL;
 
 INSERT INTO "_MIGRATIONS" (version, name) VALUES ('016', 'produto_qtd_minima')
 ON CONFLICT (version) DO NOTHING;
+
+-- >>>>>>>>>>>>>>>>>>>> 017_preco_por_impressao.sql <<<<<<<<<<<<<<<<<<<<
+-- ============================================================
+-- 017. Preço por tipo de impressão (Serigrafia / Transfer / DTF)
+-- ============================================================
+ALTER TABLE "PRODUTOS"
+  ADD COLUMN IF NOT EXISTS print_pricing JSONB DEFAULT '{}'::jsonb;
+
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('017', 'preco_por_impressao')
+ON CONFLICT (version) DO NOTHING;

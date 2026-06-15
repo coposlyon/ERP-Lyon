@@ -43,6 +43,25 @@ function precoFaixa(tiers, salePrice, qty) {
   return price;
 }
 
+// ── Tipos de impressão (1/2/3 cores) ──────────────────────
+const PRINT_METHODS = [
+  { key: 'serigrafia', label: 'Serigrafia (1 cor)' },
+  { key: 'transfer',   label: 'Transfer (2 cores)' },
+  { key: 'dtf',        label: 'DTF (3 cores)' },
+];
+
+// Preço considerando o tipo de impressão escolhido. Cada tipo tem sua própria
+// tabela (price + tiers) em product.print_pricing[method]. Sem método/config,
+// cai na tabela padrão do produto (price_tiers / sale_price).
+function precoComImpressao(product, method, qty) {
+  const pp = product?.print_pricing || {};
+  const m = method && pp[method];
+  if (m && (m.price != null || (Array.isArray(m.tiers) && m.tiers.length))) {
+    return precoFaixa(m.tiers || [], m.price != null ? m.price : product.sale_price, qty);
+  }
+  return precoFaixa(product?.price_tiers, product?.sale_price, qty);
+}
+
 // ── Apuração de um dia de ponto ───────────────────────────
 // Atraso só conta se o déficit ultrapassar a tolerância (e aí conta cheio).
 function apurarPonto({ totalMinutes, hasMarks, expected, tolerance }) {
@@ -59,4 +78,4 @@ function apurarPonto({ totalMinutes, hasMarks, expected, tolerance }) {
 
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
-module.exports = { calcINSS, calcIRRF, custoMedio, precoFaixa, apurarPonto, round2 };
+module.exports = { calcINSS, calcIRRF, custoMedio, precoFaixa, precoComImpressao, PRINT_METHODS, apurarPonto, round2 };

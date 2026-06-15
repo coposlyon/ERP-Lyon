@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
+import PrintPricingEditor, { cleanPrintPricing } from './PrintPricingEditor';
 
 const emptyTier = () => ({ min_qty: '', max_qty: '', price: '' });
 
@@ -19,6 +20,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     length: '', width: '',
   });
   const [priceTiers, setPriceTiers] = useState([]);
+  const [printPricing, setPrintPricing] = useState({});
   const [loading, setLoading] = useState(false);
 
   const { data: categories = [] } = useQuery({
@@ -62,7 +64,9 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         width: product.width || '',
       });
       setPriceTiers(Array.isArray(product.price_tiers) ? product.price_tiers : []);
+      setPrintPricing(product.print_pricing && typeof product.print_pricing === 'object' ? product.print_pricing : {});
     } else {
+      setPrintPricing({});
       const defaultCat = categories.find(c => c.name?.toUpperCase() === 'PRODUTO ACABADO');
       if (defaultCat) setForm(prev => ({ ...prev, category_id: defaultCat.id }));
     }
@@ -118,6 +122,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           max_qty: t.max_qty ? parseInt(t.max_qty) : null,
           price: parseFloat(t.price) || 0,
         })),
+        print_pricing: cleanPrintPricing(printPricing),
       };
 
       if (product?.id) {
@@ -260,6 +265,9 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           </div>
         ))}
       </div>
+
+      {/* Preço por tipo de impressão (loja) */}
+      <PrintPricingEditor value={printPricing} onChange={setPrintPricing} />
 
       {/* Campos dimensionais — PRODUTO ACABADO */}
       {isProdutoAcabado && (

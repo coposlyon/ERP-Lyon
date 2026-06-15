@@ -185,7 +185,7 @@ router.post('/', validate(productSchema), async (req, res) => {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty
+    price_tiers, min_order_qty, print_pricing
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Nome do produto é obrigatório' });
@@ -209,6 +209,7 @@ router.post('/', validate(productSchema), async (req, res) => {
         length: length || null, width: width || null,
         price_tiers: price_tiers || [],
         min_order_qty: Math.max(1, parseInt(min_order_qty) || 1),
+        print_pricing: print_pricing || {},
       })
       .select()
       .single();
@@ -226,7 +227,7 @@ router.put('/:id', async (req, res) => {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty
+    price_tiers, min_order_qty, print_pricing
   } = req.body;
 
   try {
@@ -251,6 +252,7 @@ router.put('/:id', async (req, res) => {
         length: length || null, width: width || null,
         price_tiers: price_tiers || [],
         ...(min_order_qty != null ? { min_order_qty: Math.max(1, parseInt(min_order_qty) || 1) } : {}),
+        ...(print_pricing != null ? { print_pricing } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq('id', req.params.id)

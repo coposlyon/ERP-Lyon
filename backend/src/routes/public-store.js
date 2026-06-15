@@ -1,7 +1,7 @@
 const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
-const { precoFaixa } = require('../lib/calc');
+const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
 const { uploadDataUrl } = require('../lib/storage');
 
 // Loja pública: serve UM tenant (a empresa dona da loja).
@@ -89,9 +89,9 @@ router.get('/products', async (req, res) => {
 
 // ── Detalhe do produto ────────────────────────────────────
 router.get('/products/:id', async (req, res) => {
-  const build = (withMin) => supabase
+  const build = (full) => supabase
     .from('PRODUTOS')
-    .select(`id, name, code, unit, description, sale_price, price_tiers${withMin ? ', min_order_qty' : ''}, CATEGORIAS(name)`)
+    .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, print_pricing' : ''}, CATEGORIAS(name)`)
     .eq('tenant_id', STORE_TENANT).eq('id', req.params.id).eq('is_active', true)
     .maybeSingle();
   try {
@@ -113,6 +113,8 @@ router.get('/products/:id', async (req, res) => {
       price_tiers: Array.isArray(p.price_tiers) ? p.price_tiers : [],
       from_price: fromPrice(p),
       min_order_qty: p.min_order_qty || 1,
+      print_pricing: p.print_pricing || {},
+      print_methods: PRINT_METHODS,
       variants: variants || [],
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -132,12 +134,13 @@ router.post('/quote', async (req, res) => {
   try {
     // Busca produtos do carrinho para recalcular o preço no servidor
     const ids = [...new Set(items.map(i => i.product_id).filter(Boolean))];
-    const fetchProds = (withMin) => supabase
-      .from('PRODUTOS').select(`id, name, unit, sale_price, price_tiers${withMin ? ', min_order_qty' : ''}`)
+    const fetchProds = (full) => supabase
+      .from('PRODUTOS').select(`id, name, unit, sale_price, price_tiers${full ? ', min_order_qty, print_pricing' : ''}`)
       .eq('tenant_id', STORE_TENANT).in('id', ids);
     let { data: prods, error: pErr } = await fetchProds(true);
     if (pErr) ({ data: prods } = await fetchProds(false));
     const prodMap = Object.fromEntries((prods || []).map(p => [p.id, p]));
+    const printLabel = Object.fromEntries(PRINT_METHODS.map(m => [m.key, m.label]));
 
     const orderItems = [];
     for (const it of items) {
@@ -153,13 +156,16 @@ router.post('/quote', async (req, res) => {
         });
         continue;
       }
-      const unit = precoFaixa(p.price_tiers, p.sale_price, qty);
+      const printMethod = it.print_method || null;
+      const unit = precoComImpressao(p, printMethod, qty);
+      const printName = printMethod ? printLabel[printMethod] || null : null;
       orderItems.push({
         product_id: p.id,
-        product_name: p.name + (it.color ? ` — ${it.color}` : ''),
+        product_name: p.name + (it.color ? ` — ${it.color}` : '') + (printName ? ` (${printName})` : ''),
         quantity: qty,
         unit_price: unit,
         color: it.color || null,
+        print_method: printMethod, print_name: printName,
         design: it.design || null, preview: it.preview || null,
       });
     }
@@ -218,6 +224,7 @@ router.post('/quote', async (req, res) => {
       discount: 0, total: i.quantity * i.unit_price,
       customization: {
         ...(i.color ? { cor: i.color } : {}),
+        ...(i.print_name ? { impressao: i.print_name } : {}),
         ...(i.design ? { design: i.design } : {}),
         ...(i.preview ? { preview: i.preview } : {}),
       },

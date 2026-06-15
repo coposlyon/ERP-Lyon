@@ -20,11 +20,27 @@ function precoFaixa(tiers, salePrice, qty) {
   return price;
 }
 
+// tabela do tipo de impressão escolhido (price/tiers) ou a padrão do produto
+function methodTable(product, method) {
+  const m = method && product?.print_pricing?.[method];
+  if (m && (m.price != null || (Array.isArray(m.tiers) && m.tiers.length))) {
+    return { tiers: m.tiers || [], base: m.price != null ? m.price : product.sale_price };
+  }
+  return { tiers: product?.price_tiers || [], base: product?.sale_price };
+}
+function availableMethods(product) {
+  return (product?.print_methods || []).filter(m => {
+    const d = product?.print_pricing?.[m.key];
+    return d && (d.price != null || (Array.isArray(d.tiers) && d.tiers.length));
+  });
+}
+
 export default function ProductPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { add } = useCart();
   const [selVariant, setSelVariant] = useState(null);
+  const [printMethod, setPrintMethod] = useState(null);
   const [qty, setQty] = useState(1);
 
   const { data: product, isLoading, error } = useQuery({
@@ -44,13 +60,22 @@ export default function ProductPage() {
     if (product) setQty(q => Math.max(q, minQty));
   }, [product, minQty]);
 
+  // seleciona o primeiro tipo de impressão disponível
+  useEffect(() => {
+    if (!product) return;
+    const avail = availableMethods(product);
+    if (avail.length) setPrintMethod(prev => prev || avail[0].key);
+  }, [product]);
+
   const gradient = /degrad/i.test(product?.name || '');
   const bottleColor = selVariant ? resolveColor(selVariant) : '#F26522';
+  const methods = availableMethods(product);
+  const table = methodTable(product, printMethod);
 
   const unitPrice = useMemo(() => {
     if (!product) return 0;
-    return precoFaixa(product.price_tiers, product.sale_price, qty) + (Number(selVariant?.extra_price) || 0);
-  }, [product, qty, selVariant]);
+    return precoFaixa(table.tiers, table.base, qty) + (Number(selVariant?.extra_price) || 0);
+  }, [product, qty, selVariant, printMethod]); // eslint-disable-line
 
   if (isLoading) return <div className="max-w-6xl mx-auto px-4 py-16 text-center text-gray-400">Carregando...</div>;
   if (error || !product) return (
@@ -61,10 +86,13 @@ export default function ProductPage() {
   );
 
   function addToCart() {
+    const methodLabel = methods.find(m => m.key === printMethod)?.label;
     add({
       product_id: product.id,
       product_name: product.name,
       color: selVariant?.name || null,
+      print_method: printMethod || null,
+      print_name: methodLabel || null,
       unit_price: unitPrice,
       quantity: qty,
     });
@@ -118,12 +146,27 @@ export default function ProductPage() {
             </div>
           )}
 
+          {/* Tipo de impressão */}
+          {methods.length > 0 && (
+            <div className="mt-5">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tipo de impressão</p>
+              <div className="flex flex-wrap gap-2">
+                {methods.map(m => (
+                  <button key={m.key} onClick={() => setPrintMethod(m.key)}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${printMethod === m.key ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Faixas de preço */}
-          {product.price_tiers?.length > 0 && (
+          {table.tiers?.length > 0 && (
             <div className="mt-6 bg-gray-50 rounded-xl p-3">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Preço por quantidade</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
-                {product.price_tiers.map((t, i) => (
+                {table.tiers.map((t, i) => (
                   <div key={i} className={`rounded-lg px-3 py-2 ${qty >= (t.min_qty||0) && (t.max_qty==null || qty <= t.max_qty) ? 'bg-orange-100 text-orange-800 font-semibold' : 'bg-white border border-gray-100'}`}>
                     <p className="text-xs text-gray-500">{t.min_qty}{t.max_qty ? `–${t.max_qty}` : '+'} un</p>
                     <p className="font-bold">{fmt(t.price)}</p>
