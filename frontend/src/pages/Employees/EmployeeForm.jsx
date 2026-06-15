@@ -29,6 +29,7 @@ const MODULOS = [
   { key: 'quality',        label: 'Qualidade' },
   { key: 'crm',            label: 'CRM' },
   { key: 'marketing',      label: 'Marketing' },
+  { key: 'production',     label: 'Produção' },
   { key: 'hr',             label: 'RH' },
 ];
 

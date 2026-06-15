@@ -7,7 +7,7 @@ import {
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
-  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone,
+  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -49,6 +49,12 @@ const menuItems = [
     icon: Boxes,
     path: '/stock',
     module: 'stock',
+  },
+  {
+    label: 'Produção',
+    icon: Factory,
+    path: '/production',
+    module: 'production',
   },
   {
     label: 'Cadastros',

@@ -42,6 +42,7 @@ const Returns            = lazy(() => import('@/pages/Returns/Returns'));
 const Quality            = lazy(() => import('@/pages/Quality/Quality'));
 const CRM                = lazy(() => import('@/pages/CRM/CRM'));
 const Marketing          = lazy(() => import('@/pages/Marketing/Marketing'));
+const Production         = lazy(() => import('@/pages/Production/Production'));
 const HR                 = lazy(() => import('@/pages/HR/HR'));
 const HRPonto            = lazy(() => import('@/pages/HR/HRPonto'));
 const HRFerias           = lazy(() => import('@/pages/HR/HRFerias'));
@@ -127,6 +128,7 @@ function AppRoutes() {
         <Route path="quality"  element={<Mod m="quality"><Quality /></Mod>}  />
         <Route path="crm"      element={<Mod m="crm"><CRM /></Mod>}      />
         <Route path="marketing" element={<Mod m={['marketing','crm']}><Marketing /></Mod>} />
+        <Route path="production" element={<Mod m={['production','quality','stock']}><Production /></Mod>} />
         <Route path="hr" element={<Mod m="hr"><HR /></Mod>}>
           <Route index element={<Navigate to="ponto" replace />} />
           <Route path="ponto"      element={<HRPonto />} />
