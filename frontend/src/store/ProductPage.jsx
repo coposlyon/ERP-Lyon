@@ -90,7 +90,7 @@ export default function ProductPage() {
     add({
       product_id: product.id,
       product_name: product.name,
-      color: selVariant?.name || null,
+      color: product.color_label || selVariant?.name || null,
       print_method: printMethod || null,
       print_name: methodLabel || null,
       unit_price: unitPrice,
@@ -118,13 +118,30 @@ export default function ProductPage() {
         {/* Info */}
         <div>
           {product.category && <span className="text-xs text-orange-500 font-semibold uppercase tracking-wide">{product.category}</span>}
-          <h1 className="text-3xl font-extrabold text-gray-900 mt-1">{product.name}</h1>
+          <h1 className="text-3xl font-extrabold text-gray-900 mt-1">{product.group || product.name}</h1>
           {product.description && <p className="text-gray-500 mt-2">{product.description}</p>}
 
           <div className="mt-4">
             <p className="text-sm text-gray-400">{product.price_tiers?.length ? 'a partir de' : 'preço unitário'}</p>
             <p className="text-3xl font-extrabold text-gray-900">{fmt(unitPrice)}</p>
           </div>
+
+          {/* Cores do modelo (cada cor é um produto) */}
+          {product.color_options?.length > 1 && (
+            <div className="mt-6">
+              <p className="text-sm font-semibold text-gray-700 mb-2">
+                Cor: <span className="text-gray-500 font-normal">{product.color_label}</span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {product.color_options.map(o => (
+                  <button key={o.id} onClick={() => navigate(`/loja/produto/${o.id}`)}
+                    className={`px-3 py-1.5 rounded-lg text-sm border-2 transition-colors ${o.id === product.id ? 'border-orange-500 bg-orange-50 text-orange-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Cores */}
           {product.variants?.length > 0 && (

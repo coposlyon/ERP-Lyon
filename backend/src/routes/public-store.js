@@ -44,11 +44,11 @@ router.get('/categories', async (req, res) => {
 // ── Catálogo ──────────────────────────────────────────────
 router.get('/products', async (req, res) => {
   const { search, category } = req.query;
-  // withMin=false é o fallback caso a coluna min_order_qty ainda não exista (migration 016)
-  const build = (withMin) => {
+  // full=false é o fallback caso colunas novas ainda não existam (migrations 016/021)
+  const build = (full) => {
     let q = supabase
       .from('PRODUTOS')
-      .select(`id, name, code, unit, description, sale_price, price_tiers${withMin ? ', min_order_qty' : ''}, category_id, CATEGORIAS(name)`)
+      .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, store_group, store_color' : ''}, category_id, CATEGORIAS(name)`)
       .eq('tenant_id', STORE_TENANT)
       .eq('is_active', true)
       .order('name');
@@ -57,34 +57,35 @@ router.get('/products', async (req, res) => {
       const s = String(search).replace(/[,()]/g, ' ').trim();
       q = q.or(`name.ilike.%${s}%,code.ilike.%${s}%`);
     }
-    return q.limit(300);
+    return q.limit(500);
   };
   try {
     let { data: products, error } = await build(true);
     if (error) ({ data: products, error } = await build(false));
     if (error) throw error;
 
-    // contagem de variantes (cores) por produto
-    const ids = (products || []).map(p => p.id);
-    let variantCount = {};
-    if (ids.length) {
-      const { data: variants } = await supabase
-        .from('VARIANTES_PRODUTO')
-        .select('product_id')
-        .eq('tenant_id', STORE_TENANT)
-        .in('product_id', ids);
-      for (const v of (variants || [])) variantCount[v.product_id] = (variantCount[v.product_id] || 0) + 1;
+    // Agrupa por modelo (store_group). Cada grupo vira 1 card; as cores ficam dentro.
+    const groups = new Map();
+    for (const p of (products || [])) {
+      const key = (p.store_group && p.store_group.trim()) || p.name;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
     }
+    const cards = [...groups.entries()].map(([key, items]) => {
+      const rep = items[0];
+      const prices = items.map(fromPrice).filter(v => v > 0);
+      return {
+        id: rep.id, name: key, code: rep.code, unit: rep.unit,
+        description: rep.description,
+        category: rep.CATEGORIAS?.name || null,
+        from_price: prices.length ? Math.min(...prices) : fromPrice(rep),
+        has_tiers: items.some(p => Array.isArray(p.price_tiers) && p.price_tiers.length > 0),
+        colors: items.length > 1 ? items.length : 0,
+        min_order_qty: Math.max(...items.map(p => p.min_order_qty || 1)),
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 
-    res.json((products || []).map(p => ({
-      id: p.id, name: p.name, code: p.code, unit: p.unit,
-      description: p.description,
-      category: p.CATEGORIAS?.name || null,
-      from_price: fromPrice(p),
-      has_tiers: Array.isArray(p.price_tiers) && p.price_tiers.length > 0,
-      colors: variantCount[p.id] || 0,
-      min_order_qty: p.min_order_qty || 1,
-    })));
+    res.json(cards);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -92,7 +93,7 @@ router.get('/products', async (req, res) => {
 router.get('/products/:id', async (req, res) => {
   const build = (full) => supabase
     .from('PRODUTOS')
-    .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, print_pricing' : ''}, CATEGORIAS(name)`)
+    .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, print_pricing, store_group, store_color' : ''}, CATEGORIAS(name)`)
     .eq('tenant_id', STORE_TENANT).eq('id', req.params.id).eq('is_active', true)
     .maybeSingle();
   try {
@@ -107,9 +108,27 @@ router.get('/products/:id', async (req, res) => {
       .eq('tenant_id', STORE_TENANT).eq('product_id', p.id)
       .order('name');
 
+    // Cores = outros produtos do mesmo modelo (store_group)
+    let colorOptions = [];
+    if (p.store_group) {
+      const { data: sib } = await supabase
+        .from('PRODUTOS')
+        .select('id, name, store_color, sale_price, price_tiers')
+        .eq('tenant_id', STORE_TENANT).eq('is_active', true).eq('store_group', p.store_group)
+        .order('store_color');
+      colorOptions = (sib || []).map(s => ({
+        id: s.id,
+        label: (s.store_color && s.store_color.trim()) || s.name,
+        from_price: fromPrice(s),
+      }));
+    }
+
     res.json({
       id: p.id, name: p.name, code: p.code, unit: p.unit,
       description: p.description, category: p.CATEGORIAS?.name || null,
+      group: p.store_group || null,
+      color_label: p.store_color || null,
+      color_options: colorOptions,
       sale_price: Number(p.sale_price) || 0,
       price_tiers: Array.isArray(p.price_tiers) ? p.price_tiers : [],
       from_price: fromPrice(p),
