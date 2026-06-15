@@ -43,19 +43,24 @@ router.get('/categories', async (req, res) => {
 // ── Catálogo ──────────────────────────────────────────────
 router.get('/products', async (req, res) => {
   const { search, category } = req.query;
-  try {
-    let query = supabase
+  // withMin=false é o fallback caso a coluna min_order_qty ainda não exista (migration 016)
+  const build = (withMin) => {
+    let q = supabase
       .from('PRODUTOS')
-      .select('id, name, code, unit, description, sale_price, price_tiers, min_order_qty, category_id, CATEGORIAS(name)')
+      .select(`id, name, code, unit, description, sale_price, price_tiers${withMin ? ', min_order_qty' : ''}, category_id, CATEGORIAS(name)`)
       .eq('tenant_id', STORE_TENANT)
       .eq('is_active', true)
       .order('name');
-    if (category) query = query.eq('category_id', category);
+    if (category) q = q.eq('category_id', category);
     if (search) {
       const s = String(search).replace(/[,()]/g, ' ').trim();
-      query = query.or(`name.ilike.%${s}%,code.ilike.%${s}%`);
+      q = q.or(`name.ilike.%${s}%,code.ilike.%${s}%`);
     }
-    const { data: products, error } = await query.limit(300);
+    return q.limit(300);
+  };
+  try {
+    let { data: products, error } = await build(true);
+    if (error) ({ data: products, error } = await build(false));
     if (error) throw error;
 
     // contagem de variantes (cores) por produto
@@ -84,12 +89,14 @@ router.get('/products', async (req, res) => {
 
 // ── Detalhe do produto ────────────────────────────────────
 router.get('/products/:id', async (req, res) => {
+  const build = (withMin) => supabase
+    .from('PRODUTOS')
+    .select(`id, name, code, unit, description, sale_price, price_tiers${withMin ? ', min_order_qty' : ''}, CATEGORIAS(name)`)
+    .eq('tenant_id', STORE_TENANT).eq('id', req.params.id).eq('is_active', true)
+    .maybeSingle();
   try {
-    const { data: p, error } = await supabase
-      .from('PRODUTOS')
-      .select('id, name, code, unit, description, sale_price, price_tiers, min_order_qty, CATEGORIAS(name)')
-      .eq('tenant_id', STORE_TENANT).eq('id', req.params.id).eq('is_active', true)
-      .maybeSingle();
+    let { data: p, error } = await build(true);
+    if (error) ({ data: p, error } = await build(false));
     if (error) throw error;
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
 
@@ -125,9 +132,11 @@ router.post('/quote', async (req, res) => {
   try {
     // Busca produtos do carrinho para recalcular o preço no servidor
     const ids = [...new Set(items.map(i => i.product_id).filter(Boolean))];
-    const { data: prods } = await supabase
-      .from('PRODUTOS').select('id, name, unit, sale_price, price_tiers, min_order_qty')
+    const fetchProds = (withMin) => supabase
+      .from('PRODUTOS').select(`id, name, unit, sale_price, price_tiers${withMin ? ', min_order_qty' : ''}`)
       .eq('tenant_id', STORE_TENANT).in('id', ids);
+    let { data: prods, error: pErr } = await fetchProds(true);
+    if (pErr) ({ data: prods } = await fetchProds(false));
     const prodMap = Object.fromEntries((prods || []).map(p => [p.id, p]));
 
     const orderItems = [];
