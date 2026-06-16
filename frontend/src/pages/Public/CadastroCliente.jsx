@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { CheckCircle2, Loader2, User, Instagram, ExternalLink, Play } from 'lucide-react';
 import storeApi from '@/store/storeApi';
 import '@/store/store.css';
@@ -30,6 +30,27 @@ function validCNPJ(v) {
 
 function Field({ label, children }) {
   return (<div><label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>{children}</div>);
+}
+
+// Estrelinhas brancas girando no fundo preto da abertura
+function Starfield() {
+  const stars = useMemo(() => Array.from({ length: 90 }, () => ({
+    top: Math.random() * 100, left: Math.random() * 100,
+    size: Math.random() * 2 + 1, delay: Math.random() * 4, dur: Math.random() * 2.5 + 1.8,
+  })), []);
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="absolute inset-[-25%] st-spin-slower">
+        {stars.map((s, i) => (
+          <span key={i} className="absolute rounded-full bg-white" style={{
+            top: `${s.top}%`, left: `${s.left}%`, width: s.size, height: s.size,
+            boxShadow: '0 0 4px rgba(255,255,255,.85)',
+            animation: `st-twinkle ${s.dur}s ease-in-out ${s.delay}s infinite`,
+          }} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function CadastroCliente() {
@@ -161,6 +182,7 @@ export default function CadastroCliente() {
       {/* Abertura cinematográfica */}
       {phase !== 'form' && (
         <div className="fixed inset-0 z-50 bg-black">
+          <Starfield />
           <video ref={videoRef} playsInline preload="auto"
             onEnded={() => setPhase('black2')} onError={() => setPhase('black2')}
             className={`w-full h-full object-contain transition-opacity duration-700 ${phase === 'video' ? 'opacity-100' : 'opacity-0'}`}>
