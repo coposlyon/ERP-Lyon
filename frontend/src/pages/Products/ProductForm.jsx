@@ -2,8 +2,17 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Loader2, Plus, Trash2, X, Palette } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Palette, Image as ImageIcon, Upload, Camera } from 'lucide-react';
 import PrintPricingEditor, { cleanPrintPricing } from './PrintPricingEditor';
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
 
 const emptyTier = () => ({ min_qty: '', max_qty: '', price: '' });
 
@@ -58,6 +67,8 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   const [priceTiers, setPriceTiers] = useState([]);
   const [printPricing, setPrintPricing] = useState({});
   const [variations, setVariations] = useState({ colors: [], borders: [], volumes: [] });
+  const [mainImage, setMainImage] = useState(null);   // url ou dataURL
+  const [varImages, setVarImages] = useState({});     // { cor: url|dataURL }
   const [loading, setLoading] = useState(false);
 
   const { data: categories = [] } = useQuery({
@@ -104,9 +115,12 @@ export default function ProductForm({ product, onSaved, onCancel }) {
       setPrintPricing(product.print_pricing && typeof product.print_pricing === 'object' ? product.print_pricing : {});
       const v = product.variations && typeof product.variations === 'object' ? product.variations : {};
       setVariations({ colors: v.colors || [], borders: v.borders || [], volumes: v.volumes || [] });
+      setMainImage(product.image_url || null);
+      setVarImages(product.variation_images && typeof product.variation_images === 'object' ? product.variation_images : {});
     } else {
       setPrintPricing({});
       setVariations({ colors: [], borders: [], volumes: [] });
+      setMainImage(null); setVarImages({});
       const defaultCat = categories.find(c => c.name?.toUpperCase() === 'PRODUTO ACABADO');
       if (defaultCat) setForm(prev => ({ ...prev, category_id: defaultCat.id }));
     }
@@ -126,6 +140,13 @@ export default function ProductForm({ product, onSaved, onCancel }) {
 
   function setTier(idx, field, value) {
     setPriceTiers(prev => prev.map((t, i) => i === idx ? { ...t, [field]: value } : t));
+  }
+
+  async function pickImage(file, cb) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Selecione uma imagem'); return; }
+    if (file.size > 8 * 1024 * 1024) { toast.error('Imagem muito grande (máx. 8MB)'); return; }
+    cb(await fileToDataUrl(file));
   }
 
   async function handleSubmit(e) {
@@ -168,6 +189,8 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           borders: [...new Set((variations.borders || []).map(s => String(s).trim().toUpperCase()).filter(Boolean))],
           volumes: [...new Set((variations.volumes || []).map(s => String(s).trim().toUpperCase()).filter(Boolean))],
         },
+        image: mainImage ?? '',
+        variation_images: varImages,
       };
 
       if (product?.id) {
@@ -388,6 +411,21 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         </div>
       </details>
 
+      {/* Foto principal do produto (loja) */}
+      <div>
+        <label className="label flex items-center gap-1.5"><ImageIcon size={14} className="text-primary-500" /> Foto do produto (aparece na loja)</label>
+        <div className="flex items-center gap-3">
+          <div className="w-20 h-20 rounded-xl bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center shrink-0">
+            {mainImage ? <img src={mainImage} alt="" className="w-full h-full object-cover" /> : <ImageIcon size={22} className="text-gray-300" />}
+          </div>
+          <label className="btn-secondary cursor-pointer">
+            <Upload size={15} /> {mainImage ? 'Trocar foto' : 'Enviar foto'}
+            <input type="file" accept="image/*" className="hidden" onChange={e => { pickImage(e.target.files?.[0], setMainImage); e.target.value = ''; }} />
+          </label>
+          {mainImage && <button type="button" onClick={() => setMainImage('')} className="text-xs text-red-500 hover:text-red-600">Remover</button>}
+        </div>
+      </div>
+
       {/* Variações (cores / bordas / volumes) */}
       <details className="border border-gray-200 rounded-lg" open={(variations.colors.length + variations.borders.length) > 0}>
         <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg select-none flex items-center gap-2">
@@ -412,6 +450,28 @@ export default function ProductForm({ product, onSaved, onCancel }) {
             <ChipEditor label="Volumes" items={variations.volumes} placeholder="Ex.: 350 ML"
               onChange={v => setVariations(s => ({ ...s, volumes: v }))} />
           </div>
+
+          {/* Foto por cor — a loja troca a imagem ao selecionar */}
+          {variations.colors.length > 0 && (
+            <div className="sm:col-span-2">
+              <label className="label flex items-center gap-1.5"><Camera size={14} className="text-pink-500" /> Foto por cor (a loja troca ao selecionar)</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
+                {variations.colors.map(c => (
+                  <div key={c} className="flex items-center gap-2 border border-gray-200 rounded-lg p-1.5">
+                    <label className="w-11 h-11 rounded bg-gray-100 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer hover:ring-2 hover:ring-primary-300" title="Enviar foto desta cor">
+                      {varImages[c] ? <img src={varImages[c]} alt="" className="w-full h-full object-cover" /> : <Camera size={15} className="text-gray-300" />}
+                      <input type="file" accept="image/*" className="hidden" onChange={e => { pickImage(e.target.files?.[0], d => setVarImages(s => ({ ...s, [c]: d }))); e.target.value = ''; }} />
+                    </label>
+                    <span className="text-xs text-gray-700 truncate flex-1">{c}</span>
+                    {varImages[c] && (
+                      <button type="button" onClick={() => setVarImages(s => { const n = { ...s }; delete n[c]; return n; })}
+                        className="text-gray-300 hover:text-red-500" title="Remover foto"><X size={13} /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </details>
 

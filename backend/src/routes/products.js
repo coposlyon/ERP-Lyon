@@ -4,6 +4,23 @@ const Joi = require('joi');
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
+const { uploadDataUrl } = require('../lib/storage');
+
+// Sobe data-URLs (fotos) para o Storage; mantém URLs já existentes.
+async function processImage(val) {
+  if (val == null) return undefined;           // não enviado → não mexe
+  if (val === '') return null;                  // limpou
+  return /^data:/.test(val) ? (await uploadDataUrl(val, 'produtos')) : val;
+}
+async function processVariationImages(map) {
+  if (!map || typeof map !== 'object') return undefined;
+  const out = {};
+  for (const [k, v] of Object.entries(map)) {
+    if (!v) continue;
+    out[k] = /^data:/.test(v) ? (await uploadDataUrl(v, 'produtos')) : v;
+  }
+  return out;
+}
 
 // Categoria = primeiro nome do produto (ex.: "CANECA ALUMÍNIO" → CANECA)
 function categoriaDe(nm) {
@@ -355,12 +372,14 @@ router.post('/', validate(productSchema), async (req, res) => {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing, variations
+    price_tiers, min_order_qty, print_pricing, variations, image, variation_images
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Nome do produto é obrigatório' });
 
   try {
+    const imageUrl = await processImage(image);
+    const varImgs = await processVariationImages(variation_images);
     const payload = {
       tenant_id: req.tenantId,
       name: name.toUpperCase(),
@@ -379,10 +398,17 @@ router.post('/', validate(productSchema), async (req, res) => {
       min_order_qty: Math.max(1, parseInt(min_order_qty) || 1),
       print_pricing: print_pricing || {},
       ...(variations != null ? { variations } : {}),
+      ...(imageUrl !== undefined ? { image_url: imageUrl } : {}),
+      ...(varImgs !== undefined ? { variation_images: varImgs } : {}),
     };
     const ins = () => supabase.from('PRODUTOS').insert(payload).select().single();
     let { data, error } = await ins();
-    if (error && /variations/i.test(error.message || '')) { delete payload.variations; ({ data, error } = await ins()); }
+    while (error && /(variations|image_url|variation_images)/i.test(error.message || '')) {
+      if (/variation_images/i.test(error.message)) delete payload.variation_images;
+      else if (/image_url/i.test(error.message)) delete payload.image_url;
+      else if (/variations/i.test(error.message)) delete payload.variations;
+      ({ data, error } = await ins());
+    }
 
     if (error) throw error;
     audit(req, 'create', 'product', data.id, { name: data.name, code, sale_price, cost_price });
@@ -397,10 +423,14 @@ router.put('/:id', async (req, res) => {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing, variations
+    price_tiers, min_order_qty, print_pricing, variations, image, variation_images
   } = req.body;
 
   try {
+    // sobe as fotos (foto principal + foto por cor) para o Storage
+    const imageUrl = await processImage(image);
+    const varImgs = await processVariationImages(variation_images);
+
     // captura preços atuais para a trilha de auditoria
     const { data: before } = await supabase
       .from('PRODUTOS')
@@ -422,13 +452,18 @@ router.put('/:id', async (req, res) => {
       ...(min_order_qty != null ? { min_order_qty: Math.max(1, parseInt(min_order_qty) || 1) } : {}),
       ...(print_pricing != null ? { print_pricing } : {}),
       ...(variations != null ? { variations } : {}),
+      ...(imageUrl !== undefined ? { image_url: imageUrl } : {}),
+      ...(varImgs !== undefined ? { variation_images: varImgs } : {}),
       updated_at: new Date().toISOString(),
     };
     const upd = () => supabase.from('PRODUTOS').update(payload)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     let { data, error } = await upd();
-    if (error && /variations/i.test(error.message || '')) { // coluna variations ausente (migration 027)
-      delete payload.variations;
+    // remove colunas novas que ainda não existem no banco e tenta de novo
+    while (error && /(variations|image_url|variation_images)/i.test(error.message || '')) {
+      if (/variation_images/i.test(error.message)) delete payload.variation_images;
+      else if (/image_url/i.test(error.message)) delete payload.image_url;
+      else if (/variations/i.test(error.message)) delete payload.variations;
       ({ data, error } = await upd());
     }
     if (error) throw error;

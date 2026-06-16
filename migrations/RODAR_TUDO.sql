@@ -1172,3 +1172,9 @@ ALTER TABLE "VENDAS" ADD CONSTRAINT "VENDAS_status_check" CHECK (status IN (
   'aguardando_vegetal','aguardando_revelacao','aguardando_coleta','em_transito','entregue',
   'open','confirmed','in_production','ready','delivered','cancelled','completed'));
 INSERT INTO "_MIGRATIONS" (version, name) VALUES ('031', 'venda_status_check') ON CONFLICT (version) DO NOTHING;
+
+
+-- >>>>>>>>>>>>>>>>>>>> 032_produto_imagens.sql <<<<<<<<<<<<<<<<<<<<
+ALTER TABLE "PRODUTOS" ADD COLUMN IF NOT EXISTS image_url        TEXT;
+ALTER TABLE "PRODUTOS" ADD COLUMN IF NOT EXISTS variation_images JSONB DEFAULT '{}'::jsonb;
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('032', 'produto_imagens') ON CONFLICT (version) DO NOTHING;

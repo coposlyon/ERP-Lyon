@@ -104,19 +104,26 @@ router.get('/products/:id', async (req, res) => {
     if (error) throw error;
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
 
-    // Variações (cor/borda/volume) — busca isolada para não depender das outras colunas novas
+    // Variações + fotos — busca isolada para não depender das outras colunas novas
     let pvars = { colors: [], borders: [], volumes: [] };
+    let imageUrl = null, variationImages = {};
     try {
-      const { data: pv, error: pvErr } = await supabase.from('PRODUTOS')
-        .select('variations').eq('tenant_id', STORE_TENANT).eq('id', req.params.id).maybeSingle();
-      if (!pvErr && pv?.variations && typeof pv.variations === 'object') {
+      let { data: pv, error: pvErr } = await supabase.from('PRODUTOS')
+        .select('variations, image_url, variation_images').eq('tenant_id', STORE_TENANT).eq('id', req.params.id).maybeSingle();
+      if (pvErr) { // colunas de imagem podem não existir (migration 032) → pega só variations
+        ({ data: pv } = await supabase.from('PRODUTOS')
+          .select('variations').eq('tenant_id', STORE_TENANT).eq('id', req.params.id).maybeSingle());
+      }
+      if (pv?.variations && typeof pv.variations === 'object') {
         pvars = {
           colors:  Array.isArray(pv.variations.colors)  ? pv.variations.colors  : [],
           borders: Array.isArray(pv.variations.borders) ? pv.variations.borders : [],
           volumes: Array.isArray(pv.variations.volumes) ? pv.variations.volumes : [],
         };
       }
-    } catch { /* coluna variations ainda não existe */ }
+      imageUrl = pv?.image_url || null;
+      if (pv?.variation_images && typeof pv.variation_images === 'object') variationImages = pv.variation_images;
+    } catch { /* colunas ainda não existem */ }
 
     const { data: variants } = await supabase
       .from('VARIANTES_PRODUTO')
@@ -146,6 +153,8 @@ router.get('/products/:id', async (req, res) => {
       color_label: p.store_color || null,
       color_options: colorOptions,
       variations: pvars,
+      image_url: imageUrl,
+      variation_images: variationImages,
       sale_price: Number(p.sale_price) || 0,
       price_tiers: Array.isArray(p.price_tiers) ? p.price_tiers : [],
       from_price: fromPrice(p),

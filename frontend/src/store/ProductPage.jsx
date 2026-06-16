@@ -86,6 +86,8 @@ export default function ProductPage() {
   const gradient = /degrad/i.test(product?.name || '');
   const bottleColor = selColor ? resolveColor({ name: selColor, value: selColor })
     : selVariant ? resolveColor(selVariant) : '#F26522';
+  // foto a exibir: foto da cor selecionada → foto principal → desenho 3D
+  const productImg = (selColor && product?.variation_images?.[selColor]) || product?.image_url || null;
   const methods = availableMethods(product);
   const table = methodTable(product, printMethod);
 
@@ -126,13 +128,18 @@ export default function ProductPage() {
       </Link>
 
       <div className="grid md:grid-cols-2 gap-8">
-        {/* Visual */}
+        {/* Visual — foto real (troca com a cor) ou desenho 3D */}
         <div className="relative rounded-3xl overflow-hidden flex items-center justify-center py-16 bg-gray-900">
           <div className="st-blob" style={{ width: 240, height: 240, background: bottleColor, top: '8%', left: '6%', opacity: .5 }} />
           <div className="st-blob" style={{ width: 200, height: 200, background: bottleColor, bottom: '4%', right: '8%', opacity: .35, animationDelay: '3s' }} />
-          <div className="relative st-float">
-            <Bottle color={bottleColor} gradient={gradient} size={240} />
-          </div>
+          {productImg ? (
+            <img key={productImg} src={productImg} alt={product.name}
+              className="relative z-10 max-h-[360px] w-auto object-contain st-float drop-shadow-2xl" />
+          ) : (
+            <div className="relative st-float">
+              <Bottle color={bottleColor} gradient={gradient} size={240} />
+            </div>
+          )}
         </div>
 
         {/* Info */}
