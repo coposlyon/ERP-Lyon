@@ -445,9 +445,12 @@ export default function CadastroCliente() {
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="CNPJ *">
                   <input className={INPUT} value={f.cpf_cnpj} placeholder="00.000.000/0000-00"
-                    onChange={e => { const v = maskCNPJ(e.target.value); set('cpf_cnpj', v); const d = v.replace(/\D/g, ''); if (d.length === 14) { checkExisting(d); lookupCnpj(v); } }}
-                    onBlur={() => lookupCnpj(f.cpf_cnpj)} />
+                    onChange={e => { const v = maskCNPJ(e.target.value); set('cpf_cnpj', v); const d = v.replace(/\D/g, ''); if (d.length === 14 && validCNPJ(d)) { checkExisting(d); lookupCnpj(v); } }}
+                    onBlur={() => validCNPJ(f.cpf_cnpj) && lookupCnpj(f.cpf_cnpj)} />
                   {cnpjLoading && <p className="text-xs text-violet-500 mt-1 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> buscando dados...</p>}
+                  {f.cpf_cnpj.replace(/\D/g,'').length === 14 && !validCNPJ(f.cpf_cnpj) && (
+                    <p className="text-xs text-red-500 mt-1">CNPJ inválido — confira os números digitados</p>
+                  )}
                 </Field>
                 <Field label={`Inscrição Estadual (IE)${ieIsento ? '' : ' *'}`}>
                   <input className={INPUT} value={ieIsento ? 'ISENTO' : f.ie} disabled={ieIsento} onChange={e => set('ie', e.target.value.replace(/\D/g,''))} placeholder="000.000.000.000" />
@@ -468,8 +471,13 @@ export default function CadastroCliente() {
           ) : (
             <>
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="CPF *"><input className={INPUT} value={f.cpf_cnpj} placeholder="000.000.000-00"
-                  onChange={e => { const v = maskCPF(e.target.value); set('cpf_cnpj', v); const d = v.replace(/\D/g,''); if (d.length === 11 && validCPF(d)) checkExisting(d); }} /></Field>
+                <Field label="CPF *">
+                  <input className={INPUT} value={f.cpf_cnpj} placeholder="000.000.000-00"
+                    onChange={e => { const v = maskCPF(e.target.value); set('cpf_cnpj', v); const d = v.replace(/\D/g,''); if (d.length === 11 && validCPF(d)) checkExisting(d); }} />
+                  {f.cpf_cnpj.replace(/\D/g,'').length === 11 && !validCPF(f.cpf_cnpj) && (
+                    <p className="text-xs text-red-500 mt-1">CPF inválido — confira os números digitados</p>
+                  )}
+                </Field>
                 <Field label="Data de Nascimento *"><input className={INPUT} inputMode="numeric" maxLength={10} placeholder="DD/MM/AAAA" value={f.birth_date} onChange={e => set('birth_date', maskDate(e.target.value))} /></Field>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">

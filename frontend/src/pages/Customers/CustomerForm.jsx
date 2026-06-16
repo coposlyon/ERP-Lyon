@@ -69,6 +69,19 @@ function validateCpf(cpf) {
   return calc(9) === parseInt(d[9]) && calc(10) === parseInt(d[10]);
 }
 
+// Valida CNPJ pelos dois dígitos verificadores
+function validateCnpj(cnpj) {
+  const c = cnpj.replace(/\D/g, '');
+  if (c.length !== 14 || /^(\d)\1{13}$/.test(c)) return false;
+  const calc = (len) => {
+    let pos = len - 7, sum = 0;
+    for (let i = len; i >= 1; i--) { sum += +c[len - i] * pos--; if (pos < 2) pos = 9; }
+    const r = sum % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return calc(12) === +c[12] && calc(13) === +c[13];
+}
+
 // ── Formatação de número para exibição: 200000 → "200.000" | 99990 com vírgula → "999,90"
 function formatCreditLimit(raw) {
   const cleaned = String(raw).replace(/[^\d,]/g, '');
@@ -191,13 +204,17 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
     if (form.type === 'PJ') {
       const formatted = formatCnpj(e.target.value);
       set('cpf_cnpj', formatted);
-      if (raw.length === 14) lookupCnpj(raw);
+      if (raw.length === 14) {
+        if (validateCnpj(raw)) lookupCnpj(raw); // só busca se o CNPJ for válido
+        else setDocStatus('invalid');
+      } else {
+        setDocStatus(null);
+      }
     } else {
       const formatted = formatCpf(e.target.value);
       set('cpf_cnpj', formatted);
       if (raw.length === 11) {
-        const valid = validateCpf(raw);
-        setDocStatus(valid ? 'ok' : 'invalid');
+        setDocStatus(validateCpf(raw) ? 'ok' : 'invalid');
       } else {
         setDocStatus(null);
       }
@@ -230,6 +247,20 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.name) { toast.error('Nome é obrigatório'); return; }
+    // Bloqueia documento inválido (evita CPF/CNPJ digitado errado)
+    const docDigits = (form.cpf_cnpj || '').replace(/\D/g, '');
+    if (docDigits) {
+      if (form.type === 'PJ' && !validateCnpj(docDigits)) {
+        setDocStatus('invalid');
+        toast.error('CNPJ inválido — confira os números digitados');
+        return;
+      }
+      if (form.type !== 'PJ' && !validateCpf(docDigits)) {
+        setDocStatus('invalid');
+        toast.error('CPF inválido — confira os números digitados');
+        return;
+      }
+    }
     setLoading(true);
     try {
       const payload = { ...form, credit_limit: parseCreditLimit(form.credit_limit), birth_date: brToISO(form.birth_date) };
@@ -331,7 +362,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
           {docLoading && <p className="text-xs text-primary-600 mt-1 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Consultando CNPJ...</p>}
           {!docLoading && docStatus === 'ok'      && isPJ  && <p className="text-xs text-green-600 mt-1">✅ Dados preenchidos automaticamente</p>}
           {!docLoading && docStatus === 'ok'      && !isPJ && <p className="text-xs text-green-600 mt-1">✅ CPF válido</p>}
-          {!docLoading && docStatus === 'invalid'           && <p className="text-xs text-red-500 mt-1">CPF inválido — verifique os dígitos</p>}
+          {!docLoading && docStatus === 'invalid'           && <p className="text-xs text-red-500 mt-1">{isPJ ? 'CNPJ inválido' : 'CPF inválido'} — verifique os dígitos</p>}
           {!docLoading && docStatus === 'error'             && <p className="text-xs text-red-500 mt-1">CNPJ não encontrado — preencha manualmente</p>}
         </div>
 
