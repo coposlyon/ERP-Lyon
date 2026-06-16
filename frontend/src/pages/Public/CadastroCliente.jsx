@@ -105,11 +105,17 @@ export default function CadastroCliente() {
 
   async function submit(e) {
     e.preventDefault();
-    if (!f.name.trim()) return toast.error('Informe o nome');
-    if (!f.phone.trim() && !f.email.trim()) return toast.error('Informe telefone ou e-mail');
-    if (f.cpf_cnpj.trim() && !(isPJ ? validCNPJ(f.cpf_cnpj) : validCPF(f.cpf_cnpj)))
-      return toast.error(`${isPJ ? 'CNPJ' : 'CPF'} inválido. Confira os números.`);
+    if (!f.name.trim()) return toast.error(`Informe ${isPJ ? 'a razão social' : 'seu nome'}`);
+    if (!f.cpf_cnpj.trim()) return toast.error(`Informe o ${isPJ ? 'CNPJ' : 'CPF'}`);
+    if (!(isPJ ? validCNPJ(f.cpf_cnpj) : validCPF(f.cpf_cnpj))) return toast.error(`${isPJ ? 'CNPJ' : 'CPF'} inválido. Confira os números.`);
     if (isPJ && !ieIsento && !f.ie.trim()) return toast.error('Informe a Inscrição Estadual (ou marque Isento)');
+    if (!f.email.trim()) return toast.error('Informe o e-mail');
+    if (!/^\S+@\S+\.\S+$/.test(f.email.trim())) return toast.error('E-mail inválido');
+    if (!f.phone.trim()) return toast.error('Informe o telefone / WhatsApp');
+    if (!f.mobile.trim()) return toast.error('Informe o telefone para recado');
+    if (!f.instagram.trim()) return toast.error('Informe o Instagram');
+    if (!addr.zip.trim() || !addr.street.trim() || !addr.number.trim() || !addr.neighborhood.trim() || !addr.city.trim() || !addr.state.trim())
+      return toast.error('Preencha o endereço completo (CEP, rua, número, bairro, cidade e estado)');
     setSending(true);
     try {
       await storeApi.post('/cadastro', {
@@ -202,9 +208,10 @@ export default function CadastroCliente() {
           {isPJ ? (
             <>
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="CNPJ">
+                <Field label="CNPJ *">
                   <input className={INPUT} value={f.cpf_cnpj} placeholder="00.000.000/0000-00"
-                    onChange={e => { const v = maskCNPJ(e.target.value); set('cpf_cnpj', v); if (v.replace(/\D/g, '').length === 14) lookupCnpj(v); }} />
+                    onChange={e => { const v = maskCNPJ(e.target.value); set('cpf_cnpj', v); if (v.replace(/\D/g, '').length === 14) lookupCnpj(v); }}
+                    onBlur={() => lookupCnpj(f.cpf_cnpj)} />
                   {cnpjLoading && <p className="text-xs text-violet-500 mt-1 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> buscando dados...</p>}
                 </Field>
                 <Field label={`Inscrição Estadual (IE)${ieIsento ? '' : ' *'}`}>
@@ -215,25 +222,25 @@ export default function CadastroCliente() {
                 </Field>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="E-mail"><input type="email" className={INPUT} value={f.email} onChange={e => set('email', e.target.value)} /></Field>
-                <Field label="Instagram"><InstaInput value={f.instagram} onChange={v => set('instagram', v)} /></Field>
+                <Field label="E-mail *"><input type="email" className={INPUT} value={f.email} onChange={e => set('email', e.target.value)} /></Field>
+                <Field label="Instagram *"><InstaInput value={f.instagram} onChange={v => set('instagram', v)} /></Field>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="Telefone / WhatsApp"><input className={INPUT} value={f.phone} placeholder="(44) 99999-9999" onChange={e => set('phone', maskPhone(e.target.value))} /></Field>
-                <Field label="Telefone p/ Recado"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
+                <Field label="Telefone / WhatsApp *"><input className={INPUT} value={f.phone} placeholder="(44) 99999-9999" onChange={e => set('phone', maskPhone(e.target.value))} /></Field>
+                <Field label="Telefone p/ Recado *"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
               </div>
             </>
           ) : (
             <>
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="CPF"><input className={INPUT} value={f.cpf_cnpj} placeholder="000.000.000-00" onChange={e => set('cpf_cnpj', maskCPF(e.target.value))} /></Field>
-                <Field label="E-mail"><input type="email" className={INPUT} value={f.email} onChange={e => set('email', e.target.value)} /></Field>
+                <Field label="CPF *"><input className={INPUT} value={f.cpf_cnpj} placeholder="000.000.000-00" onChange={e => set('cpf_cnpj', maskCPF(e.target.value))} /></Field>
+                <Field label="E-mail *"><input type="email" className={INPUT} value={f.email} onChange={e => set('email', e.target.value)} /></Field>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="Telefone / WhatsApp"><input className={INPUT} value={f.phone} placeholder="(44) 99999-9999" onChange={e => set('phone', maskPhone(e.target.value))} /></Field>
-                <Field label="Telefone p/ Recado"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
+                <Field label="Telefone / WhatsApp *"><input className={INPUT} value={f.phone} placeholder="(44) 99999-9999" onChange={e => set('phone', maskPhone(e.target.value))} /></Field>
+                <Field label="Telefone p/ Recado *"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
               </div>
-              <Field label="Instagram"><InstaInput value={f.instagram} onChange={v => set('instagram', v)} /></Field>
+              <Field label="Instagram *"><InstaInput value={f.instagram} onChange={v => set('instagram', v)} /></Field>
             </>
           )}
 
@@ -252,19 +259,19 @@ export default function CadastroCliente() {
           <div className="border border-gray-200 rounded-2xl p-4 space-y-4">
             <p className="text-sm font-semibold text-gray-700">Endereço</p>
             <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="CEP"><input className={INPUT} value={addr.zip} placeholder="00000-000"
+              <Field label="CEP *"><input className={INPUT} value={addr.zip} placeholder="00000-000"
                 onChange={e => { const v = maskCEP(e.target.value); setA('zip', v); if (v.replace(/\D/g, '').length === 8) lookupCep(v); }}
                 onBlur={e => lookupCep(e.target.value)} /></Field>
-              <Field label="Rua / Logradouro"><input className={INPUT} value={addr.street} onChange={e => setA('street', e.target.value)} /></Field>
+              <Field label="Rua / Logradouro *"><input className={INPUT} value={addr.street} onChange={e => setA('street', e.target.value)} /></Field>
             </div>
             <div className="grid sm:grid-cols-3 gap-4">
-              <Field label="Número"><input className={INPUT} value={addr.number} onChange={e => setA('number', e.target.value)} /></Field>
+              <Field label="Número *"><input className={INPUT} value={addr.number} onChange={e => setA('number', e.target.value)} /></Field>
               <Field label="Complemento"><input className={INPUT} value={addr.complement} onChange={e => setA('complement', e.target.value)} /></Field>
-              <Field label="Bairro"><input className={INPUT} value={addr.neighborhood} onChange={e => setA('neighborhood', e.target.value)} /></Field>
+              <Field label="Bairro *"><input className={INPUT} value={addr.neighborhood} onChange={e => setA('neighborhood', e.target.value)} /></Field>
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="Cidade"><input className={INPUT} value={addr.city} onChange={e => setA('city', e.target.value)} /></Field>
-              <Field label="Estado">
+              <Field label="Cidade *"><input className={INPUT} value={addr.city} onChange={e => setA('city', e.target.value)} /></Field>
+              <Field label="Estado *">
                 <select className={INPUT} value={addr.state} onChange={e => setA('state', e.target.value)}>
                   <option value="">UF</option>{UFS.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>

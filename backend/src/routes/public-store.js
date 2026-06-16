@@ -280,11 +280,13 @@ router.post('/cadastro', async (req, res) => {
   const em = String(email || '').trim();
   const isPJ = type === 'PJ';
   const docDigits = soDigitos(cpf_cnpj);
-  if (!nm) return res.status(400).json({ error: 'Informe seu nome' });
-  if (!ph && !em) return res.status(400).json({ error: 'Informe telefone ou e-mail' });
-  if (docDigits && !(isPJ ? validaCNPJ(docDigits) : validaCPF(docDigits))) {
+  if (!nm) return res.status(400).json({ error: 'Informe o nome' });
+  if (!docDigits) return res.status(400).json({ error: `Informe o ${isPJ ? 'CNPJ' : 'CPF'}` });
+  if (!(isPJ ? validaCNPJ(docDigits) : validaCPF(docDigits))) {
     return res.status(400).json({ error: `${isPJ ? 'CNPJ' : 'CPF'} inválido. Confira os números digitados.` });
   }
+  if (!ph) return res.status(400).json({ error: 'Informe o telefone' });
+  if (!em) return res.status(400).json({ error: 'Informe o e-mail' });
   // normaliza o @ do instagram (aceita url, @handle ou handle puro)
   const ig = String(instagram || '').trim()
     .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?].*$/, '').replace(/^@/, '') || null;
