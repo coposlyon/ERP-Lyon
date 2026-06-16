@@ -166,14 +166,14 @@ export default function Production() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-gray-500 uppercase border-b border-gray-100 bg-gray-50">
-                <th className="px-3 py-2">Pedido</th>
+              <tr className="text-left text-[11px] text-gray-500 uppercase border-b border-gray-100 bg-gray-50 align-bottom">
+                <th className="px-3 py-2 leading-tight"><span className="block text-[9px] text-gray-400">Nº</span>PEDIDO</th>
                 <th className="px-3 py-2">Cliente</th>
-                <th className="px-3 py-2">Pedido em</th>
-                <th className="px-3 py-2">Evento</th>
-                <th className="px-3 py-2">Saída</th>
-                <th className="px-3 py-2">Prazo máx.</th>
-                <th className="px-3 py-2 text-center">Dias p/ prazo</th>
+                <th className="px-3 py-2 leading-tight"><span className="block text-[9px] text-gray-400">DATA DO</span>PEDIDO</th>
+                <th className="px-3 py-2 leading-tight"><span className="block text-[9px] text-gray-400">DATA DO</span>EVENTO</th>
+                <th className="px-3 py-2 leading-tight"><span className="block text-[9px] text-gray-400">DATA DE</span>SAÍDA</th>
+                <th className="px-3 py-2 leading-tight"><span className="block text-[9px] text-gray-400">PRAZO MÁX.</span>ENTREGA</th>
+                <th className="px-3 py-2 text-center leading-tight"><span className="block text-[9px] text-gray-400">DIAS</span>P/ PRAZO</th>
                 <th className="px-3 py-2">Transportadora</th>
                 <th className="px-3 py-2">Cidade/UF</th>
                 <th className="px-3 py-2">Status</th>
