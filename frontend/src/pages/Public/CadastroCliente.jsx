@@ -58,6 +58,36 @@ export default function CadastroCliente() {
     } catch {}
   }
 
+  // Puxa os dados da empresa pelo CNPJ (rota pública /api/cnpj)
+  const [cnpjLoading, setCnpjLoading] = useState(false);
+  async function lookupCnpj(cnpjRaw) {
+    const digits = cnpjRaw.replace(/\D/g,''); if (digits.length !== 14) return;
+    setCnpjLoading(true);
+    try {
+      const r = await fetch(`/api/cnpj/${digits}`);
+      if (!r.ok) { toast.error('CNPJ não encontrado'); return; }
+      const d = await r.json();
+      setF(p => ({ ...p,
+        name: d.name ? d.name.toUpperCase() : p.name,
+        ie: d.ie || p.ie,
+        email: p.email || d.email || '',
+        phone: p.phone || (d.phone ? maskPhone(d.phone) : ''),
+      }));
+      if (d.ie) setIeIsento(false);
+      setAddr(p => ({ ...p,
+        zip: d.zip ? maskCEP(d.zip) : p.zip,
+        street: d.street || p.street,
+        number: d.number || p.number,
+        complement: d.complement || p.complement,
+        neighborhood: d.neighborhood || p.neighborhood,
+        city: d.city || p.city,
+        state: d.state || p.state,
+      }));
+      toast.success('Dados da empresa preenchidos!');
+    } catch { toast.error('Não consegui buscar o CNPJ'); }
+    finally { setCnpjLoading(false); }
+  }
+
   async function submit(e) {
     e.preventDefault();
     if (!f.name.trim()) return toast.error('Informe o nome');
@@ -156,7 +186,9 @@ export default function CadastroCliente() {
             <>
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="CNPJ">
-                  <input className={INPUT} value={f.cpf_cnpj} placeholder="00.000.000/0000-00" onChange={e => set('cpf_cnpj', maskCNPJ(e.target.value))} />
+                  <input className={INPUT} value={f.cpf_cnpj} placeholder="00.000.000/0000-00"
+                    onChange={e => { const v = maskCNPJ(e.target.value); set('cpf_cnpj', v); if (v.replace(/\D/g, '').length === 14) lookupCnpj(v); }} />
+                  {cnpjLoading && <p className="text-xs text-violet-500 mt-1 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> buscando dados...</p>}
                 </Field>
                 <Field label={`Inscrição Estadual (IE)${ieIsento ? '' : ' *'}`}>
                   <input className={INPUT} value={ieIsento ? 'ISENTO' : f.ie} disabled={ieIsento} onChange={e => set('ie', e.target.value.replace(/\D/g,''))} placeholder="000.000.000.000" />
@@ -203,7 +235,9 @@ export default function CadastroCliente() {
           <div className="border border-gray-200 rounded-2xl p-4 space-y-4">
             <p className="text-sm font-semibold text-gray-700">Endereço</p>
             <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="CEP"><input className={INPUT} value={addr.zip} placeholder="00000-000" onChange={e => setA('zip', maskCEP(e.target.value))} onBlur={e => lookupCep(e.target.value)} /></Field>
+              <Field label="CEP"><input className={INPUT} value={addr.zip} placeholder="00000-000"
+                onChange={e => { const v = maskCEP(e.target.value); setA('zip', v); if (v.replace(/\D/g, '').length === 8) lookupCep(v); }}
+                onBlur={e => lookupCep(e.target.value)} /></Field>
               <Field label="Rua / Logradouro"><input className={INPUT} value={addr.street} onChange={e => setA('street', e.target.value)} /></Field>
             </div>
             <div className="grid sm:grid-cols-3 gap-4">
