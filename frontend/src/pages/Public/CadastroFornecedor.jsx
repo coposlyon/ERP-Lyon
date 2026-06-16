@@ -252,7 +252,7 @@ export default function CadastroFornecedor() {
 
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Telefone / WhatsApp *"><input className={INPUT} value={f.phone} placeholder="(44) 99999-9999" onChange={e => set('phone', maskPhone(e.target.value))} /></Field>
-            <Field label="Telefone p/ Recado"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
+            <Field label="Telefone Comercial"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
           </div>
 
           <Field label="Instagram"><InstaInput value={f.instagram} onChange={v => set('instagram', v)} /></Field>
