@@ -629,7 +629,7 @@ export default function Stock() {
 
   // ── Colunas: Lista Completa ─────────────────────────────────────
   const posColumns = [
-    { key: 'code', label: 'Código', width: 80, sortable: true,
+    { key: 'code', label: 'ID', width: 70, sortable: true,
       sortAccessor: r => /^\d+$/.test(String(r.code || '')) ? Number(r.code) : r.code,
       render: v => <span className="font-mono text-xs text-gray-600">{id4(v)}</span> },
     { key: 'name', label: 'Produto', sortable: true },

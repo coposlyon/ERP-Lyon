@@ -67,7 +67,7 @@ export default function Products() {
   function onSaved() { closeModal(); qc.invalidateQueries(['products']); }
 
   const columns = [
-    { key: 'code', label: 'Código', width: 80, render: v => <span className="font-mono text-xs">{id4(v)}</span> },
+    { key: 'code', label: 'ID', width: 70, render: v => <span className="font-mono text-xs">{id4(v)}</span> },
     { key: 'name', label: 'Produto' },
     { key: 'CATEGORIAS', label: 'Categoria', render: (v, row) => v?.name || row.categories?.name || '—' },
     { key: 'unit', label: 'Un.', width: 60 },

@@ -199,8 +199,8 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           />
         </div>
         <div>
-          <label className="label">Código Interno</label>
-          <input className="input" value={form.code} onChange={e => set('code', e.target.value)} placeholder="COD001" />
+          <label className="label">ID (código do produto)</label>
+          <input className="input" value={form.code} onChange={e => set('code', e.target.value)} placeholder="0001" />
         </div>
         <div>
           <label className="label">EAN / Código de Barras</label>

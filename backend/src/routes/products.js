@@ -490,6 +490,17 @@ router.post('/import-grouped', async (req, res) => {
     return id;
   }
 
+  // Próximo código sequencial de 4 dígitos (0001, 0002, ...)
+  let seq = 0;
+  try {
+    const { data: codes } = await supabase.from('PRODUTOS').select('code').eq('tenant_id', req.tenantId).limit(20000);
+    for (const r of (codes || [])) {
+      const c = String(r.code || '').trim();
+      if (/^\d+$/.test(c)) { const n = parseInt(c, 10); if (n > seq) seq = n; }
+    }
+  } catch { /* ignora */ }
+  const nextCode = () => { seq += 1; return String(seq).padStart(4, '0'); };
+
   let created = 0, updated = 0, skipped = 0;
   const errors = [];
 
@@ -503,11 +514,11 @@ router.post('/import-grouped', async (req, res) => {
       // já existe um produto com esse nome neste tenant?
       let existing = null;
       try {
-        const { data } = await supabase.from('PRODUTOS').select('id, variations')
+        const { data } = await supabase.from('PRODUTOS').select('id, variations, code')
           .eq('tenant_id', req.tenantId).eq('name', name).limit(1).maybeSingle();
         existing = data;
       } catch { /* coluna variations pode não existir ainda */
-        const { data } = await supabase.from('PRODUTOS').select('id')
+        const { data } = await supabase.from('PRODUTOS').select('id, code')
           .eq('tenant_id', req.tenantId).eq('name', name).limit(1).maybeSingle();
         existing = data;
       }
@@ -519,19 +530,21 @@ router.post('/import-grouped', async (req, res) => {
           borders: uniq([...(cur.borders || []), ...variations.borders]),
           volumes: uniq([...(cur.volumes || []), ...variations.volumes]),
         };
-        let { error } = await supabase.from('PRODUTOS').update({ variations: merged, category_id: catId })
+        // mantém o código; se ainda não tiver, gera um de 4 dígitos
+        const codePatch = String(existing.code || '').trim() ? {} : { code: nextCode() };
+        let { error } = await supabase.from('PRODUTOS').update({ variations: merged, category_id: catId, ...codePatch })
           .eq('id', existing.id).eq('tenant_id', req.tenantId);
         if (error && /variations/i.test(error.message || '')) {
-          ({ error } = await supabase.from('PRODUTOS').update({ category_id: catId })
+          ({ error } = await supabase.from('PRODUTOS').update({ category_id: catId, ...codePatch })
             .eq('id', existing.id).eq('tenant_id', req.tenantId));
         }
         if (error) errors.push(`${name}: ${error.message}`); else updated++;
         continue;
       }
 
-      // novo produto
+      // novo produto (com código de 4 dígitos)
       const baseRow = {
-        tenant_id: req.tenantId, name, unit: 'UN', category_id: catId,
+        tenant_id: req.tenantId, name, unit: 'UN', category_id: catId, code: nextCode(),
         sale_price: 0, cost_price: 0, current_stock: 0, is_active: true,
       };
       const fullRow = { ...baseRow, min_order_qty: 10, store_group: name, variations };
