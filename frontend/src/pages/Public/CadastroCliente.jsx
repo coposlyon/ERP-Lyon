@@ -68,8 +68,11 @@ export default function CadastroCliente() {
   async function lookupCep(cepRaw) {
     const cep = cepRaw.replace(/\D/g,''); if (cep.length !== 8) return;
     try {
-      const d = await (await fetch(`https://viacep.com.br/ws/${cep}/json/`)).json();
-      if (!d.erro) setAddr(p => ({ ...p, street:d.logradouro||p.street, neighborhood:d.bairro||p.neighborhood, city:d.localidade||p.city, state:d.uf||p.state }));
+      // usa o proxy interno (/api/cep) — fetch externo é bloqueado pela CSP
+      const res = await fetch(`/api/cep/${cep}`);
+      if (!res.ok) return;
+      const d = await res.json();
+      setAddr(p => ({ ...p, street:d.street||p.street, neighborhood:d.neighborhood||p.neighborhood, city:d.city||p.city, state:d.state||p.state }));
     } catch {}
   }
 
