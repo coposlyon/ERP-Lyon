@@ -398,6 +398,12 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           </span>
         </summary>
         <div className="px-4 pb-4 grid sm:grid-cols-2 gap-5 mt-2">
+          {(variations.colors.length + variations.borders.length) === 0 && (
+            <p className="sm:col-span-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              Sem variações ainda. Use <b>Produtos → Importar Catálogo</b> para puxar todas as cores e bordas
+              automaticamente, ou adicione manualmente abaixo.
+            </p>
+          )}
           <ChipEditor label="Cores disponíveis" items={variations.colors} placeholder="Ex.: AZUL TIFANNY"
             onChange={v => setVariations(s => ({ ...s, colors: v }))} />
           <ChipEditor label="Bordas disponíveis" items={variations.borders} placeholder="Ex.: BORDA METALIZADA DOURADO"
