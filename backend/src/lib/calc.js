@@ -48,6 +48,7 @@ const PRINT_METHODS = [
   { key: 'serigrafia', label: 'Serigrafia (1 cor)' },
   { key: 'transfer',   label: 'Transfer (2 cores)' },
   { key: 'dtf',        label: 'DTF (3 cores)' },
+  { key: 'laser',      label: 'Laser' },
 ];
 
 // Preço considerando o tipo de impressão escolhido. Cada tipo tem sua própria

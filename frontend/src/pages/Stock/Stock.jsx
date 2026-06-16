@@ -497,7 +497,7 @@ export default function Stock() {
 
   const allProducts     = stockReport?.data || [];
   const displayProducts = showZeroOnly
-    ? allProducts.filter(p => (p.current_stock ?? 0) <= 0)
+    ? allProducts.filter(p => (p.current_stock ?? 0) < 0)
     : allProducts;
 
   const negativeProducts = useMemo(
@@ -789,7 +789,7 @@ export default function Stock() {
             ))}
           </div>
 
-          {/* Filtro zerados (só na aba Lista Completa) */}
+          {/* Filtro negativos (só na aba Lista Completa) */}
           {tab === 'position' && (
             <button onClick={() => setShowZeroOnly(v => !v)}
               className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
@@ -798,7 +798,7 @@ export default function Stock() {
                   : 'bg-white text-red-600 border-red-200 hover:bg-red-50'
               }`}>
               <AlertTriangle size={13} />
-              {showZeroOnly ? `Zerados/Negativos (${displayProducts.length})` : 'Ver zerados/negativos'}
+              {showZeroOnly ? `Negativos (${displayProducts.length})` : 'Ver negativos'}
             </button>
           )}
 
@@ -816,7 +816,7 @@ export default function Stock() {
           <>
             {showZeroOnly && displayProducts.length === 0 && (
               <p className="text-center py-8 text-green-600 font-medium text-sm">
-                ✅ Nenhum produto zerado ou negativo!
+                ✅ Nenhum produto negativo!
               </p>
             )}
             <Table columns={posColumns} data={displayProducts} loading={repLoading} />
