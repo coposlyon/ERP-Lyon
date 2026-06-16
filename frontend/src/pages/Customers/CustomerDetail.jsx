@@ -1,16 +1,27 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { ArrowLeft, Phone, Mail, MapPin, Edit2, Instagram } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Edit2, Instagram, Cake, Hash, IdCard } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useState } from 'react';
 import Modal from '@/components/UI/Modal';
 import CustomerForm from './CustomerForm';
+import { id4 } from '@/lib/ids';
 import { useQueryClient } from '@tanstack/react-query';
 
 function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+}
+function fmtDateBR(iso) { try { return format(parseISO(iso), 'dd/MM/yyyy', { locale: ptBR }); } catch { return iso; } }
+function idadeAnos(iso) {
+  try {
+    const b = parseISO(iso); const t = new Date();
+    let a = t.getFullYear() - b.getFullYear();
+    const m = t.getMonth() - b.getMonth();
+    if (m < 0 || (m === 0 && t.getDate() < b.getDate())) a--;
+    return a;
+  } catch { return null; }
 }
 
 const saleStatusLabel = {
@@ -104,6 +115,20 @@ export default function CustomerDetail() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="card p-5 space-y-2">
           <h3 className="font-semibold text-gray-900 mb-3">Informações</h3>
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Hash size={14} className="text-gray-400" /> Código: <b className="font-mono">{id4(customer.display_id)}</b>
+          </div>
+          {customer.birth_date && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Cake size={14} className="text-pink-400" /> Nascimento: <b>{fmtDateBR(customer.birth_date)}</b>
+              {idadeAnos(customer.birth_date) != null && <span className="text-xs text-gray-400">({idadeAnos(customer.birth_date)} anos)</span>}
+            </div>
+          )}
+          {customer.rg_ie && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <IdCard size={14} className="text-gray-400" /> {customer.type === 'PJ' ? 'IE' : 'RG'}: {customer.rg_ie}
+            </div>
+          )}
           {customer.phone && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <Phone size={14} className="text-gray-400" /> {customer.phone}

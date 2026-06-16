@@ -13,7 +13,20 @@ const maskCPF = v => v.replace(/\D/g,'').slice(0,11).replace(/(\d{3})(\d)/,'$1.$
 const maskCNPJ = v => v.replace(/\D/g,'').slice(0,14).replace(/(\d{2})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1/$2').replace(/(\d{4})(\d{1,2})$/,'$1-$2');
 const maskPhone = v => { const d=v.replace(/\D/g,'').slice(0,11); return d.length<=10 ? d.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{4})(\d{1,4})$/,'$1-$2') : d.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{5})(\d{1,4})$/,'$1-$2'); };
 const maskCEP = v => v.replace(/\D/g,'').slice(0,8).replace(/(\d{5})(\d)/,'$1-$2');
+const maskDate = v => v.replace(/\D/g,'').slice(0,8).replace(/(\d{2})(\d)/,'$1/$2').replace(/(\d{2})(\d)/,'$1/$2');
 const igHandle = v => String(v||'').trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i,'').replace(/[/?].*$/,'').replace(/^@/,'');
+
+// Data digitada (DD/MM/AAAA) → ISO (AAAA-MM-DD). Valida data real, ano 1900..hoje.
+function brToISO(s) {
+  const m = String(s||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  const [, d, mo, y] = m;
+  const dt = new Date(`${y}-${mo}-${d}T00:00:00`);
+  if (isNaN(dt) || dt.getFullYear() !== +y || dt.getMonth()+1 !== +mo || dt.getDate() !== +d) return null;
+  if (+y < 1900 || dt > new Date()) return null;
+  return `${y}-${mo}-${d}`;
+}
+const isoToBR = iso => { const m = String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
 
 function validCPF(v) {
   const c = String(v||'').replace(/\D/g,'');
@@ -64,7 +77,13 @@ export default function CadastroCliente() {
   const [addr, setAddr] = useState({ zip:'', street:'', number:'', complement:'', neighborhood:'', city:'', state:'' });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
+  const [doneKind, setDoneKind] = useState('new'); // new | updated | login
   const [welcomeName, setWelcomeName] = useState('');
+
+  // Detecção de cliente já cadastrado (ao preencher o CPF/CNPJ)
+  const [existing, setExisting] = useState(null); // cliente encontrado
+  const [editMode, setEditMode] = useState(false); // atualizando dados de um existente
+  const [checking, setChecking] = useState(false);
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
@@ -98,6 +117,47 @@ export default function CadastroCliente() {
   const set = (k,v) => setF(p => ({ ...p, [k]: v }));
   const setA = (k,v) => setAddr(p => ({ ...p, [k]: v }));
   const isPJ = type === 'PJ';
+
+  // Consulta se o CPF/CNPJ já tem cadastro (mostra o atalho "já cadastrado")
+  async function checkExisting(digits) {
+    if (editMode || existing) return;
+    setChecking(true);
+    try {
+      const res = await storeApi.post('/login', { cpf: digits });
+      if (res?.customer) setExisting(res.customer);
+    } catch { /* 404 = ainda não cadastrado, segue normal */ }
+    finally { setChecking(false); }
+  }
+
+  // Entrar na loja com o cadastro já existente
+  function entrarComExistente() {
+    setStoreCustomer(existing);
+    setWelcomeName((existing.name || '').trim().split(/\s+/)[0]);
+    setDoneKind('login');
+    setDone(true);
+  }
+
+  // Pré-preenche o formulário com os dados do cliente para edição
+  function editarExistente() {
+    const c = existing;
+    setType(c.type === 'PJ' ? 'PJ' : 'PF');
+    setF({
+      name: (c.name || '').toUpperCase(),
+      cpf_cnpj: (c.type === 'PJ' ? maskCNPJ : maskCPF)(c.cpf_cnpj || ''),
+      ie: c.rg_ie && c.rg_ie !== 'ISENTO' ? c.rg_ie : '',
+      birth_date: isoToBR(c.birth_date),
+      email: c.email || '',
+      phone: maskPhone(c.phone || ''),
+      mobile: maskPhone(c.mobile || ''),
+      instagram: c.instagram || '',
+    });
+    setIeIsento(c.rg_ie === 'ISENTO' || !!c.admission_data?.ie_isento);
+    setCanPublish(c.admission_data?.can_publish === false ? 'nao' : 'sim');
+    const a = c.address || {};
+    setAddr({ zip: maskCEP(a.zip || ''), street: a.street || '', number: a.number || '', complement: a.complement || '', neighborhood: a.neighborhood || '', city: a.city || '', state: a.state || '' });
+    setEditMode(true);
+    setExisting(null);
+  }
 
   async function lookupCep(cepRaw) {
     const cep = cepRaw.replace(/\D/g,''); if (cep.length !== 8) return;
@@ -146,7 +206,7 @@ export default function CadastroCliente() {
     if (!f.cpf_cnpj.trim()) return toast.error(`Informe o ${isPJ ? 'CNPJ' : 'CPF'}`);
     if (!(isPJ ? validCNPJ(f.cpf_cnpj) : validCPF(f.cpf_cnpj))) return toast.error(`${isPJ ? 'CNPJ' : 'CPF'} inválido. Confira os números.`);
     if (isPJ && !ieIsento && !f.ie.trim()) return toast.error('Informe a Inscrição Estadual (ou marque Isento)');
-    if (!isPJ && !f.birth_date) return toast.error('Informe a data de nascimento');
+    if (!isPJ && !brToISO(f.birth_date)) return toast.error('Informe uma data de nascimento válida (DD/MM/AAAA)');
     if (!f.email.trim()) return toast.error('Informe o e-mail');
     if (!/^\S+@\S+\.\S+$/.test(f.email.trim())) return toast.error('E-mail inválido');
     if (!f.phone.trim()) return toast.error('Informe o telefone / WhatsApp');
@@ -159,9 +219,10 @@ export default function CadastroCliente() {
         instagram: igHandle(f.instagram),
         rg_ie: isPJ ? (ieIsento ? 'ISENTO' : f.ie) : null,
         ie_isento: isPJ ? ieIsento : false,
-        birth_date: isPJ ? null : f.birth_date,
+        birth_date: isPJ ? null : brToISO(f.birth_date),
         can_publish: canPublish === 'sim',
         address: addr,
+        update: editMode || undefined,
       });
       // já deixa o cliente logado na loja
       if (res?.customer) {
@@ -170,6 +231,7 @@ export default function CadastroCliente() {
       } else {
         setWelcomeName(f.name.trim().split(/\s+/)[0]);
       }
+      setDoneKind(editMode ? 'updated' : 'new');
       setDone(true);
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Não foi possível enviar. Tente novamente.');
@@ -195,8 +257,10 @@ export default function CadastroCliente() {
             <span className="absolute inset-0 rounded-full bg-green-100 st-pulse" />
             <CheckCircle2 size={80} className="relative text-green-500 mx-auto" />
           </div>
-          <h1 className="text-2xl font-black text-gray-900">Cadastro concluído! 🎉</h1>
-          <p className="text-lg font-bold st-gradient-text mt-1">Bem-vindo(a){welcomeName ? `, ${welcomeName}` : ''}!</p>
+          <h1 className="text-2xl font-black text-gray-900">
+            {doneKind === 'updated' ? 'Dados atualizados! ✅' : doneKind === 'login' ? 'Bem-vindo de volta! 🎉' : 'Cadastro concluído! 🎉'}
+          </h1>
+          <p className="text-lg font-bold st-gradient-text mt-1">Olá{welcomeName ? `, ${welcomeName}` : ''}!</p>
           <p className="text-gray-500 mt-3">Você já está logado. Estamos te levando para a loja…</p>
           <div className="flex items-center justify-center gap-2 mt-5 text-violet-600 font-semibold">
             <Loader2 size={18} className="animate-spin" /> Entrando na loja
@@ -239,11 +303,40 @@ export default function CadastroCliente() {
 
       {phase === 'form' && (<>
       {Bg}
+
+      {/* Cliente já cadastrado — detectado ao digitar o CPF/CNPJ */}
+      {existing && !editMode && (
+        <div className="fixed inset-0 z-30 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-7 text-center st-rise">
+            <CheckCircle2 size={52} className="text-green-500 mx-auto mb-3" />
+            <h2 className="text-xl font-black text-gray-900">Você já tem cadastro! 🎉</h2>
+            <p className="text-gray-500 mt-1.5">
+              Olá, <b>{(existing.name || '').split(' ')[0]}</b>! Encontramos seu cadastro com este {isPJ ? 'CNPJ' : 'CPF'}.
+              Não precisa preencher tudo de novo.
+            </p>
+            <div className="flex flex-col gap-2 mt-6">
+              <button onClick={entrarComExistente}
+                className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                <User size={17} /> Entrar na loja
+              </button>
+              <button onClick={editarExistente}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-xl transition-colors">
+                Atualizar meus dados
+              </button>
+              <button onClick={() => { setExisting(null); set('cpf_cnpj', ''); }}
+                className="text-xs text-gray-400 hover:text-gray-600 mt-1">
+                Não sou eu / usar outro documento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="relative z-10 max-w-xl mx-auto st-rise">
         <div className="text-center mb-6">
           <img src="/lyon-logo.png" alt="Lyon Copos" className="h-28 sm:h-32 mx-auto mb-3 object-contain st-float drop-shadow-xl" onError={e => { e.target.style.display='none'; }} />
           <h1 className="text-2xl sm:text-3xl font-black leading-tight st-gradient-text">FAÇA O SEU CADASTRO NO NOSSO SISTEMA LYON COPOS!</h1>
-          <p className="text-gray-500 mt-2 text-sm">Preencha seus dados abaixo. Leva menos de 1 minuto.</p>
+          <p className="text-gray-500 mt-2 text-sm">{editMode ? 'Atualize seus dados abaixo e salve. ✏️' : 'Preencha seus dados abaixo. Leva menos de 1 minuto.'}</p>
         </div>
 
         <form onSubmit={submit} className="bg-white/90 backdrop-blur rounded-3xl shadow-xl p-6 sm:p-8 space-y-4">
@@ -265,7 +358,7 @@ export default function CadastroCliente() {
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="CNPJ *">
                   <input className={INPUT} value={f.cpf_cnpj} placeholder="00.000.000/0000-00"
-                    onChange={e => { const v = maskCNPJ(e.target.value); set('cpf_cnpj', v); if (v.replace(/\D/g, '').length === 14) lookupCnpj(v); }}
+                    onChange={e => { const v = maskCNPJ(e.target.value); set('cpf_cnpj', v); const d = v.replace(/\D/g, ''); if (d.length === 14) { checkExisting(d); lookupCnpj(v); } }}
                     onBlur={() => lookupCnpj(f.cpf_cnpj)} />
                   {cnpjLoading && <p className="text-xs text-violet-500 mt-1 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> buscando dados...</p>}
                 </Field>
@@ -288,8 +381,9 @@ export default function CadastroCliente() {
           ) : (
             <>
               <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="CPF *"><input className={INPUT} value={f.cpf_cnpj} placeholder="000.000.000-00" onChange={e => set('cpf_cnpj', maskCPF(e.target.value))} /></Field>
-                <Field label="Data de Nascimento *"><input type="date" className={INPUT} value={f.birth_date} max={todayISO} onChange={e => set('birth_date', e.target.value)} /></Field>
+                <Field label="CPF *"><input className={INPUT} value={f.cpf_cnpj} placeholder="000.000.000-00"
+                  onChange={e => { const v = maskCPF(e.target.value); set('cpf_cnpj', v); const d = v.replace(/\D/g,''); if (d.length === 11 && validCPF(d)) checkExisting(d); }} /></Field>
+                <Field label="Data de Nascimento *"><input className={INPUT} inputMode="numeric" maxLength={10} placeholder="DD/MM/AAAA" value={f.birth_date} onChange={e => set('birth_date', maskDate(e.target.value))} /></Field>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="E-mail *"><input type="email" className={INPUT} value={f.email} onChange={e => set('email', e.target.value)} /></Field>
@@ -339,7 +433,7 @@ export default function CadastroCliente() {
 
           <button type="submit" disabled={sending}
             className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-            {sending ? <><Loader2 size={18} className="animate-spin" /> Enviando...</> : <><User size={18} /> Enviar cadastro</>}
+            {sending ? <><Loader2 size={18} className="animate-spin" /> {editMode ? 'Salvando...' : 'Enviando...'}</> : <><User size={18} /> {editMode ? 'Salvar alterações' : 'Enviar cadastro'}</>}
           </button>
           <p className="text-xs text-gray-400 text-center">Seus dados são usados apenas para atendimento e pedidos.</p>
         </form>

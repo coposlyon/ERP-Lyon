@@ -48,7 +48,8 @@ export default function Layout() {
           onToggleSidebar={() => setSidebarCollapsed(v => !v)}
           onToggleMobileSidebar={() => setMobileSidebarOpen(v => !v)}
         />
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+        {/* pb-28: espaço extra embaixo para o conteúdo nunca ficar atrás do botão flutuante da IA */}
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 pb-28 lg:pb-28">
           <ErrorBoundary key={location.pathname}>
             <Suspense fallback={<PageLoading />}>
               <Outlet />

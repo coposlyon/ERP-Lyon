@@ -90,7 +90,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   const {
     type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
-    credit_limit, instagram, nome_fantasia, rating, admission_data, is_active
+    credit_limit, instagram, nome_fantasia, rating, admission_data, is_active, birth_date
   } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome do cliente é obrigatório' });
 
@@ -115,23 +115,23 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const { data, error } = await supabase
-      .from('CLIENTES')
-      .insert({
-        tenant_id: req.tenantId,
-        type: type || 'PF',
-        name, cpf_cnpj, rg_ie, email, phone, mobile,
-        address: address || {},
-        credit_limit: credit_limit || 0,
-        instagram: instagram || null,
-        nome_fantasia: nome_fantasia || null,
-        rating: rating || null,
-        admission_data: admission_data || {},
-        is_active: is_active !== false,
-      })
-      .select()
-      .single();
-
+    const base = {
+      tenant_id: req.tenantId,
+      type: type || 'PF',
+      name, cpf_cnpj, rg_ie, email, phone, mobile,
+      address: address || {},
+      credit_limit: credit_limit || 0,
+      instagram: instagram || null,
+      nome_fantasia: nome_fantasia || null,
+      rating: rating || null,
+      admission_data: admission_data || {},
+      is_active: is_active !== false,
+    };
+    const payload = { ...base, birth_date: birth_date || null };
+    let { data, error } = await supabase.from('CLIENTES').insert(payload).select().single();
+    if (error && /birth_date/i.test(error.message || '')) { // coluna birth_date ainda não existe (migration 023)
+      ({ data, error } = await supabase.from('CLIENTES').insert(base).select().single());
+    }
     if (error) throw error;
     res.status(201).json(data);
   } catch (err) {
@@ -142,7 +142,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const {
     type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
-    credit_limit, is_active, instagram, nome_fantasia, rating, admission_data
+    credit_limit, is_active, instagram, nome_fantasia, rating, admission_data, birth_date
   } = req.body;
 
   try {
@@ -158,22 +158,22 @@ router.put('/:id', async (req, res) => {
 
     const existingAttachments = current?.admission_data?.attachments || [];
 
-    const { data, error } = await supabase
-      .from('CLIENTES')
-      .update({
-        type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
-        credit_limit, is_active, instagram, nome_fantasia,
-        rating: rating || null,
-        admission_data: {
-          ...(admission_data || {}),
-          attachments: existingAttachments, // sempre preserva os documentos do banco
-        },
-      })
-      .eq('id', req.params.id)
-      .eq('tenant_id', req.tenantId)
-      .select()
-      .single();
-
+    const base = {
+      type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
+      credit_limit, is_active, instagram, nome_fantasia,
+      rating: rating || null,
+      admission_data: {
+        ...(admission_data || {}),
+        attachments: existingAttachments, // sempre preserva os documentos do banco
+      },
+    };
+    const payload = { ...base, birth_date: birth_date || null };
+    let { data, error } = await supabase.from('CLIENTES')
+      .update(payload).eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
+    if (error && /birth_date/i.test(error.message || '')) { // coluna birth_date ainda não existe (migration 023)
+      ({ data, error } = await supabase.from('CLIENTES')
+        .update(base).eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single());
+    }
     if (error) throw error;
     res.json(data);
   } catch (err) {

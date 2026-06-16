@@ -5,6 +5,19 @@ import { Loader2, Star, Instagram, CheckCircle2, XCircle } from 'lucide-react';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
+// Data digitável DD/MM/AAAA (sem precisar do calendário)
+const maskDate = v => String(v||'').replace(/\D/g,'').slice(0,8).replace(/(\d{2})(\d)/,'$1/$2').replace(/(\d{2})(\d)/,'$1/$2');
+function brToISO(s) {
+  const m = String(s||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  const [, d, mo, y] = m;
+  const dt = new Date(`${y}-${mo}-${d}T00:00:00`);
+  if (isNaN(dt) || dt.getFullYear() !== +y || dt.getMonth()+1 !== +mo || dt.getDate() !== +d) return null;
+  if (+y < 1900 || dt > new Date()) return null;
+  return `${y}-${mo}-${d}`;
+}
+const isoToBR = iso => { const m = String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
+
 function StarRating({ value, onChange }) {
   const [hovered, setHovered] = useState(0);
   return (
@@ -84,7 +97,7 @@ function parseCreditLimit(formatted) {
 
 export default function CustomerForm({ customer, onSaved, onCancel, hideRating = false }) {
   const [form, setForm] = useState({
-    type: 'PF', name: '', cpf_cnpj: '', rg_ie: '',
+    type: 'PF', name: '', cpf_cnpj: '', rg_ie: '', birth_date: '',
     email: '', phone: '', mobile: '',
     address: { ...emptyAddress },
     credit_limit: '', instagram: '', nome_fantasia: '',
@@ -104,6 +117,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
         name:         customer.name || '',
         cpf_cnpj:     customer.cpf_cnpj || '',
         rg_ie:        customer.rg_ie || '',
+        birth_date:   isoToBR(customer.birth_date),
         email:        customer.email || '',
         phone:        customer.phone || '',
         mobile:       customer.mobile || '',
@@ -218,7 +232,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
     if (!form.name) { toast.error('Nome é obrigatório'); return; }
     setLoading(true);
     try {
-      const payload = { ...form, credit_limit: parseCreditLimit(form.credit_limit) };
+      const payload = { ...form, credit_limit: parseCreditLimit(form.credit_limit), birth_date: brToISO(form.birth_date) };
       if (customer?.id) {
         await api.put(`/customers/${customer.id}`, payload);
         toast.success('Cliente atualizado!');
@@ -321,10 +335,16 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
           {!docLoading && docStatus === 'error'             && <p className="text-xs text-red-500 mt-1">CNPJ não encontrado — preencha manualmente</p>}
         </div>
 
-        {isPJ && (
+        {isPJ ? (
           <div>
             <label className="label">Inscrição Estadual</label>
             <input className="input" value={form.rg_ie} onChange={e => setUp('rg_ie', e.target.value)} />
+          </div>
+        ) : (
+          <div>
+            <label className="label">Data de Nascimento</label>
+            <input className="input" inputMode="numeric" maxLength={10} placeholder="DD/MM/AAAA"
+              value={form.birth_date} onChange={e => set('birth_date', maskDate(e.target.value))} />
           </div>
         )}
 

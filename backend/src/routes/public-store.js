@@ -287,7 +287,7 @@ function validaCNPJ(v) {
 
 // ── Autocadastro de cliente (link público) ────────────────
 router.post('/cadastro', async (req, res) => {
-  const { type, name, cpf_cnpj, email, phone, mobile, instagram, rg_ie, ie_isento, can_publish, address, birth_date } = req.body;
+  const { type, name, cpf_cnpj, email, phone, mobile, instagram, rg_ie, ie_isento, can_publish, address, birth_date, update } = req.body;
   const nm = String(name || '').trim();
   const ph = String(phone || '').trim();
   const em = String(email || '').trim();
@@ -322,18 +322,37 @@ router.post('/cadastro', async (req, res) => {
     const bd = String(birth_date || '').trim();
     if (!isPJ && bd) payload.birth_date = bd;
 
-    // Bloqueia novo cadastro se o CPF/CNPJ já existir
+    const sel = 'id, name, type, cpf_cnpj, email, phone, mobile, instagram, address';
+
+    // Já existe cadastro com este CPF/CNPJ?
+    let byDoc = null;
     if (docDigits) {
-      let { data: byDoc, error: docErr } = await supabase.from('CLIENTES')
+      let { data, error: docErr } = await supabase.from('CLIENTES')
         .select('id').eq('tenant_id', STORE_TENANT).eq('doc_digits', docDigits).limit(1).maybeSingle();
       if (docErr) { // coluna doc_digits ainda não existe (migration 015) → compara manualmente
         const { data: all } = await supabase.from('CLIENTES').select('id, cpf_cnpj').eq('tenant_id', STORE_TENANT).limit(5000);
-        byDoc = (all || []).find(c => soDigitos(c.cpf_cnpj) === docDigits) || null;
+        data = (all || []).find(c => soDigitos(c.cpf_cnpj) === docDigits) || null;
       }
-      if (byDoc) return res.status(409).json({ error: `Este ${isPJ ? 'CNPJ' : 'CPF'} já está cadastrado no nosso sistema.` });
+      byDoc = data;
     }
 
-    const sel = 'id, name, type, cpf_cnpj, email, phone, mobile, instagram, address';
+    // Existe e NÃO é uma atualização → avisa que já tem cadastro (não bloqueia seco)
+    if (byDoc && !update) {
+      return res.status(409).json({ error: `Este ${isPJ ? 'CNPJ' : 'CPF'} já está cadastrado.`, exists: true, customer_id: byDoc.id });
+    }
+
+    // Atualização dos dados de um cliente existente
+    if (byDoc && update) {
+      let { data: upd, error } = await supabase.from('CLIENTES').update(payload).eq('id', byDoc.id).eq('tenant_id', STORE_TENANT).select(sel).single();
+      if (error && /birth_date/i.test(error.message || '')) {
+        delete payload.birth_date;
+        ({ data: upd, error } = await supabase.from('CLIENTES').update(payload).eq('id', byDoc.id).eq('tenant_id', STORE_TENANT).select(sel).single());
+      }
+      if (error) throw error;
+      return res.json({ success: true, updated: true, customer: upd });
+    }
+
+    // Novo cadastro
     let { data: created, error } = await supabase.from('CLIENTES').insert(payload).select(sel).single();
     if (error && /birth_date/i.test(error.message || '')) {
       // coluna birth_date ainda não existe (migration 023) → tenta sem ela
@@ -345,14 +364,22 @@ router.post('/cadastro', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Login da loja (somente CPF/CNPJ) ──────────────────────
+// ── Login da loja / consulta por CPF (também usado p/ pré-preencher edição) ──
 router.post('/login', async (req, res) => {
   const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);
   if (!docDigits) return res.status(400).json({ error: 'Informe o CPF' });
-  const sel = 'id, name, type, cpf_cnpj, email, phone, mobile, instagram, address';
+  const full = 'id, name, type, cpf_cnpj, rg_ie, email, phone, mobile, instagram, address, admission_data, birth_date';
+  const basic = 'id, name, type, cpf_cnpj, rg_ie, email, phone, mobile, instagram, address, admission_data';
   try {
+    // tenta com birth_date; se a coluna não existir (migration 023), cai p/ básico
+    let sel = full;
     let { data: cli, error } = await supabase.from('CLIENTES')
       .select(sel).eq('tenant_id', STORE_TENANT).eq('doc_digits', docDigits).limit(1).maybeSingle();
+    if (error && /birth_date/i.test(error.message || '')) {
+      sel = basic;
+      ({ data: cli, error } = await supabase.from('CLIENTES')
+        .select(sel).eq('tenant_id', STORE_TENANT).eq('doc_digits', docDigits).limit(1).maybeSingle());
+    }
     if (error) { // coluna doc_digits ainda não existe → compara manualmente
       const { data: all } = await supabase.from('CLIENTES').select(sel + ', cpf_cnpj')
         .eq('tenant_id', STORE_TENANT).limit(5000);
