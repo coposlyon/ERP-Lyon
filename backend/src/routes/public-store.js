@@ -255,14 +255,36 @@ router.post('/quote', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Validação de CPF/CNPJ (dígitos verificadores) ─────────
+function soDigitos(s) { return String(s || '').replace(/\D/g, ''); }
+function validaCPF(v) {
+  const c = soDigitos(v);
+  if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
+  let s = 0; for (let i = 0; i < 9; i++) s += +c[i] * (10 - i);
+  let d = (s * 10) % 11; if (d === 10) d = 0; if (d !== +c[9]) return false;
+  s = 0; for (let i = 0; i < 10; i++) s += +c[i] * (11 - i);
+  d = (s * 10) % 11; if (d === 10) d = 0; return d === +c[10];
+}
+function validaCNPJ(v) {
+  const c = soDigitos(v);
+  if (c.length !== 14 || /^(\d)\1{13}$/.test(c)) return false;
+  const calc = (len) => { let pos = len - 7, sum = 0; for (let i = len; i >= 1; i--) { sum += +c[len - i] * pos--; if (pos < 2) pos = 9; } const r = sum % 11; return r < 2 ? 0 : 11 - r; };
+  return calc(12) === +c[12] && calc(13) === +c[13];
+}
+
 // ── Autocadastro de cliente (link público) ────────────────
 router.post('/cadastro', async (req, res) => {
   const { type, name, cpf_cnpj, email, phone, mobile, instagram, rg_ie, ie_isento, can_publish, address } = req.body;
   const nm = String(name || '').trim();
   const ph = String(phone || '').trim();
   const em = String(email || '').trim();
+  const isPJ = type === 'PJ';
+  const docDigits = soDigitos(cpf_cnpj);
   if (!nm) return res.status(400).json({ error: 'Informe seu nome' });
   if (!ph && !em) return res.status(400).json({ error: 'Informe telefone ou e-mail' });
+  if (docDigits && !(isPJ ? validaCNPJ(docDigits) : validaCPF(docDigits))) {
+    return res.status(400).json({ error: `${isPJ ? 'CNPJ' : 'CPF'} inválido. Confira os números digitados.` });
+  }
   // normaliza o @ do instagram (aceita url, @handle ou handle puro)
   const ig = String(instagram || '').trim()
     .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?].*$/, '').replace(/^@/, '') || null;
@@ -282,22 +304,17 @@ router.post('/cadastro', async (req, res) => {
       is_active: true,
     };
 
-    // reaproveita o cadastro se já existir por telefone/e-mail (atualiza os dados)
-    let existing = null;
-    if (ph) {
-      const { data } = await supabase.from('CLIENTES').select('id')
-        .eq('tenant_id', STORE_TENANT).eq('phone', ph).limit(1).maybeSingle();
-      existing = data;
+    // Bloqueia novo cadastro se o CPF/CNPJ já existir
+    if (docDigits) {
+      let { data: byDoc, error: docErr } = await supabase.from('CLIENTES')
+        .select('id').eq('tenant_id', STORE_TENANT).eq('doc_digits', docDigits).limit(1).maybeSingle();
+      if (docErr) { // coluna doc_digits ainda não existe (migration 015) → compara manualmente
+        const { data: all } = await supabase.from('CLIENTES').select('id, cpf_cnpj').eq('tenant_id', STORE_TENANT).limit(5000);
+        byDoc = (all || []).find(c => soDigitos(c.cpf_cnpj) === docDigits) || null;
+      }
+      if (byDoc) return res.status(409).json({ error: `Este ${isPJ ? 'CNPJ' : 'CPF'} já está cadastrado no nosso sistema.` });
     }
-    if (!existing && em) {
-      const { data } = await supabase.from('CLIENTES').select('id')
-        .eq('tenant_id', STORE_TENANT).eq('email', em).limit(1).maybeSingle();
-      existing = data;
-    }
-    if (existing) {
-      await supabase.from('CLIENTES').update(payload).eq('id', existing.id).eq('tenant_id', STORE_TENANT);
-      return res.json({ success: true });
-    }
+
     const { error } = await supabase.from('CLIENTES').insert(payload);
     if (error) throw error;
     res.status(201).json({ success: true });

@@ -13,6 +13,21 @@ const maskPhone = v => { const d=v.replace(/\D/g,'').slice(0,11); return d.lengt
 const maskCEP = v => v.replace(/\D/g,'').slice(0,8).replace(/(\d{5})(\d)/,'$1-$2');
 const igHandle = v => String(v||'').trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i,'').replace(/[/?].*$/,'').replace(/^@/,'');
 
+function validCPF(v) {
+  const c = String(v||'').replace(/\D/g,'');
+  if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
+  let s = 0; for (let i = 0; i < 9; i++) s += +c[i] * (10 - i);
+  let d = (s * 10) % 11; if (d === 10) d = 0; if (d !== +c[9]) return false;
+  s = 0; for (let i = 0; i < 10; i++) s += +c[i] * (11 - i);
+  d = (s * 10) % 11; if (d === 10) d = 0; return d === +c[10];
+}
+function validCNPJ(v) {
+  const c = String(v||'').replace(/\D/g,'');
+  if (c.length !== 14 || /^(\d)\1{13}$/.test(c)) return false;
+  const calc = (len) => { let pos = len - 7, sum = 0; for (let i = len; i >= 1; i--) { sum += +c[len - i] * pos--; if (pos < 2) pos = 9; } const r = sum % 11; return r < 2 ? 0 : 11 - r; };
+  return calc(12) === +c[12] && calc(13) === +c[13];
+}
+
 function Field({ label, children }) {
   return (<div><label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>{children}</div>);
 }
@@ -92,6 +107,8 @@ export default function CadastroCliente() {
     e.preventDefault();
     if (!f.name.trim()) return toast.error('Informe o nome');
     if (!f.phone.trim() && !f.email.trim()) return toast.error('Informe telefone ou e-mail');
+    if (f.cpf_cnpj.trim() && !(isPJ ? validCNPJ(f.cpf_cnpj) : validCPF(f.cpf_cnpj)))
+      return toast.error(`${isPJ ? 'CNPJ' : 'CPF'} inválido. Confira os números.`);
     if (isPJ && !ieIsento && !f.ie.trim()) return toast.error('Informe a Inscrição Estadual (ou marque Isento)');
     setSending(true);
     try {
