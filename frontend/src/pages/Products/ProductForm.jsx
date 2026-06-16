@@ -2,10 +2,46 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Palette } from 'lucide-react';
 import PrintPricingEditor, { cleanPrintPricing } from './PrintPricingEditor';
 
 const emptyTier = () => ({ min_qty: '', max_qty: '', price: '' });
+
+// Editor de lista por chips (cores / bordas / volumes)
+function ChipEditor({ label, items, onChange, placeholder }) {
+  const [val, setVal] = useState('');
+  const add = () => {
+    const v = val.trim().toUpperCase();
+    if (!v) return;
+    if (!items.some(i => i.toUpperCase() === v)) onChange([...items, v]);
+    setVal('');
+  };
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="label mb-0">{label}</label>
+        <span className="text-xs text-gray-400">{items.length}</span>
+      </div>
+      <div className="flex gap-2 mb-2">
+        <input className="input flex-1" value={val} placeholder={placeholder}
+          onChange={e => setVal(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
+        <button type="button" onClick={add} className="btn-secondary"><Plus size={15} /></button>
+      </div>
+      {items.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+          {items.map((it, i) => (
+            <span key={i} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs font-medium pl-2.5 pr-1 py-1 rounded-full">
+              {it}
+              <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))}
+                className="text-gray-400 hover:text-red-500 rounded-full"><X size={13} /></button>
+            </span>
+          ))}
+        </div>
+      ) : <p className="text-xs text-gray-400">Nenhuma opção.</p>}
+    </div>
+  );
+}
 
 export default function ProductForm({ product, onSaved, onCancel }) {
   const [form, setForm] = useState({
@@ -21,6 +57,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   });
   const [priceTiers, setPriceTiers] = useState([]);
   const [printPricing, setPrintPricing] = useState({});
+  const [variations, setVariations] = useState({ colors: [], borders: [], volumes: [] });
   const [loading, setLoading] = useState(false);
 
   const { data: categories = [] } = useQuery({
@@ -65,8 +102,11 @@ export default function ProductForm({ product, onSaved, onCancel }) {
       });
       setPriceTiers(Array.isArray(product.price_tiers) ? product.price_tiers : []);
       setPrintPricing(product.print_pricing && typeof product.print_pricing === 'object' ? product.print_pricing : {});
+      const v = product.variations && typeof product.variations === 'object' ? product.variations : {};
+      setVariations({ colors: v.colors || [], borders: v.borders || [], volumes: v.volumes || [] });
     } else {
       setPrintPricing({});
+      setVariations({ colors: [], borders: [], volumes: [] });
       const defaultCat = categories.find(c => c.name?.toUpperCase() === 'PRODUTO ACABADO');
       if (defaultCat) setForm(prev => ({ ...prev, category_id: defaultCat.id }));
     }
@@ -123,6 +163,11 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           price: parseFloat(t.price) || 0,
         })),
         print_pricing: cleanPrintPricing(printPricing),
+        variations: {
+          colors:  [...new Set((variations.colors  || []).map(s => String(s).trim().toUpperCase()).filter(Boolean))],
+          borders: [...new Set((variations.borders || []).map(s => String(s).trim().toUpperCase()).filter(Boolean))],
+          volumes: [...new Set((variations.volumes || []).map(s => String(s).trim().toUpperCase()).filter(Boolean))],
+        },
       };
 
       if (product?.id) {
@@ -339,6 +384,27 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           <div>
             <label className="label">CFOP</label>
             <input className="input" value={form.cfop} onChange={e => set('cfop', e.target.value)} placeholder="5102" maxLength={4} />
+          </div>
+        </div>
+      </details>
+
+      {/* Variações (cores / bordas / volumes) */}
+      <details className="border border-gray-200 rounded-lg" open={(variations.colors.length + variations.borders.length) > 0}>
+        <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg select-none flex items-center gap-2">
+          <Palette size={15} className="text-pink-500" />
+          Variações — cores e bordas
+          <span className="text-gray-400 font-normal">
+            ({variations.colors.length} cores · {variations.borders.length} bordas)
+          </span>
+        </summary>
+        <div className="px-4 pb-4 grid sm:grid-cols-2 gap-5 mt-2">
+          <ChipEditor label="Cores disponíveis" items={variations.colors} placeholder="Ex.: AZUL TIFANNY"
+            onChange={v => setVariations(s => ({ ...s, colors: v }))} />
+          <ChipEditor label="Bordas disponíveis" items={variations.borders} placeholder="Ex.: BORDA METALIZADA DOURADO"
+            onChange={v => setVariations(s => ({ ...s, borders: v }))} />
+          <div className="sm:col-span-2">
+            <ChipEditor label="Volumes" items={variations.volumes} placeholder="Ex.: 350 ML"
+              onChange={v => setVariations(s => ({ ...s, volumes: v }))} />
           </div>
         </div>
       </details>

@@ -265,34 +265,34 @@ router.post('/', validate(productSchema), async (req, res) => {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing
+    price_tiers, min_order_qty, print_pricing, variations
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Nome do produto é obrigatório' });
 
   try {
-    const { data, error } = await supabase
-      .from('PRODUTOS')
-      .insert({
-        tenant_id: req.tenantId,
-        name: name.toUpperCase(),
-        code, ean, description, category_id,
-        cost_price: cost_price || 0,
-        sale_price: sale_price || 0,
-        min_stock: min_stock || 0,
-        ncm, cst, cfop,
-        is_active: is_active !== false,
-        supplier_id: supplier_id || null,
-        height: height || null, weight: weight || null, thickness: thickness || null,
-        base_circumference: base_circumference || null,
-        mouth_circumference: mouth_circumference || null,
-        length: length || null, width: width || null,
-        price_tiers: price_tiers || [],
-        min_order_qty: Math.max(1, parseInt(min_order_qty) || 1),
-        print_pricing: print_pricing || {},
-      })
-      .select()
-      .single();
+    const payload = {
+      tenant_id: req.tenantId,
+      name: name.toUpperCase(),
+      code, ean, description, category_id,
+      cost_price: cost_price || 0,
+      sale_price: sale_price || 0,
+      min_stock: min_stock || 0,
+      ncm, cst, cfop,
+      is_active: is_active !== false,
+      supplier_id: supplier_id || null,
+      height: height || null, weight: weight || null, thickness: thickness || null,
+      base_circumference: base_circumference || null,
+      mouth_circumference: mouth_circumference || null,
+      length: length || null, width: width || null,
+      price_tiers: price_tiers || [],
+      min_order_qty: Math.max(1, parseInt(min_order_qty) || 1),
+      print_pricing: print_pricing || {},
+      ...(variations != null ? { variations } : {}),
+    };
+    const ins = () => supabase.from('PRODUTOS').insert(payload).select().single();
+    let { data, error } = await ins();
+    if (error && /variations/i.test(error.message || '')) { delete payload.variations; ({ data, error } = await ins()); }
 
     if (error) throw error;
     audit(req, 'create', 'product', data.id, { name: data.name, code, sale_price, cost_price });
@@ -307,7 +307,7 @@ router.put('/:id', async (req, res) => {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing
+    price_tiers, min_order_qty, print_pricing, variations
   } = req.body;
 
   try {
@@ -319,27 +319,28 @@ router.put('/:id', async (req, res) => {
       .eq('tenant_id', req.tenantId)
       .maybeSingle();
 
-    const { data, error } = await supabase
-      .from('PRODUTOS')
-      .update({
-        name: name ? name.toUpperCase() : name,
-        code, ean, description, category_id,
-        cost_price, sale_price, min_stock, ncm, cst, cfop, is_active,
-        supplier_id: supplier_id || null,
-        height: height || null, weight: weight || null, thickness: thickness || null,
-        base_circumference: base_circumference || null,
-        mouth_circumference: mouth_circumference || null,
-        length: length || null, width: width || null,
-        price_tiers: price_tiers || [],
-        ...(min_order_qty != null ? { min_order_qty: Math.max(1, parseInt(min_order_qty) || 1) } : {}),
-        ...(print_pricing != null ? { print_pricing } : {}),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', req.params.id)
-      .eq('tenant_id', req.tenantId)
-      .select()
-      .single();
-
+    const payload = {
+      name: name ? name.toUpperCase() : name,
+      code, ean, description, category_id,
+      cost_price, sale_price, min_stock, ncm, cst, cfop, is_active,
+      supplier_id: supplier_id || null,
+      height: height || null, weight: weight || null, thickness: thickness || null,
+      base_circumference: base_circumference || null,
+      mouth_circumference: mouth_circumference || null,
+      length: length || null, width: width || null,
+      price_tiers: price_tiers || [],
+      ...(min_order_qty != null ? { min_order_qty: Math.max(1, parseInt(min_order_qty) || 1) } : {}),
+      ...(print_pricing != null ? { print_pricing } : {}),
+      ...(variations != null ? { variations } : {}),
+      updated_at: new Date().toISOString(),
+    };
+    const upd = () => supabase.from('PRODUTOS').update(payload)
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
+    let { data, error } = await upd();
+    if (error && /variations/i.test(error.message || '')) { // coluna variations ausente (migration 027)
+      delete payload.variations;
+      ({ data, error } = await upd());
+    }
     if (error) throw error;
 
     const details = { name: data.name };
@@ -378,6 +379,27 @@ router.post('/import-grouped', async (req, res) => {
   if (!groups.length) return res.status(400).json({ error: 'Nada para importar' });
 
   const uniq = arr => [...new Set((arr || []).map(s => String(s).trim()).filter(Boolean))].sort();
+  // Categoria = primeiro nome do produto (ex.: "CANECA ALUMÍNIO" → CANECA)
+  const categoriaDe = (nm) => {
+    const n = String(nm || '').toUpperCase().trim();
+    if (n.startsWith('LONG DRINK')) return 'LONG DRINK';
+    if (n.startsWith('PORTA ')) return 'PORTA GARRAFA';
+    return n.split(/\s+/)[0] || 'OUTROS';
+  };
+  const catCache = new Map();
+  async function categoriaId(catName) {
+    if (catCache.has(catName)) return catCache.get(catName);
+    let { data: cat } = await supabase.from('CATEGORIAS').select('id')
+      .eq('tenant_id', req.tenantId).ilike('name', catName).limit(1).maybeSingle();
+    if (!cat) {
+      const r = await supabase.from('CATEGORIAS').insert({ tenant_id: req.tenantId, name: catName }).select('id').single();
+      cat = r.data;
+    }
+    const id = cat?.id || null;
+    catCache.set(catName, id);
+    return id;
+  }
+
   let created = 0, updated = 0, skipped = 0;
   const errors = [];
 
@@ -386,6 +408,7 @@ router.post('/import-grouped', async (req, res) => {
       const name = String(g.name || '').trim().toUpperCase();
       if (name.length < 3) { skipped++; continue; }
       const variations = { colors: uniq(g.colors), borders: uniq(g.borders), volumes: uniq(g.volumes) };
+      const catId = await categoriaId(categoriaDe(name));
 
       // já existe um produto com esse nome neste tenant?
       let existing = null;
@@ -406,15 +429,19 @@ router.post('/import-grouped', async (req, res) => {
           borders: uniq([...(cur.borders || []), ...variations.borders]),
           volumes: uniq([...(cur.volumes || []), ...variations.volumes]),
         };
-        const { error } = await supabase.from('PRODUTOS').update({ variations: merged })
+        let { error } = await supabase.from('PRODUTOS').update({ variations: merged, category_id: catId })
           .eq('id', existing.id).eq('tenant_id', req.tenantId);
+        if (error && /variations/i.test(error.message || '')) {
+          ({ error } = await supabase.from('PRODUTOS').update({ category_id: catId })
+            .eq('id', existing.id).eq('tenant_id', req.tenantId));
+        }
         if (error) errors.push(`${name}: ${error.message}`); else updated++;
         continue;
       }
 
       // novo produto
       const baseRow = {
-        tenant_id: req.tenantId, name, unit: 'UN',
+        tenant_id: req.tenantId, name, unit: 'UN', category_id: catId,
         sale_price: 0, cost_price: 0, current_stock: 0, is_active: true,
       };
       const fullRow = { ...baseRow, min_order_qty: 10, store_group: name, variations };
