@@ -257,22 +257,28 @@ router.post('/quote', async (req, res) => {
 
 // ── Autocadastro de cliente (link público) ────────────────
 router.post('/cadastro', async (req, res) => {
-  const { type, name, cpf_cnpj, email, phone, instagram, address } = req.body;
+  const { type, name, cpf_cnpj, email, phone, mobile, instagram, rg_ie, ie_isento, can_publish, address } = req.body;
   const nm = String(name || '').trim();
   const ph = String(phone || '').trim();
   const em = String(email || '').trim();
   if (!nm) return res.status(400).json({ error: 'Informe seu nome' });
   if (!ph && !em) return res.status(400).json({ error: 'Informe telefone ou e-mail' });
+  // normaliza o @ do instagram (aceita url, @handle ou handle puro)
+  const ig = String(instagram || '').trim()
+    .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?].*$/, '').replace(/^@/, '') || null;
   try {
     const payload = {
       tenant_id: STORE_TENANT,
       type: type === 'PJ' ? 'PJ' : 'PF',
       name: nm,
       cpf_cnpj: String(cpf_cnpj || '').trim() || null,
+      rg_ie: String(rg_ie || '').trim() || null,
       email: em || null,
       phone: ph || null,
-      instagram: String(instagram || '').trim() || null,
+      mobile: String(mobile || '').trim() || null,
+      instagram: ig,
       address: address && typeof address === 'object' ? address : {},
+      admission_data: { ie_isento: !!ie_isento, can_publish: !!can_publish },
       is_active: true,
     };
 

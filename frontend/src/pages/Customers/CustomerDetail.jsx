@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { ArrowLeft, Phone, Mail, MapPin, Edit2 } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Edit2, Instagram } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useState } from 'react';
@@ -109,10 +109,24 @@ export default function CustomerDetail() {
               <Phone size={14} className="text-gray-400" /> {customer.phone}
             </div>
           )}
+          {customer.mobile && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Phone size={14} className="text-gray-400" /> {customer.mobile} <span className="text-xs text-gray-400">(recado)</span>
+            </div>
+          )}
           {customer.email && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <Mail size={14} className="text-gray-400" /> {customer.email}
             </div>
+          )}
+          {customer.instagram && (
+            <a href={`https://instagram.com/${String(customer.instagram).replace(/^@/, '')}`} target="_blank" rel="noreferrer"
+              className="flex items-center gap-2 text-sm text-pink-600 hover:text-pink-700 font-medium w-fit">
+              <Instagram size={14} /> @{String(customer.instagram).replace(/^@/, '')} <span className="text-xs">↗</span>
+            </a>
+          )}
+          {customer.admission_data?.can_publish && (
+            <p className="text-xs text-violet-600">💜 Autoriza publicar foto e marcar no Instagram</p>
           )}
           {customer.address?.street && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
