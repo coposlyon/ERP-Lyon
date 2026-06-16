@@ -502,6 +502,7 @@ router.post('/import-grouped', async (req, res) => {
   const nextCode = () => { seq += 1; return String(seq).padStart(4, '0'); };
 
   let created = 0, updated = 0, skipped = 0;
+  let variationsMissing = false; // true se a coluna `variations` não existir (migration 027)
   const errors = [];
 
   try {
@@ -535,6 +536,7 @@ router.post('/import-grouped', async (req, res) => {
         let { error } = await supabase.from('PRODUTOS').update({ variations: merged, category_id: catId, ...codePatch })
           .eq('id', existing.id).eq('tenant_id', req.tenantId);
         if (error && /variations/i.test(error.message || '')) {
+          variationsMissing = true;
           ({ error } = await supabase.from('PRODUTOS').update({ category_id: catId, ...codePatch })
             .eq('id', existing.id).eq('tenant_id', req.tenantId));
         }
@@ -550,12 +552,13 @@ router.post('/import-grouped', async (req, res) => {
       const fullRow = { ...baseRow, min_order_qty: 10, store_group: name, variations };
       let { error } = await supabase.from('PRODUTOS').insert(fullRow);
       if (error && /(variations|min_order_qty|store_group)/i.test(error.message || '')) {
+        if (/variations/i.test(error.message || '')) variationsMissing = true;
         ({ error } = await supabase.from('PRODUTOS').insert(baseRow)); // colunas novas ausentes
       }
       if (error) { errors.push(`${name}: ${error.message}`); skipped++; } else created++;
     }
-    audit(req, 'create', 'product_import', null, { created, updated, skipped });
-    res.json({ created, updated, skipped, errors: errors.slice(0, 20), total: groups.length });
+    audit(req, 'create', 'product_import', null, { created, updated, skipped, variationsMissing });
+    res.json({ created, updated, skipped, variations_missing: variationsMissing, errors: errors.slice(0, 20), total: groups.length });
   } catch (err) {
     res.status(500).json({ error: err.message, created, updated, skipped });
   }

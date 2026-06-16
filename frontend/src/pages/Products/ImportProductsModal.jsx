@@ -148,9 +148,17 @@ export default function ImportProductsModal({ isOpen, onClose }) {
 
         {/* Resultado */}
         {result && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm">
-            <p className="font-semibold text-green-800 flex items-center gap-2"><CheckCircle2 size={16} /> Importação concluída!</p>
-            <p className="text-green-700 mt-1">{result.created} criados · {result.updated} atualizados (variações mescladas) · {result.skipped} ignorados</p>
+          <div className={`border rounded-xl p-4 text-sm ${result.variations_missing ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+            <p className={`font-semibold flex items-center gap-2 ${result.variations_missing ? 'text-red-800' : 'text-green-800'}`}>
+              <CheckCircle2 size={16} /> Importação concluída!
+            </p>
+            <p className={`mt-1 ${result.variations_missing ? 'text-red-700' : 'text-green-700'}`}>{result.created} criados · {result.updated} atualizados · {result.skipped} ignorados</p>
+            {result.variations_missing && (
+              <p className="mt-2 text-red-700 font-medium bg-red-100 rounded-lg px-3 py-2">
+                ⚠️ As <b>cores e bordas NÃO foram salvas</b> porque a coluna <code>variations</code> ainda não existe no banco.
+                Rode o SQL <b>PENDENTES_023_a_028.sql</b> no Supabase e importe de novo.
+              </p>
+            )}
             {result.errors?.length > 0 && (
               <details className="mt-2"><summary className="text-xs text-red-600 cursor-pointer">{result.errors.length} avisos</summary>
                 <ul className="text-xs text-red-500 mt-1 list-disc pl-4">{result.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
