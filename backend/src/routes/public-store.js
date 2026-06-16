@@ -422,6 +422,83 @@ router.post('/verify-birth', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Perfil do cliente (loja): consulta ────────────────────
+router.get('/profile', async (req, res) => {
+  const id = req.query.customer_id;
+  if (!id) return res.status(400).json({ error: 'Cliente não identificado' });
+  const full  = 'id, name, type, cpf_cnpj, rg_ie, email, phone, mobile, instagram, address, admission_data, birth_date, avatar_url, profile_history, created_at, updated_at';
+  const basic = 'id, name, type, cpf_cnpj, rg_ie, email, phone, mobile, instagram, address, admission_data';
+  try {
+    let { data, error } = await supabase.from('CLIENTES').select(full)
+      .eq('tenant_id', STORE_TENANT).eq('id', id).maybeSingle();
+    if (error) { // colunas novas (migrations 023/025/026) podem faltar
+      ({ data } = await supabase.from('CLIENTES').select(basic)
+        .eq('tenant_id', STORE_TENANT).eq('id', id).maybeSingle());
+    }
+    if (!data) return res.status(404).json({ error: 'Cliente não encontrado' });
+    res.json({ customer: data });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Perfil do cliente (loja): atualizar dados + foto, com histórico ──
+router.post('/profile', async (req, res) => {
+  const { customer_id, avatar, name, email, phone, mobile, instagram, birth_date, address } = req.body;
+  if (!customer_id) return res.status(400).json({ error: 'Cliente não identificado' });
+  const full  = 'id, name, type, cpf_cnpj, rg_ie, email, phone, mobile, instagram, address, admission_data, birth_date, avatar_url, profile_history';
+  const basic = 'id, name, type, cpf_cnpj, rg_ie, email, phone, mobile, instagram, address, admission_data';
+  try {
+    let { data: cur, error: e0 } = await supabase.from('CLIENTES').select(full)
+      .eq('tenant_id', STORE_TENANT).eq('id', customer_id).maybeSingle();
+    if (e0) ({ data: cur } = await supabase.from('CLIENTES').select(basic)
+      .eq('tenant_id', STORE_TENANT).eq('id', customer_id).maybeSingle());
+    if (!cur) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+    const ig = instagram != null
+      ? (String(instagram).trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?].*$/, '').replace(/^@/, '') || null)
+      : cur.instagram;
+
+    const next = {
+      name:      name != null ? String(name).trim().toUpperCase() : cur.name,
+      email:     email != null ? String(email).trim() || null : cur.email,
+      phone:     phone != null ? String(phone).trim() || null : cur.phone,
+      mobile:    mobile != null ? String(mobile).trim() || null : cur.mobile,
+      instagram: ig,
+      birth_date: birth_date !== undefined ? (birth_date || null) : cur.birth_date,
+      address:   (address && typeof address === 'object') ? address : (cur.address || {}),
+    };
+
+    // foto de perfil
+    let avatarUrl = cur.avatar_url || null;
+    if (avatar) { const url = await uploadDataUrl(avatar, 'avatars'); if (url) avatarUrl = url; }
+
+    // monta o histórico das mudanças
+    const track = [['name','Nome'],['email','E-mail'],['phone','Telefone'],['mobile','Telefone p/ recado'],['instagram','Instagram'],['birth_date','Data de nascimento']];
+    const changes = [];
+    for (const [k, label] of track) {
+      const from = cur[k] == null ? '' : String(cur[k]);
+      const to   = next[k] == null ? '' : String(next[k]);
+      if (from !== to) changes.push({ label, from, to });
+    }
+    if (JSON.stringify(cur.address || {}) !== JSON.stringify(next.address || {})) changes.push({ label: 'Endereço', to: 'atualizado' });
+    if (avatar && avatarUrl !== (cur.avatar_url || null)) changes.push({ label: 'Foto de perfil', to: 'atualizada' });
+
+    const history = Array.isArray(cur.profile_history) ? cur.profile_history : [];
+    if (changes.length) history.push({ at: new Date().toISOString(), source: 'site', changes });
+
+    // tenta gravar tudo; se faltarem colunas novas, grava só o básico
+    const sel = full;
+    const payload = { ...next, avatar_url: avatarUrl, profile_history: history, updated_at: new Date().toISOString() };
+    let { data: upd, error } = await supabase.from('CLIENTES').update(payload)
+      .eq('id', customer_id).eq('tenant_id', STORE_TENANT).select(sel).single();
+    if (error) {
+      ({ data: upd, error } = await supabase.from('CLIENTES').update(next)
+        .eq('id', customer_id).eq('tenant_id', STORE_TENANT).select(basic).single());
+    }
+    if (error) throw error;
+    res.json({ success: true, customer: upd });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Login da loja / consulta por CPF (também usado p/ pré-preencher edição) ──
 router.post('/login', async (req, res) => {
   const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);

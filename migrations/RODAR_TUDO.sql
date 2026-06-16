@@ -1131,3 +1131,10 @@ ALTER TABLE "CLIENTES" ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT n
 ALTER TABLE "CLIENTES" ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 INSERT INTO "_MIGRATIONS" (version, name) VALUES ('025', 'clientes_timestamps')
 ON CONFLICT (version) DO NOTHING;
+
+
+-- >>>>>>>>>>>>>>>>>>>> 026_cliente_perfil.sql <<<<<<<<<<<<<<<<<<<<
+ALTER TABLE "CLIENTES" ADD COLUMN IF NOT EXISTS avatar_url      TEXT;
+ALTER TABLE "CLIENTES" ADD COLUMN IF NOT EXISTS profile_history JSONB DEFAULT '[]'::jsonb;
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('026', 'cliente_perfil')
+ON CONFLICT (version) DO NOTHING;

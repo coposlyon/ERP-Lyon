@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { ArrowLeft, Phone, Mail, MapPin, Edit2, Instagram, Cake, Hash, IdCard, CalendarPlus, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Edit2, Instagram, Cake, Hash, IdCard, CalendarPlus, RefreshCw, History, User } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useState } from 'react';
@@ -78,6 +78,9 @@ export default function CustomerDetail() {
           <button onClick={() => navigate('/customers')} className="btn-ghost p-2">
             <ArrowLeft size={18} />
           </button>
+          {customer.avatar_url
+            ? <img src={customer.avatar_url} alt="" className="w-12 h-12 rounded-full object-cover ring-2 ring-orange-200" />
+            : <span className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center"><User size={22} className="text-orange-400" /></span>}
           <div>
             <h1 className="page-title">{customer.name}</h1>
             <p className="text-sm text-gray-500">
@@ -198,6 +201,33 @@ export default function CustomerDetail() {
           )}
         </div>
       </div>
+
+      {/* Histórico de alterações feitas pelo cliente */}
+      {Array.isArray(customer.profile_history) && customer.profile_history.length > 0 && (
+        <div className="card p-5">
+          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <History size={16} className="text-orange-500" /> Histórico de alterações do cadastro
+          </h3>
+          <ol className="space-y-3">
+            {[...customer.profile_history].reverse().map((h, i) => (
+              <li key={i} className="flex gap-2.5 text-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 mt-2 shrink-0" />
+                <div>
+                  <p className="text-xs text-gray-400">{fmtDateTimeBR(h.at)} · {h.source === 'site' ? 'pelo site' : 'no sistema'}</p>
+                  <ul className="text-gray-700">
+                    {(h.changes || []).map((ch, j) => (
+                      <li key={j}>
+                        <b>{ch.label}</b>
+                        {ch.from ? <> : <span className="text-gray-400 line-through">{ch.from}</span> → {ch.to}</> : ch.to ? <> {ch.to}</> : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="card">

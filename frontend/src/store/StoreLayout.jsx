@@ -49,9 +49,13 @@ export default function StoreLayout({ children }) {
                   <Package size={15} className="text-orange-500" />
                   <span className="hidden sm:inline">Meus Pedidos</span>
                 </button>
-                <span className={`hidden md:flex items-center gap-1.5 text-sm font-bold ${solid ? 'text-gray-800' : 'text-white'}`}>
-                  <User size={15} className="text-orange-500" /> Olá, {firstName}
-                </span>
+                <button onClick={() => navigate('/loja/perfil')} title="Meu perfil"
+                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm font-bold transition-colors ${solid ? 'text-gray-800 hover:bg-gray-100' : 'text-white hover:bg-white/10'}`}>
+                  {customer.avatar_url
+                    ? <img src={customer.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover ring-2 ring-orange-300" />
+                    : <span className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center"><User size={15} className="text-orange-500" /></span>}
+                  <span className="hidden md:inline">Olá, {firstName}</span>
+                </button>
                 <button onClick={() => { logout(); navigate('/loja'); }} title="Sair"
                   className={`p-2 rounded-lg transition-colors ${solid ? 'hover:bg-gray-100 text-gray-500' : 'hover:bg-white/10 text-white/80'}`}>
                   <LogOut size={17} />
