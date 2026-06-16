@@ -107,13 +107,21 @@ router.post('/:id/convert', async (req, res) => {
     if (quote.status === 'converted') return res.status(400).json({ error: 'Orçamento já foi convertido' });
 
     const { data: numData } = await supabase.rpc('proximo_numero_venda', { p_tenant_id: req.tenantId });
-    const { data: sale, error: sErr } = await supabase.from('VENDAS').insert({
+    const baseSale = {
       tenant_id: req.tenantId, user_id: req.userId, number: numData || 1,
       customer_id: quote.customer_id, subtotal: quote.subtotal,
       discount: quote.discount, total: quote.total,
       notes: quote.notes, payment_method: quote.payment_method,
       status: 'confirmed',
-    }).select().single();
+    };
+    // carrega data do evento / prazo do orçamento (podem não existir ainda)
+    const extra = {};
+    if (quote.event_date)        extra.event_date = quote.event_date;
+    if (quote.max_delivery_date) extra.max_delivery_date = quote.max_delivery_date;
+    let { data: sale, error: sErr } = await supabase.from('VENDAS').insert({ ...baseSale, ...extra }).select().single();
+    if (sErr && /(event_date|max_delivery_date)/i.test(sErr.message || '')) {
+      ({ data: sale, error: sErr } = await supabase.from('VENDAS').insert(baseSale).select().single());
+    }
     if (sErr) throw sErr;
 
     const saleItems = (quote.ORCAMENTO_ITENS || []).map(i => ({

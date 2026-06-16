@@ -1,18 +1,24 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trash2, Minus, Plus, ShoppingBag, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react';
+import { Trash2, Minus, Plus, ShoppingBag, CheckCircle2, Loader2, ArrowLeft, CalendarHeart } from 'lucide-react';
 import toast from 'react-hot-toast';
 import storeApi from './storeApi';
 import Bottle from './Bottle';
 import { resolveColor } from './colors';
 import { useCart } from './CartContext';
+import { useStoreAuth } from './StoreAuthContext';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 const INPUT = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none text-sm';
+const todayISO = new Date().toISOString().slice(0, 10);
 
 export default function CartPage() {
   const { items, setQty, remove, clear, total, keyOf } = useCart();
-  const [form, setForm] = useState({ name: '', phone: '', email: '', company: '', notes: '' });
+  const { customer } = useStoreAuth();
+  const [form, setForm] = useState({
+    name: customer?.name || '', phone: customer?.phone || '', email: customer?.email || '',
+    company: '', notes: '', event_date: '',
+  });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(null);
   const [cep, setCep] = useState('');
@@ -43,6 +49,8 @@ export default function CartPage() {
         : '';
       const res = await storeApi.post('/quote', {
         customer: form,
+        customer_id: customer?.id || null,
+        event_date: form.event_date || null,
         notes: (form.notes || '') + freteNote,
         items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, color: i.color, print_method: i.print_method || null, quantity: i.quantity, design: i.design || null, preview: i.preview || null })),
       });
@@ -62,9 +70,16 @@ export default function CartPage() {
           Recebemos seu pedido{done.number ? ` (nº ${done.number})` : ''}. Nossa equipe vai entrar em contato
           com o orçamento e os detalhes de personalização.
         </p>
-        <Link to="/loja" className="inline-block mt-6 bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-xl transition-colors">
-          Voltar à loja
-        </Link>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center mt-6">
+          {customer && (
+            <Link to="/loja/pedidos" className="inline-block bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-xl transition-colors">
+              Acompanhar meus pedidos
+            </Link>
+          )}
+          <Link to="/loja" className={`inline-block px-6 py-3 rounded-xl font-semibold transition-colors ${customer ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-orange-500 hover:bg-orange-600 text-white'}`}>
+            Voltar à loja
+          </Link>
+        </div>
       </div>
     );
   }
@@ -154,6 +169,16 @@ export default function CartPage() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Data do evento — usada na produção para calcular o prazo */}
+            <div className="bg-orange-50/70 border border-orange-100 rounded-xl p-3">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-orange-700 mb-1.5">
+                <CalendarHeart size={14} /> Para quando você precisa? (data do evento)
+              </label>
+              <input type="date" className={INPUT} min={todayISO} value={form.event_date}
+                onChange={e => setForm(p => ({ ...p, event_date: e.target.value }))} />
+              <p className="text-[11px] text-orange-500/80 mt-1">Assim a gente garante a entrega antes do seu evento. 🎉</p>
             </div>
 
             <p className="text-xs text-gray-400">Preencha seus dados para receber o orçamento:</p>

@@ -142,11 +142,12 @@ router.get('/products/:id', async (req, res) => {
 
 // ── Enviar pedido de orçamento ────────────────────────────
 router.post('/quote', async (req, res) => {
-  const { customer = {}, items = [], notes } = req.body;
+  const { customer = {}, items = [], notes, event_date, customer_id } = req.body;
   const name  = (customer.name  || '').trim();
   const phone = (customer.phone || '').trim();
   const email = (customer.email || '').trim();
   const company = (customer.company || '').trim();
+  const eventDate = String(event_date || '').trim() || null;
 
   if (!name || !phone) return res.status(400).json({ error: 'Informe nome e telefone' });
   if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Carrinho vazio' });
@@ -190,10 +191,15 @@ router.post('/quote', async (req, res) => {
       });
     }
 
-    // Cliente (lead): reaproveita por telefone/e-mail ou cria novo
+    // Cliente (lead): cliente logado → reaproveita por telefone/e-mail → cria novo
     let customerId = null;
     let existing = null;
-    if (phone) {
+    if (customer_id) {
+      const { data } = await supabase.from('CLIENTES').select('id')
+        .eq('tenant_id', STORE_TENANT).eq('id', customer_id).limit(1).maybeSingle();
+      existing = data;
+    }
+    if (!existing && phone) {
       const { data } = await supabase.from('CLIENTES').select('id')
         .eq('tenant_id', STORE_TENANT).eq('phone', phone).limit(1).maybeSingle();
       existing = data;
@@ -224,13 +230,20 @@ router.post('/quote', async (req, res) => {
     } catch { /* sem RPC: número fica nulo */ }
 
     const subtotal = orderItems.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-    const fullNotes = `PEDIDO PELO SITE — Contato: ${name} / ${phone}${email ? ' / ' + email : ''}${company ? ' / ' + company : ''}${notes ? `\nObs: ${notes}` : ''}`;
+    const eventNote = eventDate ? `\nData do evento: ${eventDate.split('-').reverse().join('/')}` : '';
+    const fullNotes = `PEDIDO PELO SITE — Contato: ${name} / ${phone}${email ? ' / ' + email : ''}${company ? ' / ' + company : ''}${eventNote}${notes ? `\nObs: ${notes}` : ''}`;
 
-    const { data: quote, error: qErr } = await supabase.from('ORCAMENTOS').insert({
+    const baseQuote = {
       tenant_id: STORE_TENANT, user_id: null, number,
       customer_id: customerId, subtotal, discount: 0, total: subtotal,
       notes: fullNotes, status: 'open', delivery_days: 10,
-    }).select('id, number').single();
+    };
+    // event_date pode não existir ainda (migration 024) → fallback sem ela
+    let { data: quote, error: qErr } = await supabase.from('ORCAMENTOS')
+      .insert({ ...baseQuote, event_date: eventDate }).select('id, number').single();
+    if (qErr && /event_date/i.test(qErr.message || '')) {
+      ({ data: quote, error: qErr } = await supabase.from('ORCAMENTOS').insert(baseQuote).select('id, number').single());
+    }
     if (qErr) throw qErr;
 
     // sobe os previews dos itens personalizados para o Storage (não no banco)
@@ -347,6 +360,77 @@ router.post('/login', async (req, res) => {
     }
     if (!cli) return res.status(404).json({ error: 'CPF não encontrado. Faça seu cadastro primeiro.' });
     res.json({ success: true, customer: cli });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Status traduzido para o cliente ───────────────────────
+function statusCliente(quote, sale) {
+  if (sale) {
+    const st = sale.production_stage || '';
+    if (sale.status === 'completed' || sale.status === 'delivered') return { key: 'done', label: 'Concluído' };
+    if (st === 'finalizado' || sale.status === 'ready')             return { key: 'ready', label: 'Pronto! 🎉' };
+    if (['revelacao', 'producao', 'embalagem'].includes(st))        return { key: 'producing', label: 'Em produção' };
+    return { key: 'preparing', label: 'Em preparação' };
+  }
+  const s = quote.status;
+  if (s === 'approved')  return { key: 'approved', label: 'Aprovado' };
+  if (s === 'rejected')  return { key: 'rejected', label: 'Recusado' };
+  if (s === 'converted') return { key: 'producing', label: 'Em produção' };
+  return { key: 'analysis', label: 'Em análise' };
+}
+
+// ── Meus pedidos (loja) — status + fotos do produto ───────
+router.get('/my-orders', async (req, res) => {
+  let cid = req.query.customer_id || null;
+  const cpf = soDigitos(req.query.cpf);
+  try {
+    if (!cid && cpf) {
+      let { data, error } = await supabase.from('CLIENTES').select('id')
+        .eq('tenant_id', STORE_TENANT).eq('doc_digits', cpf).limit(1).maybeSingle();
+      if (error) {
+        const { data: all } = await supabase.from('CLIENTES').select('id, cpf_cnpj').eq('tenant_id', STORE_TENANT).limit(5000);
+        data = (all || []).find(c => soDigitos(c.cpf_cnpj) === cpf) || null;
+      }
+      cid = data?.id || null;
+    }
+    if (!cid) return res.status(400).json({ error: 'Cliente não identificado' });
+
+    const sel = 'id, number, status, total, created_at, event_date, converted_sale_id, ORCAMENTO_ITENS(product_name, quantity, customization)';
+    let { data: quotes, error } = await supabase.from('ORCAMENTOS').select(sel)
+      .eq('tenant_id', STORE_TENANT).eq('customer_id', cid).order('created_at', { ascending: false }).limit(100);
+    if (error) { // event_date pode não existir → tenta sem ela
+      ({ data: quotes } = await supabase.from('ORCAMENTOS')
+        .select('id, number, status, total, created_at, converted_sale_id, ORCAMENTO_ITENS(product_name, quantity, customization)')
+        .eq('tenant_id', STORE_TENANT).eq('customer_id', cid).order('created_at', { ascending: false }).limit(100));
+    }
+    quotes = quotes || [];
+
+    const saleIds = quotes.map(q => q.converted_sale_id).filter(Boolean);
+    let salesById = {};
+    if (saleIds.length) {
+      const { data: sales } = await supabase.from('VENDAS')
+        .select('id, status, production_stage, ship_date, max_delivery_date, production_photos, event_date')
+        .eq('tenant_id', STORE_TENANT).in('id', saleIds);
+      salesById = Object.fromEntries((sales || []).map(s => [s.id, s]));
+    }
+
+    const orders = quotes.map(q => {
+      const sale = q.converted_sale_id ? salesById[q.converted_sale_id] : null;
+      return {
+        id: q.id, number: q.number, created_at: q.created_at,
+        event_date: q.event_date || sale?.event_date || null,
+        ship_date: sale?.ship_date || null,
+        max_delivery_date: sale?.max_delivery_date || null,
+        total: q.total,
+        status: statusCliente(q, sale),
+        photos: Array.isArray(sale?.production_photos) ? sale.production_photos : [],
+        items: (q.ORCAMENTO_ITENS || []).map(it => ({
+          name: it.product_name, quantity: it.quantity,
+          preview: it.customization?.preview || null,
+        })),
+      };
+    });
+    res.json({ orders });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

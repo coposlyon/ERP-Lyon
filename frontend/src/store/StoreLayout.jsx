@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingCart, Droplet, Phone, Instagram, Mail, User, LogOut } from 'lucide-react';
+import { ShoppingCart, Droplet, Phone, Instagram, Mail, User, LogOut, Package } from 'lucide-react';
 import storeApi from './storeApi';
 import { useCart } from './CartContext';
 import { useStoreAuth } from './StoreAuthContext';
@@ -44,8 +44,13 @@ export default function StoreLayout({ children }) {
           </nav>
           <div className="flex items-center gap-2 sm:gap-3">
             {customer ? (
-              <div className="flex items-center gap-2">
-                <span className={`hidden sm:flex items-center gap-1.5 text-sm font-bold ${solid ? 'text-gray-800' : 'text-white'}`}>
+              <div className="flex items-center gap-1 sm:gap-2">
+                <button onClick={() => navigate('/loja/pedidos')}
+                  className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-semibold transition-colors ${solid ? 'text-gray-700 hover:bg-gray-100' : 'text-white hover:bg-white/10'}`}>
+                  <Package size={15} className="text-orange-500" />
+                  <span className="hidden sm:inline">Meus Pedidos</span>
+                </button>
+                <span className={`hidden md:flex items-center gap-1.5 text-sm font-bold ${solid ? 'text-gray-800' : 'text-white'}`}>
                   <User size={15} className="text-orange-500" /> Olá, {firstName}
                 </span>
                 <button onClick={() => { logout(); navigate('/loja'); }} title="Sair"

@@ -8,6 +8,7 @@ import CustomerForm from './CustomerForm';
 import MarketingModal from './MarketingModal';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { id4 } from '@/lib/ids';
 import toast from 'react-hot-toast';
 
 const TYPE_LABELS = { PF: 'PF', PJ: 'PJ', CO: 'Colab.' };
@@ -98,7 +99,7 @@ export default function Customers() {
 
   const columns = [
     { key: 'display_id', label: 'Código', width: 70,
-      render: v => <span className="text-xs font-mono text-gray-500 font-semibold">{v || '—'}</span>
+      render: v => <span className="text-xs font-mono text-gray-500 font-semibold">{id4(v)}</span>
     },
     { key: 'type', label: 'Tipo', width: 65,
       render: v => <span className={`badge ${TYPE_BADGE[v] || 'badge-gray'}`}>{TYPE_LABELS[v] || v}</span>

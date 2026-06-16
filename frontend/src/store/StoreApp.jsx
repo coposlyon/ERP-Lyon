@@ -8,6 +8,7 @@ import StoreHome from './StoreHome';
 import ProductPage from './ProductPage';
 import CartPage from './CartPage';
 import StoreLogin from './StoreLogin';
+import StoreOrders from './StoreOrders';
 
 const StoreStudio = lazy(() => import('./StoreStudio'));
 
@@ -31,6 +32,7 @@ export default function StoreApp() {
             <Route path="personalizar" element={<Suspense fallback={<StudioFallback />}><StoreStudio /></Suspense>} />
             <Route path="carrinho" element={<CartPage />} />
             <Route path="login" element={<StoreLogin />} />
+            <Route path="pedidos" element={<StoreOrders />} />
             <Route path="*" element={<Navigate to="/loja" replace />} />
           </Routes>
         </StoreLayout>

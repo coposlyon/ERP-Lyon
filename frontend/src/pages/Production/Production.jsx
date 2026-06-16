@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Factory, Play, Check, Search, RefreshCw, Loader2, Save, Image as ImageIcon, AlertTriangle, Clock, Plus } from 'lucide-react';
+import { Factory, Play, Check, Search, RefreshCw, Loader2, Save, Image as ImageIcon, AlertTriangle, Clock, Plus, Camera, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
+import { id4 } from '@/lib/ids';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
 
@@ -81,6 +82,31 @@ export default function Production() {
     },
     onError: e => toast.error(e.error || 'Erro (rodou a migration 020?)'),
   });
+  // Foto do produto (visível ao cliente no site)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoMut = useMutation({
+    mutationFn: (image) => api.post(`/production/${selId}/photo`, { image }),
+    onSuccess: () => { qc.invalidateQueries(['production-detail', selId]); qc.invalidateQueries(['production']); toast.success('Foto anexada — já aparece para o cliente!'); },
+    onError: e => toast.error(e.error || 'Erro ao anexar foto (rodou a migration 024?)'),
+  });
+  const delPhotoMut = useMutation({
+    mutationFn: (url) => api.delete(`/production/${selId}/photo?url=${encodeURIComponent(url)}`),
+    onSuccess: () => { qc.invalidateQueries(['production-detail', selId]); toast.success('Foto removida'); },
+    onError: e => toast.error(e.error || 'Erro ao remover'),
+  });
+  function onPickPhoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Selecione uma imagem'); return; }
+    if (file.size > 8 * 1024 * 1024) { toast.error('Imagem muito grande (máx. 8MB)'); return; }
+    setUploadingPhoto(true);
+    const reader = new FileReader();
+    reader.onload = () => photoMut.mutate(reader.result, { onSettled: () => setUploadingPhoto(false) });
+    reader.onerror = () => { setUploadingPhoto(false); toast.error('Não consegui ler a imagem'); };
+    reader.readAsDataURL(file);
+  }
+
   // sincroniza campos editáveis quando troca de pedido
   const d = detail || {};
   const ef = (k, fallback = '') => (k in edit ? edit[k] : (d[k] ?? fallback));
@@ -143,9 +169,11 @@ export default function Production() {
               <tr className="text-left text-xs text-gray-500 uppercase border-b border-gray-100 bg-gray-50">
                 <th className="px-3 py-2">Pedido</th>
                 <th className="px-3 py-2">Cliente</th>
+                <th className="px-3 py-2">Pedido em</th>
                 <th className="px-3 py-2">Evento</th>
                 <th className="px-3 py-2">Saída</th>
-                <th className="px-3 py-2 text-center">Dias</th>
+                <th className="px-3 py-2">Prazo máx.</th>
+                <th className="px-3 py-2 text-center">Dias p/ prazo</th>
                 <th className="px-3 py-2">Transportadora</th>
                 <th className="px-3 py-2">Cidade/UF</th>
                 <th className="px-3 py-2">Status</th>
@@ -153,19 +181,25 @@ export default function Production() {
               </tr>
             </thead>
             <tbody>
-              {isFetching && rows.length === 0 && <tr><td colSpan={9} className="p-8 text-center text-gray-400"><Loader2 className="animate-spin mx-auto" /></td></tr>}
-              {!isFetching && rows.length === 0 && <tr><td colSpan={9} className="p-8 text-center text-gray-400">Nenhum pedido em produção.</td></tr>}
+              {isFetching && rows.length === 0 && <tr><td colSpan={11} className="p-8 text-center text-gray-400"><Loader2 className="animate-spin mx-auto" /></td></tr>}
+              {!isFetching && rows.length === 0 && <tr><td colSpan={11} className="p-8 text-center text-gray-400">Nenhum pedido em produção.</td></tr>}
               {rows.map(r => {
                 const st = STAGES[r.stage] || STAGES.aguardando_producao;
-                const late = r.diff_days != null && r.diff_days < 0;
+                const dd = r.diff_deadline ?? r.diff_days;
+                const late = dd != null && dd < 0;
+                const soon = dd != null && dd >= 0 && dd <= 3;
                 return (
                   <tr key={r.id} onClick={() => { setSelId(r.id); setEdit({}); }}
                     className={`border-b border-gray-50 cursor-pointer ${selId === r.id ? 'bg-orange-50' : 'hover:bg-gray-50/60'}`}>
                     <td className="px-3 py-2 font-mono font-semibold">#{String(r.number || '').padStart(4, '0')}</td>
                     <td className="px-3 py-2">{r.customer}</td>
+                    <td className="px-3 py-2 text-gray-500">{fmtDate(r.order_date)}</td>
                     <td className="px-3 py-2 text-gray-500">{fmtDate(r.event_date)}</td>
                     <td className="px-3 py-2 text-gray-500">{fmtDate(r.ship_date)}</td>
-                    <td className={`px-3 py-2 text-center font-medium ${late ? 'text-red-600' : 'text-gray-600'}`}>{r.diff_days ?? '—'}</td>
+                    <td className="px-3 py-2 text-gray-500">{fmtDate(r.max_delivery_date)}</td>
+                    <td className={`px-3 py-2 text-center font-semibold ${late ? 'text-red-600' : soon ? 'text-orange-500' : 'text-gray-600'}`}>
+                      {dd == null ? '—' : late ? `${Math.abs(dd)}d atraso` : `${dd}d`}
+                    </td>
                     <td className="px-3 py-2 text-gray-500 truncate max-w-[140px]">{r.carrier || '—'}</td>
                     <td className="px-3 py-2 text-gray-500">{r.city ? `${r.city}/${r.uf || ''}` : '—'}</td>
                     <td className="px-3 py-2"><span className={`text-xs font-medium px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span></td>
@@ -194,7 +228,7 @@ export default function Production() {
                   <tbody>
                     {(detail?.items || []).map((it, i) => (
                       <tr key={i} className="border-b border-gray-50">
-                        <td className="py-1.5 pr-2 font-mono text-xs text-gray-400">{it.product_code || '—'}</td>
+                        <td className="py-1.5 pr-2 font-mono text-xs text-gray-400">{it.product_code ? id4(it.product_code) : '—'}</td>
                         <td className="py-1.5 pr-2 font-medium">{it.product_name}</td>
                         <td className="py-1.5 pr-2 text-right">{it.quantity}</td>
                         <td className="py-1.5 pr-2">{it.color || '—'}</td>
@@ -208,11 +242,33 @@ export default function Production() {
 
             <div className="card p-4 space-y-3">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Logística & datas</p>
+              {/* Data do pedido (automática) + diffs calculados */}
+              <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Pedido em</p>
+                  <p className="text-sm font-semibold text-gray-800">{fmtDate(detail?.order_date)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Dias p/ evento</p>
+                  <p className="text-sm font-semibold text-gray-800">{selected?.diff_event == null ? '—' : `${selected.diff_event}d`}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Dias p/ saída</p>
+                  <p className="text-sm font-semibold text-gray-800">{selected?.diff_ship == null ? '—' : `${selected.diff_ship}d`}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Dias p/ prazo</p>
+                  <p className={`text-sm font-bold ${selected?.diff_deadline != null && selected.diff_deadline < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                    {selected?.diff_deadline == null ? '—' : selected.diff_deadline < 0 ? `${Math.abs(selected.diff_deadline)}d atraso` : `${selected.diff_deadline}d`}
+                  </p>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="label">Data do evento</label><input type="date" className="input" value={ef('event_date') || ''} onChange={e => setEdit(s => ({ ...s, event_date: e.target.value }))} /></div>
+                <div><label className="label">Prazo máx. entrega</label><input type="date" className="input" value={ef('max_delivery_date') || ''} onChange={e => setEdit(s => ({ ...s, max_delivery_date: e.target.value }))} /></div>
                 <div><label className="label">Data de saída</label><input type="date" className="input" value={ef('ship_date') || ''} onChange={e => setEdit(s => ({ ...s, ship_date: e.target.value }))} /></div>
-                <div><label className="label">Transportadora</label><input className="input" value={ef('carrier') || ''} onChange={e => setEdit(s => ({ ...s, carrier: e.target.value }))} /></div>
                 <div><label className="label">Horário</label><input className="input" value={ef('ship_time') || ''} onChange={e => setEdit(s => ({ ...s, ship_time: e.target.value }))} placeholder="10:00" /></div>
+                <div><label className="label">Transportadora</label><input className="input" value={ef('carrier') || ''} onChange={e => setEdit(s => ({ ...s, carrier: e.target.value }))} /></div>
                 <div><label className="label">Frete (R$)</label><input type="number" step="0.01" className="input" value={ef('freight') ?? ''} onChange={e => setEdit(s => ({ ...s, freight: e.target.value }))} placeholder="0,00" /></div>
               </div>
               <div><label className="label">Observações de produção</label><textarea rows={2} className="input resize-none" value={ef('production_obs') || ''} onChange={e => setEdit(s => ({ ...s, production_obs: e.target.value }))} /></div>
@@ -237,6 +293,33 @@ export default function Production() {
                 </div>
               ) : (
                 <div className="text-sm text-gray-400 text-center py-10">Sem arte anexada neste pedido.</div>
+              )}
+            </div>
+
+            {/* Foto do produto personalizado (vai para o cliente no site) */}
+            <div className="card p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5"><Camera size={13} /> Foto do produto</p>
+                <label className={`btn-secondary text-xs cursor-pointer ${uploadingPhoto ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {uploadingPhoto ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />} Anexar foto
+                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={onPickPhoto} disabled={uploadingPhoto} />
+                </label>
+              </div>
+              <p className="text-[11px] text-gray-400 mb-2">Aparece no acompanhamento do pedido do cliente no site. 📸</p>
+              {(detail?.photos || []).length === 0 ? (
+                <p className="text-sm text-gray-400">Nenhuma foto anexada.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {(detail.photos).map((p, i) => (
+                    <div key={i} className="relative group">
+                      <img src={p.url} alt="" className="w-full h-24 object-cover rounded-lg border border-gray-200" />
+                      <button onClick={() => delPhotoMut.mutate(p.url)}
+                        className="absolute top-1 right-1 bg-white/90 hover:bg-red-500 hover:text-white text-red-500 rounded-full p-1 shadow opacity-0 group-hover:opacity-100 transition-opacity" title="Remover">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 

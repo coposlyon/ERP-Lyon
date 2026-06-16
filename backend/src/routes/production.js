@@ -2,6 +2,7 @@ const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
+const { uploadDataUrl } = require('../lib/storage');
 
 // Etapas e suas colunas de início/fim
 const STAGE_FIELDS = {
@@ -41,17 +42,25 @@ router.get('/', async (req, res) => {
     if (error) throw error;
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
+    const dias = d => (d ? Math.round((new Date(d + 'T00:00:00') - today) / 86400000) : null);
     const rows = (data || []).map(s => {
       const addr = s.CLIENTES?.address || {};
-      const ship = s.ship_date ? new Date(s.ship_date) : null;
-      const diffDays = ship ? Math.round((ship - today) / 86400000) : null;
+      // prazo de referência: prazo máximo → evento → saída
+      const deadline = s.max_delivery_date || s.event_date || s.ship_date || null;
       return {
         id: s.id, number: s.number, created_at: s.created_at,
         customer: s.CLIENTES?.name || 'Consumidor Final',
         seller: s.USUARIOS?.name || null,
         city: addr.city || null, uf: addr.state || null,
+        order_date: s.created_at ? String(s.created_at).slice(0, 10) : null,
         event_date: s.event_date, ship_date: s.ship_date, ship_time: s.ship_time,
-        carrier: s.carrier, diff_days: diffDays,
+        max_delivery_date: s.max_delivery_date,
+        diff_event: dias(s.event_date),
+        diff_ship: dias(s.ship_date),
+        diff_deadline: dias(deadline),
+        diff_days: dias(deadline), // coluna "Dias" = dias até o prazo
+        carrier: s.carrier,
+        photos: Array.isArray(s.production_photos) ? s.production_photos : [],
         stage: s.production_stage || 'aguardando_producao',
         art_file: s.art_file, total: s.total, status: s.status,
       };
@@ -79,6 +88,8 @@ router.get('/:id', async (req, res) => {
 
     res.json({
       ...sale,
+      order_date: sale.created_at ? String(sale.created_at).slice(0, 10) : null,
+      photos: Array.isArray(sale.production_photos) ? sale.production_photos : [],
       history: Array.isArray(sale.production_log) ? sale.production_log : [],
       perdas: perdas || [],
       items: (items || []).map(it => ({
@@ -97,7 +108,7 @@ router.get('/:id', async (req, res) => {
 
 // ── Editar dados de produção (datas, transportadora, arte, obs) ──
 router.patch('/:id', async (req, res) => {
-  const allowed = ['event_date', 'ship_date', 'ship_time', 'carrier', 'art_file', 'production_obs', 'production_stage', 'freight'];
+  const allowed = ['event_date', 'ship_date', 'ship_time', 'carrier', 'art_file', 'production_obs', 'production_stage', 'freight', 'max_delivery_date'];
   const patch = {};
   for (const k of allowed) if (k in req.body) patch[k] = req.body[k] || null;
   if (!Object.keys(patch).length) return res.status(400).json({ error: 'Nada para atualizar' });
@@ -174,6 +185,50 @@ router.post('/:id/perda', async (req, res) => {
 
     audit(req, 'create', 'production_loss', req.params.id, { product_id, quantity: qty });
     res.status(201).json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Anexar foto do copo personalizado (visível ao cliente no site) ──
+router.post('/:id/photo', async (req, res) => {
+  const { image, caption } = req.body;
+  if (!image) return res.status(400).json({ error: 'Envie a imagem (foto do copo)' });
+  try {
+    const url = await uploadDataUrl(image, 'producao');
+    if (!url) return res.status(400).json({ error: 'Não consegui salvar a imagem' });
+
+    const { data: sale, error: e0 } = await supabase.from('VENDAS')
+      .select('production_photos, production_log').eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
+    if (e0 || !sale) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const actor = req.user?.name || req.user?.email || 'Usuário';
+    const photos = Array.isArray(sale.production_photos) ? sale.production_photos : [];
+    photos.push({ url, caption: caption || null, at: new Date().toISOString(), user: actor });
+
+    const log = Array.isArray(sale.production_log) ? sale.production_log : [];
+    log.push({ stage: 'foto', action: 'anexou', at: new Date().toISOString(), user_id: req.user?.id || null, user: actor });
+
+    const { error } = await supabase.from('VENDAS')
+      .update({ production_photos: photos, production_log: log })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId);
+    if (error) throw error;
+    audit(req, 'create', 'production_photo', req.params.id, {});
+    res.status(201).json({ ok: true, photos });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Remover foto anexada ──────────────────────────────────
+router.delete('/:id/photo', async (req, res) => {
+  const url = req.query.url || req.body?.url;
+  if (!url) return res.status(400).json({ error: 'Informe a foto a remover' });
+  try {
+    const { data: sale, error: e0 } = await supabase.from('VENDAS')
+      .select('production_photos').eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
+    if (e0 || !sale) return res.status(404).json({ error: 'Pedido não encontrado' });
+    const photos = (Array.isArray(sale.production_photos) ? sale.production_photos : []).filter(p => p.url !== url);
+    const { error } = await supabase.from('VENDAS').update({ production_photos: photos })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId);
+    if (error) throw error;
+    res.json({ ok: true, photos });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

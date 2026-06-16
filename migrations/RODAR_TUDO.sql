@@ -1115,3 +1115,12 @@ ALTER TABLE "CLIENTES"     ADD COLUMN IF NOT EXISTS birth_date DATE;
 ALTER TABLE "FORNECEDORES" ADD COLUMN IF NOT EXISTS ie TEXT;
 INSERT INTO "_MIGRATIONS" (version, name) VALUES ('023', 'nascimento_ie_fornecedor')
 ON CONFLICT (version) DO NOTHING;
+
+
+-- >>>>>>>>>>>>>>>>>>>> 024_producao_datas_fotos.sql <<<<<<<<<<<<<<<<<<<<
+ALTER TABLE "VENDAS"     ADD COLUMN IF NOT EXISTS max_delivery_date DATE;
+ALTER TABLE "VENDAS"     ADD COLUMN IF NOT EXISTS production_photos JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE "ORCAMENTOS" ADD COLUMN IF NOT EXISTS event_date        DATE;
+ALTER TABLE "ORCAMENTOS" ADD COLUMN IF NOT EXISTS max_delivery_date DATE;
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('024', 'producao_datas_fotos')
+ON CONFLICT (version) DO NOTHING;

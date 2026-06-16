@@ -7,6 +7,7 @@ import {
   AlertCircle, PackageCheck, TriangleAlert,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import { format, parseISO } from 'date-fns';
@@ -189,7 +190,7 @@ function MovementCard({ m }) {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-900 truncate leading-tight">{produto?.name || '—'}</p>
           {produto?.code && (
-            <span className="text-xs text-gray-400 font-mono">{produto.code}</span>
+            <span className="text-xs text-gray-400 font-mono">{id4(produto.code)}</span>
           )}
         </div>
 
@@ -319,7 +320,7 @@ function PurchaseSuggestion() {
                 <tr key={it.id} className="border-t border-gray-50">
                   <td className="px-4 py-2 text-sm">
                     <span className="font-medium text-gray-800">{it.name}</span>
-                    <span className="text-xs text-gray-400 ml-2">{it.code}</span>
+                    <span className="text-xs text-gray-400 ml-2 font-mono">{id4(it.code)}</span>
                   </td>
                   <td className={`px-4 py-2 text-right text-sm font-medium ${it.current_stock < 0 ? 'text-red-600' : 'text-gray-600'}`}>
                     {it.current_stock} {it.unit}
@@ -412,7 +413,7 @@ function InventoryCount() {
                   <tr key={p.id} className="border-t border-gray-50 hover:bg-gray-50/50">
                     <td className="px-4 py-2 text-sm">
                       <span className="font-medium text-gray-800">{p.name}</span>
-                      <span className="text-xs text-gray-400 ml-2">{p.code}</span>
+                      <span className="text-xs text-gray-400 ml-2 font-mono">{id4(p.code)}</span>
                     </td>
                     <td className="px-4 py-2 text-right text-sm font-mono text-gray-600">{p.current_stock} {p.unit}</td>
                     <td className="px-4 py-2 text-right">
@@ -628,7 +629,9 @@ export default function Stock() {
 
   // ── Colunas: Lista Completa ─────────────────────────────────────
   const posColumns = [
-    { key: 'code', label: 'Código', width: 80, sortable: true },
+    { key: 'code', label: 'Código', width: 80, sortable: true,
+      sortAccessor: r => /^\d+$/.test(String(r.code || '')) ? Number(r.code) : r.code,
+      render: v => <span className="font-mono text-xs text-gray-600">{id4(v)}</span> },
     { key: 'name', label: 'Produto', sortable: true },
     { key: 'CATEGORIAS', label: 'Categoria', sortable: true, sortAccessor: r => r.CATEGORIAS?.name || '', render: v => v?.name || '—' },
     {
@@ -665,7 +668,7 @@ export default function Stock() {
   ];
 
   const replenishColumns = [
-    { key: 'code', label: 'Código', width: 80 },
+    { key: 'code', label: 'Código', width: 80, render: v => <span className="font-mono text-xs">{id4(v)}</span> },
     { key: 'name', label: 'Produto' },
     {
       key: 'current_stock', label: 'Estoque Atual', width: 120,
