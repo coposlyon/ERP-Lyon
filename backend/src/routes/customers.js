@@ -167,10 +167,11 @@ router.put('/:id', async (req, res) => {
         attachments: existingAttachments, // sempre preserva os documentos do banco
       },
     };
-    const payload = { ...base, birth_date: birth_date || null };
+    // birth_date (migration 023) e updated_at (migration 025) podem não existir → fallback
+    const payload = { ...base, birth_date: birth_date || null, updated_at: new Date().toISOString() };
     let { data, error } = await supabase.from('CLIENTES')
       .update(payload).eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
-    if (error && /birth_date/i.test(error.message || '')) { // coluna birth_date ainda não existe (migration 023)
+    if (error && /(birth_date|updated_at)/i.test(error.message || '')) {
       ({ data, error } = await supabase.from('CLIENTES')
         .update(base).eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single());
     }

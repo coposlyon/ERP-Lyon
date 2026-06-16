@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { ArrowLeft, Phone, Mail, MapPin, Edit2, Instagram, Cake, Hash, IdCard } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Edit2, Instagram, Cake, Hash, IdCard, CalendarPlus, RefreshCw } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useState } from 'react';
@@ -14,6 +14,7 @@ function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 }
 function fmtDateBR(iso) { try { return format(parseISO(iso), 'dd/MM/yyyy', { locale: ptBR }); } catch { return iso; } }
+function fmtDateTimeBR(iso) { try { return format(parseISO(iso), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }); } catch { return iso; } }
 function idadeAnos(iso) {
   try {
     const b = parseISO(iso); const t = new Date();
@@ -161,6 +162,23 @@ export default function CustomerDetail() {
           )}
           {customer.notes && (
             <p className="text-sm text-gray-500 mt-2 pt-2 border-t">{customer.notes}</p>
+          )}
+
+          {/* Histórico do cadastro: criação e última atualização */}
+          {(customer.created_at || customer.updated_at) && (
+            <div className="pt-2 mt-2 border-t border-gray-100 space-y-1">
+              {customer.created_at && (
+                <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                  <CalendarPlus size={12} /> Cadastro criado em {fmtDateTimeBR(customer.created_at)}
+                </p>
+              )}
+              {customer.updated_at && customer.created_at &&
+                (new Date(customer.updated_at) - new Date(customer.created_at) > 60000) && (
+                <p className="text-xs text-emerald-600 flex items-center gap-1.5">
+                  <RefreshCw size={12} /> Cadastro atualizado em {fmtDateTimeBR(customer.updated_at)}
+                </p>
+              )}
+            </div>
           )}
         </div>
 

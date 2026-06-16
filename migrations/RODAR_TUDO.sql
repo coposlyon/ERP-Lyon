@@ -1124,3 +1124,10 @@ ALTER TABLE "ORCAMENTOS" ADD COLUMN IF NOT EXISTS event_date        DATE;
 ALTER TABLE "ORCAMENTOS" ADD COLUMN IF NOT EXISTS max_delivery_date DATE;
 INSERT INTO "_MIGRATIONS" (version, name) VALUES ('024', 'producao_datas_fotos')
 ON CONFLICT (version) DO NOTHING;
+
+
+-- >>>>>>>>>>>>>>>>>>>> 025_clientes_timestamps.sql <<<<<<<<<<<<<<<<<<<<
+ALTER TABLE "CLIENTES" ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE "CLIENTES" ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('025', 'clientes_timestamps')
+ON CONFLICT (version) DO NOTHING;

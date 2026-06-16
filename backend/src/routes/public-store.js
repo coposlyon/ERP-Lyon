@@ -343,10 +343,11 @@ router.post('/cadastro', async (req, res) => {
 
     // Atualização dos dados de um cliente existente
     if (byDoc && update) {
-      let { data: upd, error } = await supabase.from('CLIENTES').update(payload).eq('id', byDoc.id).eq('tenant_id', STORE_TENANT).select(sel).single();
-      if (error && /birth_date/i.test(error.message || '')) {
-        delete payload.birth_date;
-        ({ data: upd, error } = await supabase.from('CLIENTES').update(payload).eq('id', byDoc.id).eq('tenant_id', STORE_TENANT).select(sel).single());
+      const updPayload = { ...payload, updated_at: new Date().toISOString() };
+      let { data: upd, error } = await supabase.from('CLIENTES').update(updPayload).eq('id', byDoc.id).eq('tenant_id', STORE_TENANT).select(sel).single();
+      if (error && /(birth_date|updated_at)/i.test(error.message || '')) {
+        delete updPayload.birth_date; delete updPayload.updated_at;
+        ({ data: upd, error } = await supabase.from('CLIENTES').update(updPayload).eq('id', byDoc.id).eq('tenant_id', STORE_TENANT).select(sel).single());
       }
       if (error) throw error;
       return res.json({ success: true, updated: true, customer: upd });

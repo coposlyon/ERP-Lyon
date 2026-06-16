@@ -87,6 +87,7 @@ export default function CadastroCliente() {
   const [verifyDate, setVerifyDate] = useState(''); // data informada p/ comprovar identidade
   const [verifying, setVerifying] = useState(false);
   const [verifyErr, setVerifyErr] = useState('');
+  const [review, setReview] = useState(null); // cliente p/ revisar os dados antes de entrar
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
@@ -140,7 +141,7 @@ export default function CadastroCliente() {
     setDone(true);
   }
 
-  // PF: comprova identidade pela data de nascimento
+  // PF: comprova identidade pela data de nascimento → abre revisão dos dados
   async function confirmarIdentidade() {
     const iso = brToISO(verifyDate);
     if (!iso) { setVerifyErr('Informe uma data válida (DD/MM/AAAA)'); return; }
@@ -148,26 +149,51 @@ export default function CadastroCliente() {
     try {
       const digits = f.cpf_cnpj.replace(/\D/g, '');
       const res = await storeApi.post('/verify-birth', { cpf: digits, birth_date: iso });
-      if (res?.customer) entrarLogado(res.customer);
+      if (res?.customer) { setReview(res.customer); setExisting(null); }
     } catch (e) {
       setVerifyErr(e?.response?.data?.error || 'Data de nascimento não confere. Tente novamente.');
     } finally { setVerifying(false); }
   }
 
-  // PJ: entra direto (sem data de nascimento)
+  // PJ: confirma e abre revisão dos dados (sem data de nascimento)
   async function entrarPJ() {
     setVerifying(true); setVerifyErr('');
     try {
       const digits = f.cpf_cnpj.replace(/\D/g, '');
       const res = await storeApi.post('/login', { cpf: digits });
-      if (res?.customer) entrarLogado(res.customer);
+      if (res?.customer) { setReview(res.customer); setExisting(null); }
     } catch (e) {
       setVerifyErr(e?.response?.data?.error || 'Não foi possível entrar. Tente novamente.');
     } finally { setVerifying(false); }
   }
 
+  // Revisão: dados conferidos → entra na loja
+  function okReview() { if (review) entrarLogado(review); }
+
+  // Revisão: quer corrigir → pré-preenche o formulário para edição
+  function editarReview() {
+    const c = review;
+    setType(c.type === 'PJ' ? 'PJ' : 'PF');
+    setF({
+      name: (c.name || '').toUpperCase(),
+      cpf_cnpj: (c.type === 'PJ' ? maskCNPJ : maskCPF)(c.cpf_cnpj || ''),
+      ie: c.rg_ie && c.rg_ie !== 'ISENTO' ? c.rg_ie : '',
+      birth_date: isoToBR(c.birth_date),
+      email: c.email || '',
+      phone: maskPhone(c.phone || ''),
+      mobile: maskPhone(c.mobile || ''),
+      instagram: c.instagram || '',
+    });
+    setIeIsento(c.rg_ie === 'ISENTO' || !!c.admission_data?.ie_isento);
+    setCanPublish(c.admission_data?.can_publish === false ? 'nao' : 'sim');
+    const a = c.address || {};
+    setAddr({ zip: maskCEP(a.zip || ''), street: a.street || '', number: a.number || '', complement: a.complement || '', neighborhood: a.neighborhood || '', city: a.city || '', state: a.state || '' });
+    setEditMode(true);
+    setReview(null); setExisting(null);
+  }
+
   function cancelarExistente() {
-    setExisting(null); setVerifyDate(''); setVerifyErr('');
+    setExisting(null); setReview(null); setVerifyDate(''); setVerifyErr('');
     set('cpf_cnpj', '');
   }
 
@@ -316,8 +342,44 @@ export default function CadastroCliente() {
       {phase === 'form' && (<>
       {Bg}
 
+      {/* Revisão dos dados — após comprovar identidade */}
+      {review && (
+        <div className="fixed inset-0 z-30 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 st-rise">
+            <div className="text-center">
+              <CheckCircle2 size={44} className="text-green-500 mx-auto mb-2" />
+              <h2 className="text-lg font-black text-gray-900">Confirme se seus dados estão atualizados</h2>
+              <p className="text-gray-500 text-sm mt-1">Dê uma olhada antes de continuar:</p>
+            </div>
+            <div className="mt-4 space-y-1.5 text-sm bg-gray-50 rounded-2xl p-4 max-h-[42vh] overflow-y-auto">
+              <ReviewRow label="Nome" value={review.name} />
+              <ReviewRow label={review.type === 'PJ' ? 'CNPJ' : 'CPF'} value={review.cpf_cnpj} />
+              {review.type !== 'PJ' && review.birth_date && <ReviewRow label="Nascimento" value={isoToBR(review.birth_date)} />}
+              {review.type === 'PJ' && review.rg_ie && <ReviewRow label="IE" value={review.rg_ie} />}
+              <ReviewRow label="E-mail" value={review.email} />
+              <ReviewRow label="Telefone" value={review.phone} />
+              {review.mobile && <ReviewRow label="Recado" value={review.mobile} />}
+              {review.instagram && <ReviewRow label="Instagram" value={'@' + String(review.instagram).replace(/^@/, '')} />}
+              {review.address?.street && (
+                <ReviewRow label="Endereço" value={`${review.address.street}, ${review.address.number || 's/n'} — ${review.address.city || ''}/${review.address.state || ''}`} />
+              )}
+            </div>
+            <div className="flex flex-col gap-2 mt-5">
+              <button onClick={okReview}
+                className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                <CheckCircle2 size={17} /> Está tudo certo — entrar
+              </button>
+              <button onClick={editarReview}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-xl transition-colors">
+                Atualizar meus dados
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* CPF/CNPJ já cadastrado — barra e pede a data de nascimento p/ comprovar */}
-      {existing && (
+      {existing && !review && (
         <div className="fixed inset-0 z-30 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-7 text-center st-rise">
             <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-3">
@@ -464,6 +526,16 @@ export default function CadastroCliente() {
         </form>
       </div>
       </>)}
+    </div>
+  );
+}
+
+function ReviewRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="text-gray-400 shrink-0">{label}</span>
+      <span className="font-medium text-gray-800 text-right break-words">{value}</span>
     </div>
   );
 }
