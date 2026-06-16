@@ -31,6 +31,7 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
   const [form, setForm] = useState({
     name:         supplier?.name         || '',
     cnpj:         supplier?.cnpj         || '',
+    ie:           supplier?.ie           || '',
     email:        supplier?.email        || '',
     phone:        supplier?.phone        || '',
     contact_name: supplier?.contact_name || '',
@@ -57,6 +58,7 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
       setForm(p => ({
         ...p,
         name:  d.name  || p.name,
+        ie:    d.ie    || p.ie,
         email: d.email || p.email,
         phone: formatPhone(d.phone || ''),
         address: {
@@ -101,27 +103,35 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
 
-      {/* CNPJ com auto-fill */}
-      <div>
-        <label className="label">CNPJ</label>
-        <div className="relative">
-          <input
-            className="input pr-10"
-            value={form.cnpj}
-            onChange={e => set('cnpj', formatCnpj(e.target.value))}
-            onBlur={handleCnpjBlur}
-            placeholder="00.000.000/0000-00"
-            maxLength={18}
-          />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            {cnpjLoading && <Loader2 size={16} className="animate-spin text-gray-400" />}
-            {!cnpjLoading && cnpjStatus === 'ok'    && <CheckCircle2 size={16} className="text-green-500" />}
-            {!cnpjLoading && cnpjStatus === 'error' && <XCircle      size={16} className="text-red-400"   />}
+      {/* CNPJ com auto-fill + Inscrição Estadual */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="label">CNPJ</label>
+          <div className="relative">
+            <input
+              className="input pr-10"
+              value={form.cnpj}
+              onChange={e => set('cnpj', formatCnpj(e.target.value))}
+              onBlur={handleCnpjBlur}
+              placeholder="00.000.000/0000-00"
+              maxLength={18}
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              {cnpjLoading && <Loader2 size={16} className="animate-spin text-gray-400" />}
+              {!cnpjLoading && cnpjStatus === 'ok'    && <CheckCircle2 size={16} className="text-green-500" />}
+              {!cnpjLoading && cnpjStatus === 'error' && <XCircle      size={16} className="text-red-400"   />}
+            </div>
           </div>
+          {cnpjLoading && (
+            <p className="text-xs text-gray-400 mt-1">Consultando Receita Federal...</p>
+          )}
         </div>
-        {cnpjLoading && (
-          <p className="text-xs text-gray-400 mt-1">Consultando Receita Federal...</p>
-        )}
+        <div>
+          <label className="label">Inscrição Estadual (IE)</label>
+          <input className="input" value={form.ie}
+            onChange={e => set('ie', e.target.value)}
+            placeholder="000.000.000.000 ou ISENTO" />
+        </div>
       </div>
 
       {/* Razão Social + Nome Fantasia */}

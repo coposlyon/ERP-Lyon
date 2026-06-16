@@ -2,10 +2,12 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import './store.css';
 import { CartProvider } from './CartContext';
+import { StoreAuthProvider } from './StoreAuthContext';
 import StoreLayout from './StoreLayout';
 import StoreHome from './StoreHome';
 import ProductPage from './ProductPage';
 import CartPage from './CartPage';
+import StoreLogin from './StoreLogin';
 
 const StoreStudio = lazy(() => import('./StoreStudio'));
 
@@ -20,16 +22,19 @@ function StudioFallback() {
 
 export default function StoreApp() {
   return (
-    <CartProvider>
-      <StoreLayout>
-        <Routes>
-          <Route index element={<StoreHome />} />
-          <Route path="produto/:id" element={<ProductPage />} />
-          <Route path="personalizar" element={<Suspense fallback={<StudioFallback />}><StoreStudio /></Suspense>} />
-          <Route path="carrinho" element={<CartPage />} />
-          <Route path="*" element={<Navigate to="/loja" replace />} />
-        </Routes>
-      </StoreLayout>
-    </CartProvider>
+    <StoreAuthProvider>
+      <CartProvider>
+        <StoreLayout>
+          <Routes>
+            <Route index element={<StoreHome />} />
+            <Route path="produto/:id" element={<ProductPage />} />
+            <Route path="personalizar" element={<Suspense fallback={<StudioFallback />}><StoreStudio /></Suspense>} />
+            <Route path="carrinho" element={<CartPage />} />
+            <Route path="login" element={<StoreLogin />} />
+            <Route path="*" element={<Navigate to="/loja" replace />} />
+          </Routes>
+        </StoreLayout>
+      </CartProvider>
+    </StoreAuthProvider>
   );
 }

@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingCart, Droplet, Phone, Instagram, Mail } from 'lucide-react';
+import { ShoppingCart, Droplet, Phone, Instagram, Mail, User, LogOut } from 'lucide-react';
 import storeApi from './storeApi';
 import { useCart } from './CartContext';
+import { useStoreAuth } from './StoreAuthContext';
 
 export default function StoreLayout({ children }) {
   const { count } = useCart();
+  const { customer, logout } = useStoreAuth();
   const navigate = useNavigate();
+  const firstName = (customer?.name || '').trim().split(/\s+/)[0];
   const { pathname } = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const { data: store } = useQuery({ queryKey: ['store-info'], queryFn: () => storeApi.get('/store') });
@@ -39,16 +42,35 @@ export default function StoreLayout({ children }) {
             <a href="/loja#catalogo" className={`hover:text-orange-500 transition-colors ${solid ? '' : 'text-white/90'}`}>Catálogo</a>
             <a href="/loja#cores" className={`hover:text-orange-500 transition-colors ${solid ? '' : 'text-white/90'}`}>Cores</a>
           </nav>
-          <button onClick={() => navigate('/loja/carrinho')}
-            className="relative flex items-center gap-2 bg-orange-500 hover:bg-orange-600 transition-all hover:scale-105 px-4 py-2 rounded-xl font-bold text-sm text-white shadow-lg shadow-orange-500/25">
-            <ShoppingCart size={17} />
-            <span className="hidden sm:inline">Carrinho</span>
-            {count > 0 && (
-              <span className="absolute -top-2 -right-2 bg-white text-orange-600 text-xs font-black w-5 h-5 rounded-full flex items-center justify-center animate-bounce">
-                {count}
-              </span>
+          <div className="flex items-center gap-2 sm:gap-3">
+            {customer ? (
+              <div className="flex items-center gap-2">
+                <span className={`hidden sm:flex items-center gap-1.5 text-sm font-bold ${solid ? 'text-gray-800' : 'text-white'}`}>
+                  <User size={15} className="text-orange-500" /> Olá, {firstName}
+                </span>
+                <button onClick={() => { logout(); navigate('/loja'); }} title="Sair"
+                  className={`p-2 rounded-lg transition-colors ${solid ? 'hover:bg-gray-100 text-gray-500' : 'hover:bg-white/10 text-white/80'}`}>
+                  <LogOut size={17} />
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => navigate('/loja/login')}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-sm transition-all hover:scale-105 ${solid ? 'text-gray-700 hover:bg-gray-100' : 'text-white hover:bg-white/10'}`}>
+                <User size={16} />
+                <span className="hidden sm:inline">Entrar</span>
+              </button>
             )}
-          </button>
+            <button onClick={() => navigate('/loja/carrinho')}
+              className="relative flex items-center gap-2 bg-orange-500 hover:bg-orange-600 transition-all hover:scale-105 px-4 py-2 rounded-xl font-bold text-sm text-white shadow-lg shadow-orange-500/25">
+              <ShoppingCart size={17} />
+              <span className="hidden sm:inline">Carrinho</span>
+              {count > 0 && (
+                <span className="absolute -top-2 -right-2 bg-white text-orange-600 text-xs font-black w-5 h-5 rounded-full flex items-center justify-center animate-bounce">
+                  {count}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 

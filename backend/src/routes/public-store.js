@@ -274,7 +274,7 @@ function validaCNPJ(v) {
 
 // ── Autocadastro de cliente (link público) ────────────────
 router.post('/cadastro', async (req, res) => {
-  const { type, name, cpf_cnpj, email, phone, mobile, instagram, rg_ie, ie_isento, can_publish, address } = req.body;
+  const { type, name, cpf_cnpj, email, phone, mobile, instagram, rg_ie, ie_isento, can_publish, address, birth_date } = req.body;
   const nm = String(name || '').trim();
   const ph = String(phone || '').trim();
   const em = String(email || '').trim();
@@ -305,6 +305,9 @@ router.post('/cadastro', async (req, res) => {
       admission_data: { ie_isento: !!ie_isento, can_publish: !!can_publish },
       is_active: true,
     };
+    // Data de nascimento (apenas pessoa física)
+    const bd = String(birth_date || '').trim();
+    if (!isPJ && bd) payload.birth_date = bd;
 
     // Bloqueia novo cadastro se o CPF/CNPJ já existir
     if (docDigits) {
@@ -317,9 +320,33 @@ router.post('/cadastro', async (req, res) => {
       if (byDoc) return res.status(409).json({ error: `Este ${isPJ ? 'CNPJ' : 'CPF'} já está cadastrado no nosso sistema.` });
     }
 
-    const { error } = await supabase.from('CLIENTES').insert(payload);
+    const sel = 'id, name, type, cpf_cnpj, email, phone, mobile, instagram, address';
+    let { data: created, error } = await supabase.from('CLIENTES').insert(payload).select(sel).single();
+    if (error && /birth_date/i.test(error.message || '')) {
+      // coluna birth_date ainda não existe (migration 023) → tenta sem ela
+      delete payload.birth_date;
+      ({ data: created, error } = await supabase.from('CLIENTES').insert(payload).select(sel).single());
+    }
     if (error) throw error;
-    res.status(201).json({ success: true });
+    res.status(201).json({ success: true, customer: created });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Login da loja (somente CPF/CNPJ) ──────────────────────
+router.post('/login', async (req, res) => {
+  const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);
+  if (!docDigits) return res.status(400).json({ error: 'Informe o CPF' });
+  const sel = 'id, name, type, cpf_cnpj, email, phone, mobile, instagram, address';
+  try {
+    let { data: cli, error } = await supabase.from('CLIENTES')
+      .select(sel).eq('tenant_id', STORE_TENANT).eq('doc_digits', docDigits).limit(1).maybeSingle();
+    if (error) { // coluna doc_digits ainda não existe → compara manualmente
+      const { data: all } = await supabase.from('CLIENTES').select(sel + ', cpf_cnpj')
+        .eq('tenant_id', STORE_TENANT).limit(5000);
+      cli = (all || []).find(c => soDigitos(c.cpf_cnpj) === docDigits) || null;
+    }
+    if (!cli) return res.status(404).json({ error: 'CPF não encontrado. Faça seu cadastro primeiro.' });
+    res.json({ success: true, customer: cli });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

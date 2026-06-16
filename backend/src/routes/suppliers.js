@@ -42,21 +42,21 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { name, cnpj, email, phone, contact_name, address } = req.body;
+  const { name, cnpj, ie, email, phone, contact_name, address } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome do fornecedor é obrigatório' });
 
   try {
-    const { data, error } = await supabase
-      .from('FORNECEDORES')
-      .insert({
-        tenant_id: req.tenantId,
-        name, cnpj, email, phone, contact_name,
-        address: address || {},
-        is_active: true,
-      })
-      .select()
-      .single();
-
+    const base = {
+      tenant_id: req.tenantId,
+      name, cnpj, email, phone, contact_name,
+      address: address || {},
+      is_active: true,
+    };
+    const payload = { ...base, ie: String(ie || '').trim() || null };
+    let { data, error } = await supabase.from('FORNECEDORES').insert(payload).select().single();
+    if (error && /\bie\b/i.test(error.message || '')) { // coluna ie ainda não existe (migration 023)
+      ({ data, error } = await supabase.from('FORNECEDORES').insert(base).select().single());
+    }
     if (error) throw error;
     res.status(201).json(data);
   } catch (err) {
@@ -65,17 +65,17 @@ router.post('/', async (req, res) => {
 });
 
 router.put('/:id', async (req, res) => {
-  const { name, cnpj, email, phone, contact_name, address, is_active } = req.body;
+  const { name, cnpj, ie, email, phone, contact_name, address, is_active } = req.body;
 
   try {
-    const { data, error } = await supabase
-      .from('FORNECEDORES')
-      .update({ name, cnpj, email, phone, contact_name, address, is_active })
-      .eq('id', req.params.id)
-      .eq('tenant_id', req.tenantId)
-      .select()
-      .single();
-
+    const base = { name, cnpj, email, phone, contact_name, address, is_active };
+    const payload = { ...base, ie: String(ie || '').trim() || null };
+    let { data, error } = await supabase.from('FORNECEDORES')
+      .update(payload).eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
+    if (error && /\bie\b/i.test(error.message || '')) { // coluna ie ainda não existe (migration 023)
+      ({ data, error } = await supabase.from('FORNECEDORES')
+        .update(base).eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single());
+    }
     if (error) throw error;
     res.json(data);
   } catch (err) {

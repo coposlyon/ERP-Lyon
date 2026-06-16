@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Loader2, User, Instagram, ExternalLink, Play } from 'lucide-react';
 import storeApi from '@/store/storeApi';
+import { setStoreCustomer } from '@/store/StoreAuthContext';
 import '@/store/store.css';
 import toast from 'react-hot-toast';
 
@@ -54,13 +56,24 @@ function Starfield() {
 }
 
 export default function CadastroCliente() {
+  const navigate = useNavigate();
   const [type, setType] = useState('PF');
-  const [f, setF] = useState({ name:'', cpf_cnpj:'', ie:'', email:'', phone:'', mobile:'', instagram:'' });
+  const [f, setF] = useState({ name:'', cpf_cnpj:'', ie:'', birth_date:'', email:'', phone:'', mobile:'', instagram:'' });
   const [ieIsento, setIeIsento] = useState(false);
   const [canPublish, setCanPublish] = useState('sim');
   const [addr, setAddr] = useState({ zip:'', street:'', number:'', complement:'', neighborhood:'', city:'', state:'' });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
+  const [welcomeName, setWelcomeName] = useState('');
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  // Ao concluir, mostra a animação e leva o cliente para a loja JÁ LOGADO.
+  useEffect(() => {
+    if (!done) return;
+    const t = setTimeout(() => navigate('/loja'), 2800);
+    return () => clearTimeout(t);
+  }, [done, navigate]);
 
   // Abertura: botão "INICIAR CADASTRO" → toca o vídeo (com som) → preto → card sobe.
   const [phase, setPhase] = useState('start'); // start | video | black2 | form
@@ -133,6 +146,7 @@ export default function CadastroCliente() {
     if (!f.cpf_cnpj.trim()) return toast.error(`Informe o ${isPJ ? 'CNPJ' : 'CPF'}`);
     if (!(isPJ ? validCNPJ(f.cpf_cnpj) : validCPF(f.cpf_cnpj))) return toast.error(`${isPJ ? 'CNPJ' : 'CPF'} inválido. Confira os números.`);
     if (isPJ && !ieIsento && !f.ie.trim()) return toast.error('Informe a Inscrição Estadual (ou marque Isento)');
+    if (!isPJ && !f.birth_date) return toast.error('Informe a data de nascimento');
     if (!f.email.trim()) return toast.error('Informe o e-mail');
     if (!/^\S+@\S+\.\S+$/.test(f.email.trim())) return toast.error('E-mail inválido');
     if (!f.phone.trim()) return toast.error('Informe o telefone / WhatsApp');
@@ -140,14 +154,22 @@ export default function CadastroCliente() {
       return toast.error('Preencha o endereço completo (CEP, rua, número, bairro, cidade e estado)');
     setSending(true);
     try {
-      await storeApi.post('/cadastro', {
+      const res = await storeApi.post('/cadastro', {
         type, name: f.name, cpf_cnpj: f.cpf_cnpj, email: f.email, phone: f.phone, mobile: f.mobile,
         instagram: igHandle(f.instagram),
         rg_ie: isPJ ? (ieIsento ? 'ISENTO' : f.ie) : null,
         ie_isento: isPJ ? ieIsento : false,
+        birth_date: isPJ ? null : f.birth_date,
         can_publish: canPublish === 'sim',
         address: addr,
       });
+      // já deixa o cliente logado na loja
+      if (res?.customer) {
+        setStoreCustomer(res.customer);
+        setWelcomeName((res.customer.name || f.name).trim().split(/\s+/)[0]);
+      } else {
+        setWelcomeName(f.name.trim().split(/\s+/)[0]);
+      }
       setDone(true);
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Não foi possível enviar. Tente novamente.');
@@ -168,10 +190,20 @@ export default function CadastroCliente() {
     return (
       <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
         {Bg}
-        <div className="relative z-10 bg-white/90 backdrop-blur rounded-3xl shadow-xl max-w-md w-full p-8 text-center st-float">
-          <CheckCircle2 size={56} className="text-green-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-extrabold text-gray-900">Cadastro enviado!</h1>
-          <p className="text-gray-500 mt-2">Obrigado! Recebemos seus dados. Em breve nossa equipe entra em contato. 💜</p>
+        <div className="relative z-10 bg-white/90 backdrop-blur rounded-3xl shadow-2xl max-w-md w-full p-8 text-center st-rise">
+          <div className="relative mx-auto mb-5 w-20 h-20">
+            <span className="absolute inset-0 rounded-full bg-green-100 st-pulse" />
+            <CheckCircle2 size={80} className="relative text-green-500 mx-auto" />
+          </div>
+          <h1 className="text-2xl font-black text-gray-900">Cadastro concluído! 🎉</h1>
+          <p className="text-lg font-bold st-gradient-text mt-1">Bem-vindo(a){welcomeName ? `, ${welcomeName}` : ''}!</p>
+          <p className="text-gray-500 mt-3">Você já está logado. Estamos te levando para a loja…</p>
+          <div className="flex items-center justify-center gap-2 mt-5 text-violet-600 font-semibold">
+            <Loader2 size={18} className="animate-spin" /> Entrando na loja
+          </div>
+          <button onClick={() => navigate('/loja')} className="mt-5 text-sm text-gray-400 hover:text-violet-600 underline">
+            Ir agora
+          </button>
         </div>
       </div>
     );
@@ -257,13 +289,16 @@ export default function CadastroCliente() {
             <>
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="CPF *"><input className={INPUT} value={f.cpf_cnpj} placeholder="000.000.000-00" onChange={e => set('cpf_cnpj', maskCPF(e.target.value))} /></Field>
-                <Field label="E-mail *"><input type="email" className={INPUT} value={f.email} onChange={e => set('email', e.target.value)} /></Field>
+                <Field label="Data de Nascimento *"><input type="date" className={INPUT} value={f.birth_date} max={todayISO} onChange={e => set('birth_date', e.target.value)} /></Field>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
+                <Field label="E-mail *"><input type="email" className={INPUT} value={f.email} onChange={e => set('email', e.target.value)} /></Field>
                 <Field label="Telefone / WhatsApp *"><input className={INPUT} value={f.phone} placeholder="(44) 99999-9999" onChange={e => set('phone', maskPhone(e.target.value))} /></Field>
-                <Field label="Telefone p/ Recado"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
               </div>
-              <Field label="Instagram"><InstaInput value={f.instagram} onChange={v => set('instagram', v)} /></Field>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Field label="Telefone p/ Recado"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
+                <Field label="Instagram"><InstaInput value={f.instagram} onChange={v => set('instagram', v)} /></Field>
+              </div>
             </>
           )}
 
