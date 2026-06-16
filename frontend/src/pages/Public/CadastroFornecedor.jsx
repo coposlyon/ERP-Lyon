@@ -87,7 +87,7 @@ export default function CadastroFornecedor() {
   }, [phase]);
 
   const set = (k,v) => setF(p => ({ ...p, [k]: v }));
-  const setA = (k,v) => setAddr(p => ({ ...p, [k]: v }));
+  const setA = (k,v) => setAddr(p => ({ ...p, [k]: typeof v === 'string' ? v.toUpperCase() : v }));
 
   async function lookupCep(cepRaw) {
     const cep = cepRaw.replace(/\D/g,''); if (cep.length !== 8) return;
@@ -95,7 +95,8 @@ export default function CadastroFornecedor() {
       const res = await fetch(`/api/cep/${cep}`);
       if (!res.ok) return;
       const d = await res.json();
-      setAddr(p => ({ ...p, street:d.street||p.street, neighborhood:d.neighborhood||p.neighborhood, city:d.city||p.city, state:d.state||p.state }));
+      const up = s => (s ? String(s).toUpperCase() : null);
+      setAddr(p => ({ ...p, street:up(d.street)||p.street, neighborhood:up(d.neighborhood)||p.neighborhood, city:up(d.city)||p.city, state:d.state||p.state }));
     } catch {}
   }
 
@@ -107,9 +108,10 @@ export default function CadastroFornecedor() {
       const r = await fetch(`/api/cnpj/${digits}`);
       if (!r.ok) { toast.error('CNPJ não encontrado'); return; }
       const d = await r.json();
+      const up = s => (s ? String(s).toUpperCase() : null);
       setF(p => ({ ...p,
-        name: d.name ? d.name.toUpperCase() : p.name,
-        nome_fantasia: p.nome_fantasia || d.trade_name || '',
+        name: up(d.name) || p.name,
+        nome_fantasia: p.nome_fantasia || up(d.trade_name) || '',
         ie: d.ie || p.ie,
         email: p.email || d.email || '',
         phone: p.phone || (d.phone ? maskPhone(d.phone) : ''),
@@ -117,11 +119,11 @@ export default function CadastroFornecedor() {
       if (d.ie) setIeIsento(false);
       setAddr(p => ({ ...p,
         zip: d.zip ? maskCEP(d.zip) : p.zip,
-        street: d.street || p.street,
+        street: up(d.street) || p.street,
         number: d.number || p.number,
-        complement: d.complement || p.complement,
-        neighborhood: d.neighborhood || p.neighborhood,
-        city: d.city || p.city,
+        complement: up(d.complement) || p.complement,
+        neighborhood: up(d.neighborhood) || p.neighborhood,
+        city: up(d.city) || p.city,
         state: d.state || p.state,
       }));
       toast.success('Dados da empresa preenchidos!');
@@ -135,6 +137,7 @@ export default function CadastroFornecedor() {
     if (!f.cnpj.trim()) return toast.error('Informe o CNPJ');
     if (!validCNPJ(f.cnpj)) return toast.error('CNPJ inválido. Confira os números.');
     if (!ieIsento && !f.ie.trim()) return toast.error('Informe a Inscrição Estadual (ou marque Isento)');
+    if (!f.contact_name.trim()) return toast.error('Informe o contato / vendedor(a)');
     if (!f.email.trim()) return toast.error('Informe o e-mail');
     if (!/^\S+@\S+\.\S+$/.test(f.email.trim())) return toast.error('E-mail inválido');
     if (!f.phone.trim()) return toast.error('Informe o telefone / WhatsApp');
@@ -246,7 +249,7 @@ export default function CadastroFornecedor() {
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="Contato / Responsável"><input className={INPUT} value={f.contact_name} onChange={e => set('contact_name', e.target.value)} /></Field>
+            <Field label="Contato / Vendedor(a) *"><input className={INPUT} value={f.contact_name} onChange={e => set('contact_name', e.target.value.toUpperCase())} /></Field>
             <Field label="E-mail *"><input type="email" className={INPUT} value={f.email} onChange={e => set('email', e.target.value)} /></Field>
           </div>
 

@@ -119,7 +119,7 @@ export default function CadastroCliente() {
   }, [phase]);
 
   const set = (k,v) => setF(p => ({ ...p, [k]: v }));
-  const setA = (k,v) => setAddr(p => ({ ...p, [k]: v }));
+  const setA = (k,v) => setAddr(p => ({ ...p, [k]: typeof v === 'string' ? v.toUpperCase() : v }));
   const isPJ = type === 'PJ';
 
   // Verifica se o CPF/CNPJ já tem cadastro (sem expor os dados)
@@ -204,7 +204,8 @@ export default function CadastroCliente() {
       const res = await fetch(`/api/cep/${cep}`);
       if (!res.ok) return;
       const d = await res.json();
-      setAddr(p => ({ ...p, street:d.street||p.street, neighborhood:d.neighborhood||p.neighborhood, city:d.city||p.city, state:d.state||p.state }));
+      const up = s => (s ? String(s).toUpperCase() : null);
+      setAddr(p => ({ ...p, street:up(d.street)||p.street, neighborhood:up(d.neighborhood)||p.neighborhood, city:up(d.city)||p.city, state:d.state||p.state }));
     } catch {}
   }
 
@@ -224,13 +225,14 @@ export default function CadastroCliente() {
         phone: p.phone || (d.phone ? maskPhone(d.phone) : ''),
       }));
       if (d.ie) setIeIsento(false);
+      const up = s => (s ? String(s).toUpperCase() : null);
       setAddr(p => ({ ...p,
         zip: d.zip ? maskCEP(d.zip) : p.zip,
-        street: d.street || p.street,
+        street: up(d.street) || p.street,
         number: d.number || p.number,
-        complement: d.complement || p.complement,
-        neighborhood: d.neighborhood || p.neighborhood,
-        city: d.city || p.city,
+        complement: up(d.complement) || p.complement,
+        neighborhood: up(d.neighborhood) || p.neighborhood,
+        city: up(d.city) || p.city,
         state: d.state || p.state,
       }));
       toast.success('Dados da empresa preenchidos!');

@@ -58,8 +58,9 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
   const [cnpjStatus,   setCnpjStatus]   = useState(null);
   const [addressOpen,  setAddressOpen]  = useState(!!carrier?.address?.street);
 
-  function set(k, v)    { setForm(p => ({ ...p, [k]: v })); }
-  function setAddr(k,v) { setForm(p => ({ ...p, address: { ...p.address, [k]: v } })); }
+  const up = s => (typeof s === 'string' ? s.toUpperCase() : s);
+  function set(k, v)    { setForm(p => ({ ...p, [k]: (k === 'email' ? v : up(v)) })); }
+  function setAddr(k,v) { setForm(p => ({ ...p, address: { ...p.address, [k]: up(v) } })); }
 
   // Horários de coleta
   function addSlot()        { setForm(p => ({ ...p, pickup_schedule: [...p.pickup_schedule, emptySlot()] })); }
@@ -94,19 +95,19 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
       const zip = d.zip ? d.zip.replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
       setForm(p => ({
         ...p,
-        name:       d.name       || p.name,
-        trade_name: d.trade_name || p.trade_name,
-        ie:         d.ie         || p.ie,
+        name:       up(d.name)       || p.name,
+        trade_name: up(d.trade_name) || p.trade_name,
+        ie:         up(d.ie)         || p.ie,
         email:      d.email      || p.email,
         phone:      formatPhone(d.phone || ''),
         address: {
           ...p.address,
-          street:       d.street       || '',
-          number:       d.number       || '',
-          complement:   d.complement   || '',
-          neighborhood: d.neighborhood || '',
-          city:         d.city         || '',
-          state:        d.state        || '',
+          street:       up(d.street)       || '',
+          number:       up(d.number)       || '',
+          complement:   up(d.complement)   || '',
+          neighborhood: up(d.neighborhood) || '',
+          city:         up(d.city)         || '',
+          state:        up(d.state)        || '',
           zip,
         },
       }));

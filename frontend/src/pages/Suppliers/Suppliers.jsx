@@ -43,8 +43,9 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
   const [cnpjLoading, setCnpjLoading] = useState(false);
   const [cnpjStatus,  setCnpjStatus]  = useState(null); // null | 'ok' | 'error'
 
-  function set(k, v)    { setForm(p => ({ ...p, [k]: v })); }
-  function setAddr(k,v) { setForm(p => ({ ...p, address: { ...p.address, [k]: v } })); }
+  const up = s => (typeof s === 'string' ? s.toUpperCase() : s);
+  function set(k, v)    { setForm(p => ({ ...p, [k]: (k === 'email' ? v : up(v)) })); }
+  function setAddr(k,v) { setForm(p => ({ ...p, address: { ...p.address, [k]: up(v) } })); }
 
   async function handleCnpjBlur(e) {
     const raw = e.target.value.replace(/\D/g, '');
@@ -58,19 +59,19 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
       const zip = d.zip ? d.zip.replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
       setForm(p => ({
         ...p,
-        name:  d.name  || p.name,
-        ie:    d.ie    || p.ie,
+        name:  up(d.name)  || p.name,
+        ie:    up(d.ie)    || p.ie,
         email: d.email || p.email,
         phone: formatPhone(d.phone || ''),
         address: {
           ...p.address,
-          nome_fantasia: d.trade_name   || '',
-          street:        d.street       || '',
-          number:        d.number       || '',
-          complement:    d.complement   || '',
-          neighborhood:  d.neighborhood || '',
-          city:          d.city         || '',
-          state:         d.state        || '',
+          nome_fantasia: up(d.trade_name)   || '',
+          street:        up(d.street)       || '',
+          number:        up(d.number)       || '',
+          complement:    up(d.complement)   || '',
+          neighborhood:  up(d.neighborhood) || '',
+          city:          up(d.city)         || '',
+          state:         up(d.state)        || '',
           zip,
         },
       }));
