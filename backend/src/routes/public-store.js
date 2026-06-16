@@ -48,7 +48,7 @@ router.get('/products', async (req, res) => {
   const build = (full) => {
     let q = supabase
       .from('PRODUTOS')
-      .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, store_group, store_color, variations' : ''}, category_id, CATEGORIAS(name)`)
+      .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, store_group, store_color, variations, image_url' : ''}, category_id, CATEGORIAS(name)`)
       .eq('tenant_id', STORE_TENANT)
       .eq('is_active', true)
       .order('name');
@@ -80,6 +80,7 @@ router.get('/products', async (req, res) => {
         id: rep.id, name: key, code: rep.code, unit: rep.unit,
         description: rep.description,
         category: rep.CATEGORIAS?.name || null,
+        image_url: items.find(p => p.image_url)?.image_url || null,
         from_price: prices.length ? Math.min(...prices) : fromPrice(rep),
         has_tiers: items.some(p => Array.isArray(p.price_tiers) && p.price_tiers.length > 0),
         colors: items.length > 1 ? items.length : varColors,

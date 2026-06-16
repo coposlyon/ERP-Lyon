@@ -228,11 +228,15 @@ export default function StoreHome() {
               <Reveal key={p.id} delay={(idx % 3) * 100}>
                 <Link to={`/loja/produto/${p.id}`}
                   className="st-card group bg-white rounded-3xl border border-gray-100 overflow-hidden flex flex-col h-full">
-                  <div className="bg-gradient-to-b from-gray-50 to-white flex items-center justify-center py-8 relative overflow-hidden">
+                  <div className="bg-gradient-to-b from-gray-50 to-white flex items-center justify-center py-8 relative overflow-hidden h-52">
                     <div className="absolute w-40 h-40 rounded-full bg-orange-100/40 blur-2xl group-hover:bg-orange-200/50 transition-colors" />
-                    <div className="relative group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-500">
-                      <Bottle color={CARD_COLORS[idx % CARD_COLORS.length]} gradient={/degrad/i.test(p.name)} size={130} />
-                    </div>
+                    {p.image_url ? (
+                      <img src={p.image_url} alt={p.name} className="relative max-h-44 w-auto object-contain group-hover:scale-110 transition-transform duration-500" />
+                    ) : (
+                      <div className="relative group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-500">
+                        <Bottle color={CARD_COLORS[idx % CARD_COLORS.length]} gradient={/degrad/i.test(p.name)} size={130} />
+                      </div>
+                    )}
                     {p.colors > 0 && (
                       <span className="absolute top-4 right-4 bg-gray-900 text-white text-xs font-bold px-3 py-1 rounded-full">
                         {p.colors} cores

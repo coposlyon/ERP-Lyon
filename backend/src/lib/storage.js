@@ -1,7 +1,10 @@
 const supabase = require('../config/supabase');
 const { randomUUID } = require('crypto');
 
-const BUCKET = process.env.STORAGE_BUCKET || 'DOCUMENTOS';
+// Bucket PÚBLICO para imagens da loja (fotos de produto, avatar, fotos da
+// produção mostradas ao cliente, previews dos pedidos). Documentos sensíveis
+// (CNH, contratos) continuam no bucket privado DOCUMENTOS via outras rotas.
+const BUCKET = process.env.PUBLIC_STORAGE_BUCKET || 'loja-publico';
 
 // Sobe uma imagem em base64 (data URL) para o Storage e devolve a URL pública.
 // Se já for uma URL (http) ou vazio, devolve como está. Nunca lança — em
