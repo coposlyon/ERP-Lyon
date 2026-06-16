@@ -49,6 +49,13 @@ export default function PDV({ onDone }) {
     enabled: customerSearch.trim().length >= 1,
   });
 
+  // Últimos 50 clientes cadastrados — aparecem ao clicar no campo (sem digitar)
+  const [custFocus, setCustFocus] = useState(false);
+  const { data: recentCustomers } = useQuery({
+    queryKey: ['pdv-customers-recent'],
+    queryFn: () => api.get('/customers?limit=50&sort=recent&is_active=true&type=cliente'),
+  });
+
   const saleMutation = useMutation({
     mutationFn: (data) => api.post('/sales', data),
     onSuccess: () => {
@@ -293,27 +300,35 @@ export default function PDV({ onDone }) {
                   placeholder="Nome, ID ou telefone..."
                   value={customerSearch}
                   onChange={e => setCustomerSearch(e.target.value)}
+                  onFocus={() => setCustFocus(true)}
+                  onBlur={() => setTimeout(() => setCustFocus(false), 150)}
                   className="input text-sm pl-8"
                 />
               </div>
-              {customerSearch.trim().length >= 1 && customerResults?.data?.length > 0 && (
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  {customerResults.data.map(c => (
-                    <button key={c.id}
-                      onClick={() => { setSelectedCustomer(c); setCustomerSearch(''); }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
-                      {c.display_id != null && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 shrink-0">#{c.display_id}</span>}
-                      <span className="min-w-0">
-                        <span className="font-medium block truncate">{c.name}</span>
-                        <span className="text-xs text-gray-400">{c.cpf_cnpj || c.phone}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {customerSearch.trim().length >= 1 && customerResults?.data?.length === 0 && (
-                <p className="text-xs text-gray-400 text-center py-1">Nenhum cliente encontrado.</p>
-              )}
+              {(() => {
+                const searching = customerSearch.trim().length >= 1;
+                const list = searching ? (customerResults?.data || []) : (custFocus ? (recentCustomers?.data || []) : []);
+                if (list.length === 0 && searching) {
+                  return <p className="text-xs text-gray-400 text-center py-1">Nenhum cliente encontrado.</p>;
+                }
+                if (list.length === 0) return null;
+                return (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-72 overflow-y-auto">
+                    {!searching && <p className="text-[11px] text-gray-400 px-3 py-1.5 bg-gray-50 sticky top-0">Últimos clientes cadastrados</p>}
+                    {list.map(c => (
+                      <button key={c.id} type="button"
+                        onMouseDown={() => { setSelectedCustomer(c); setCustomerSearch(''); setCustFocus(false); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
+                        {c.display_id != null && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 shrink-0">#{c.display_id}</span>}
+                        <span className="min-w-0">
+                          <span className="font-medium block truncate">{c.name}</span>
+                          <span className="text-xs text-gray-400">{c.cpf_cnpj || c.phone}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
               <p className="text-xs text-gray-400 text-center">ou deixe em branco (consumidor final)</p>
             </div>
           )}

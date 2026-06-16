@@ -9,6 +9,7 @@ import MarketingModal from './MarketingModal';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { id4 } from '@/lib/ids';
+import CopyLinkButton from '@/components/UI/CopyLinkButton';
 import toast from 'react-hot-toast';
 
 const TYPE_LABELS = { PF: 'PF', PJ: 'PJ', CO: 'Colab.' };
@@ -169,7 +170,10 @@ export default function Customers() {
           <h1 className="page-title">Clientes</h1>
           <p className="text-sm text-gray-500 mt-1">{data?.total || 0} cadastrados</p>
         </div>
-        <button onClick={openNew} className="btn-primary"><Plus size={16} /> Novo</button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <CopyLinkButton path="/cadastro" />
+          <button onClick={openNew} className="btn-primary"><Plus size={16} /> Novo</button>
+        </div>
       </div>
 
       <div className="card">

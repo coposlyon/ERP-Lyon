@@ -4,6 +4,7 @@ import { Plus, Search, Edit2, Loader2, CheckCircle2, XCircle } from 'lucide-reac
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
+import CopyLinkButton from '@/components/UI/CopyLinkButton';
 import toast from 'react-hot-toast';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
@@ -284,9 +285,12 @@ export default function Suppliers() {
           <h1 className="page-title">Fornecedores</h1>
           <p className="text-sm text-gray-500 mt-1">{data?.total || 0} fornecedores</p>
         </div>
-        <button onClick={openNew} className="btn-primary">
-          <Plus size={16} /> Novo Fornecedor
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <CopyLinkButton path="/cadastro-fornecedor" />
+          <button onClick={openNew} className="btn-primary">
+            <Plus size={16} /> Novo Fornecedor
+          </button>
+        </div>
       </div>
 
       <div className="card">

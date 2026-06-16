@@ -4,6 +4,7 @@ import { Plus, Search, Edit2, Loader2, CheckCircle2, XCircle, Truck } from 'luci
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
+import CopyLinkButton from '@/components/UI/CopyLinkButton';
 import toast from 'react-hot-toast';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
@@ -450,9 +451,12 @@ export default function Logistics() {
           </h1>
           <p className="text-sm text-gray-500 mt-1">{data?.total || 0} transportadoras cadastradas</p>
         </div>
-        <button onClick={openNew} className="btn-primary">
-          <Plus size={16} /> Nova Transportadora
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <CopyLinkButton path="/cadastro-transportadora" />
+          <button onClick={openNew} className="btn-primary">
+            <Plus size={16} /> Nova Transportadora
+          </button>
+        </div>
       </div>
 
       <div className="card">
