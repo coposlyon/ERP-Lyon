@@ -20,7 +20,8 @@ function tierPrice(tiers, salePrice, qty) {
   return price;
 }
 
-export default function PDV() {
+export default function PDV({ onDone }) {
+  const inModal = typeof onDone === 'function';
   const [items, setItems] = useState([]);
   const [productSearch, setProductSearch] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
@@ -55,6 +56,7 @@ export default function PDV() {
       setSelectedCustomer(null);
       setDiscount('');
       setReceivedAmount('');
+      if (inModal) { onDone(); return; } // fecha o card e atualiza a lista
       setTimeout(() => searchRef.current?.focus(), 100);
     },
     onError: (err) => toast.error(err.error || 'Erro ao finalizar venda'),
@@ -156,7 +158,7 @@ export default function PDV() {
     <div className="flex flex-col lg:flex-row gap-4 lg:h-full" style={{ maxHeight: 'none' }}>
       {/* Esquerda — Produtos */}
       <div className="flex-1 flex flex-col gap-3 lg:overflow-hidden">
-        <h1 className="page-title">PDV — Ponto de Venda</h1>
+        {!inModal && <h1 className="page-title">PDV — Ponto de Venda</h1>}
 
         {/* Busca produto */}
         <div className="relative">

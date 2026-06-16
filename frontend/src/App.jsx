@@ -20,7 +20,6 @@ const CustomerDetail     = lazy(() => import('@/pages/Customers/CustomerDetail')
 const Suppliers          = lazy(() => import('@/pages/Suppliers/Suppliers'));
 const Sales              = lazy(() => import('@/pages/Sales/Sales'));
 const SaleForm           = lazy(() => import('@/pages/Sales/SaleForm'));
-const PDV                = lazy(() => import('@/pages/Sales/PDV'));
 const Purchases          = lazy(() => import('@/pages/Purchases/Purchases'));
 const PurchaseForm       = lazy(() => import('@/pages/Purchases/PurchaseForm'));
 const Forecast           = lazy(() => import('@/pages/Forecast/Forecast'));
@@ -104,7 +103,6 @@ function AppRoutes() {
         <Route path="sales" element={<Mod m="sales"><Sales /></Mod>} />
         <Route path="sales/new" element={<Mod m="sales"><SaleForm /></Mod>} />
         <Route path="sales/:id" element={<Mod m="sales"><SaleForm /></Mod>} />
-        <Route path="pdv" element={<Mod m="pdv"><PDV /></Mod>} />
         {/* Orçamentos */}
         <Route path="quotes" element={<Mod m="quotes"><Quotes /></Mod>} />
         <Route path="quotes/new" element={<Mod m="quotes"><QuoteForm /></Mod>} />

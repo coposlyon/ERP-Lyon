@@ -30,7 +30,6 @@ const menuItems = [
     label: 'Comercial',
     icon: ShoppingCart,
     children: [
-      { label: 'PDV / Caixa', path: '/pdv', icon: Monitor, module: 'pdv' },
       { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart, module: 'sales' },
       { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
       { label: 'Personalização', path: '/customizations', icon: Palette, module: 'customizations' },

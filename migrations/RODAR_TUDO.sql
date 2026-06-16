@@ -1153,3 +1153,8 @@ WITH dup AS (SELECT id, first_value(id) OVER (PARTITION BY tenant_id, upper(trim
 DELETE FROM "CATEGORIAS" c USING dup d WHERE c.id = d.id AND d.id <> d.keep_id;
 CREATE UNIQUE INDEX IF NOT EXISTS categorias_tenant_name_uq ON "CATEGORIAS" (tenant_id, upper(trim(name)));
 INSERT INTO "_MIGRATIONS" (version, name) VALUES ('028', 'categorias_dedupe') ON CONFLICT (version) DO NOTHING;
+
+
+-- >>>>>>>>>>>>>>>>>>>> 029_venda_source.sql <<<<<<<<<<<<<<<<<<<<
+ALTER TABLE "VENDAS" ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('029', 'venda_source') ON CONFLICT (version) DO NOTHING;

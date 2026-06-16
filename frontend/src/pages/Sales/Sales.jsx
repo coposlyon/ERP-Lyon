@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Eye, Search } from 'lucide-react';
+import { Plus, Eye, Search, Globe } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
+import Modal from '@/components/UI/Modal';
+import PDV from './PDV';
 import { format, parseISO, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
@@ -14,7 +16,7 @@ function fmt(v) {
 
 const statusOptions = [
   { value: '', label: 'Todos os Status' },
-  { value: 'open', label: 'Aberto' },
+  { value: 'open', label: 'Aguardando aprovação' },
   { value: 'confirmed', label: 'Confirmado' },
   { value: 'in_production', label: 'Em Produção' },
   { value: 'ready', label: 'Pronto' },
@@ -38,6 +40,7 @@ export default function Sales() {
   const [searchInput, setSearchInput] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [newSaleOpen, setNewSaleOpen] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -72,14 +75,23 @@ export default function Sales() {
   const hasFilters = search || status || startDate || endDate;
 
   const columns = [
-    { key: 'number', label: '#', width: 70,
-      render: v => <span className="font-mono font-semibold">#{String(v).padStart(4, '0')}</span>
+    { key: 'number', label: '#', width: 90,
+      render: (v, row) => (
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono font-semibold">#{String(v).padStart(4, '0')}</span>
+          {row.source === 'site' && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-violet-700 bg-violet-100 rounded px-1 py-0.5" title="Pedido feito pelo site">
+              <Globe size={9} /> SITE
+            </span>
+          )}
+        </div>
+      )
     },
     { key: 'created_at', label: 'Data', width: 100,
       render: v => { try { return format(parseISO(v), 'dd/MM/yyyy', { locale: ptBR }); } catch { return v; } }
     },
-    { key: 'customers', label: 'Cliente',
-      render: v => v?.name || <span className="text-gray-400">Consumidor Final</span>
+    { key: 'CLIENTES', label: 'Cliente',
+      render: (v, row) => (v || row.customers)?.name || <span className="text-gray-400">Consumidor Final</span>
     },
     { key: 'status', label: 'Status', width: 140,
       render: (v, row) => (
@@ -128,8 +140,8 @@ export default function Sales() {
           <h1 className="page-title">Pedidos de Venda</h1>
           <p className="text-sm text-gray-500 mt-1">{data?.total || 0} pedidos{hasFilters ? ' (filtrado)' : ''}</p>
         </div>
-        <button onClick={() => navigate('/pdv')} className="btn-primary">
-          <Plus size={16} /> Nova Venda (PDV)
+        <button onClick={() => setNewSaleOpen(true)} className="btn-primary">
+          <Plus size={16} /> Nova Venda
         </button>
       </div>
 
@@ -184,6 +196,11 @@ export default function Sales() {
         <Table columns={columns} data={data?.data} loading={isLoading} emptyMessage="Nenhum pedido encontrado" />
         <Pagination page={page} total={data?.total || 0} limit={20} onPageChange={setPage} />
       </div>
+
+      {/* Card de novo pedido de venda (PDV embutido) */}
+      <Modal isOpen={newSaleOpen} onClose={() => setNewSaleOpen(false)} title="Novo Pedido de Venda" size="full">
+        <PDV onDone={() => { setNewSaleOpen(false); qc.invalidateQueries(['sales']); }} />
+      </Modal>
     </div>
   );
 }

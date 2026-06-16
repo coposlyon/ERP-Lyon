@@ -233,10 +233,10 @@ router.post('/quote', async (req, res) => {
       customerId = novo.id;
     }
 
-    // Número do orçamento
+    // Número da venda
     let number = null;
     try {
-      const { data: numData } = await supabase.rpc('proximo_numero_orcamento', { p_tenant_id: STORE_TENANT });
+      const { data: numData } = await supabase.rpc('proximo_numero_venda', { p_tenant_id: STORE_TENANT });
       number = numData;
     } catch { /* sem RPC: número fica nulo */ }
 
@@ -244,26 +244,27 @@ router.post('/quote', async (req, res) => {
     const eventNote = eventDate ? `\nData do evento: ${eventDate.split('-').reverse().join('/')}` : '';
     const fullNotes = `PEDIDO PELO SITE — Contato: ${name} / ${phone}${email ? ' / ' + email : ''}${company ? ' / ' + company : ''}${eventNote}${notes ? `\nObs: ${notes}` : ''}`;
 
-    const baseQuote = {
+    // Pedido do site → vira VENDA "Aguardando aprovação" (source=site, status=open)
+    const baseSale = {
       tenant_id: STORE_TENANT, user_id: null, number,
       customer_id: customerId, subtotal, discount: 0, total: subtotal,
-      notes: fullNotes, status: 'open', delivery_days: 10,
+      notes: fullNotes, status: 'open',
     };
-    // event_date pode não existir ainda (migration 024) → fallback sem ela
-    let { data: quote, error: qErr } = await supabase.from('ORCAMENTOS')
-      .insert({ ...baseQuote, event_date: eventDate }).select('id, number').single();
-    if (qErr && /event_date/i.test(qErr.message || '')) {
-      ({ data: quote, error: qErr } = await supabase.from('ORCAMENTOS').insert(baseQuote).select('id, number').single());
+    const trySale = (extra) => supabase.from('VENDAS').insert({ ...baseSale, ...extra }).select('id, number').single();
+    let { data: sale, error: sErr } = await trySale({ source: 'site', event_date: eventDate });
+    if (sErr && /(source|event_date)/i.test(sErr.message || '')) {
+      ({ data: sale, error: sErr } = await trySale({ source: 'site' }));     // sem event_date
+      if (sErr && /source/i.test(sErr.message || '')) ({ data: sale, error: sErr } = await trySale({})); // sem source
     }
-    if (qErr) throw qErr;
+    if (sErr) throw sErr;
 
     // sobe os previews dos itens personalizados para o Storage (não no banco)
     for (const i of orderItems) {
       if (i.preview) i.preview = await uploadDataUrl(i.preview, 'pedidos');
     }
 
-    const quoteItems = orderItems.map(i => ({
-      quote_id: quote.id, product_id: i.product_id, product_name: i.product_name,
+    const saleItems = orderItems.map(i => ({
+      sale_id: sale.id, product_id: i.product_id, product_name: i.product_name,
       quantity: i.quantity, unit_price: i.unit_price,
       discount: 0, total: i.quantity * i.unit_price,
       customization: {
@@ -275,9 +276,9 @@ router.post('/quote', async (req, res) => {
         ...(i.preview ? { preview: i.preview } : {}),
       },
     }));
-    await supabase.from('ORCAMENTO_ITENS').insert(quoteItems);
+    await supabase.from('VENDA_ITENS').insert(saleItems);
 
-    res.status(201).json({ success: true, number: quote.number, items: orderItems.length });
+    res.status(201).json({ success: true, number: sale.number, items: orderItems.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -622,20 +623,15 @@ router.post('/login', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Status traduzido para o cliente ───────────────────────
-function statusCliente(quote, sale) {
-  if (sale) {
-    const st = sale.production_stage || '';
-    if (sale.status === 'completed' || sale.status === 'delivered') return { key: 'done', label: 'Concluído' };
-    if (st === 'finalizado' || sale.status === 'ready')             return { key: 'ready', label: 'Pronto! 🎉' };
-    if (['revelacao', 'producao', 'embalagem'].includes(st))        return { key: 'producing', label: 'Em produção' };
-    return { key: 'preparing', label: 'Em preparação' };
-  }
-  const s = quote.status;
-  if (s === 'approved')  return { key: 'approved', label: 'Aprovado' };
-  if (s === 'rejected')  return { key: 'rejected', label: 'Recusado' };
-  if (s === 'converted') return { key: 'producing', label: 'Em produção' };
-  return { key: 'analysis', label: 'Em análise' };
+// ── Status da VENDA traduzido para o cliente ──────────────
+function statusCliente(sale) {
+  const st = sale.production_stage || '';
+  if (sale.status === 'cancelled')                                 return { key: 'rejected', label: 'Cancelado' };
+  if (sale.status === 'completed' || sale.status === 'delivered')  return { key: 'done', label: 'Concluído' };
+  if (st === 'finalizado' || sale.status === 'ready')              return { key: 'ready', label: 'Pronto! 🎉' };
+  if (['revelacao', 'producao', 'embalagem'].includes(st) || sale.status === 'in_production') return { key: 'producing', label: 'Em produção' };
+  if (sale.status === 'confirmed')                                 return { key: 'preparing', label: 'Em preparação' };
+  return { key: 'analysis', label: 'Aguardando aprovação' }; // status 'open'
 }
 
 // ── Meus pedidos (loja) — status + fotos do produto ───────
@@ -654,41 +650,30 @@ router.get('/my-orders', async (req, res) => {
     }
     if (!cid) return res.status(400).json({ error: 'Cliente não identificado' });
 
-    const sel = 'id, number, status, total, created_at, event_date, converted_sale_id, ORCAMENTO_ITENS(product_name, quantity, customization)';
-    let { data: quotes, error } = await supabase.from('ORCAMENTOS').select(sel)
+    // Pedidos do cliente = VENDAS (inclui os feitos pelo site)
+    const full = 'id, number, status, total, created_at, event_date, ship_date, max_delivery_date, production_stage, production_photos, VENDA_ITENS(product_name, quantity, customization)';
+    const basic = 'id, number, status, total, created_at, production_stage, VENDA_ITENS(product_name, quantity, customization)';
+    let { data: sales, error } = await supabase.from('VENDAS').select(full)
       .eq('tenant_id', STORE_TENANT).eq('customer_id', cid).order('created_at', { ascending: false }).limit(100);
-    if (error) { // event_date pode não existir → tenta sem ela
-      ({ data: quotes } = await supabase.from('ORCAMENTOS')
-        .select('id, number, status, total, created_at, converted_sale_id, ORCAMENTO_ITENS(product_name, quantity, customization)')
+    if (error) { // colunas novas (migration 024) podem faltar
+      ({ data: sales } = await supabase.from('VENDAS').select(basic)
         .eq('tenant_id', STORE_TENANT).eq('customer_id', cid).order('created_at', { ascending: false }).limit(100));
     }
-    quotes = quotes || [];
+    sales = sales || [];
 
-    const saleIds = quotes.map(q => q.converted_sale_id).filter(Boolean);
-    let salesById = {};
-    if (saleIds.length) {
-      const { data: sales } = await supabase.from('VENDAS')
-        .select('id, status, production_stage, ship_date, max_delivery_date, production_photos, event_date')
-        .eq('tenant_id', STORE_TENANT).in('id', saleIds);
-      salesById = Object.fromEntries((sales || []).map(s => [s.id, s]));
-    }
-
-    const orders = quotes.map(q => {
-      const sale = q.converted_sale_id ? salesById[q.converted_sale_id] : null;
-      return {
-        id: q.id, number: q.number, created_at: q.created_at,
-        event_date: q.event_date || sale?.event_date || null,
-        ship_date: sale?.ship_date || null,
-        max_delivery_date: sale?.max_delivery_date || null,
-        total: q.total,
-        status: statusCliente(q, sale),
-        photos: Array.isArray(sale?.production_photos) ? sale.production_photos : [],
-        items: (q.ORCAMENTO_ITENS || []).map(it => ({
-          name: it.product_name, quantity: it.quantity,
-          preview: it.customization?.preview || null,
-        })),
-      };
-    });
+    const orders = sales.map(s => ({
+      id: s.id, number: s.number, created_at: s.created_at,
+      event_date: s.event_date || null,
+      ship_date: s.ship_date || null,
+      max_delivery_date: s.max_delivery_date || null,
+      total: s.total,
+      status: statusCliente(s),
+      photos: Array.isArray(s.production_photos) ? s.production_photos : [],
+      items: (s.VENDA_ITENS || []).map(it => ({
+        name: it.product_name, quantity: it.quantity,
+        preview: it.customization?.preview || null,
+      })),
+    }));
     res.json({ orders });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
