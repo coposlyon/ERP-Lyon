@@ -1163,3 +1163,12 @@ INSERT INTO "_MIGRATIONS" (version, name) VALUES ('029', 'venda_source') ON CONF
 -- >>>>>>>>>>>>>>>>>>>> 030_venda_operation_date.sql <<<<<<<<<<<<<<<<<<<<
 ALTER TABLE "VENDAS" ADD COLUMN IF NOT EXISTS operation_date DATE;
 INSERT INTO "_MIGRATIONS" (version, name) VALUES ('030', 'venda_operation_date') ON CONFLICT (version) DO NOTHING;
+
+
+-- >>>>>>>>>>>>>>>>>>>> 031_venda_status_check.sql <<<<<<<<<<<<<<<<<<<<
+ALTER TABLE "VENDAS" DROP CONSTRAINT IF EXISTS "VENDAS_status_check";
+ALTER TABLE "VENDAS" ADD CONSTRAINT "VENDAS_status_check" CHECK (status IN (
+  'iniciando_pedido','aguardando_financeiro','aguardando_estoque','aguardando_arte',
+  'aguardando_vegetal','aguardando_revelacao','aguardando_coleta','em_transito','entregue',
+  'open','confirmed','in_production','ready','delivered','cancelled','completed'));
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('031', 'venda_status_check') ON CONFLICT (version) DO NOTHING;
