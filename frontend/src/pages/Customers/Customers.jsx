@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone } from 'lucide-react';
+import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone, Trash2, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import CustomerForm from './CustomerForm';
 import MarketingModal from './MarketingModal';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import toast from 'react-hot-toast';
 
 const TYPE_LABELS = { PF: 'PF', PJ: 'PJ', CO: 'Colab.' };
 const TYPE_BADGE  = { PF: 'badge-gray', PJ: 'badge-blue', CO: 'badge-purple' };
@@ -45,6 +47,22 @@ export default function Customers() {
   const [editing, setEditing] = useState(null);
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
+  const [delTarget, setDelTarget] = useState(null);
+  const [delPassword, setDelPassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!delTarget || !delPassword) return;
+    setDeleting(true);
+    try {
+      await api.post(`/customers/${delTarget.id}/delete`, { password: delPassword });
+      toast.success('Cliente excluído');
+      setDelTarget(null); setDelPassword('');
+      qc.invalidateQueries(['customers']);
+    } catch (e) { toast.error(e.error || 'Erro ao excluir'); }
+    finally { setDeleting(false); }
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['customers', page, search, typeFilter, ratingFilter],
@@ -133,6 +151,11 @@ export default function Customers() {
           <button onClick={() => openEdit(row)} className="btn-ghost p-1.5" title="Editar">
             <Edit2 size={14} />
           </button>
+          {isAdmin && (
+            <button onClick={() => { setDelTarget(row); setDelPassword(''); }} className="btn-ghost p-1.5 text-red-400 hover:text-red-600" title="Excluir cliente">
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       )
     },
@@ -234,6 +257,31 @@ export default function Customers() {
         title={editing ? (editing.type === 'CO' ? 'Editar Colaborador' : 'Editar Cliente') : 'Novo Cadastro'}
         size="lg">
         <CustomerForm customer={editing} onSaved={onSaved} onCancel={closeModal} />
+      </Modal>
+
+      {/* Excluir cliente — admin + senha */}
+      <Modal isOpen={!!delTarget} onClose={() => setDelTarget(null)} title="Excluir cliente" size="sm">
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 bg-red-50 border border-red-100 rounded-xl p-3">
+            <Trash2 size={18} className="text-red-500 mt-0.5 shrink-0" />
+            <p className="text-sm text-gray-700">
+              Você vai <b>excluir permanentemente</b> o cliente <b>{delTarget?.name}</b>. Esta ação não pode ser desfeita.
+            </p>
+          </div>
+          <div>
+            <label className="label">Confirme com sua senha de login</label>
+            <input type="password" className="input" autoFocus value={delPassword}
+              onChange={e => setDelPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleDelete()} placeholder="Sua senha" />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setDelTarget(null)} className="btn-secondary">Cancelar</button>
+            <button onClick={handleDelete} disabled={deleting || !delPassword}
+              className="bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-50">
+              {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />} Excluir
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const supabase = require('../config/supabase');
+const { makeClient } = require('../config/supabase');
+const { audit } = require('../lib/audit');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -210,6 +212,36 @@ router.delete('/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Excluir cliente DE VERDADE — só admin e exige a senha de login.
+router.post('/:id/delete', async (req, res) => {
+  try {
+    if (req.userProfile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Apenas administradores podem excluir clientes.' });
+    }
+    const password = String(req.body?.password || '');
+    const email = req.user?.email;
+    if (!password) return res.status(400).json({ error: 'Digite sua senha para confirmar.' });
+    if (!email) return res.status(401).json({ error: 'Sessão inválida — entre novamente.' });
+
+    // Reautentica para confirmar a senha
+    const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { error: authErr } = await client.auth.signInWithPassword({ email, password });
+    if (authErr) return res.status(401).json({ error: 'Senha incorreta.' });
+
+    // Exclui (hard delete)
+    const { error } = await supabase.from('CLIENTES').delete()
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId);
+    if (error) {
+      if (/foreign key|violat|23503/i.test(error.message || '')) {
+        return res.status(409).json({ error: 'Não dá pra excluir: este cliente tem registros vinculados (vendas, orçamentos, etc.). Use "Desativar".' });
+      }
+      throw error;
+    }
+    audit(req, 'delete', 'customer', req.params.id, { hard: true });
+    res.json({ message: 'Cliente excluído com sucesso' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.get('/:id/history', async (req, res) => {
