@@ -61,18 +61,19 @@ export default function CadastroCliente() {
 
   const Bg = (
     <>
-      <div className="st-blob" style={{ width:340, height:340, background:'#a78bfa', top:'-5%', left:'-7%', opacity:.5 }} />
-      <div className="st-blob" style={{ width:300, height:300, background:'#f0abfc', bottom:'-2%', right:'-7%', opacity:.45, animationDelay:'3s' }} />
-      <div className="st-blob" style={{ width:240, height:240, background:'#fdba74', top:'42%', right:'10%', opacity:.4, animationDelay:'6s' }} />
-      <div className="st-blob" style={{ width:200, height:200, background:'#67e8f9', bottom:'18%', left:'8%', opacity:.35, animationDelay:'9s' }} />
+      <video autoPlay muted loop playsInline className="fixed inset-0 w-full h-full object-cover" style={{ zIndex: -2 }}>
+        <source src="/cadastro-bg.mp4" type="video/mp4" />
+      </video>
+      {/* camada para legibilidade do formulário */}
+      <div className="fixed inset-0 bg-gradient-to-br from-white/60 via-white/40 to-fuchsia-50/50" style={{ zIndex: -1 }} />
     </>
   );
 
   if (done) {
     return (
-      <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4 st-animated-gradient" style={{ background:'linear-gradient(120deg,#f5f3ff,#fdf2f8,#fff7ed)' }}>
+      <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
         {Bg}
-        <div className="relative bg-white/90 backdrop-blur rounded-3xl shadow-xl max-w-md w-full p-8 text-center st-float">
+        <div className="relative z-10 bg-white/90 backdrop-blur rounded-3xl shadow-xl max-w-md w-full p-8 text-center st-float">
           <CheckCircle2 size={56} className="text-green-500 mx-auto mb-4" />
           <h1 className="text-2xl font-extrabold text-gray-900">Cadastro enviado!</h1>
           <p className="text-gray-500 mt-2">Obrigado! Recebemos seus dados. Em breve nossa equipe entra em contato. 💜</p>
@@ -82,9 +83,9 @@ export default function CadastroCliente() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden py-8 px-4 st-animated-gradient" style={{ background:'linear-gradient(120deg,#f5f3ff,#fdf2f8,#fff7ed)' }}>
+    <div className="min-h-screen relative overflow-hidden py-8 px-4">
       {Bg}
-      <div className="relative max-w-xl mx-auto">
+      <div className="relative z-10 max-w-xl mx-auto">
         <div className="text-center mb-6">
           <img src="/lyon-logo.png" alt="Lyon Copos" className="h-28 sm:h-32 mx-auto mb-3 object-contain st-float drop-shadow-xl" onError={e => { e.target.style.display='none'; }} />
           <h1 className="text-2xl sm:text-3xl font-black leading-tight st-gradient-text">FAÇA O SEU CADASTRO NO NOSSO SISTEMA LYON COPOS!</h1>
