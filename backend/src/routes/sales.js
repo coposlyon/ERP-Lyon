@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
 const supabase = require('../config/supabase');
+const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
 
@@ -284,6 +285,41 @@ router.patch('/:id/status', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Exclusão do pedido de venda — só ADMIN e com a senha dele
+router.post('/:id/delete', async (req, res) => {
+  try {
+    if (req.userProfile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Apenas administradores podem excluir pedidos de venda.' });
+    }
+    const password = String(req.body?.password || '');
+    const email = req.user?.email;
+    if (!password) return res.status(400).json({ error: 'Digite sua senha para confirmar.' });
+    if (!email) return res.status(401).json({ error: 'Sessão inválida — entre novamente.' });
+
+    // Reautentica para confirmar a senha
+    const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { error: authErr } = await client.auth.signInWithPassword({ email, password });
+    if (authErr) return res.status(401).json({ error: 'Senha incorreta.' });
+
+    const id = req.params.id;
+    // remove os vínculos (itens, financeiro e movimentações da venda)
+    const safe = (p) => p.then(() => {}, () => {});
+    await safe(supabase.from('VENDA_ITENS').delete().eq('sale_id', id));
+    await safe(supabase.from('LANCAMENTOS').delete().eq('tenant_id', req.tenantId).eq('reference_type', 'sale').eq('reference_id', id));
+    await safe(supabase.from('MOVIMENTACOES_ESTOQUE').delete().eq('tenant_id', req.tenantId).eq('reference_type', 'sale').eq('reference_id', id));
+
+    const { error } = await supabase.from('VENDAS').delete().eq('id', id).eq('tenant_id', req.tenantId);
+    if (error) {
+      if (/foreign key|violat|23503/i.test(error.message || '')) {
+        return res.status(409).json({ error: 'Não foi possível excluir: o pedido tem registros vinculados.' });
+      }
+      throw error;
+    }
+    audit(req, 'delete', 'sale', id, { hard: true });
+    res.json({ message: 'Pedido de venda excluído com sucesso' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

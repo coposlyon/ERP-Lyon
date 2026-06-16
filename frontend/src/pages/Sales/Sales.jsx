@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Eye, Search, Globe } from 'lucide-react';
+import { Plus, Eye, Search, Globe, Trash2, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import PDV from './PDV';
@@ -28,8 +29,17 @@ export default function Sales() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [newSaleOpen, setNewSaleOpen] = useState(false);
+  const [delTarget, setDelTarget] = useState(null);
+  const [delPassword, setDelPassword] = useState('');
+  const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
+
+  const deleteSale = useMutation({
+    mutationFn: () => api.post(`/sales/${delTarget.id}/delete`, { password: delPassword }),
+    onSuccess: () => { qc.invalidateQueries(['sales']); setDelTarget(null); setDelPassword(''); toast.success('Pedido excluído!'); },
+    onError: (e) => toast.error(e.error || 'Não foi possível excluir'),
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['sales', page, status, search, startDate, endDate],
@@ -117,11 +127,18 @@ export default function Sales() {
         <a href={v} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline text-xs">Ver</a>
       ) : '—'
     },
-    { key: 'id', label: '', width: 50,
+    { key: 'id', label: '', width: 80,
       render: (_, row) => (
-        <button onClick={() => navigate(`/sales/${row.id}`)} className="btn-ghost p-1.5" title="Ver detalhes">
-          <Eye size={14} />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button onClick={() => navigate(`/sales/${row.id}`)} className="btn-ghost p-1.5" title="Ver detalhes">
+            <Eye size={14} />
+          </button>
+          {isAdmin && (
+            <button onClick={() => { setDelTarget(row); setDelPassword(''); }} className="btn-ghost p-1.5 text-red-500 hover:text-red-600" title="Excluir pedido">
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       )
     },
   ];
@@ -193,6 +210,33 @@ export default function Sales() {
       {/* Card de novo pedido de venda (PDV embutido) */}
       <Modal isOpen={newSaleOpen} onClose={() => setNewSaleOpen(false)} title="Novo Pedido de Venda" size="full">
         <PDV onDone={() => { setNewSaleOpen(false); qc.invalidateQueries(['sales']); }} />
+      </Modal>
+
+      {/* Excluir pedido (admin + senha) */}
+      <Modal isOpen={!!delTarget} onClose={() => !deleteSale.isPending && setDelTarget(null)} title="Excluir pedido de venda" size="sm">
+        <div className="space-y-4">
+          <div className="flex gap-2.5 bg-red-50 border border-red-100 rounded-xl p-3">
+            <Trash2 size={18} className="text-red-500 mt-0.5 shrink-0" />
+            <p className="text-sm text-gray-700">
+              Você vai <b>excluir permanentemente</b> o pedido <b>#{String(delTarget?.number || '').padStart(4, '0')}</b>
+              {delTarget?.CLIENTES?.name ? <> de <b>{delTarget.CLIENTES.name}</b></> : ''}. Esta ação não pode ser desfeita.
+            </p>
+          </div>
+          <div>
+            <label className="label">Confirme com a sua senha de admin</label>
+            <input type="password" className="input" autoFocus value={delPassword}
+              onChange={e => setDelPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && delPassword && deleteSale.mutate()}
+              placeholder="Sua senha" />
+          </div>
+          <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+            <button onClick={() => setDelTarget(null)} disabled={deleteSale.isPending} className="btn-secondary">Cancelar</button>
+            <button onClick={() => deleteSale.mutate()} disabled={deleteSale.isPending || !delPassword}
+              className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50">
+              {deleteSale.isPending ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />} Excluir
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
