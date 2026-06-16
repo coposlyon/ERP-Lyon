@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, Loader2, User, Instagram, ExternalLink } from 'lucide-react';
+import { CheckCircle2, Loader2, User, Instagram, ExternalLink, Volume2 } from 'lucide-react';
 import storeApi from '@/store/storeApi';
 import '@/store/store.css';
 import toast from 'react-hot-toast';
@@ -26,18 +26,23 @@ export default function CadastroCliente() {
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
 
-  // Abertura: preto → vídeo → preto → card sobe
-  const [phase, setPhase] = useState('black1'); // black1 | video | black2 | form
+  // Abertura: toque (libera o áudio) → vídeo com som → preto → card sobe
+  const [phase, setPhase] = useState('start'); // start | video | black2 | form
   const videoRef = useRef(null);
+
+  function startIntro() {
+    const v = videoRef.current;
+    setPhase('video');
+    if (!v) return;
+    v.muted = false; v.volume = 1; v.currentTime = 0;
+    const p = v.play();
+    if (p && p.catch) p.catch(() => { v.muted = true; v.play().catch(() => setPhase('black2')); });
+  }
+
   useEffect(() => {
     let t;
-    if (phase === 'black1') t = setTimeout(() => setPhase('video'), 1000);
-    else if (phase === 'video') {
-      const v = videoRef.current;
-      if (v) { try { v.currentTime = 0; const p = v.play(); if (p && p.catch) p.catch(() => setPhase('black2')); } catch { setPhase('black2'); } }
-      else setPhase('black2');
-      t = setTimeout(() => setPhase('black2'), 15000); // segurança caso o vídeo não termine
-    } else if (phase === 'black2') t = setTimeout(() => setPhase('form'), 700);
+    if (phase === 'video') t = setTimeout(() => setPhase('black2'), 20000); // segurança
+    else if (phase === 'black2') t = setTimeout(() => setPhase('form'), 700);
     return () => clearTimeout(t);
   }, [phase]);
 
@@ -101,13 +106,26 @@ export default function CadastroCliente() {
     <div className="min-h-screen relative overflow-hidden py-8 px-4 bg-black">
       {/* Abertura cinematográfica */}
       {phase !== 'form' && (
-        <div className="fixed inset-0 z-50 bg-black">
-          <video ref={videoRef} muted playsInline preload="auto"
+        <div className="fixed inset-0 z-50 bg-black" onClick={phase === 'start' ? startIntro : undefined}>
+          <video ref={videoRef} playsInline preload="auto"
             onEnded={() => setPhase('black2')} onError={() => setPhase('black2')}
             className={`w-full h-full object-cover transition-opacity duration-700 ${phase === 'video' ? 'opacity-100' : 'opacity-0'}`}>
             <source src="/cadastro-bg.mp4" type="video/mp4" />
           </video>
-          <button type="button" onClick={() => setPhase('form')} className="absolute bottom-5 right-6 text-white/60 text-xs hover:text-white">Pular ›</button>
+
+          {phase === 'start' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 cursor-pointer">
+              <img src="/lyon-logo.png" alt="Lyon Copos" className="h-24 sm:h-28 mb-6 object-contain st-float" onError={e => { e.target.style.display = 'none'; }} />
+              <span className="inline-flex items-center gap-2 bg-white text-violet-700 font-bold px-6 py-3.5 rounded-full shadow-xl st-pulse">
+                <Volume2 size={18} /> Toque para começar
+              </span>
+              <p className="text-white/50 text-xs mt-4">experiência com áudio 🔊</p>
+            </div>
+          )}
+
+          {phase !== 'start' && (
+            <button type="button" onClick={() => setPhase('form')} className="absolute bottom-5 right-6 text-white/60 text-xs hover:text-white z-10">Pular ›</button>
+          )}
         </div>
       )}
 
