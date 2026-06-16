@@ -294,7 +294,7 @@ router.post('/cadastro', async (req, res) => {
     const payload = {
       tenant_id: STORE_TENANT,
       type: type === 'PJ' ? 'PJ' : 'PF',
-      name: nm,
+      name: nm.toUpperCase(),
       cpf_cnpj: String(cpf_cnpj || '').trim() || null,
       rg_ie: String(rg_ie || '').trim() || null,
       email: em || null,

@@ -202,7 +202,7 @@ export default function CadastroCliente() {
           </div>
 
           <Field label={`${isPJ ? 'Razão Social' : 'Nome Completo'} *`}>
-            <input className={INPUT} value={f.name} onChange={e => set('name', e.target.value)} />
+            <input className={INPUT} value={f.name} onChange={e => set('name', e.target.value.toUpperCase())} />
           </Field>
 
           {isPJ ? (
