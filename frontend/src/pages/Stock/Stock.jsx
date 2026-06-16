@@ -628,11 +628,12 @@ export default function Stock() {
 
   // ── Colunas: Lista Completa ─────────────────────────────────────
   const posColumns = [
-    { key: 'code', label: 'Código', width: 80 },
-    { key: 'name', label: 'Produto' },
-    { key: 'CATEGORIAS', label: 'Categoria', render: v => v?.name || '—' },
+    { key: 'code', label: 'Código', width: 80, sortable: true },
+    { key: 'name', label: 'Produto', sortable: true },
+    { key: 'CATEGORIAS', label: 'Categoria', sortable: true, sortAccessor: r => r.CATEGORIAS?.name || '', render: v => v?.name || '—' },
     {
-      key: 'current_stock', label: 'Estoque Atual', width: 120,
+      key: 'current_stock', label: 'Estoque Atual', width: 120, sortable: true,
+      sortAccessor: r => Number(r.current_stock ?? 0),
       render: (v, row) => (
         <span className={v < 0 ? 'text-red-700 font-bold' : v <= row.min_stock ? 'text-orange-600 font-bold' : 'text-green-700 font-semibold'}>
           {Number(v).toLocaleString('pt-BR')} {row.unit}
@@ -640,10 +641,11 @@ export default function Stock() {
       ),
     },
     {
-      key: 'min_stock', label: 'Mín.', width: 80,
+      key: 'min_stock', label: 'Mín.', width: 80, sortable: true,
+      sortAccessor: r => Number(r.min_stock ?? 0),
       render: (v, row) => `${Number(v).toLocaleString('pt-BR')} ${row.unit}`,
     },
-    { key: 'cost_price', label: 'Custo/Un.', width: 110, render: v => fmt(v) },
+    { key: 'cost_price', label: 'Custo/Un.', width: 110, sortable: true, sortAccessor: r => Number(r.cost_price ?? 0), render: v => fmt(v) },
     {
       key: 'FORNECEDORES', label: 'Fornecedor', width: 140,
       render: v => v?.name
@@ -797,8 +799,8 @@ export default function Stock() {
             </button>
           )}
 
-          {/* Botão Registrar Perda (só na aba Movimentações) */}
-          {tab === 'movements' && (
+          {/* Botão Registrar Perda (Lista Completa e Movimentações) */}
+          {(tab === 'position' || tab === 'movements') && (
             <button onClick={() => setPerdaOpen(true)}
               className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors">
               <AlertTriangle size={13} /> Registrar Perda

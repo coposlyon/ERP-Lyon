@@ -1,6 +1,34 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 
 export function Table({ columns, data, loading, emptyMessage = 'Nenhum registro encontrado.' }) {
+  // Ordenação por cabeçalho (apenas nas colunas marcadas com `sortable`)
+  const [sort, setSort] = useState({ key: null, dir: 'asc' });
+
+  function toggleSort(col) {
+    if (!col.sortable) return;
+    setSort(s => {
+      if (s.key !== col.key) return { key: col.key, dir: 'asc' };
+      if (s.dir === 'asc')   return { key: col.key, dir: 'desc' };
+      return { key: null, dir: 'asc' }; // 3º clique remove a ordenação
+    });
+  }
+
+  const sortedData = useMemo(() => {
+    if (!sort.key || !data) return data;
+    const col = columns.find(c => c.key === sort.key);
+    if (!col) return data;
+    const getVal = row => (col.sortAccessor ? col.sortAccessor(row) : row[col.key]);
+    const arr = [...data].sort((a, b) => {
+      const va = getVal(a), vb = getVal(b);
+      const na = Number(va), nb = Number(vb);
+      const bothNum = va !== '' && vb !== '' && va != null && vb != null && !isNaN(na) && !isNaN(nb);
+      if (bothNum) return na - nb;
+      return String(va ?? '').localeCompare(String(vb ?? ''), 'pt-BR', { numeric: true });
+    });
+    return sort.dir === 'desc' ? arr.reverse() : arr;
+  }, [data, columns, sort]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-gray-400">
@@ -26,15 +54,28 @@ export function Table({ columns, data, loading, emptyMessage = 'Nenhum registro 
       <table className="table-auto">
         <thead>
           <tr>
-            {columns.map(col => (
-              <th key={col.key} style={{ width: col.width }}>
-                {col.label}
-              </th>
-            ))}
+            {columns.map(col => {
+              const active = sort.key === col.key;
+              return (
+                <th key={col.key} style={{ width: col.width }}
+                  onClick={() => toggleSort(col)}
+                  className={col.sortable ? 'cursor-pointer select-none hover:text-primary-600 transition-colors' : undefined}
+                  title={col.sortable ? 'Clique para ordenar' : undefined}>
+                  <span className="inline-flex items-center gap-1">
+                    {col.label}
+                    {col.sortable && (
+                      active
+                        ? (sort.dir === 'asc' ? <ChevronUp size={13} className="text-primary-600" /> : <ChevronDown size={13} className="text-primary-600" />)
+                        : <ChevronsUpDown size={13} className="text-gray-300" />
+                    )}
+                  </span>
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
-          {data.map((row, i) => (
+          {sortedData.map((row, i) => (
             <tr key={row.id || i} className="cursor-pointer">
               {columns.map(col => (
                 <td key={col.key}>
