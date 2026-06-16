@@ -27,14 +27,14 @@ ALTER TABLE "PRODUTOS" ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '{}'::j
 
 -- 028: remove categorias duplicadas + índice único (não duplica mais)
 WITH dup AS (
-  SELECT id, min(id) OVER (PARTITION BY tenant_id, upper(trim(name))) AS keep_id
+  SELECT id, first_value(id) OVER (PARTITION BY tenant_id, upper(trim(name)) ORDER BY id) AS keep_id
   FROM "CATEGORIAS"
 )
 UPDATE "PRODUTOS" p SET category_id = d.keep_id
 FROM dup d WHERE p.category_id = d.id AND d.id <> d.keep_id;
 
 WITH dup AS (
-  SELECT id, min(id) OVER (PARTITION BY tenant_id, upper(trim(name))) AS keep_id
+  SELECT id, first_value(id) OVER (PARTITION BY tenant_id, upper(trim(name)) ORDER BY id) AS keep_id
   FROM "CATEGORIAS"
 )
 DELETE FROM "CATEGORIAS" c USING dup d WHERE c.id = d.id AND d.id <> d.keep_id;

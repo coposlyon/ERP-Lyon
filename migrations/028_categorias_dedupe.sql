@@ -4,7 +4,7 @@
 
 -- 1) Repõe os produtos para a categoria mais antiga (menor id) de cada nome
 WITH dup AS (
-  SELECT id, min(id) OVER (PARTITION BY tenant_id, upper(trim(name))) AS keep_id
+  SELECT id, first_value(id) OVER (PARTITION BY tenant_id, upper(trim(name)) ORDER BY id) AS keep_id
   FROM "CATEGORIAS"
 )
 UPDATE "PRODUTOS" p
@@ -14,7 +14,7 @@ WHERE p.category_id = d.id AND d.id <> d.keep_id;
 
 -- 2) Apaga as categorias duplicadas
 WITH dup AS (
-  SELECT id, min(id) OVER (PARTITION BY tenant_id, upper(trim(name))) AS keep_id
+  SELECT id, first_value(id) OVER (PARTITION BY tenant_id, upper(trim(name)) ORDER BY id) AS keep_id
   FROM "CATEGORIAS"
 )
 DELETE FROM "CATEGORIAS" c
