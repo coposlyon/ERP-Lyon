@@ -201,7 +201,7 @@ router.post('/categories/dedupe', async (req, res) => {
       if (!error) { mergedGroups++; removed += dropIds.length; }
     }
 
-    // Backfill: produtos sem categoria recebem a categoria do 1º nome
+    // helper de categoria (cria/reusa por nome)
     const catByName = new Map();
     const { data: allCats } = await supabase.from('CATEGORIAS').select('id, name').eq('tenant_id', req.tenantId);
     for (const c of (allCats || [])) catByName.set(String(c.name || '').trim().toUpperCase(), c.id);
@@ -212,6 +212,24 @@ router.post('/categories/dedupe', async (req, res) => {
       catByName.set(nm, id);
       return id;
     }
+
+    // Remove a categoria IMPRESSOS (não deve existir): repõe os produtos e apaga
+    const impIds = (allCats || [])
+      .filter(c => ['IMPRESSOS', 'IMPRESSO', 'IMPRESSA'].includes(String(c.name || '').trim().toUpperCase()))
+      .map(c => c.id);
+    let impressosRemovidas = 0;
+    if (impIds.length) {
+      const { data: prods } = await supabase.from('PRODUTOS').select('id, name')
+        .eq('tenant_id', req.tenantId).in('category_id', impIds);
+      for (const p of (prods || [])) {
+        const cid = await ensureCat(categoriaDe(p.name));
+        await supabase.from('PRODUTOS').update({ category_id: cid }).eq('id', p.id).eq('tenant_id', req.tenantId);
+      }
+      const { error } = await supabase.from('CATEGORIAS').delete().eq('tenant_id', req.tenantId).in('id', impIds);
+      if (!error) { impressosRemovidas = impIds.length; catByName.delete('IMPRESSOS'); }
+    }
+
+    // Backfill: produtos sem categoria recebem a categoria do 1º nome
     const { data: noCat } = await supabase.from('PRODUTOS').select('id, name')
       .eq('tenant_id', req.tenantId).is('category_id', null).limit(10000);
     let backfilled = 0;
@@ -224,8 +242,8 @@ router.post('/categories/dedupe', async (req, res) => {
       }
     }
 
-    audit(req, 'update', 'categories_dedupe', null, { mergedGroups, removed, backfilled });
-    res.json({ ok: true, merged_groups: mergedGroups, removed, backfilled });
+    audit(req, 'update', 'categories_dedupe', null, { mergedGroups, removed, backfilled, impressosRemovidas });
+    res.json({ ok: true, merged_groups: mergedGroups, removed, backfilled, impressos_removidas: impressosRemovidas });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -238,12 +256,22 @@ router.get('/categories/list', async (req, res) => {
       .order('name');
 
     if (error) throw error;
-    // adiciona contagem de produtos por categoria
-    const result = (data || []).map(c => ({
-      ...c,
-      product_count: Array.isArray(c.PRODUTOS) ? c.PRODUTOS.length : 0,
-      PRODUTOS: undefined,
-    }));
+    // Único por nome (sem repetir) e sem a categoria IMPRESSOS
+    const OCULTAR = ['IMPRESSOS', 'IMPRESSO', 'IMPRESSA'];
+    const byName = new Map();
+    for (const c of (data || [])) {
+      const name = String(c.name || '').trim();
+      const key = name.toUpperCase();
+      if (!key || OCULTAR.includes(key)) continue;
+      const count = Array.isArray(c.PRODUTOS) ? c.PRODUTOS.length : 0;
+      if (!byName.has(key)) byName.set(key, { id: c.id, tenant_id: c.tenant_id, name, product_count: count });
+      else {
+        const e = byName.get(key);
+        e.product_count += count;
+        if (c.id < e.id) e.id = c.id; // mantém o id mais antigo (canônico)
+      }
+    }
+    const result = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
