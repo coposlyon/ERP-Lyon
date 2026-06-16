@@ -9,12 +9,70 @@ const SUGGESTIONS = [
   'Quanto tenho a receber?',
 ];
 
+const FAB_SIZE = 56;            // tamanho do botão (w-14 h-14)
+const POS_KEY = 'lyon_ai_fab_pos';
+
+// Mantém o botão dentro da tela
+function clampPos(x, y) {
+  const maxX = window.innerWidth  - FAB_SIZE - 8;
+  const maxY = window.innerHeight - FAB_SIZE - 8;
+  return { x: Math.max(8, Math.min(x, maxX)), y: Math.max(8, Math.min(y, maxY)) };
+}
+
 export default function AIAssistant() {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState([]);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(false);
   const endRef = useRef(null);
+
+  // Posição do botão flutuante (arrastável + salva)
+  const [pos, setPos] = useState(null); // null = ainda não calculado
+  const btnRef = useRef(null);
+  const drag = useRef(null);
+
+  // Posição inicial: salva no localStorage ou canto inferior direito
+  useEffect(() => {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); } catch { /* ignore */ }
+    if (saved && typeof saved.x === 'number') setPos(clampPos(saved.x, saved.y));
+    else setPos(clampPos(window.innerWidth - FAB_SIZE - 20, window.innerHeight - FAB_SIZE - 20));
+  }, []);
+
+  // Reposiciona se a janela for redimensionada
+  useEffect(() => {
+    function onResize() { setPos(p => (p ? clampPos(p.x, p.y) : p)); }
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  function onPointerDown(e) {
+    const rect = btnRef.current.getBoundingClientRect();
+    drag.current = { offX: e.clientX - rect.left, offY: e.clientY - rect.top, moved: false };
+    btnRef.current.setPointerCapture?.(e.pointerId);
+  }
+  function onPointerMove(e) {
+    const d = drag.current; if (!d) return;
+    const next = clampPos(e.clientX - d.offX, e.clientY - d.offY);
+    if (Math.abs(next.x - pos.x) > 3 || Math.abs(next.y - pos.y) > 3) d.moved = true;
+    if (d.moved) setPos(next);
+  }
+  function onPointerUp() {
+    const d = drag.current; drag.current = null;
+    if (!d) return;
+    if (d.moved) { try { localStorage.setItem(POS_KEY, JSON.stringify(pos)); } catch { /* ignore */ } }
+    else setOpen(true); // foi um clique, não um arraste → abre o chat
+  }
+
+  // Posição do painel aberto: cresce a partir do botão e fica dentro da tela
+  function panelStyle() {
+    if (!pos) return { right: 20, bottom: 20 };
+    const w = Math.min(384, window.innerWidth * 0.92);
+    const h = Math.min(560, window.innerHeight * 0.7);
+    const left = Math.max(8, Math.min(pos.x + FAB_SIZE - w, window.innerWidth - w - 8));
+    const top  = Math.max(8, Math.min(pos.y + FAB_SIZE - h, window.innerHeight - h - 8));
+    return { left, top };
+  }
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, loading]);
 
@@ -34,16 +92,19 @@ export default function AIAssistant() {
 
   return (
     <>
-      {!open && (
-        <button onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-xl flex items-center justify-center hover:scale-105 transition-transform"
-          title="Assistente IA">
+      {!open && pos && (
+        <button ref={btnRef}
+          onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+          style={{ left: pos.x, top: pos.y }}
+          className="fixed z-50 w-14 h-14 rounded-full bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-xl flex items-center justify-center hover:scale-105 transition-transform touch-none cursor-grab active:cursor-grabbing select-none"
+          title="Assistente IA — arraste para mover, clique para abrir">
           <Sparkles size={22} />
         </button>
       )}
 
       {open && (
-        <div className="fixed bottom-5 right-5 z-50 w-[92vw] max-w-sm h-[70vh] max-h-[560px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden">
+        <div style={panelStyle()}
+          className="fixed z-50 w-[92vw] max-w-sm h-[70vh] max-h-[560px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white">
             <div className="flex items-center gap-2 font-semibold"><Sparkles size={18} /> Assistente IA</div>
             <button onClick={() => setOpen(false)} className="hover:opacity-80"><X size={18} /></button>
