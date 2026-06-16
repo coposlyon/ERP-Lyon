@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, Loader2, User, Instagram, ExternalLink } from 'lucide-react';
 import storeApi from '@/store/storeApi';
 import '@/store/store.css';
@@ -25,6 +25,21 @@ export default function CadastroCliente() {
   const [addr, setAddr] = useState({ zip:'', street:'', number:'', complement:'', neighborhood:'', city:'', state:'' });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
+
+  // Abertura: preto → vídeo → preto → card sobe
+  const [phase, setPhase] = useState('black1'); // black1 | video | black2 | form
+  const videoRef = useRef(null);
+  useEffect(() => {
+    let t;
+    if (phase === 'black1') t = setTimeout(() => setPhase('video'), 1000);
+    else if (phase === 'video') {
+      const v = videoRef.current;
+      if (v) { try { v.currentTime = 0; const p = v.play(); if (p && p.catch) p.catch(() => setPhase('black2')); } catch { setPhase('black2'); } }
+      else setPhase('black2');
+      t = setTimeout(() => setPhase('black2'), 15000); // segurança caso o vídeo não termine
+    } else if (phase === 'black2') t = setTimeout(() => setPhase('form'), 700);
+    return () => clearTimeout(t);
+  }, [phase]);
 
   const set = (k,v) => setF(p => ({ ...p, [k]: v }));
   const setA = (k,v) => setAddr(p => ({ ...p, [k]: v }));
@@ -83,9 +98,22 @@ export default function CadastroCliente() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden py-8 px-4">
+    <div className="min-h-screen relative overflow-hidden py-8 px-4 bg-black">
+      {/* Abertura cinematográfica */}
+      {phase !== 'form' && (
+        <div className="fixed inset-0 z-50 bg-black">
+          <video ref={videoRef} muted playsInline preload="auto"
+            onEnded={() => setPhase('black2')} onError={() => setPhase('black2')}
+            className={`w-full h-full object-cover transition-opacity duration-700 ${phase === 'video' ? 'opacity-100' : 'opacity-0'}`}>
+            <source src="/cadastro-bg.mp4" type="video/mp4" />
+          </video>
+          <button type="button" onClick={() => setPhase('form')} className="absolute bottom-5 right-6 text-white/60 text-xs hover:text-white">Pular ›</button>
+        </div>
+      )}
+
+      {phase === 'form' && (<>
       {Bg}
-      <div className="relative z-10 max-w-xl mx-auto">
+      <div className="relative z-10 max-w-xl mx-auto st-rise">
         <div className="text-center mb-6">
           <img src="/lyon-logo.png" alt="Lyon Copos" className="h-28 sm:h-32 mx-auto mb-3 object-contain st-float drop-shadow-xl" onError={e => { e.target.style.display='none'; }} />
           <h1 className="text-2xl sm:text-3xl font-black leading-tight st-gradient-text">FAÇA O SEU CADASTRO NO NOSSO SISTEMA LYON COPOS!</h1>
@@ -182,6 +210,7 @@ export default function CadastroCliente() {
           <p className="text-xs text-gray-400 text-center">Seus dados são usados apenas para atendimento e pedidos.</p>
         </form>
       </div>
+      </>)}
     </div>
   );
 }
