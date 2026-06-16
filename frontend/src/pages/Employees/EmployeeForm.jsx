@@ -187,8 +187,8 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
     setAdm('allowed_modules', next);
   }
 
-  async function handleCepBlur(e) {
-    const cep = e.target.value.replace(/\D/g, '');
+  async function buscaCep(raw) {
+    const cep = String(raw).replace(/\D/g, '');
     if (cep.length !== 8) return;
     setCepLoading(true);
     try {
@@ -197,7 +197,7 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
       if (!res.ok) { toast.error(data.error || 'CEP não encontrado'); return; }
       setForm(p => ({
         ...p,
-        address: { ...p.address, street: data.street||'', neighborhood: data.neighborhood||'', city: data.city||'', state: data.state||'', zip: e.target.value },
+        address: { ...p.address, street: data.street||'', neighborhood: data.neighborhood||'', city: data.city||'', state: data.state||'', zip: raw },
       }));
     } catch { toast.error('Erro ao buscar CEP'); }
     finally   { setCepLoading(false); }
@@ -324,8 +324,8 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
             <label className="label">CEP</label>
             <div className="relative">
               <input className="input pr-8" value={form.address.zip}
-                onChange={e => setAddr('zip', e.target.value)}
-                onBlur={handleCepBlur} placeholder="00000-000" />
+                onChange={e => { const v = e.target.value; setAddr('zip', v); if (v.replace(/\D/g, '').length === 8) buscaCep(v); }}
+                onBlur={e => buscaCep(e.target.value)} placeholder="00000-000" />
               {cepLoading && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />}
             </div>
           </div>

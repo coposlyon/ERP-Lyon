@@ -112,8 +112,6 @@ export default function CadastroCliente() {
     if (!f.email.trim()) return toast.error('Informe o e-mail');
     if (!/^\S+@\S+\.\S+$/.test(f.email.trim())) return toast.error('E-mail inválido');
     if (!f.phone.trim()) return toast.error('Informe o telefone / WhatsApp');
-    if (!f.mobile.trim()) return toast.error('Informe o telefone para recado');
-    if (!f.instagram.trim()) return toast.error('Informe o Instagram');
     if (!addr.zip.trim() || !addr.street.trim() || !addr.number.trim() || !addr.neighborhood.trim() || !addr.city.trim() || !addr.state.trim())
       return toast.error('Preencha o endereço completo (CEP, rua, número, bairro, cidade e estado)');
     setSending(true);
@@ -223,11 +221,11 @@ export default function CadastroCliente() {
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="E-mail *"><input type="email" className={INPUT} value={f.email} onChange={e => set('email', e.target.value)} /></Field>
-                <Field label="Instagram *"><InstaInput value={f.instagram} onChange={v => set('instagram', v)} /></Field>
+                <Field label="Instagram"><InstaInput value={f.instagram} onChange={v => set('instagram', v)} /></Field>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="Telefone / WhatsApp *"><input className={INPUT} value={f.phone} placeholder="(44) 99999-9999" onChange={e => set('phone', maskPhone(e.target.value))} /></Field>
-                <Field label="Telefone p/ Recado *"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
+                <Field label="Telefone p/ Recado"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
               </div>
             </>
           ) : (
@@ -238,9 +236,9 @@ export default function CadastroCliente() {
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="Telefone / WhatsApp *"><input className={INPUT} value={f.phone} placeholder="(44) 99999-9999" onChange={e => set('phone', maskPhone(e.target.value))} /></Field>
-                <Field label="Telefone p/ Recado *"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
+                <Field label="Telefone p/ Recado"><input className={INPUT} value={f.mobile} placeholder="(44) 3333-3333" onChange={e => set('mobile', maskPhone(e.target.value))} /></Field>
               </div>
-              <Field label="Instagram *"><InstaInput value={f.instagram} onChange={v => set('instagram', v)} /></Field>
+              <Field label="Instagram"><InstaInput value={f.instagram} onChange={v => set('instagram', v)} /></Field>
             </>
           )}
 
