@@ -28,7 +28,12 @@ router.get('/', async (req, res) => {
       .from('VENDAS')
       .select('*, CLIENTES(name, cpf_cnpj, phone, address), USUARIOS(name)')
       .eq('tenant_id', req.tenantId)
-      .in('status', ['confirmed', 'in_production', 'ready'])
+      .in('status', [
+        // novos status do pedido de venda (janela de produção)
+        'aguardando_estoque', 'aguardando_arte', 'aguardando_vegetal', 'aguardando_revelacao', 'aguardando_coleta', 'em_transito',
+        // status antigos (vendas anteriores ao novo fluxo)
+        'confirmed', 'in_production', 'ready',
+      ])
       .order('ship_date', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true });
 

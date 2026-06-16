@@ -30,6 +30,7 @@ export default function PDV({ onDone }) {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [receivedAmount, setReceivedAmount] = useState('');
   const [installments, setInstallments] = useState(1);
+  const [operationDate, setOperationDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [firstDueDate, setFirstDueDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 30);
     return d.toISOString().split('T')[0];
@@ -142,6 +143,7 @@ export default function PDV({ onDone }) {
     saleMutation.mutate({
       customer_id: selectedCustomer?.id || null,
       type: 'sale',
+      operation_date: operationDate || null,
       items: items.map(i => ({
         product_id: i.product_id,
         quantity: i.quantity,
@@ -259,6 +261,13 @@ export default function PDV({ onDone }) {
 
       {/* Direita — Checkout */}
       <div className="w-full lg:w-80 flex flex-col gap-3">
+
+        {/* Data da operação */}
+        <div className="card p-4">
+          <label className="text-sm font-semibold text-gray-700 mb-1.5 block">📅 Data da operação</label>
+          <input type="date" className="input w-full text-sm" value={operationDate}
+            onChange={e => setOperationDate(e.target.value)} />
+        </div>
 
         {/* Cliente — sempre visível */}
         <div className="card p-4">

@@ -91,6 +91,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
   const {
     customer_id, type, items, notes, discount, delivery_date,
     artwork_url, artwork_notes, payment_method, installments, first_due_date,
+    operation_date,
   } = req.body;
 
   if (!items || items.length === 0) {
@@ -131,6 +132,17 @@ router.post('/', validate(saleSchema), async (req, res) => {
       return res.status(400).json({ error: error.message.replace(/^.*?:\s*/, '') });
     }
 
+    // Pedido de venda começa em "INICIANDO PEDIDO" + data da operação escolhida
+    if (data?.id) {
+      const patch = { status: 'iniciando_pedido' };
+      if (operation_date) patch.operation_date = operation_date;
+      let { error: uErr } = await supabase.from('VENDAS').update(patch).eq('id', data.id).eq('tenant_id', req.tenantId);
+      if (uErr && /operation_date/i.test(uErr.message || '')) { // coluna ainda não existe (migration 030)
+        await supabase.from('VENDAS').update({ status: 'iniciando_pedido' }).eq('id', data.id).eq('tenant_id', req.tenantId);
+      }
+      data.status = 'iniciando_pedido';
+    }
+
     audit(req, 'create', 'sale', data?.id, {
       number: data?.number, total: data?.total, items: items.length, payment_method,
     });
@@ -143,7 +155,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
 // Caminho legado (não transacional) — usado apenas enquanto a função
 // criar_venda não tiver sido criada no banco via MIGRATIONS.sql
 async function legacyCreateSale(req, res) {
-  const { customer_id, type, items, notes, discount, delivery_date, artwork_url, artwork_notes, payment_method } = req.body;
+  const { customer_id, type, items, notes, discount, delivery_date, artwork_url, artwork_notes, payment_method, operation_date } = req.body;
   try {
     const { data: nextNumber } = await supabase
       .rpc('proximo_numero_venda', { p_tenant_id: req.tenantId });
@@ -160,7 +172,8 @@ async function legacyCreateSale(req, res) {
         type: type || 'sale',
         customer_id,
         user_id: req.user.id,
-        status: 'confirmed',
+        status: 'iniciando_pedido',
+        ...(operation_date ? { operation_date } : {}),
         subtotal,
         discount: totalDiscount,
         total,
@@ -230,18 +243,31 @@ async function legacyCreateSale(req, res) {
   }
 }
 
+// Sequência oficial do Pedido de Venda — não pode pular etapas
+const SALE_STATUS_ORDER = [
+  'iniciando_pedido', 'aguardando_financeiro', 'aguardando_estoque',
+  'aguardando_arte', 'aguardando_vegetal', 'aguardando_revelacao',
+  'aguardando_coleta', 'em_transito', 'entregue',
+];
+
 router.patch('/:id/status', async (req, res) => {
   const { status } = req.body;
-  const validStatuses = ['open', 'confirmed', 'in_production', 'ready', 'delivered', 'cancelled'];
-
-  if (!validStatuses.includes(status)) {
+  if (!SALE_STATUS_ORDER.includes(status)) {
     return res.status(400).json({ error: 'Status inválido' });
   }
 
   try {
     // registra a mudança de status no histórico do pedido (se a coluna existir)
     const { data: cur } = await supabase.from('VENDAS')
-      .select('production_log').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+      .select('status, production_log').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+
+    // Não deixa pular etapas: só avança 1 passo (pode voltar para corrigir)
+    const curIdx = SALE_STATUS_ORDER.indexOf(cur?.status);
+    const newIdx = SALE_STATUS_ORDER.indexOf(status);
+    if (curIdx >= 0 && newIdx > curIdx + 1) {
+      return res.status(400).json({ error: `Não é possível pular etapas. O próximo status permitido é "${SALE_STATUS_ORDER[curIdx + 1]}".` });
+    }
+
     const log = Array.isArray(cur?.production_log) ? cur.production_log : [];
     log.push({ stage: 'status', action: status, at: new Date().toISOString(), user_id: req.user?.id || null, user: req.user?.name || req.user?.email || 'Usuário' });
 

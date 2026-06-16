@@ -248,7 +248,7 @@ router.post('/quote', async (req, res) => {
     const baseSale = {
       tenant_id: STORE_TENANT, user_id: null, number,
       customer_id: customerId, subtotal, discount: 0, total: subtotal,
-      notes: fullNotes, status: 'open',
+      notes: fullNotes, status: 'iniciando_pedido',
     };
     const trySale = (extra) => supabase.from('VENDAS').insert({ ...baseSale, ...extra }).select('id, number').single();
     let { data: sale, error: sErr } = await trySale({ source: 'site', event_date: eventDate });
@@ -625,13 +625,16 @@ router.post('/login', async (req, res) => {
 
 // ── Status da VENDA traduzido para o cliente ──────────────
 function statusCliente(sale) {
+  const s = sale.status || '';
   const st = sale.production_stage || '';
-  if (sale.status === 'cancelled')                                 return { key: 'rejected', label: 'Cancelado' };
-  if (sale.status === 'completed' || sale.status === 'delivered')  return { key: 'done', label: 'Concluído' };
-  if (st === 'finalizado' || sale.status === 'ready')              return { key: 'ready', label: 'Pronto! 🎉' };
-  if (['revelacao', 'producao', 'embalagem'].includes(st) || sale.status === 'in_production') return { key: 'producing', label: 'Em produção' };
-  if (sale.status === 'confirmed')                                 return { key: 'preparing', label: 'Em preparação' };
-  return { key: 'analysis', label: 'Aguardando aprovação' }; // status 'open'
+  if (s === 'cancelled')                                              return { key: 'rejected', label: 'Cancelado' };
+  if (['entregue', 'delivered', 'completed'].includes(s))            return { key: 'done', label: 'Entregue 🎉' };
+  if (s === 'em_transito')                                           return { key: 'ready', label: 'A caminho 🚚' };
+  if (s === 'aguardando_coleta' || s === 'ready' || st === 'finalizado') return { key: 'ready', label: 'Pronto! 🎉' };
+  if (['aguardando_arte', 'aguardando_vegetal', 'aguardando_revelacao'].includes(s) || ['revelacao', 'producao', 'embalagem'].includes(st) || s === 'in_production')
+    return { key: 'producing', label: 'Em produção' };
+  if (['aguardando_financeiro', 'aguardando_estoque', 'confirmed'].includes(s)) return { key: 'preparing', label: 'Em preparação' };
+  return { key: 'analysis', label: 'Aguardando aprovação' }; // iniciando_pedido / open
 }
 
 // ── Meus pedidos (loja) — status + fotos do produto ───────

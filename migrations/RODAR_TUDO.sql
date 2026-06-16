@@ -1158,3 +1158,8 @@ INSERT INTO "_MIGRATIONS" (version, name) VALUES ('028', 'categorias_dedupe') ON
 -- >>>>>>>>>>>>>>>>>>>> 029_venda_source.sql <<<<<<<<<<<<<<<<<<<<
 ALTER TABLE "VENDAS" ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
 INSERT INTO "_MIGRATIONS" (version, name) VALUES ('029', 'venda_source') ON CONFLICT (version) DO NOTHING;
+
+
+-- >>>>>>>>>>>>>>>>>>>> 030_venda_operation_date.sql <<<<<<<<<<<<<<<<<<<<
+ALTER TABLE "VENDAS" ADD COLUMN IF NOT EXISTS operation_date DATE;
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('030', 'venda_operation_date') ON CONFLICT (version) DO NOTHING;

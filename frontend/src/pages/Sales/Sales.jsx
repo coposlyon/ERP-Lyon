@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import PDV from './PDV';
+import { SALE_STATUSES, SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
 import { format, parseISO, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
@@ -14,21 +15,7 @@ function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 }
 
-const statusOptions = [
-  { value: '', label: 'Todos os Status' },
-  { value: 'open', label: 'Aguardando aprovação' },
-  { value: 'confirmed', label: 'Confirmado' },
-  { value: 'in_production', label: 'Em Produção' },
-  { value: 'ready', label: 'Pronto' },
-  { value: 'delivered', label: 'Entregue' },
-  { value: 'cancelled', label: 'Cancelado' },
-];
-
-const statusClass = {
-  open: 'badge-yellow', confirmed: 'badge-green',
-  in_production: 'badge-blue', ready: 'badge-purple',
-  delivered: 'badge-gray', cancelled: 'badge-red',
-};
+const statusFilterOptions = [{ value: '', label: 'Todos os Status' }, ...SALE_STATUSES.map(s => ({ value: s.key, label: s.label }))];
 
 const today = format(new Date(), 'yyyy-MM-dd');
 const thirtyDaysAgo = format(subDays(new Date(), 30), 'yyyy-MM-dd');
@@ -59,6 +46,7 @@ export default function Sales() {
   const updateStatus = useMutation({
     mutationFn: ({ id, status }) => api.patch(`/sales/${id}/status`, { status }),
     onSuccess: () => { qc.invalidateQueries(['sales']); toast.success('Status atualizado'); },
+    onError: (e) => toast.error(e.error || 'Não foi possível atualizar o status'),
   });
 
   function handleSearch(e) {
@@ -88,24 +76,29 @@ export default function Sales() {
       )
     },
     { key: 'created_at', label: 'Data', width: 100,
-      render: v => { try { return format(parseISO(v), 'dd/MM/yyyy', { locale: ptBR }); } catch { return v; } }
+      render: (v, row) => { const d = row.operation_date || v; try { return format(parseISO(d), 'dd/MM/yyyy', { locale: ptBR }); } catch { return d; } }
     },
     { key: 'CLIENTES', label: 'Cliente',
       render: (v, row) => (v || row.customers)?.name || <span className="text-gray-400">Consumidor Final</span>
     },
-    { key: 'status', label: 'Status', width: 140,
-      render: (v, row) => (
-        <select
-          value={v}
-          onClick={e => e.stopPropagation()}
-          onChange={e => updateStatus.mutate({ id: row.id, status: e.target.value })}
-          className={`badge cursor-pointer border-0 bg-transparent font-medium text-xs ${statusClass[v] || 'badge-gray'}`}
-        >
-          {statusOptions.slice(1).map(s => (
-            <option key={s.value} value={s.value}>{s.label}</option>
-          ))}
-        </select>
-      )
+    { key: 'status', label: 'Status', width: 230,
+      render: (v, row) => {
+        const curIdx = saleStatusIndex(v); // -1 se for status antigo
+        return (
+          <select
+            value={SALE_STATUS_ORDER.includes(v) ? v : ''}
+            onClick={e => e.stopPropagation()}
+            onChange={e => e.target.value && updateStatus.mutate({ id: row.id, status: e.target.value })}
+            className={`badge cursor-pointer border-0 bg-transparent font-medium text-[11px] ${saleStatusClass(v)}`}
+          >
+            {!SALE_STATUS_ORDER.includes(v) && <option value="">{saleStatusLabel(v)}</option>}
+            {SALE_STATUSES.map((s, i) => (
+              // não deixa pular etapas: só habilita até o próximo passo (curIdx+1)
+              <option key={s.key} value={s.key} disabled={curIdx >= 0 && i > curIdx + 1}>{s.label}</option>
+            ))}
+          </select>
+        );
+      }
     },
     { key: 'delivery_date', label: 'Entrega', width: 100,
       render: v => { if (!v) return '—'; try { return format(parseISO(v), 'dd/MM/yyyy'); } catch { return v; } }
@@ -166,8 +159,8 @@ export default function Sales() {
           {/* Status */}
           <div>
             <label className="label">Status</label>
-            <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }} className="input w-40 text-sm">
-              {statusOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }} className="input w-56 text-sm">
+              {statusFilterOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
 

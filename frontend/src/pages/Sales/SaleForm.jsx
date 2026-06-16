@@ -5,27 +5,17 @@ import { ArrowLeft, Printer, CheckCircle2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
+import { SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
 
 function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 }
 
-const statusLabels = {
-  open: 'Aberto', confirmed: 'Confirmado', in_production: 'Em Produção',
-  ready: 'Pronto', delivered: 'Entregue', cancelled: 'Cancelado',
-};
-
-const statusClass = {
-  open: 'badge-yellow', confirmed: 'badge-green', in_production: 'badge-blue',
-  ready: 'badge-purple', delivered: 'badge-gray', cancelled: 'badge-red',
-};
-
-const nextStatus = {
-  open: 'confirmed', confirmed: 'in_production', in_production: 'ready', ready: 'delivered',
-};
-const nextStatusLabel = {
-  open: 'Confirmar Pedido', confirmed: 'Iniciar Produção', in_production: 'Marcar Pronto', ready: 'Marcar Entregue',
-};
+// próximo status na sequência (não pula etapas)
+function proximoStatus(cur) {
+  const i = saleStatusIndex(cur);
+  return i >= 0 && i < SALE_STATUS_ORDER.length - 1 ? SALE_STATUS_ORDER[i + 1] : null;
+}
 
 const paymentLabels = {
   cash: 'Dinheiro', pix: 'Pix', card_debit: 'Cartão Débito',
@@ -65,7 +55,7 @@ export default function SaleForm() {
   const advanceMutation = useMutation({
     mutationFn: (status) => api.patch(`/sales/${id}/status`, { status }),
     onSuccess: (data) => {
-      toast.success(`Status: ${statusLabels[data.status]}`);
+      toast.success(`Status: ${saleStatusLabel(data.status)}`);
       qc.invalidateQueries(['sale', id]);
       qc.invalidateQueries(['sales']);
     },
@@ -81,7 +71,7 @@ export default function SaleForm() {
     </div>
   );
 
-  const canAdvance = nextStatus[sale.status];
+  const canAdvance = proximoStatus(sale.status);
 
   return (
     <>
@@ -110,11 +100,11 @@ export default function SaleForm() {
           <div className="flex gap-2 flex-wrap">
             {canAdvance && (
               <button
-                onClick={() => advanceMutation.mutate(nextStatus[sale.status])}
+                onClick={() => advanceMutation.mutate(canAdvance)}
                 disabled={advanceMutation.isPending}
                 className="btn-primary btn-sm"
               >
-                <CheckCircle2 size={15} /> {nextStatusLabel[sale.status]}
+                <CheckCircle2 size={15} /> Avançar: {saleStatusLabel(canAdvance)}
               </button>
             )}
             <button onClick={() => window.print()} className="btn-secondary">
@@ -133,8 +123,8 @@ export default function SaleForm() {
           </div>
           <div className="card p-4">
             <p className="text-xs text-gray-500 mb-2">Status</p>
-            <span className={`badge ${statusClass[sale.status] || 'badge-gray'}`}>
-              {statusLabels[sale.status] || sale.status}
+            <span className={`badge ${saleStatusClass(sale.status)}`}>
+              {saleStatusLabel(sale.status)}
             </span>
             {sale.delivery_date && (
               <p className="text-sm text-gray-500 mt-2">
