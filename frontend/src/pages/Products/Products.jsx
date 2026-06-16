@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Trash2, Loader2, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Trash2, Loader2, AlertTriangle, FolderTree } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
@@ -41,6 +41,15 @@ export default function Products() {
     mutationFn: (id) => api.post(`/products/${id}/delete`),
     onSuccess: () => { qc.invalidateQueries(['products']); setDelTarget(null); toast.success('Produto excluído!'); },
     onError: (e) => toast.error(e.error || 'Erro ao excluir produto'),
+  });
+
+  const dedupeMutation = useMutation({
+    mutationFn: () => api.post('/products/categories/dedupe'),
+    onSuccess: (r) => {
+      qc.invalidateQueries(['categories']); qc.invalidateQueries(['products']);
+      toast.success(r.removed > 0 ? `${r.removed} categoria(s) duplicada(s) removida(s)!` : 'Nenhuma duplicada encontrada');
+    },
+    onError: (e) => toast.error(e.error || 'Erro ao limpar categorias'),
   });
 
   function handleSearch(e) {
@@ -112,6 +121,9 @@ export default function Products() {
           </button>
           <button onClick={() => setBulkOpen(true)} className="btn-secondary">
             <Layers size={16} /> Edição em massa
+          </button>
+          <button onClick={() => dedupeMutation.mutate()} disabled={dedupeMutation.isPending} className="btn-secondary disabled:opacity-50" title="Juntar categorias repetidas">
+            {dedupeMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <FolderTree size={16} />} Limpar Categorias
           </button>
           <button onClick={openNew} className="btn-primary">
             <Plus size={16} /> Novo Produto

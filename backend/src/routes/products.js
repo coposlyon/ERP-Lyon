@@ -167,6 +167,36 @@ router.post('/import', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Junta categorias duplicadas (mesmo nome): mantém uma, repõe os produtos e apaga o resto
+router.post('/categories/dedupe', async (req, res) => {
+  try {
+    const { data: cats } = await supabase.from('CATEGORIAS').select('id, name')
+      .eq('tenant_id', req.tenantId).order('id');
+    const groups = new Map();
+    for (const c of (cats || [])) {
+      const key = String(c.name || '').trim().toUpperCase();
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(c);
+    }
+    let mergedGroups = 0, removed = 0;
+    for (const list of groups.values()) {
+      if (list.length <= 1) continue;
+      const keep = list[0].id;
+      const dropIds = list.slice(1).map(c => c.id);
+      // repõe os produtos para a categoria mantida
+      await supabase.from('PRODUTOS').update({ category_id: keep })
+        .eq('tenant_id', req.tenantId).in('category_id', dropIds);
+      // apaga as duplicadas
+      const { error } = await supabase.from('CATEGORIAS').delete()
+        .eq('tenant_id', req.tenantId).in('id', dropIds);
+      if (!error) { mergedGroups++; removed += dropIds.length; }
+    }
+    audit(req, 'update', 'categories_dedupe', null, { mergedGroups, removed });
+    res.json({ ok: true, merged_groups: mergedGroups, removed });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/categories/list', async (req, res) => {
   try {
     const { data, error } = await supabase
