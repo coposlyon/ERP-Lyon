@@ -104,6 +104,20 @@ router.get('/products/:id', async (req, res) => {
     if (error) throw error;
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
 
+    // Variações (cor/borda/volume) — busca isolada para não depender das outras colunas novas
+    let pvars = { colors: [], borders: [], volumes: [] };
+    try {
+      const { data: pv, error: pvErr } = await supabase.from('PRODUTOS')
+        .select('variations').eq('tenant_id', STORE_TENANT).eq('id', req.params.id).maybeSingle();
+      if (!pvErr && pv?.variations && typeof pv.variations === 'object') {
+        pvars = {
+          colors:  Array.isArray(pv.variations.colors)  ? pv.variations.colors  : [],
+          borders: Array.isArray(pv.variations.borders) ? pv.variations.borders : [],
+          volumes: Array.isArray(pv.variations.volumes) ? pv.variations.volumes : [],
+        };
+      }
+    } catch { /* coluna variations ainda não existe */ }
+
     const { data: variants } = await supabase
       .from('VARIANTES_PRODUTO')
       .select('id, name, type, value, extra_price')
@@ -131,11 +145,7 @@ router.get('/products/:id', async (req, res) => {
       group: p.store_group || null,
       color_label: p.store_color || null,
       color_options: colorOptions,
-      variations: (p.variations && typeof p.variations === 'object') ? {
-        colors: Array.isArray(p.variations.colors) ? p.variations.colors : [],
-        borders: Array.isArray(p.variations.borders) ? p.variations.borders : [],
-        volumes: Array.isArray(p.variations.volumes) ? p.variations.volumes : [],
-      } : { colors: [], borders: [], volumes: [] },
+      variations: pvars,
       sale_price: Number(p.sale_price) || 0,
       price_tiers: Array.isArray(p.price_tiers) ? p.price_tiers : [],
       from_price: fromPrice(p),
