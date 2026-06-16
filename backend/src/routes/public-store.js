@@ -425,6 +425,43 @@ router.post('/cadastro-fornecedor', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Autocadastro de TRANSPORTADORA (link público) ─────────
+router.post('/cadastro-transportadora', async (req, res) => {
+  const { name, trade_name, cnpj, ie, ie_isento, email, phone, whatsapp, contact_name, address } = req.body;
+  const nm = String(name || '').trim();
+  const em = String(email || '').trim();
+  const ph = String(phone || '').trim();
+  const docDigits = soDigitos(cnpj);
+  if (!nm) return res.status(400).json({ error: 'Informe a razão social' });
+  if (!docDigits) return res.status(400).json({ error: 'Informe o CNPJ' });
+  if (!validaCNPJ(docDigits)) return res.status(400).json({ error: 'CNPJ inválido. Confira os números digitados.' });
+  if (!ie_isento && !String(ie || '').trim()) return res.status(400).json({ error: 'Informe a Inscrição Estadual (ou marque Isento)' });
+  if (!em) return res.status(400).json({ error: 'Informe o e-mail' });
+  if (!ph) return res.status(400).json({ error: 'Informe o telefone' });
+  try {
+    const { data: all } = await supabase.from('TRANSPORTADORAS').select('id, cnpj').eq('tenant_id', STORE_TENANT).limit(5000);
+    if ((all || []).some(s => soDigitos(s.cnpj) === docDigits)) {
+      return res.status(409).json({ error: 'Este CNPJ já está cadastrado no nosso sistema.' });
+    }
+    const payload = {
+      tenant_id: STORE_TENANT,
+      name: nm.toUpperCase(),
+      trade_name: String(trade_name || '').trim().toUpperCase() || null,
+      cnpj: String(cnpj || '').trim() || null,
+      ie: ie_isento ? 'ISENTO' : (String(ie || '').trim() || null),
+      email: em || null,
+      phone: ph || null,
+      whatsapp: String(whatsapp || '').trim() || null,
+      contact_name: String(contact_name || '').trim() || null,
+      address: address && typeof address === 'object' ? address : {},
+      is_active: true,
+    };
+    const { error } = await supabase.from('TRANSPORTADORAS').insert(payload);
+    if (error) throw error;
+    res.status(201).json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Só verifica se o CPF/CNPJ já existe (sem expor os dados) ──
 router.post('/check-doc', async (req, res) => {
   const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);

@@ -9,6 +9,7 @@ import MarcacaoPonto from '@/pages/Ponto/MarcacaoPonto';
 import StoreApp from '@/store/StoreApp';
 import CadastroCliente from '@/pages/Public/CadastroCliente';
 import CadastroFornecedor from '@/pages/Public/CadastroFornecedor';
+import CadastroTransportadora from '@/pages/Public/CadastroTransportadora';
 
 // Páginas do ERP carregadas sob demanda (code-splitting por rota) —
 // cada uma vira um chunk próprio, deixando a carga inicial leve.
@@ -84,6 +85,8 @@ function AppRoutes() {
       <Route path="/cadastro" element={<CadastroCliente />} />
       {/* Autocadastro de fornecedora — link público p/ enviar à fornecedora */}
       <Route path="/cadastro-fornecedor" element={<CadastroFornecedor />} />
+      {/* Autocadastro de transportadora — link público p/ enviar à transportadora */}
+      <Route path="/cadastro-transportadora" element={<CadastroTransportadora />} />
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       {/* App de marcação de ponto — tela cheia, todo colaborador acessa */}
       <Route path="/marcacao" element={<PrivateRoute><MarcacaoPonto /></PrivateRoute>} />
