@@ -109,7 +109,7 @@ export default function CadastroCliente() {
         <div className="fixed inset-0 z-50 bg-black" onClick={phase === 'start' ? startIntro : undefined}>
           <video ref={videoRef} playsInline preload="auto"
             onEnded={() => setPhase('black2')} onError={() => setPhase('black2')}
-            className={`w-full h-full object-cover transition-opacity duration-700 ${phase === 'video' ? 'opacity-100' : 'opacity-0'}`}>
+            className={`w-full h-full object-contain transition-opacity duration-700 ${phase === 'video' ? 'opacity-100' : 'opacity-0'}`}>
             <source src="/cadastro-bg.mp4" type="video/mp4" />
           </video>
 
