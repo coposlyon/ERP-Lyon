@@ -8,6 +8,7 @@ import Modal from '@/components/UI/Modal';
 import ProductForm from './ProductForm';
 import BulkEditModal from './BulkEditModal';
 import ImportStockModal from './ImportStockModal';
+import ImportProductsModal from './ImportProductsModal';
 import toast from 'react-hot-toast';
 
 function fmt(v) {
@@ -21,6 +22,7 @@ export default function Products() {
   const [modalOpen, setModalOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [delTarget, setDelTarget] = useState(null); // produto a apagar (confirmação)
   const qc = useQueryClient();
@@ -103,7 +105,10 @@ export default function Products() {
         </div>
         <div className="flex gap-2">
           <button onClick={() => setImportOpen(true)} className="btn-secondary">
-            <Upload size={16} /> Importar
+            <Upload size={16} /> Importar Estoque
+          </button>
+          <button onClick={() => setCatalogOpen(true)} className="btn-secondary">
+            <Upload size={16} /> Importar Catálogo
           </button>
           <button onClick={() => setBulkOpen(true)} className="btn-secondary">
             <Layers size={16} /> Edição em massa
@@ -146,6 +151,7 @@ export default function Products() {
 
       <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
       <ImportStockModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
+      <ImportProductsModal isOpen={catalogOpen} onClose={() => setCatalogOpen(false)} />
 
       {/* Confirmação de exclusão */}
       <Modal isOpen={!!delTarget} onClose={() => !deleteMutation.isPending && setDelTarget(null)} title="Apagar produto" size="sm">

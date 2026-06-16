@@ -43,11 +43,27 @@ export default function ProductPage() {
   const [printMethod, setPrintMethod] = useState(null);
   const [qty, setQty] = useState(1);
 
+  // variações importadas (cor / borda / volume como listas de texto)
+  const [selColor, setSelColor] = useState(null);
+  const [selBorder, setSelBorder] = useState(null);
+  const [selVolume, setSelVolume] = useState(null);
+
   const { data: product, isLoading, error } = useQuery({
     queryKey: ['store-product', id],
     queryFn: () => storeApi.get(`/products/${id}`),
     retry: false,
   });
+
+  const varColors  = product?.variations?.colors  || [];
+  const varBorders = product?.variations?.borders || [];
+  const varVolumes = product?.variations?.volumes || [];
+
+  // seleciona a 1ª opção de cada variação ao carregar
+  useEffect(() => {
+    if (!product) return;
+    if (varColors.length)  setSelColor(c => c ?? varColors[0]);
+    if (varVolumes.length) setSelVolume(v => v ?? varVolumes[0]);
+  }, [product]); // eslint-disable-line
 
   const minQty = Math.max(1, product?.min_order_qty || 1);
 
@@ -68,7 +84,8 @@ export default function ProductPage() {
   }, [product]);
 
   const gradient = /degrad/i.test(product?.name || '');
-  const bottleColor = selVariant ? resolveColor(selVariant) : '#F26522';
+  const bottleColor = selColor ? resolveColor({ name: selColor, value: selColor })
+    : selVariant ? resolveColor(selVariant) : '#F26522';
   const methods = availableMethods(product);
   const table = methodTable(product, printMethod);
 
@@ -86,11 +103,14 @@ export default function ProductPage() {
   );
 
   function addToCart() {
+    if (varBorders.length && !selBorder) { toast.error('Escolha a borda'); return; }
     const methodLabel = methods.find(m => m.key === printMethod)?.label;
     add({
       product_id: product.id,
       product_name: product.name,
-      color: product.color_label || selVariant?.name || null,
+      color: selColor || product.color_label || selVariant?.name || null,
+      border: selBorder || null,
+      volume: selVolume || null,
       print_method: printMethod || null,
       print_name: methodLabel || null,
       unit_price: unitPrice,
@@ -125,6 +145,64 @@ export default function ProductPage() {
             <p className="text-sm text-gray-400">{product.price_tiers?.length ? 'a partir de' : 'preço unitário'}</p>
             <p className="text-3xl font-extrabold text-gray-900">{fmt(unitPrice)}</p>
           </div>
+
+          {/* Variações importadas: Cor */}
+          {varColors.length > 0 && (
+            <div className="mt-6">
+              <p className="text-sm font-semibold text-gray-700 mb-2">
+                Cor: <span className="text-gray-500 font-normal">{selColor}</span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {varColors.map(cName => {
+                  const c = resolveColor({ name: cName, value: cName });
+                  const active = selColor === cName;
+                  return (
+                    <button key={cName} onClick={() => setSelColor(cName)} title={cName}
+                      className={`w-9 h-9 rounded-full transition-transform ${active ? 'ring-2 ring-orange-500 ring-offset-2 scale-110' : 'hover:scale-105'}`}
+                      style={{ background: c, border: needsBorder(c) ? '1px solid #D8DCE2' : 'none' }} />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Variações importadas: Borda */}
+          {varBorders.length > 0 && (
+            <div className="mt-5">
+              <p className="text-sm font-semibold text-gray-700 mb-2">
+                Borda: <span className="text-gray-500 font-normal">{selBorder || 'selecione'}</span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => setSelBorder(null)}
+                  className={`px-3 py-1.5 rounded-lg text-sm border-2 transition-colors ${!selBorder ? 'border-orange-500 bg-orange-50 text-orange-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                  Sem borda
+                </button>
+                {varBorders.map(b => (
+                  <button key={b} onClick={() => setSelBorder(b)}
+                    className={`px-3 py-1.5 rounded-lg text-sm border-2 transition-colors ${selBorder === b ? 'border-orange-500 bg-orange-50 text-orange-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    {b.replace(/^BORDA\s*/i, '')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Variações importadas: Volume */}
+          {varVolumes.length > 1 && (
+            <div className="mt-5">
+              <p className="text-sm font-semibold text-gray-700 mb-2">
+                Volume: <span className="text-gray-500 font-normal">{selVolume}</span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {varVolumes.map(v => (
+                  <button key={v} onClick={() => setSelVolume(v)}
+                    className={`px-3 py-1.5 rounded-lg text-sm border-2 transition-colors ${selVolume === v ? 'border-orange-500 bg-orange-50 text-orange-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Cores do modelo (cada cor é um produto) */}
           {product.color_options?.length > 1 && (

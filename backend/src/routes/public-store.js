@@ -48,7 +48,7 @@ router.get('/products', async (req, res) => {
   const build = (full) => {
     let q = supabase
       .from('PRODUTOS')
-      .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, store_group, store_color' : ''}, category_id, CATEGORIAS(name)`)
+      .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, store_group, store_color, variations' : ''}, category_id, CATEGORIAS(name)`)
       .eq('tenant_id', STORE_TENANT)
       .eq('is_active', true)
       .order('name');
@@ -74,13 +74,15 @@ router.get('/products', async (req, res) => {
     const cards = [...groups.entries()].map(([key, items]) => {
       const rep = items[0];
       const prices = items.map(fromPrice).filter(v => v > 0);
+      // cores: nº de variações (modelo único) ou nº de produtos-irmãos (modelo antigo)
+      const varColors = items.reduce((n, p) => n + ((p.variations?.colors?.length) || 0), 0);
       return {
         id: rep.id, name: key, code: rep.code, unit: rep.unit,
         description: rep.description,
         category: rep.CATEGORIAS?.name || null,
         from_price: prices.length ? Math.min(...prices) : fromPrice(rep),
         has_tiers: items.some(p => Array.isArray(p.price_tiers) && p.price_tiers.length > 0),
-        colors: items.length > 1 ? items.length : 0,
+        colors: items.length > 1 ? items.length : varColors,
         min_order_qty: Math.max(...items.map(p => p.min_order_qty || 1)),
       };
     }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
@@ -93,7 +95,7 @@ router.get('/products', async (req, res) => {
 router.get('/products/:id', async (req, res) => {
   const build = (full) => supabase
     .from('PRODUTOS')
-    .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, print_pricing, store_group, store_color' : ''}, CATEGORIAS(name)`)
+    .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, print_pricing, store_group, store_color, variations' : ''}, CATEGORIAS(name)`)
     .eq('tenant_id', STORE_TENANT).eq('id', req.params.id).eq('is_active', true)
     .maybeSingle();
   try {
@@ -129,6 +131,11 @@ router.get('/products/:id', async (req, res) => {
       group: p.store_group || null,
       color_label: p.store_color || null,
       color_options: colorOptions,
+      variations: (p.variations && typeof p.variations === 'object') ? {
+        colors: Array.isArray(p.variations.colors) ? p.variations.colors : [],
+        borders: Array.isArray(p.variations.borders) ? p.variations.borders : [],
+        volumes: Array.isArray(p.variations.volumes) ? p.variations.volumes : [],
+      } : { colors: [], borders: [], volumes: [] },
       sale_price: Number(p.sale_price) || 0,
       price_tiers: Array.isArray(p.price_tiers) ? p.price_tiers : [],
       from_price: fromPrice(p),
@@ -180,12 +187,16 @@ router.post('/quote', async (req, res) => {
       const printMethod = it.print_method || null;
       const unit = precoComImpressao(p, printMethod, qty);
       const printName = printMethod ? printLabel[printMethod] || null : null;
+      const border = it.border ? String(it.border).trim() : null;
+      const volume = it.volume ? String(it.volume).trim() : null;
+      const extra = [it.color, volume, border].filter(Boolean).join(' / ');
       orderItems.push({
         product_id: p.id,
-        product_name: p.name + (it.color ? ` — ${it.color}` : '') + (printName ? ` (${printName})` : ''),
+        product_name: p.name + (extra ? ` — ${extra}` : '') + (printName ? ` (${printName})` : ''),
         quantity: qty,
         unit_price: unit,
         color: it.color || null,
+        border, volume,
         print_method: printMethod, print_name: printName,
         design: it.design || null, preview: it.preview || null,
       });
@@ -257,6 +268,8 @@ router.post('/quote', async (req, res) => {
       discount: 0, total: i.quantity * i.unit_price,
       customization: {
         ...(i.color ? { cor: i.color } : {}),
+        ...(i.border ? { borda: i.border } : {}),
+        ...(i.volume ? { volume: i.volume } : {}),
         ...(i.print_name ? { impressao: i.print_name } : {}),
         ...(i.design ? { design: i.design } : {}),
         ...(i.preview ? { preview: i.preview } : {}),

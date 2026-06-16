@@ -52,7 +52,7 @@ export default function CartPage() {
         customer_id: customer?.id || null,
         event_date: form.event_date || null,
         notes: (form.notes || '') + freteNote,
-        items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, color: i.color, print_method: i.print_method || null, quantity: i.quantity, design: i.design || null, preview: i.preview || null })),
+        items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, color: i.color, border: i.border || null, volume: i.volume || null, print_method: i.print_method || null, quantity: i.quantity, design: i.design || null, preview: i.preview || null })),
       });
       setDone(res);
       clear();
@@ -115,6 +115,8 @@ export default function CartPage() {
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-gray-900 truncate">{i.product_name}</p>
                   {i.color && <p className="text-sm text-gray-400">Cor: {i.color}</p>}
+                  {i.border && <p className="text-xs text-gray-400">{i.border.replace(/^BORDA\s*/i, 'Borda: ')}</p>}
+                  {i.volume && <p className="text-xs text-gray-400">Volume: {i.volume}</p>}
                   {i.design && <p className="text-xs text-orange-500 font-medium">Arte personalizada em 3D</p>}
                   <p className="text-sm text-gray-500 mt-0.5">{i.unit_price > 0 ? `${fmt(i.unit_price)} / un` : 'a orçar'}</p>
                 </div>

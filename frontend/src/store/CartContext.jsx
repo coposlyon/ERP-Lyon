@@ -10,8 +10,8 @@ export function CartProvider({ children }) {
 
   useEffect(() => { localStorage.setItem(KEY, JSON.stringify(items)); }, [items]);
 
-  // chave única por produto+cor
-  const keyOf = i => `${i.product_id}::${i.color || ''}::${i.print_method || ''}`;
+  // chave única por produto + cor + borda + volume + impressão
+  const keyOf = i => `${i.product_id}::${i.color || ''}::${i.border || ''}::${i.volume || ''}::${i.print_method || ''}`;
 
   const add = useCallback((item) => {
     setItems(prev => {

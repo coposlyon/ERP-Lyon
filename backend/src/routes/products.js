@@ -371,6 +371,66 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Importação de catálogo agrupado: 1 produto por modelo, com variações
+// (cores / bordas / volumes). Se o produto já existe, MESCLA as variações.
+router.post('/import-grouped', async (req, res) => {
+  const groups = Array.isArray(req.body.groups) ? req.body.groups : [];
+  if (!groups.length) return res.status(400).json({ error: 'Nada para importar' });
+
+  const uniq = arr => [...new Set((arr || []).map(s => String(s).trim()).filter(Boolean))].sort();
+  let created = 0, updated = 0, skipped = 0;
+  const errors = [];
+
+  try {
+    for (const g of groups) {
+      const name = String(g.name || '').trim().toUpperCase();
+      if (name.length < 3) { skipped++; continue; }
+      const variations = { colors: uniq(g.colors), borders: uniq(g.borders), volumes: uniq(g.volumes) };
+
+      // já existe um produto com esse nome neste tenant?
+      let existing = null;
+      try {
+        const { data } = await supabase.from('PRODUTOS').select('id, variations')
+          .eq('tenant_id', req.tenantId).eq('name', name).limit(1).maybeSingle();
+        existing = data;
+      } catch { /* coluna variations pode não existir ainda */
+        const { data } = await supabase.from('PRODUTOS').select('id')
+          .eq('tenant_id', req.tenantId).eq('name', name).limit(1).maybeSingle();
+        existing = data;
+      }
+
+      if (existing) {
+        const cur = existing.variations || {};
+        const merged = {
+          colors: uniq([...(cur.colors || []), ...variations.colors]),
+          borders: uniq([...(cur.borders || []), ...variations.borders]),
+          volumes: uniq([...(cur.volumes || []), ...variations.volumes]),
+        };
+        const { error } = await supabase.from('PRODUTOS').update({ variations: merged })
+          .eq('id', existing.id).eq('tenant_id', req.tenantId);
+        if (error) errors.push(`${name}: ${error.message}`); else updated++;
+        continue;
+      }
+
+      // novo produto
+      const baseRow = {
+        tenant_id: req.tenantId, name, unit: 'UN',
+        sale_price: 0, cost_price: 0, current_stock: 0, is_active: true,
+      };
+      const fullRow = { ...baseRow, min_order_qty: 10, store_group: name, variations };
+      let { error } = await supabase.from('PRODUTOS').insert(fullRow);
+      if (error && /(variations|min_order_qty|store_group)/i.test(error.message || '')) {
+        ({ error } = await supabase.from('PRODUTOS').insert(baseRow)); // colunas novas ausentes
+      }
+      if (error) { errors.push(`${name}: ${error.message}`); skipped++; } else created++;
+    }
+    audit(req, 'create', 'product_import', null, { created, updated, skipped });
+    res.json({ created, updated, skipped, errors: errors.slice(0, 20), total: groups.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message, created, updated, skipped });
+  }
+});
+
 // Exclusão DEFINITIVA do produto (apaga de verdade)
 router.post('/:id/delete', async (req, res) => {
   try {

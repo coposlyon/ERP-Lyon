@@ -1138,3 +1138,9 @@ ALTER TABLE "CLIENTES" ADD COLUMN IF NOT EXISTS avatar_url      TEXT;
 ALTER TABLE "CLIENTES" ADD COLUMN IF NOT EXISTS profile_history JSONB DEFAULT '[]'::jsonb;
 INSERT INTO "_MIGRATIONS" (version, name) VALUES ('026', 'cliente_perfil')
 ON CONFLICT (version) DO NOTHING;
+
+
+-- >>>>>>>>>>>>>>>>>>>> 027_produto_variations.sql <<<<<<<<<<<<<<<<<<<<
+ALTER TABLE "PRODUTOS" ADD COLUMN IF NOT EXISTS variations JSONB DEFAULT '{}'::jsonb;
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('027', 'produto_variations')
+ON CONFLICT (version) DO NOTHING;
