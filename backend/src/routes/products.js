@@ -5,6 +5,14 @@ const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
 
+// Categoria = primeiro nome do produto (ex.: "CANECA ALUMÍNIO" → CANECA)
+function categoriaDe(nm) {
+  const n = String(nm || '').toUpperCase().trim();
+  if (n.startsWith('LONG DRINK')) return 'LONG DRINK';
+  if (n.startsWith('PORTA ')) return 'PORTA GARRAFA';
+  return n.split(/\s+/)[0] || 'OUTROS';
+}
+
 const productSchema = Joi.object({
   name:       Joi.string().min(1).required(),
   sale_price: Joi.number().min(0),
@@ -192,8 +200,32 @@ router.post('/categories/dedupe', async (req, res) => {
         .eq('tenant_id', req.tenantId).in('id', dropIds);
       if (!error) { mergedGroups++; removed += dropIds.length; }
     }
-    audit(req, 'update', 'categories_dedupe', null, { mergedGroups, removed });
-    res.json({ ok: true, merged_groups: mergedGroups, removed });
+
+    // Backfill: produtos sem categoria recebem a categoria do 1º nome
+    const catByName = new Map();
+    const { data: allCats } = await supabase.from('CATEGORIAS').select('id, name').eq('tenant_id', req.tenantId);
+    for (const c of (allCats || [])) catByName.set(String(c.name || '').trim().toUpperCase(), c.id);
+    async function ensureCat(nm) {
+      if (catByName.has(nm)) return catByName.get(nm);
+      const r = await supabase.from('CATEGORIAS').insert({ tenant_id: req.tenantId, name: nm }).select('id').single();
+      const id = r.data?.id || null;
+      catByName.set(nm, id);
+      return id;
+    }
+    const { data: noCat } = await supabase.from('PRODUTOS').select('id, name')
+      .eq('tenant_id', req.tenantId).is('category_id', null).limit(10000);
+    let backfilled = 0;
+    for (const p of (noCat || [])) {
+      const cid = await ensureCat(categoriaDe(p.name));
+      if (cid) {
+        const { error } = await supabase.from('PRODUTOS').update({ category_id: cid })
+          .eq('id', p.id).eq('tenant_id', req.tenantId);
+        if (!error) backfilled++;
+      }
+    }
+
+    audit(req, 'update', 'categories_dedupe', null, { mergedGroups, removed, backfilled });
+    res.json({ ok: true, merged_groups: mergedGroups, removed, backfilled });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

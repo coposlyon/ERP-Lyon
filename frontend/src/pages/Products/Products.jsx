@@ -47,9 +47,12 @@ export default function Products() {
     mutationFn: () => api.post('/products/categories/dedupe'),
     onSuccess: (r) => {
       qc.invalidateQueries(['categories']); qc.invalidateQueries(['products']);
-      toast.success(r.removed > 0 ? `${r.removed} categoria(s) duplicada(s) removida(s)!` : 'Nenhuma duplicada encontrada');
+      const parts = [];
+      if (r.removed > 0) parts.push(`${r.removed} duplicada(s) removida(s)`);
+      if (r.backfilled > 0) parts.push(`${r.backfilled} produto(s) categorizado(s)`);
+      toast.success(parts.length ? `Categorias organizadas: ${parts.join(' · ')}!` : 'Categorias já estavam organizadas');
     },
-    onError: (e) => toast.error(e.error || 'Erro ao limpar categorias'),
+    onError: (e) => toast.error(e.error || 'Erro ao organizar categorias'),
   });
 
   function handleSearch(e) {
@@ -66,7 +69,7 @@ export default function Products() {
   const columns = [
     { key: 'code', label: 'Código', width: 80, render: v => <span className="font-mono text-xs">{id4(v)}</span> },
     { key: 'name', label: 'Produto' },
-    { key: 'categories', label: 'Categoria', render: v => v?.name || '—' },
+    { key: 'CATEGORIAS', label: 'Categoria', render: (v, row) => v?.name || row.categories?.name || '—' },
     { key: 'unit', label: 'Un.', width: 60 },
     { key: 'current_stock', label: 'Estoque', width: 100,
       render: (v, row) => (
@@ -122,8 +125,8 @@ export default function Products() {
           <button onClick={() => setBulkOpen(true)} className="btn-secondary">
             <Layers size={16} /> Edição em massa
           </button>
-          <button onClick={() => dedupeMutation.mutate()} disabled={dedupeMutation.isPending} className="btn-secondary disabled:opacity-50" title="Juntar categorias repetidas">
-            {dedupeMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <FolderTree size={16} />} Limpar Categorias
+          <button onClick={() => dedupeMutation.mutate()} disabled={dedupeMutation.isPending} className="btn-secondary disabled:opacity-50" title="Junta duplicadas e categoriza produtos sem categoria">
+            {dedupeMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <FolderTree size={16} />} Organizar Categorias
           </button>
           <button onClick={openNew} className="btn-primary">
             <Plus size={16} /> Novo Produto
