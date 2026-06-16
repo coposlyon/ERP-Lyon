@@ -31,11 +31,11 @@ export default function StoreLayout({ children }) {
     <div className="min-h-screen flex flex-col bg-gray-50 text-gray-900">
       {/* Header */}
       <header className={`fixed top-0 inset-x-0 z-40 transition-all duration-300 ${solid ? 'bg-white/90 backdrop-blur shadow-sm text-gray-900' : 'bg-transparent text-white'}`}>
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/loja" className="flex items-center gap-2.5 font-black text-lg tracking-tight">
-            <img src="/lyon-logo.png" alt={store?.name || 'Lyon Copos'} className="h-10 w-auto object-contain drop-shadow"
+        <div className="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between">
+          <Link to="/loja" className="flex items-center gap-3 font-black text-lg tracking-tight">
+            <img src="/lyon-logo.png" alt={store?.name || 'Lyon Copos'} className="h-14 sm:h-16 w-auto object-contain drop-shadow"
               onError={e => { e.currentTarget.style.display = 'none'; }} />
-            <span>{store?.name || 'Lyon Copos Personalizados'}</span>
+            <span className="hidden sm:inline">{store?.name || 'Lyon Copos Personalizados'}</span>
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm font-semibold">
             <a href="/loja#catalogo" className={`hover:text-orange-500 transition-colors ${solid ? '' : 'text-white/90'}`}>Catálogo</a>
@@ -79,7 +79,7 @@ export default function StoreLayout({ children }) {
       </header>
 
       {/* espaçador quando a navbar é sólida fora da home */}
-      {!isHome && <div className="h-16" />}
+      {!isHome && <div className="h-20" />}
 
       <main className="flex-1">{children}</main>
 
