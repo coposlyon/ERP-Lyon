@@ -378,6 +378,53 @@ router.post('/cadastro', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Autocadastro de FORNECEDORA (link público) ────────────
+router.post('/cadastro-fornecedor', async (req, res) => {
+  const { name, nome_fantasia, cnpj, ie, ie_isento, email, phone, mobile, contact_name, instagram, address } = req.body;
+  const nm = String(name || '').trim();
+  const em = String(email || '').trim();
+  const ph = String(phone || '').trim();
+  const docDigits = soDigitos(cnpj);
+  if (!nm) return res.status(400).json({ error: 'Informe a razão social' });
+  if (!docDigits) return res.status(400).json({ error: 'Informe o CNPJ' });
+  if (!validaCNPJ(docDigits)) return res.status(400).json({ error: 'CNPJ inválido. Confira os números digitados.' });
+  if (!ie_isento && !String(ie || '').trim()) return res.status(400).json({ error: 'Informe a Inscrição Estadual (ou marque Isento)' });
+  if (!em) return res.status(400).json({ error: 'Informe o e-mail' });
+  if (!ph) return res.status(400).json({ error: 'Informe o telefone' });
+  const ig = String(instagram || '').trim()
+    .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?].*$/, '').replace(/^@/, '') || null;
+  try {
+    // Bloqueia se o CNPJ já existir
+    const { data: all } = await supabase.from('FORNECEDORES').select('id, cnpj').eq('tenant_id', STORE_TENANT).limit(5000);
+    if ((all || []).some(s => soDigitos(s.cnpj) === docDigits)) {
+      return res.status(409).json({ error: 'Este CNPJ já está cadastrado no nosso sistema.' });
+    }
+
+    const addr = address && typeof address === 'object' ? { ...address } : {};
+    if (String(nome_fantasia || '').trim()) addr.nome_fantasia = String(nome_fantasia).trim();
+    if (String(mobile || '').trim()) addr.mobile = String(mobile).trim();
+    if (ig) addr.instagram = ig;
+
+    const base = {
+      tenant_id: STORE_TENANT,
+      name: nm.toUpperCase(),
+      cnpj: String(cnpj || '').trim() || null,
+      email: em || null,
+      phone: ph || null,
+      contact_name: String(contact_name || '').trim() || null,
+      address: addr,
+      is_active: true,
+    };
+    const payload = { ...base, ie: ie_isento ? 'ISENTO' : (String(ie || '').trim() || null) };
+    let { error } = await supabase.from('FORNECEDORES').insert(payload);
+    if (error && /\bie\b/i.test(error.message || '')) { // coluna ie ainda não existe (migration 023)
+      ({ error } = await supabase.from('FORNECEDORES').insert(base));
+    }
+    if (error) throw error;
+    res.status(201).json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Só verifica se o CPF/CNPJ já existe (sem expor os dados) ──
 router.post('/check-doc', async (req, res) => {
   const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);
