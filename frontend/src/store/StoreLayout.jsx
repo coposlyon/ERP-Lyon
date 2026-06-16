@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingCart, Droplet, Phone, Instagram, Mail, User, LogOut, Package } from 'lucide-react';
+import { ShoppingCart, Phone, Instagram, Mail, User, LogOut, Package } from 'lucide-react';
 import storeApi from './storeApi';
 import { useCart } from './CartContext';
 import { useStoreAuth } from './StoreAuthContext';
@@ -32,11 +32,10 @@ export default function StoreLayout({ children }) {
       {/* Header */}
       <header className={`fixed top-0 inset-x-0 z-40 transition-all duration-300 ${solid ? 'bg-white/90 backdrop-blur shadow-sm text-gray-900' : 'bg-transparent text-white'}`}>
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/loja" className="flex items-center gap-2 font-black text-lg tracking-tight">
-            <span className="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center st-pulse">
-              <Droplet size={18} className="text-white" />
-            </span>
-            <span>{store?.name || 'Loja'}</span>
+          <Link to="/loja" className="flex items-center gap-2.5 font-black text-lg tracking-tight">
+            <img src="/lyon-logo.png" alt={store?.name || 'Lyon Copos'} className="h-10 w-auto object-contain drop-shadow"
+              onError={e => { e.currentTarget.style.display = 'none'; }} />
+            <span>{store?.name || 'Lyon Copos Personalizados'}</span>
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm font-semibold">
             <a href="/loja#catalogo" className={`hover:text-orange-500 transition-colors ${solid ? '' : 'text-white/90'}`}>Catálogo</a>
@@ -88,9 +87,10 @@ export default function StoreLayout({ children }) {
       <footer className="bg-gray-900 text-gray-300">
         <div className="max-w-6xl mx-auto px-4 py-12 grid sm:grid-cols-3 gap-8">
           <div>
-            <div className="flex items-center gap-2 font-black text-white text-lg">
-              <span className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center"><Droplet size={15} /></span>
-              {store?.name || 'Loja'}
+            <div className="flex items-center gap-2.5 font-black text-white text-lg">
+              <img src="/lyon-logo.png" alt={store?.name || 'Lyon Copos'} className="h-9 w-auto object-contain"
+                onError={e => { e.currentTarget.style.display = 'none'; }} />
+              {store?.name || 'Lyon Copos Personalizados'}
             </div>
             <p className="text-sm text-gray-400 mt-3 max-w-xs">
               Copos e garrafas personalizados. Personalize do seu jeito, com a cara da sua marca.
