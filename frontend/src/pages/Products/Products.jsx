@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import api from '@/lib/api';
+import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import ProductForm from './ProductForm';
@@ -21,6 +22,7 @@ export default function Products() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [delTarget, setDelTarget] = useState(null); // produto a apagar (confirmação)
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -31,6 +33,12 @@ export default function Products() {
   const toggleMutation = useMutation({
     mutationFn: ({ id, is_active }) => api.put(`/products/${id}`, { is_active }),
     onSuccess: () => { qc.invalidateQueries(['products']); toast.success('Produto atualizado'); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => api.post(`/products/${id}/delete`),
+    onSuccess: () => { qc.invalidateQueries(['products']); setDelTarget(null); toast.success('Produto excluído!'); },
+    onError: (e) => toast.error(e.error || 'Erro ao excluir produto'),
   });
 
   function handleSearch(e) {
@@ -45,7 +53,7 @@ export default function Products() {
   function onSaved() { closeModal(); qc.invalidateQueries(['products']); }
 
   const columns = [
-    { key: 'code', label: 'Código', width: 80 },
+    { key: 'code', label: 'Código', width: 80, render: v => <span className="font-mono text-xs">{id4(v)}</span> },
     { key: 'name', label: 'Produto' },
     { key: 'categories', label: 'Categoria', render: v => v?.name || '—' },
     { key: 'unit', label: 'Un.', width: 60 },
@@ -65,7 +73,7 @@ export default function Products() {
         </span>
       )
     },
-    { key: 'id', label: '', width: 80,
+    { key: 'id', label: '', width: 110,
       render: (_, row) => (
         <div className="flex items-center gap-1">
           <button onClick={() => openEdit(row)} className="btn-ghost p-1.5" title="Editar">
@@ -77,6 +85,9 @@ export default function Products() {
             title={row.is_active ? 'Desativar' : 'Ativar'}
           >
             {row.is_active ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
+          </button>
+          <button onClick={() => setDelTarget(row)} className="btn-ghost p-1.5 text-red-500 hover:text-red-600" title="Apagar produto">
+            <Trash2 size={14} />
           </button>
         </div>
       )
@@ -135,6 +146,32 @@ export default function Products() {
 
       <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
       <ImportStockModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
+
+      {/* Confirmação de exclusão */}
+      <Modal isOpen={!!delTarget} onClose={() => !deleteMutation.isPending && setDelTarget(null)} title="Apagar produto" size="sm">
+        {delTarget && (
+          <div className="space-y-5 text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+              <AlertTriangle size={30} className="text-red-500" />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">Tem certeza que deseja apagar este produto?</p>
+              <p className="text-sm text-gray-600 mt-1">
+                <b>{id4(delTarget.code)}</b> — {delTarget.name}
+              </p>
+              <p className="text-xs text-red-500 mt-2">Esta ação é definitiva e não pode ser desfeita.</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setDelTarget(null)} disabled={deleteMutation.isPending}
+                className="flex-1 btn-secondary disabled:opacity-50">Cancelar</button>
+              <button onClick={() => deleteMutation.mutate(delTarget.id)} disabled={deleteMutation.isPending}
+                className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50">
+                {deleteMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Apagando...</> : <><Trash2 size={15} /> Apagar</>}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

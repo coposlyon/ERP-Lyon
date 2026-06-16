@@ -364,6 +364,63 @@ router.post('/cadastro', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Só verifica se o CPF/CNPJ já existe (sem expor os dados) ──
+router.post('/check-doc', async (req, res) => {
+  const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);
+  if (!docDigits) return res.json({ exists: false });
+  try {
+    let { data, error } = await supabase.from('CLIENTES').select('id, name, type, birth_date')
+      .eq('tenant_id', STORE_TENANT).eq('doc_digits', docDigits).limit(1).maybeSingle();
+    if (error && /birth_date/i.test(error.message || '')) {
+      ({ data, error } = await supabase.from('CLIENTES').select('id, name, type')
+        .eq('tenant_id', STORE_TENANT).eq('doc_digits', docDigits).limit(1).maybeSingle());
+    }
+    if (error) { // coluna doc_digits ainda não existe → compara manualmente
+      const { data: all } = await supabase.from('CLIENTES').select('*').eq('tenant_id', STORE_TENANT).limit(5000);
+      data = (all || []).find(c => soDigitos(c.cpf_cnpj) === docDigits) || null;
+    }
+    if (!data) return res.json({ exists: false });
+    res.json({ exists: true, first_name: (data.name || '').trim().split(/\s+/)[0], type: data.type, has_birth: !!data.birth_date });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Comprova identidade pela data de nascimento e devolve o cliente ──
+router.post('/verify-birth', async (req, res) => {
+  const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);
+  const birth = String(req.body.birth_date || '').trim(); // ISO AAAA-MM-DD
+  if (!docDigits) return res.status(400).json({ error: 'Informe o CPF' });
+  const full = 'id, name, type, cpf_cnpj, rg_ie, email, phone, mobile, instagram, address, admission_data, birth_date';
+  const basic = 'id, name, type, cpf_cnpj, rg_ie, email, phone, mobile, instagram, address, admission_data';
+  try {
+    let { data: cli, error } = await supabase.from('CLIENTES').select(full)
+      .eq('tenant_id', STORE_TENANT).eq('doc_digits', docDigits).limit(1).maybeSingle();
+    if (error && /birth_date/i.test(error.message || '')) {
+      // sem coluna birth_date (migration 023 não rodada) → não dá p/ verificar, libera
+      ({ data: cli } = await supabase.from('CLIENTES').select(basic)
+        .eq('tenant_id', STORE_TENANT).eq('doc_digits', docDigits).limit(1).maybeSingle());
+      if (cli) return res.json({ success: true, customer: cli });
+    }
+    if (error) { // coluna doc_digits ausente → compara manualmente
+      const { data: all } = await supabase.from('CLIENTES').select(full + ', cpf_cnpj').eq('tenant_id', STORE_TENANT).limit(5000);
+      cli = (all || []).find(c => soDigitos(c.cpf_cnpj) === docDigits) || null;
+    }
+    if (!cli) return res.status(404).json({ error: 'CPF não encontrado.' });
+
+    // Cliente sem nascimento no cadastro → aceita e já salva o informado
+    if (!cli.birth_date) {
+      if (birth) {
+        await supabase.from('CLIENTES').update({ birth_date: birth }).eq('id', cli.id).eq('tenant_id', STORE_TENANT);
+        cli.birth_date = birth;
+      }
+      return res.json({ success: true, customer: cli });
+    }
+    if (String(cli.birth_date).slice(0, 10) !== birth) {
+      return res.status(403).json({ error: 'Data de nascimento não confere. Tente novamente.' });
+    }
+    res.json({ success: true, customer: cli });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Login da loja / consulta por CPF (também usado p/ pré-preencher edição) ──
 router.post('/login', async (req, res) => {
   const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);

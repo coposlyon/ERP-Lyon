@@ -371,6 +371,30 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Exclusão DEFINITIVA do produto (apaga de verdade)
+router.post('/:id/delete', async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('PRODUTOS')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('tenant_id', req.tenantId);
+
+    if (error) {
+      if (/foreign key|viola|constraint/i.test(error.message || '')) {
+        return res.status(409).json({
+          error: 'Este produto tem movimentações ou vendas vinculadas. Rode a migração 022 para liberar a exclusão, ou apenas desative o produto.',
+        });
+      }
+      throw error;
+    }
+    audit(req, 'delete', 'product', req.params.id, { hard: true });
+    res.json({ message: 'Produto excluído definitivamente' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Variantes ────────────────────────────────────────────────────
 router.get('/:id/variants', async (req, res) => {
   try {

@@ -81,9 +81,12 @@ export default function CadastroCliente() {
   const [welcomeName, setWelcomeName] = useState('');
 
   // Detecção de cliente já cadastrado (ao preencher o CPF/CNPJ)
-  const [existing, setExisting] = useState(null); // cliente encontrado
-  const [editMode, setEditMode] = useState(false); // atualizando dados de um existente
+  const [existing, setExisting] = useState(null); // { first_name, type, has_birth }
+  const [editMode, setEditMode] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [verifyDate, setVerifyDate] = useState(''); // data informada p/ comprovar identidade
+  const [verifying, setVerifying] = useState(false);
+  const [verifyErr, setVerifyErr] = useState('');
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
@@ -118,45 +121,54 @@ export default function CadastroCliente() {
   const setA = (k,v) => setAddr(p => ({ ...p, [k]: v }));
   const isPJ = type === 'PJ';
 
-  // Consulta se o CPF/CNPJ já tem cadastro (mostra o atalho "já cadastrado")
+  // Verifica se o CPF/CNPJ já tem cadastro (sem expor os dados)
   async function checkExisting(digits) {
-    if (editMode || existing) return;
+    if (existing) return;
     setChecking(true);
     try {
-      const res = await storeApi.post('/login', { cpf: digits });
-      if (res?.customer) setExisting(res.customer);
-    } catch { /* 404 = ainda não cadastrado, segue normal */ }
+      const res = await storeApi.post('/check-doc', { cpf: digits });
+      if (res?.exists) { setExisting(res); setVerifyDate(''); setVerifyErr(''); }
+    } catch { /* erro de rede → segue normal */ }
     finally { setChecking(false); }
   }
 
-  // Entrar na loja com o cadastro já existente
-  function entrarComExistente() {
-    setStoreCustomer(existing);
-    setWelcomeName((existing.name || '').trim().split(/\s+/)[0]);
+  // Loga o cliente na loja e mostra a animação de boas-vindas
+  function entrarLogado(customer) {
+    setStoreCustomer(customer);
+    setWelcomeName((customer.name || '').trim().split(/\s+/)[0]);
     setDoneKind('login');
     setDone(true);
   }
 
-  // Pré-preenche o formulário com os dados do cliente para edição
-  function editarExistente() {
-    const c = existing;
-    setType(c.type === 'PJ' ? 'PJ' : 'PF');
-    setF({
-      name: (c.name || '').toUpperCase(),
-      cpf_cnpj: (c.type === 'PJ' ? maskCNPJ : maskCPF)(c.cpf_cnpj || ''),
-      ie: c.rg_ie && c.rg_ie !== 'ISENTO' ? c.rg_ie : '',
-      birth_date: isoToBR(c.birth_date),
-      email: c.email || '',
-      phone: maskPhone(c.phone || ''),
-      mobile: maskPhone(c.mobile || ''),
-      instagram: c.instagram || '',
-    });
-    setIeIsento(c.rg_ie === 'ISENTO' || !!c.admission_data?.ie_isento);
-    setCanPublish(c.admission_data?.can_publish === false ? 'nao' : 'sim');
-    const a = c.address || {};
-    setAddr({ zip: maskCEP(a.zip || ''), street: a.street || '', number: a.number || '', complement: a.complement || '', neighborhood: a.neighborhood || '', city: a.city || '', state: a.state || '' });
-    setEditMode(true);
-    setExisting(null);
+  // PF: comprova identidade pela data de nascimento
+  async function confirmarIdentidade() {
+    const iso = brToISO(verifyDate);
+    if (!iso) { setVerifyErr('Informe uma data válida (DD/MM/AAAA)'); return; }
+    setVerifying(true); setVerifyErr('');
+    try {
+      const digits = f.cpf_cnpj.replace(/\D/g, '');
+      const res = await storeApi.post('/verify-birth', { cpf: digits, birth_date: iso });
+      if (res?.customer) entrarLogado(res.customer);
+    } catch (e) {
+      setVerifyErr(e?.response?.data?.error || 'Data de nascimento não confere. Tente novamente.');
+    } finally { setVerifying(false); }
+  }
+
+  // PJ: entra direto (sem data de nascimento)
+  async function entrarPJ() {
+    setVerifying(true); setVerifyErr('');
+    try {
+      const digits = f.cpf_cnpj.replace(/\D/g, '');
+      const res = await storeApi.post('/login', { cpf: digits });
+      if (res?.customer) entrarLogado(res.customer);
+    } catch (e) {
+      setVerifyErr(e?.response?.data?.error || 'Não foi possível entrar. Tente novamente.');
+    } finally { setVerifying(false); }
+  }
+
+  function cancelarExistente() {
+    setExisting(null); setVerifyDate(''); setVerifyErr('');
+    set('cpf_cnpj', '');
   }
 
   async function lookupCep(cepRaw) {
@@ -304,30 +316,43 @@ export default function CadastroCliente() {
       {phase === 'form' && (<>
       {Bg}
 
-      {/* Cliente já cadastrado — detectado ao digitar o CPF/CNPJ */}
-      {existing && !editMode && (
+      {/* CPF/CNPJ já cadastrado — barra e pede a data de nascimento p/ comprovar */}
+      {existing && (
         <div className="fixed inset-0 z-30 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-7 text-center st-rise">
-            <CheckCircle2 size={52} className="text-green-500 mx-auto mb-3" />
-            <h2 className="text-xl font-black text-gray-900">Você já tem cadastro! 🎉</h2>
-            <p className="text-gray-500 mt-1.5">
-              Olá, <b>{(existing.name || '').split(' ')[0]}</b>! Encontramos seu cadastro com este {isPJ ? 'CNPJ' : 'CPF'}.
-              Não precisa preencher tudo de novo.
-            </p>
-            <div className="flex flex-col gap-2 mt-6">
-              <button onClick={entrarComExistente}
-                className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
-                <User size={17} /> Entrar na loja
-              </button>
-              <button onClick={editarExistente}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-xl transition-colors">
-                Atualizar meus dados
-              </button>
-              <button onClick={() => { setExisting(null); set('cpf_cnpj', ''); }}
-                className="text-xs text-gray-400 hover:text-gray-600 mt-1">
-                Não sou eu / usar outro documento
-              </button>
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mx-auto mb-3">
+              <span className="text-2xl">🔒</span>
             </div>
+            <h2 className="text-lg font-black text-gray-900">Esse {isPJ ? 'CNPJ' : 'CPF'} já tem cadastro no nosso sistema</h2>
+
+            {isPJ ? (
+              <>
+                <p className="text-gray-500 mt-2">Você já é nosso cliente! Clique abaixo para entrar.</p>
+                {verifyErr && <p className="text-sm text-red-600 font-medium mt-3">{verifyErr}</p>}
+                <button onClick={entrarPJ} disabled={verifying}
+                  className="w-full mt-5 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                  {verifying ? <Loader2 size={17} className="animate-spin" /> : <><User size={17} /> Entrar na loja</>}
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-gray-500 mt-2">Para comprovar que é você, informe sua <b>data de nascimento</b>:</p>
+                <input
+                  className={`${INPUT} mt-4 text-center text-lg tracking-wide`} inputMode="numeric" maxLength={10}
+                  placeholder="DD/MM/AAAA" value={verifyDate} autoFocus
+                  onChange={e => { setVerifyDate(maskDate(e.target.value)); setVerifyErr(''); }}
+                  onKeyDown={e => e.key === 'Enter' && confirmarIdentidade()} />
+                {verifyErr && <p className="text-sm text-red-600 font-medium mt-2">{verifyErr}</p>}
+                <button onClick={confirmarIdentidade} disabled={verifying}
+                  className="w-full mt-4 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                  {verifying ? <Loader2 size={17} className="animate-spin" /> : <><CheckCircle2 size={17} /> Confirmar</>}
+                </button>
+              </>
+            )}
+
+            <button onClick={cancelarExistente} className="text-xs text-gray-400 hover:text-gray-600 mt-4">
+              Não sou eu / usar outro documento
+            </button>
           </div>
         </div>
       )}
