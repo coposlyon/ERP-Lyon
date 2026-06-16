@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import PDV from './PDV';
+import { id4 } from '@/lib/ids';
 import { SALE_STATUSES, SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
 import { format, parseISO, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -40,6 +41,16 @@ export default function Sales() {
     onSuccess: () => { qc.invalidateQueries(['sales']); setDelTarget(null); setDelPassword(''); toast.success('Pedido excluído!'); },
     onError: (e) => toast.error(e.error || 'Não foi possível excluir'),
   });
+
+  // Últimos 50 clientes — aparecem ao clicar no campo "Buscar cliente"
+  const [custFocus, setCustFocus] = useState(false);
+  const { data: recentCustomers } = useQuery({
+    queryKey: ['sales-customers-recent'],
+    queryFn: () => api.get('/customers?limit=50&sort=recent&is_active=true&type=cliente'),
+  });
+  function pickCustomer(c) {
+    setSearchInput(c.name); setSearch(c.name); setPage(1); setCustFocus(false);
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['sales', page, status, search, startDate, endDate],
@@ -162,14 +173,36 @@ export default function Sales() {
           <div className="flex-1 min-w-[200px]">
             <label className="label">Buscar cliente</label>
             <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
               <input
                 type="text"
                 placeholder="Nome do cliente..."
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
+                onFocus={() => setCustFocus(true)}
+                onBlur={() => setTimeout(() => setCustFocus(false), 150)}
                 className="input pl-8 text-sm"
               />
+              {custFocus && (() => {
+                const term = searchInput.trim().toLowerCase();
+                const list = (recentCustomers?.data || []).filter(c => !term || (c.name || '').toLowerCase().includes(term));
+                if (list.length === 0) return null;
+                return (
+                  <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-72 overflow-y-auto">
+                    {!term && <p className="text-[11px] text-gray-400 px-3 py-1.5 bg-gray-50 sticky top-0">Últimos clientes cadastrados</p>}
+                    {list.map(c => (
+                      <button key={c.id} type="button" onMouseDown={() => pickCustomer(c)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-primary-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
+                        {c.display_id != null && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 shrink-0">{id4(c.display_id)}</span>}
+                        <span className="min-w-0">
+                          <span className="font-medium block truncate">{c.name}</span>
+                          <span className="text-xs text-gray-400">{c.cpf_cnpj || c.phone}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
