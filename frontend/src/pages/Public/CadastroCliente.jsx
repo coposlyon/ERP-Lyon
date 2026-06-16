@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, Loader2, User, Instagram, ExternalLink, Volume2 } from 'lucide-react';
+import { CheckCircle2, Loader2, User, Instagram, ExternalLink, Play } from 'lucide-react';
 import storeApi from '@/store/storeApi';
 import '@/store/store.css';
 import toast from 'react-hot-toast';
@@ -26,7 +26,7 @@ export default function CadastroCliente() {
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
 
-  // Abertura: toque (libera o áudio) → vídeo com som → preto → card sobe
+  // Abertura: botão "INICIAR CADASTRO" → toca o vídeo (com som) → preto → card sobe.
   const [phase, setPhase] = useState('start'); // start | video | black2 | form
   const videoRef = useRef(null);
 
@@ -106,7 +106,7 @@ export default function CadastroCliente() {
     <div className="min-h-screen relative overflow-hidden py-8 px-4 bg-black">
       {/* Abertura cinematográfica */}
       {phase !== 'form' && (
-        <div className="fixed inset-0 z-50 bg-black" onClick={phase === 'start' ? startIntro : undefined}>
+        <div className="fixed inset-0 z-50 bg-black">
           <video ref={videoRef} playsInline preload="auto"
             onEnded={() => setPhase('black2')} onError={() => setPhase('black2')}
             className={`w-full h-full object-contain transition-opacity duration-700 ${phase === 'video' ? 'opacity-100' : 'opacity-0'}`}>
@@ -114,12 +114,12 @@ export default function CadastroCliente() {
           </video>
 
           {phase === 'start' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 cursor-pointer">
-              <img src="/lyon-logo.png" alt="Lyon Copos" className="h-24 sm:h-28 mb-6 object-contain st-float" onError={e => { e.target.style.display = 'none'; }} />
-              <span className="inline-flex items-center gap-2 bg-white text-violet-700 font-bold px-6 py-3.5 rounded-full shadow-xl st-pulse">
-                <Volume2 size={18} /> Toque para começar
-              </span>
-              <p className="text-white/50 text-xs mt-4">experiência com áudio 🔊</p>
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+              <img src="/lyon-logo.png" alt="Lyon Copos" className="h-24 sm:h-28 mb-8 object-contain st-float" onError={e => { e.target.style.display = 'none'; }} />
+              <button type="button" onClick={startIntro}
+                className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-extrabold text-lg px-9 py-4 rounded-full shadow-2xl st-pulse transition-colors">
+                <Play size={20} /> INICIAR CADASTRO
+              </button>
             </div>
           )}
 
