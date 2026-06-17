@@ -5,6 +5,25 @@ import toast from 'react-hot-toast';
 
 const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
 
+const STOP_WORDS = new Set(['DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'COM', 'PARA', 'A', 'O']);
+// Iniciais do nome do modelo (ex.: "LONG DRINK TRADICIONAL" → "LDT").
+export function initials(name) {
+  const w = String(name || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+  let i = w.filter(x => !STOP_WORDS.has(x)).map(x => x[0]).join('');
+  if (!i) i = w.map(x => x[0]).join('') || 'X';
+  return i.slice(0, 8);
+}
+// Código da variação: iniciais + sequência de 4 dígitos dentro do modelo (LDT 0001).
+export function variantCode(modelName, idx) {
+  return `${initials(modelName)} ${String(idx + 1).padStart(4, '0')}`;
+}
+// Lista de variações já com código: [{ code, name }]
+export function expandVariantsWithCode(p) {
+  const pref = initials(p?.name || '');
+  return expandVariants(p).map((name, i) => ({ name, code: `${pref} ${String(i + 1).padStart(4, '0')}` }));
+}
+
 // Expande o produto-base em todas as variações (cor × borda × volume),
 // com o nome completo já descritivo. Mesma lógica do export CSV.
 export function expandVariants(p) {
@@ -39,16 +58,16 @@ export default function ProductVariantsModal({ product, onClose }) {
   const [term, setTerm] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const all = useMemo(() => expandVariants(product), [product]);
+  const all = useMemo(() => expandVariantsWithCode(product), [product]);
   const filtered = useMemo(() => {
     const t = term.trim().toLowerCase();
     if (!t) return all;
-    return all.filter(n => n.toLowerCase().includes(t));
+    return all.filter(x => x.name.toLowerCase().includes(t) || x.code.toLowerCase().includes(t));
   }, [all, term]);
 
   async function copiar() {
     try {
-      await navigator.clipboard.writeText(filtered.join('\n'));
+      await navigator.clipboard.writeText(filtered.map(x => `${x.code}\t${x.name}`).join('\n'));
       setCopied(true);
       toast.success(`${filtered.length} item(ns) copiado(s)`);
       setTimeout(() => setCopied(false), 1500);
@@ -93,10 +112,10 @@ export default function ProductVariantsModal({ product, onClose }) {
             {filtered.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-8">Nenhuma variação encontrada.</p>
             ) : (
-              filtered.map((nome, i) => (
+              filtered.map((x, i) => (
                 <div key={i} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
-                  <span className="text-[11px] font-mono text-gray-300 w-10 shrink-0 text-right">{i + 1}</span>
-                  <span>{nome}</span>
+                  <span className="text-[11px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0 whitespace-nowrap">{x.code}</span>
+                  <span>{x.name}</span>
                 </div>
               ))
             )}

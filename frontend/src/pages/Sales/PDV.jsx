@@ -3,7 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { expandVariants } from '@/pages/Products/ProductVariantsModal';
+import { expandVariants, expandVariantsWithCode } from '@/pages/Products/ProductVariantsModal';
 
 function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -87,17 +87,17 @@ export default function PDV({ onDone }) {
   // Modelo cujas variações estão sendo exibidas (drill-down). null = lista de modelos.
   const [drill, setDrill] = useState(null);
 
-  // Variações reais do modelo em drill, filtradas pela busca
+  // Variações reais do modelo em drill (com código), filtradas pela busca
   const variantList = useMemo(() => {
     if (!drill) return [];
-    const all = expandVariants(drill);
+    const all = expandVariantsWithCode(drill);
     const term = productSearch.trim().toLowerCase();
     if (!term) return all;
-    return all.filter(n => n.toLowerCase().includes(term));
+    return all.filter(x => x.name.toLowerCase().includes(term) || x.code.toLowerCase().includes(term));
   }, [drill, productSearch]);
 
   // Adiciona um item ao carrinho. variantName != null → variação específica.
-  function pushItem(product, variantName) {
+  function pushItem(product, variantName, variantCode) {
     const key = `${product.id}__${variantName || ''}`;
     setItems(prev => {
       const existing = prev.find(i => `${i.product_id}__${i.variant || ''}` === key);
@@ -111,6 +111,7 @@ export default function PDV({ onDone }) {
       return [...prev, {
         product_id: product.id,
         variant: variantName || null,
+        variant_code: variantCode || null,
         name: variantName || product.name,
         unit: product.unit,
         sale_price: product.sale_price,
@@ -141,9 +142,9 @@ export default function PDV({ onDone }) {
   }
 
   // Adiciona a variação escolhida; permanece no drill p/ adicionar mais do mesmo modelo.
-  function addVariant(name) {
+  function addVariant(variant) {
     if (!drill) return;
-    pushItem(drill, name);
+    pushItem(drill, variant.name, variant.code);
     setProductSearch('');
     setTimeout(() => searchRef.current?.focus(), 30);
   }
@@ -210,8 +211,8 @@ export default function PDV({ onDone }) {
         quantity: i.quantity,
         unit_price: i.unit_price,
         discount: i.discount || 0,
-        // guarda a variação escolhida (cor/borda) no item da venda
-        ...(i.variant ? { customization: { 'Variação': i.variant } } : {}),
+        // guarda a variação escolhida (código + nome) no item da venda
+        ...(i.variant ? { customization: { ...(i.variant_code ? { 'Código': i.variant_code } : {}), 'Variação': i.variant } } : {}),
       })),
       discount: discountValue,
       payment_method: paymentMethod,
@@ -251,11 +252,14 @@ export default function PDV({ onDone }) {
                   </button>
                   {variantList.length === 0 ? (
                     <p className="text-sm text-gray-400 text-center py-4">Nenhuma variação encontrada.</p>
-                  ) : variantList.map((nome, idx) => (
-                    <button key={idx} type="button" onMouseDown={() => addVariant(nome)}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
-                      <span className="text-sm text-gray-800">{nome}</span>
-                      <span className="font-semibold text-primary-600 shrink-0 ml-2">{fmt(drill.sale_price)}</span>
+                  ) : variantList.map((v, idx) => (
+                    <button key={idx} type="button" onMouseDown={() => addVariant(v)}
+                      className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{v.code}</span>
+                        <span className="text-sm text-gray-800 truncate">{v.name}</span>
+                      </span>
+                      <span className="font-semibold text-primary-600 shrink-0">{fmt(drill.sale_price)}</span>
                     </button>
                   ))}
                 </>
@@ -313,7 +317,10 @@ export default function PDV({ onDone }) {
                 {items.map((item, i) => (
                   <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="px-4 py-2">
-                      <p className="font-medium text-sm">{item.name}</p>
+                      <p className="font-medium text-sm flex items-center gap-2">
+                        {item.variant_code && <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{item.variant_code}</span>}
+                        <span>{item.name}</span>
+                      </p>
                     </td>
                     <td className="px-4 py-2 text-center">
                       <input

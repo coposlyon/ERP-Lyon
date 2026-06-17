@@ -364,7 +364,15 @@ router.get('/export', async (req, res) => {
 
     const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
     const esc = s => `"${String(s).replace(/"/g, '""')}"`;
-    const lines = ['PRODUTO'];
+    const STOP = new Set(['DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'COM', 'PARA', 'A', 'O']);
+    const initials = nm => {
+      const w = String(nm || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^A-Z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+      let i = w.filter(x => !STOP.has(x)).map(x => x[0]).join('');
+      if (!i) i = w.map(x => x[0]).join('') || 'X';
+      return i.slice(0, 8);
+    };
+    const lines = ['CÓDIGO;PRODUTO'];
 
     for (const p of (products || [])) {
       const name = norm(p.name);
@@ -396,10 +404,14 @@ router.get('/export', async (req, res) => {
         }
       }
 
-      // Cabeçalho do modelo + suas variações (sem repetir o cabeçalho)
-      lines.push(esc(name));
+      // Cabeçalho do modelo + suas variações com código (LDT 0001, LDT 0002, ...)
+      const pref = initials(name);
+      lines.push(`${esc('')};${esc(name)}`);
+      let n = 0;
       for (const variant of variants) {
-        if (variant !== name) lines.push(esc(variant));
+        if (variant === name) continue;
+        n += 1;
+        lines.push(`${esc(`${pref} ${String(n).padStart(4, '0')}`)};${esc(variant)}`);
       }
       lines.push(''); // linha em branco separando os modelos
     }
