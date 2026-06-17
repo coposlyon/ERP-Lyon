@@ -12,6 +12,8 @@ import {
 
 import { useState } from 'react';
 
+// Dashboard primeiro (separado por um divisor), depois todos os módulos que
+// têm submenu agrupados, em seguida os módulos diretos, e Configurações por último.
 const menuItems = [
   {
     label: 'Dashboard',
@@ -20,12 +22,8 @@ const menuItems = [
     exact: true,
     // sem module: visível para todos
   },
-  {
-    label: 'Bater Ponto',
-    icon: Fingerprint,
-    path: '/marcacao',
-    // sem module: todo colaborador pode marcar o próprio ponto
-  },
+
+  // --- Módulos com submenu (agrupados) ---
   {
     label: 'Comercial',
     icon: ShoppingCart,
@@ -42,18 +40,6 @@ const menuItems = [
     children: [
       { label: 'Pedidos de Compra', path: '/purchases', icon: ShoppingBag, module: 'purchases' },
     ],
-  },
-  {
-    label: 'Estoque',
-    icon: Boxes,
-    path: '/stock',
-    module: 'stock',
-  },
-  {
-    label: 'Produção',
-    icon: Factory,
-    path: '/production',
-    module: 'production',
   },
   {
     label: 'Cadastros',
@@ -82,18 +68,48 @@ const menuItems = [
     ],
   },
   {
-    label: 'Fiscal / NF-e',
-    icon: Receipt,
-    path: '/fiscal',
-    module: 'fiscal',
-  },
-  {
     label: 'Relatórios',
     icon: BarChart3,
     children: [
       { label: 'Relatórios', path: '/reports', icon: BarChart3, module: 'reports' },
       { label: 'Previsão de Demanda', path: '/forecast', icon: LineChart, module: 'reports' },
     ],
+  },
+  {
+    label: 'Recursos Humanos',
+    icon: UserCog,
+    children: [
+      { label: 'Gestão de Pontos',    path: '/hr/ponto',      icon: Clock,      module: 'hr' },
+      { label: 'Férias',              path: '/hr/ferias',     icon: Umbrella,   module: 'hr' },
+      { label: 'Folha de Pagamento',  path: '/hr/folha',      icon: DollarSign, module: 'hr' },
+      { label: 'Documentos',          path: '/hr/documentos', icon: FileText,   module: 'hr' },
+    ],
+  },
+
+  // --- Módulos diretos (sem submenu) ---
+  {
+    label: 'Bater Ponto',
+    icon: Fingerprint,
+    path: '/marcacao',
+    // sem module: todo colaborador pode marcar o próprio ponto
+  },
+  {
+    label: 'Estoque',
+    icon: Boxes,
+    path: '/stock',
+    module: 'stock',
+  },
+  {
+    label: 'Produção',
+    icon: Factory,
+    path: '/production',
+    module: 'production',
+  },
+  {
+    label: 'Fiscal / NF-e',
+    icon: Receipt,
+    path: '/fiscal',
+    module: 'fiscal',
   },
   {
     label: 'Devoluções',
@@ -119,16 +135,8 @@ const menuItems = [
     path: '/marketing',
     module: 'marketing',
   },
-  {
-    label: 'Recursos Humanos',
-    icon: UserCog,
-    children: [
-      { label: 'Gestão de Pontos',    path: '/hr/ponto',      icon: Clock,      module: 'hr' },
-      { label: 'Férias',              path: '/hr/ferias',     icon: Umbrella,   module: 'hr' },
-      { label: 'Folha de Pagamento',  path: '/hr/folha',      icon: DollarSign, module: 'hr' },
-      { label: 'Documentos',          path: '/hr/documentos', icon: FileText,   module: 'hr' },
-    ],
-  },
+
+  // --- Sempre por último ---
   {
     label: 'Configurações',
     icon: Settings,
@@ -214,7 +222,7 @@ function filterMenu(items, hasModule, isAdmin) {
 }
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
-  const { tenant, hasModule, isAdmin } = useAuth();
+  const { hasModule, isAdmin } = useAuth();
   const visibleItems = filterMenu(menuItems, hasModule, isAdmin);
 
   return (
@@ -229,47 +237,47 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
       `}
     >
       {/* Header do sidebar: logo Lyon Copos + botão fechar (mobile) */}
-      <div className="flex items-center gap-2 px-3 py-4 border-b border-indigo-800 min-h-[120px]">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         {collapsed ? (
           /* Modo colapsado: logo média */
           <img
             src="/lyon-logo.png"
             alt="Lyon Copos"
-            style={{ height: 56, width: 'auto', objectFit: 'contain' }}
+            style={{ height: 48, width: 'auto', objectFit: 'contain' }}
             draggable={false}
           />
         ) : (
-          /* Modo expandido: logo grande + tenant abaixo */
-          <div className="flex flex-col min-w-0 flex-1">
+          /* Modo expandido: logo */
+          <div className="flex min-w-0 flex-1">
             <img
               src="/lyon-logo.png"
               alt="Lyon Copos"
               style={{ width: '100%', height: 'auto', objectFit: 'contain', objectPosition: 'left' }}
               draggable={false}
             />
-            <p className="text-indigo-300 text-xs truncate mt-2">
-              {tenant?.name || 'Gestão Comercial'}
-            </p>
           </div>
         )}
         {/* Botão fechar — só no mobile */}
         <button
           onClick={onMobileClose}
-          className="lg:hidden ml-auto text-indigo-300 hover:text-white p-1 rounded-lg hover:bg-indigo-800 transition-colors flex-shrink-0"
+          className="lg:hidden ml-auto text-indigo-300 hover:text-white p-1 rounded-lg hover:bg-indigo-800 transition-colors flex-shrink-0 self-start"
         >
           <X size={18} />
         </button>
       </div>
 
       {/* Navegação */}
-      <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-0.5">
-        {visibleItems.map((item) => (
-          <SidebarGroup
-            key={item.label}
-            item={item}
-            collapsed={collapsed}
-            onMobileClose={onMobileClose}
-          />
+      <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
+        {visibleItems.map((item, idx) => (
+          <div key={item.label}>
+            <SidebarGroup
+              item={item}
+              collapsed={collapsed}
+              onMobileClose={onMobileClose}
+            />
+            {/* Divisor após o Dashboard, separando-o dos módulos */}
+            {idx === 0 && <div className="my-2 border-t border-indigo-800/60" />}
+          </div>
         ))}
       </nav>
 
