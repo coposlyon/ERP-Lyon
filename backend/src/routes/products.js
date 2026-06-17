@@ -370,23 +370,27 @@ router.get('/export', async (req, res) => {
       const name = norm(p.name);
       if (!name) continue;
       const v = p.variations || {};
-      // cores limpas (remove lixo de importação que contém "BORDA") e sem repetir
-      const colors = [...new Set((v.colors || []).map(norm).filter(c => c && !/BORDA/i.test(c)))];
-      const borders = [...new Set((v.borders || []).map(norm).filter(Boolean))];
-      const volumes = [...new Set((v.volumes || []).map(norm).filter(Boolean))];
-      const vols = volumes.length ? volumes : [''];
-
-      // Monta as variações deste modelo
-      const variants = [];
-      if (colors.length === 0) {
-        for (const vol of vols) variants.push(vol ? `${name} ${vol}` : name);
+      // Variações reais (linhas que existem no catálogo). Se não houver,
+      // cai para a combinação cor × borda (produtos antigos).
+      const items = [...new Set((v.items || []).map(norm).filter(Boolean))];
+      let variants;
+      if (items.length) {
+        variants = items;
       } else {
-        for (const vol of vols) {
-          for (const color of colors) {
-            variants.push(vol ? `${name} - ${color} ${vol}` : `${name} - ${color}`);
-            // bordas já vêm com o prefixo "BORDA ..."
-            for (const border of borders) {
-              variants.push(vol ? `${name} - ${color} - ${border} - ${vol}` : `${name} - ${color} - ${border}`);
+        const colors = [...new Set((v.colors || []).map(norm).filter(c => c && !/BORDA/i.test(c)))];
+        const borders = [...new Set((v.borders || []).map(norm).filter(Boolean))];
+        const volumes = [...new Set((v.volumes || []).map(norm).filter(Boolean))];
+        const vols = volumes.length ? volumes : [''];
+        variants = [];
+        if (colors.length === 0) {
+          for (const vol of vols) variants.push(vol ? `${name} ${vol}` : name);
+        } else {
+          for (const vol of vols) {
+            for (const color of colors) {
+              variants.push(vol ? `${name} - ${color} ${vol}` : `${name} - ${color}`);
+              for (const border of borders) {
+                variants.push(vol ? `${name} - ${color} - ${border} - ${vol}` : `${name} - ${color} - ${border}`);
+              }
             }
           }
         }
@@ -603,7 +607,7 @@ router.post('/import-grouped', async (req, res) => {
     for (const g of groups) {
       const name = String(g.name || '').trim().toUpperCase();
       if (name.length < 3) { skipped++; continue; }
-      const variations = { colors: uniq(g.colors), borders: uniq(g.borders), volumes: uniq(g.volumes) };
+      const variations = { colors: uniq(g.colors), borders: uniq(g.borders), volumes: uniq(g.volumes), items: uniq(g.items) };
       const catId = await categoriaId(categoriaDe(name));
 
       // já existe um produto com esse nome neste tenant?
@@ -624,6 +628,7 @@ router.post('/import-grouped', async (req, res) => {
           colors: uniq([...(cur.colors || []), ...variations.colors]),
           borders: uniq([...(cur.borders || []), ...variations.borders]),
           volumes: uniq([...(cur.volumes || []), ...variations.volumes]),
+          items: uniq([...(cur.items || []), ...variations.items]),
         };
         // mantém o código; se ainda não tiver, gera um de 4 dígitos
         const codePatch = String(existing.code || '').trim() ? {} : { code: nextCode() };

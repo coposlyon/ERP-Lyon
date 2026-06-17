@@ -40,17 +40,24 @@ function parseCatalog(text) {
       if (/^BORDA/i.test(p)) border = clean(p).toUpperCase();
       else if (p) color = color ? `${color} / ${clean(p).toUpperCase()}` : clean(p).toUpperCase();
     }
-    if (!map.has(base)) map.set(base, { name: base, colors: new Set(), borders: new Set(), volumes: new Set() });
+    if (!map.has(base)) map.set(base, { name: base, colors: new Set(), borders: new Set(), volumes: new Set(), items: new Set() });
     const g = map.get(base);
     if (color) g.colors.add(color);
     if (border) g.borders.add(border);
     if (vol) g.volumes.add(vol);
+    // nome real (limpo) desta linha — esta é a variação que de fato existe
+    let item;
+    if (border) { const mid = color ? `${color} - ${border}` : border; item = vol ? `${base} - ${mid} - ${vol}` : `${base} - ${mid}`; }
+    else if (color) { item = vol ? `${base} - ${color} ${vol}` : `${base} - ${color}`; }
+    else { item = vol ? `${base} ${vol}` : base; }
+    g.items.add(item);
   }
   return [...map.values()].map(g => ({
     name: g.name,
     colors: [...g.colors].sort(),
     borders: [...g.borders].sort(),
     volumes: [...g.volumes].sort(),
+    items: [...g.items].sort(),
   })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -87,6 +94,7 @@ export default function ImportProductsModal({ isOpen, onClose }) {
 
   const totColors = groups.reduce((s, g) => s + g.colors.length, 0);
   const totBorders = groups.reduce((s, g) => s + g.borders.length, 0);
+  const totItems = groups.reduce((s, g) => s + (g.items?.length || 0), 0);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Importar catálogo (cores e bordas)" size="lg">
@@ -119,7 +127,8 @@ export default function ImportProductsModal({ isOpen, onClose }) {
             <div className="bg-gray-50 px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
               <span className="flex items-center gap-1.5 font-semibold text-gray-800"><Package size={15} className="text-indigo-500" /> {groups.length} produtos</span>
               <span className="flex items-center gap-1.5 text-gray-500"><Palette size={14} className="text-pink-500" /> {totColors} cores</span>
-              <span className="text-gray-500">{totBorders} bordas no total</span>
+              <span className="text-gray-500">{totBorders} bordas</span>
+              <span className="font-semibold text-indigo-600">{totItems} variações reais</span>
             </div>
             <div className="max-h-72 overflow-y-auto">
               <table className="w-full text-sm">
@@ -128,6 +137,7 @@ export default function ImportProductsModal({ isOpen, onClose }) {
                     <th className="px-4 py-2 font-semibold">Produto</th>
                     <th className="px-3 py-2 font-semibold text-center w-20">Cores</th>
                     <th className="px-3 py-2 font-semibold text-center w-20">Bordas</th>
+                    <th className="px-3 py-2 font-semibold text-center w-24">Variações</th>
                     <th className="px-3 py-2 font-semibold w-40">Volume(s)</th>
                   </tr>
                 </thead>
@@ -137,6 +147,7 @@ export default function ImportProductsModal({ isOpen, onClose }) {
                       <td className="px-4 py-1.5 font-medium text-gray-800">{g.name}</td>
                       <td className="px-3 py-1.5 text-center">{g.colors.length || '—'}</td>
                       <td className="px-3 py-1.5 text-center">{g.borders.length || '—'}</td>
+                      <td className="px-3 py-1.5 text-center font-semibold text-indigo-600">{g.items?.length || '—'}</td>
                       <td className="px-3 py-1.5 text-gray-500 text-xs">{g.volumes.join(', ') || '—'}</td>
                     </tr>
                   ))}

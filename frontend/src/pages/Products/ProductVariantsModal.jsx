@@ -11,6 +11,10 @@ export function expandVariants(p) {
   if (!p) return [];
   const name = norm(p.name);
   const v = p.variations || {};
+  // Lista real de variações (as linhas que de fato existem no catálogo).
+  const items = [...new Set((v.items || []).map(norm).filter(Boolean))];
+  if (items.length) return items;
+  // Fallback (produtos antigos sem `items`): combinação cor × borda.
   const colors = [...new Set((v.colors || []).map(norm).filter(c => c && !/BORDA/i.test(c)))];
   const borders = [...new Set((v.borders || []).map(norm).filter(Boolean))];
   const volumes = [...new Set((v.volumes || []).map(norm).filter(Boolean))];
