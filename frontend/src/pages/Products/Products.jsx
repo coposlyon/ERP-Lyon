@@ -6,6 +6,7 @@ import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import ProductForm from './ProductForm';
+import ProductVariantsModal from './ProductVariantsModal';
 import BulkEditModal from './BulkEditModal';
 import ImportStockModal from './ImportStockModal';
 import ImportProductsModal from './ImportProductsModal';
@@ -25,6 +26,7 @@ export default function Products() {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [delTarget, setDelTarget] = useState(null); // produto a apagar (confirmação)
+  const [variantsProduct, setVariantsProduct] = useState(null); // produto p/ ver as variações
   const [exporting, setExporting] = useState(false);
   const qc = useQueryClient();
 
@@ -86,7 +88,15 @@ export default function Products() {
 
   const columns = [
     { key: 'code', label: 'ID', width: 70, render: v => <span className="font-mono text-xs">{id4(v)}</span> },
-    { key: 'name', label: 'Produto' },
+    { key: 'name', label: 'Produto',
+      render: (v, row) => (
+        <button onClick={() => setVariantsProduct(row)}
+          className="text-left font-medium text-gray-800 hover:text-primary-600 hover:underline"
+          title="Ver todas as variações (cores e bordas)">
+          {v}
+        </button>
+      )
+    },
     { key: 'CATEGORIAS', label: 'Categoria', render: (v, row) => v?.name || row.categories?.name || '—' },
     { key: 'unit', label: 'Un.', width: 60 },
     { key: 'current_stock', label: 'Estoque', width: 100,
@@ -184,6 +194,8 @@ export default function Products() {
       <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Editar Produto' : 'Novo Produto'} size="lg">
         <ProductForm product={editing} onSaved={onSaved} onCancel={closeModal} />
       </Modal>
+
+      <ProductVariantsModal product={variantsProduct} onClose={() => setVariantsProduct(null)} />
 
       <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
       <ImportStockModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
