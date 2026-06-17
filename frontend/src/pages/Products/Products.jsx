@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Trash2, Loader2, AlertTriangle, FolderTree } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Download, Trash2, Loader2, AlertTriangle, FolderTree } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
@@ -25,7 +25,25 @@ export default function Products() {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [delTarget, setDelTarget] = useState(null); // produto a apagar (confirmação)
+  const [exporting, setExporting] = useState(false);
   const qc = useQueryClient();
+
+  async function exportCSV() {
+    setExporting(true);
+    try {
+      const csv = await api.get('/products/export', { responseType: 'text' });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `produtos-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast.success('CSV exportado!');
+    } catch (e) {
+      toast.error(e.error || 'Erro ao exportar CSV');
+    } finally { setExporting(false); }
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', page, search],
@@ -116,6 +134,9 @@ export default function Products() {
           <p className="text-sm text-gray-500 mt-1">{data?.total || 0} produtos cadastrados</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={exportCSV} disabled={exporting} className="btn-secondary disabled:opacity-50" title="Exporta todos os produtos com as variações (cor/borda) já descritas, por categoria">
+            {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Exportar CSV
+          </button>
           <button onClick={() => setImportOpen(true)} className="btn-secondary">
             <Upload size={16} /> Importar Estoque
           </button>

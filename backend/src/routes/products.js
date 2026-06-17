@@ -351,6 +351,63 @@ router.delete('/categories/:catId', async (req, res) => {
   }
 });
 
+// Exporta CSV com todos os produtos "explodidos" nas variações (cor × borda),
+// com o nome completo já descritivo, agrupados por categoria.
+router.get('/export', async (req, res) => {
+  try {
+    const { data: products, error } = await supabase
+      .from('PRODUTOS')
+      .select('code, name, unit, variations, CATEGORIAS(name)')
+      .eq('tenant_id', req.tenantId)
+      .order('name');
+    if (error) throw error;
+
+    const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
+    const rows = []; // { cat, produto }
+
+    for (const p of (products || [])) {
+      const cat = norm(p.CATEGORIAS?.name) || 'SEM CATEGORIA';
+      const name = norm(p.name);
+      const v = p.variations || {};
+      // cores limpas (remove lixo de importação que contém "BORDA") e sem repetir
+      const colors = [...new Set((v.colors || []).map(norm).filter(c => c && !/BORDA/i.test(c)))];
+      const borders = [...new Set((v.borders || []).map(norm).filter(Boolean))];
+      const volumes = [...new Set((v.volumes || []).map(norm).filter(Boolean))];
+      const vols = volumes.length ? volumes : [''];
+
+      if (colors.length === 0) {
+        // produto sem variação de cor → só o nome (com volume, se houver)
+        for (const vol of vols) rows.push({ cat, produto: vol ? `${name} ${vol}` : name });
+        continue;
+      }
+
+      for (const vol of vols) {
+        for (const color of colors) {
+          // sem borda
+          rows.push({ cat, produto: vol ? `${name} - ${color} ${vol}` : `${name} - ${color}` });
+          // com cada borda (bordas já vêm com o prefixo "BORDA ...")
+          for (const border of borders) {
+            rows.push({ cat, produto: vol ? `${name} - ${color} - ${border} - ${vol}` : `${name} - ${color} - ${border}` });
+          }
+        }
+      }
+    }
+
+    rows.sort((a, b) =>
+      a.cat.localeCompare(b.cat, 'pt-BR') || a.produto.localeCompare(b.produto, 'pt-BR'));
+
+    const esc = s => `"${String(s).replace(/"/g, '""')}"`;
+    const lines = ['CATEGORIA;PRODUTO', ...rows.map(r => `${esc(r.cat)};${esc(r.produto)}`)];
+    const csv = '﻿' + lines.join('\r\n'); // BOM p/ acentos no Excel
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="produtos.csv"');
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const { data, error } = await supabase
