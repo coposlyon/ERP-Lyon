@@ -1,8 +1,9 @@
 import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Search, Trash2, ShoppingCart, User, Check, Loader2, X } from 'lucide-react';
+import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
+import { expandVariants } from '@/pages/Products/ProductVariantsModal';
 
 function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -83,24 +84,34 @@ export default function PDV({ onDone }) {
     onError: (err) => toast.error(err.error || 'Erro ao finalizar venda'),
   });
 
-  function addProduct(product) {
-    setProductSearch('');
+  // Modelo cujas variações estão sendo exibidas (drill-down). null = lista de modelos.
+  const [drill, setDrill] = useState(null);
+
+  // Variações reais do modelo em drill, filtradas pela busca
+  const variantList = useMemo(() => {
+    if (!drill) return [];
+    const all = expandVariants(drill);
+    const term = productSearch.trim().toLowerCase();
+    if (!term) return all;
+    return all.filter(n => n.toLowerCase().includes(term));
+  }, [drill, productSearch]);
+
+  // Adiciona um item ao carrinho. variantName != null → variação específica.
+  function pushItem(product, variantName) {
+    const key = `${product.id}__${variantName || ''}`;
     setItems(prev => {
-      const existing = prev.find(i => i.product_id === product.id);
+      const existing = prev.find(i => `${i.product_id}__${i.variant || ''}` === key);
       if (existing) {
         return prev.map(i => {
-          if (i.product_id !== product.id) return i;
+          if (`${i.product_id}__${i.variant || ''}` !== key) return i;
           const qty = i.quantity + 1;
-          return {
-            ...i,
-            quantity: qty,
-            unit_price: i.priceTouched ? i.unit_price : tierPrice(i.price_tiers, i.sale_price, qty),
-          };
+          return { ...i, quantity: qty, unit_price: i.priceTouched ? i.unit_price : tierPrice(i.price_tiers, i.sale_price, qty) };
         });
       }
       return [...prev, {
         product_id: product.id,
-        name: product.name,
+        variant: variantName || null,
+        name: variantName || product.name,
         unit: product.unit,
         sale_price: product.sale_price,
         price_tiers: product.price_tiers || [],
@@ -110,13 +121,43 @@ export default function PDV({ onDone }) {
         priceTouched: false,
       }];
     });
+  }
+
+  // Clicou num modelo: se tem variações, abre a lista delas; senão adiciona direto.
+  function pickProduct(product) {
+    if (expandVariants(product).length > 1) {
+      setDrill(product);
+      setProductSearch('');
+      setTimeout(() => searchRef.current?.focus(), 30);
+      return;
+    }
+    addProduct(product);
+  }
+
+  function addProduct(product) {
+    setProductSearch('');
+    pushItem(product, null);
     setTimeout(() => searchRef.current?.focus(), 50);
   }
 
+  // Adiciona a variação escolhida; permanece no drill p/ adicionar mais do mesmo modelo.
+  function addVariant(name) {
+    if (!drill) return;
+    pushItem(drill, name);
+    setProductSearch('');
+    setTimeout(() => searchRef.current?.focus(), 30);
+  }
+
+  function backToModels() {
+    setDrill(null);
+    setProductSearch('');
+    setTimeout(() => searchRef.current?.focus(), 30);
+  }
+
   function handleProductKeyDown(e) {
-    if (e.key === 'Enter' && productList.length >= 1) {
-      addProduct(productList[0]);
-    }
+    if (e.key !== 'Enter') return;
+    if (drill) { if (variantList.length >= 1) addVariant(variantList[0]); }
+    else if (productList.length >= 1) pickProduct(productList[0]);
   }
 
   function setQty(idx, val) {
@@ -169,6 +210,8 @@ export default function PDV({ onDone }) {
         quantity: i.quantity,
         unit_price: i.unit_price,
         discount: i.discount || 0,
+        // guarda a variação escolhida (cor/borda) no item da venda
+        ...(i.variant ? { customization: { 'Variação': i.variant } } : {}),
       })),
       discount: discountValue,
       payment_method: paymentMethod,
@@ -188,7 +231,7 @@ export default function PDV({ onDone }) {
           <input
             ref={searchRef}
             type="text"
-            placeholder="Buscar produto ou clique para ver todos (Enter adiciona o 1º)"
+            placeholder={drill ? `Buscar variação de ${drill.name}...` : 'Buscar produto ou clique para ver todos'}
             value={productSearch}
             onChange={e => setProductSearch(e.target.value)}
             onKeyDown={handleProductKeyDown}
@@ -197,29 +240,53 @@ export default function PDV({ onDone }) {
             className="input pl-9 text-base"
             autoFocus
           />
-          {(prodFocus || productSearch.trim().length >= 1) && productList.length > 0 && (
+          {(prodFocus || productSearch.trim().length >= 1 || drill) && (
             <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-96 overflow-y-auto">
-              <p className="text-[11px] text-gray-400 px-4 py-1.5 bg-gray-50 sticky top-0 flex justify-between">
-                <span>{productSearch.trim() ? `${productList.length} produto(s) encontrado(s)` : 'Todos os produtos (A–Z)'}</span>
-                <span>{productList.length}</span>
-              </p>
-              {productList.map((p, idx) => (
-                <button key={p.id} type="button" onMouseDown={() => addProduct(p)}
-                  className={`w-full flex items-center justify-between px-4 py-3 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-900 text-sm truncate">{p.name}</p>
-                    <p className="text-xs text-gray-400">
-                      Estoque: {p.current_stock}
-                      {p.price_tiers?.length > 0 && (
-                        <span className="ml-2 text-blue-500 font-medium">
-                          {p.price_tiers.length} faixa{p.price_tiers.length > 1 ? 's' : ''} de preço
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <span className="font-semibold text-primary-600 shrink-0 ml-2">{fmt(p.sale_price)}</span>
-                </button>
-              ))}
+              {drill ? (
+                <>
+                  <button type="button" onMouseDown={backToModels}
+                    className="w-full flex items-center justify-between px-4 py-2 bg-gray-50 sticky top-0 text-xs text-gray-600 hover:bg-gray-100 border-b border-gray-100">
+                    <span className="flex items-center gap-1"><ChevronLeft size={13} /> Voltar — <b className="ml-0.5">{drill.name}</b></span>
+                    <span>{variantList.length} variações</span>
+                  </button>
+                  {variantList.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-4">Nenhuma variação encontrada.</p>
+                  ) : variantList.map((nome, idx) => (
+                    <button key={idx} type="button" onMouseDown={() => addVariant(nome)}
+                      className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
+                      <span className="text-sm text-gray-800">{nome}</span>
+                      <span className="font-semibold text-primary-600 shrink-0 ml-2">{fmt(drill.sale_price)}</span>
+                    </button>
+                  ))}
+                </>
+              ) : productList.length > 0 ? (
+                <>
+                  <p className="text-[11px] text-gray-400 px-4 py-1.5 bg-gray-50 sticky top-0 flex justify-between">
+                    <span>{productSearch.trim() ? `${productList.length} produto(s) encontrado(s)` : 'Todos os produtos (A–Z)'}</span>
+                    <span>{productList.length}</span>
+                  </p>
+                  {productList.map((p, idx) => {
+                    const nv = expandVariants(p).length;
+                    return (
+                      <button key={p.id} type="button" onMouseDown={() => pickProduct(p)}
+                        className={`w-full flex items-center justify-between px-4 py-3 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 text-sm truncate">{p.name}</p>
+                          <p className="text-xs text-gray-400">
+                            Estoque: {p.current_stock}
+                            {nv > 1 && <span className="ml-2 text-indigo-500 font-medium">{nv} variações</span>}
+                          </p>
+                        </div>
+                        {nv > 1
+                          ? <ChevronRight size={16} className="text-gray-300 shrink-0 ml-2" />
+                          : <span className="font-semibold text-primary-600 shrink-0 ml-2">{fmt(p.sale_price)}</span>}
+                      </button>
+                    );
+                  })}
+                </>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-4">Nenhum produto encontrado.</p>
+              )}
             </div>
           )}
         </div>
