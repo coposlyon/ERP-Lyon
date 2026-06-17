@@ -99,7 +99,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
   const {
     customer_id, type, items, notes, discount, delivery_date,
     artwork_url, artwork_notes, payment_method, installments, first_due_date,
-    operation_date,
+    operation_date, event_date, ship_date, max_delivery_date, order_key,
   } = req.body;
 
   if (!items || items.length === 0) {
@@ -140,14 +140,27 @@ router.post('/', validate(saleSchema), async (req, res) => {
       return res.status(400).json({ error: error.message.replace(/^.*?:\s*/, '') });
     }
 
-    // Pedido de venda começa em "INICIANDO PEDIDO" + data da operação escolhida
+    // Pedido de venda começa em "INICIANDO PEDIDO" + datas e chave do pedido
     if (data?.id) {
       const patch = { status: 'iniciando_pedido' };
       if (operation_date) patch.operation_date = operation_date;
-      let { error: uErr } = await supabase.from('VENDAS').update(patch).eq('id', data.id).eq('tenant_id', req.tenantId);
-      if (uErr && /operation_date/i.test(uErr.message || '')) { // coluna ainda não existe (migration 030)
+      if (event_date) patch.event_date = event_date;
+      if (ship_date) patch.ship_date = ship_date;
+      if (delivery_date) patch.delivery_date = delivery_date;
+      if (max_delivery_date) patch.max_delivery_date = max_delivery_date;
+      if (order_key) patch.order_key = order_key;
+      // tenta gravar tudo; se alguma coluna não existir, remove a citada e tenta de novo
+      let attempt = { ...patch };
+      for (let i = 0; i < 6; i++) {
+        const { error: uErr } = await supabase.from('VENDAS').update(attempt).eq('id', data.id).eq('tenant_id', req.tenantId);
+        if (!uErr) break;
+        const m = (uErr.message || '').match(/column "?(\w+)"?/i);
+        if (m && attempt[m[1]] !== undefined && m[1] !== 'status') { delete attempt[m[1]]; continue; }
+        // erro não relacionado a coluna: garante ao menos o status
         await supabase.from('VENDAS').update({ status: 'iniciando_pedido' }).eq('id', data.id).eq('tenant_id', req.tenantId);
+        break;
       }
+      Object.assign(data, attempt);
       data.status = 'iniciando_pedido';
     }
 

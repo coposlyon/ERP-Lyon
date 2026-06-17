@@ -32,6 +32,13 @@ export default function PDV({ onDone }) {
   const [receivedAmount, setReceivedAmount] = useState('');
   const [installments, setInstallments] = useState(1);
   const [operationDate, setOperationDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [eventDate, setEventDate] = useState('');
+  const [shipDate, setShipDate] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
+  const [showCustomerInfo, setShowCustomerInfo] = useState(false);
+  // Chave aleatória de até 5 dígitos para o pedido
+  const genKey = () => String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+  const [orderKey, setOrderKey] = useState(genKey);
   const [firstDueDate, setFirstDueDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 30);
     return d.toISOString().split('T')[0];
@@ -76,8 +83,11 @@ export default function PDV({ onDone }) {
       toast.success('Venda finalizada com sucesso!');
       setItems([]);
       setSelectedCustomer(null);
+      setShowCustomerInfo(false);
       setDiscount('');
       setReceivedAmount('');
+      setEventDate(''); setShipDate(''); setDeliveryDate('');
+      setOrderKey(genKey());
       if (inModal) { onDone(); return; } // fecha o card e atualiza a lista
       setTimeout(() => searchRef.current?.focus(), 100);
     },
@@ -194,18 +204,23 @@ export default function PDV({ onDone }) {
 
   function finalizeSale() {
     if (items.length === 0) { toast.error('Adicione ao menos um produto'); return; }
+    if (!selectedCustomer) { toast.error('Selecione o cliente (obrigatório)'); return; }
+    if (!operationDate) { toast.error('Informe a Data da operação'); return; }
+    if (!eventDate) { toast.error('Informe a Data do evento'); return; }
+    if (!shipDate) { toast.error('Informe a Data da saída'); return; }
+    if (!deliveryDate) { toast.error('Informe a Previsão de entrega'); return; }
     if (paymentMethod === 'cash' && received > 0 && received < total) {
       toast.error(`Valor insuficiente! Faltam ${fmt(total - received)}`);
       return;
     }
-    if (paymentMethod === 'a_prazo' && !selectedCustomer) {
-      toast.error('Venda a prazo exige um cliente. Selecione o cliente.');
-      return;
-    }
     saleMutation.mutate({
-      customer_id: selectedCustomer?.id || null,
+      customer_id: selectedCustomer.id,
       type: 'sale',
       operation_date: operationDate || null,
+      event_date: eventDate || null,
+      ship_date: shipDate || null,
+      delivery_date: deliveryDate || null,
+      order_key: orderKey,
       items: items.map(i => ({
         product_id: i.product_id,
         quantity: i.quantity,
@@ -227,7 +242,7 @@ export default function PDV({ onDone }) {
         {!inModal && <h1 className="page-title">PDV — Ponto de Venda</h1>}
 
         {/* Busca produto */}
-        <div className="relative">
+        <div className="relative z-30">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             ref={searchRef}
@@ -242,7 +257,7 @@ export default function PDV({ onDone }) {
             autoFocus
           />
           {(prodFocus || productSearch.trim().length >= 1 || drill) && (
-            <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-96 overflow-y-auto">
+            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-96 overflow-y-auto">
               {drill ? (
                 <>
                   <button type="button" onMouseDown={backToModels}
@@ -362,27 +377,69 @@ export default function PDV({ onDone }) {
       {/* Direita — Checkout */}
       <div className="w-full lg:w-80 flex flex-col gap-3">
 
-        {/* Data da operação */}
-        <div className="card p-4">
-          <label className="text-sm font-semibold text-gray-700 mb-1.5 block">📅 Data da operação</label>
-          <input type="date" className="input w-full text-sm" value={operationDate}
-            onChange={e => setOperationDate(e.target.value)} />
+        {/* Pedido — chave aleatória + datas (tudo obrigatório) */}
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-700">🔑 Pedido</span>
+            <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 rounded px-2 py-0.5" title="Chave do pedido (gerada automaticamente)">#{orderKey}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Data da operação *</label>
+              <input type="date" className="input w-full text-sm" value={operationDate} onChange={e => setOperationDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Data do evento *</label>
+              <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => setEventDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Data da saída *</label>
+              <input type="date" className="input w-full text-sm" value={shipDate} onChange={e => setShipDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Previsão de entrega *</label>
+              <input type="date" className="input w-full text-sm" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
+            </div>
+          </div>
         </div>
 
-        {/* Cliente — sempre visível */}
+        {/* Cliente — obrigatório, com código (vínculo) e dados completos */}
         <div className="card p-4">
           <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-            <User size={15} /> Cliente
+            <User size={15} /> Cliente *
           </p>
           {selectedCustomer ? (
-            <div className="flex items-center justify-between bg-primary-50 rounded-lg px-3 py-2">
-              <div>
-                <p className="text-sm font-semibold text-primary-800">{selectedCustomer.name}</p>
-                <p className="text-xs text-primary-500">{selectedCustomer.cpf_cnpj || selectedCustomer.phone || ''}</p>
+            <div className="bg-primary-50 rounded-lg px-3 py-2 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    {selectedCustomer.display_id != null && <span className="text-[10px] font-mono bg-white text-primary-700 rounded px-1.5 py-0.5 shrink-0 border border-primary-100">#{selectedCustomer.display_id}</span>}
+                    <p className="text-sm font-semibold text-primary-800 truncate">{selectedCustomer.name}</p>
+                  </div>
+                  <p className="text-xs text-primary-500 mt-0.5">{selectedCustomer.cpf_cnpj || selectedCustomer.phone || ''}</p>
+                </div>
+                <button onClick={() => { setSelectedCustomer(null); setShowCustomerInfo(false); }} className="text-primary-400 hover:text-red-500 shrink-0">
+                  <X size={15} />
+                </button>
               </div>
-              <button onClick={() => setSelectedCustomer(null)} className="text-primary-400 hover:text-red-500 ml-2">
-                <X size={15} />
+              <button type="button" onClick={() => setShowCustomerInfo(v => !v)} className="text-xs text-primary-600 hover:underline">
+                {showCustomerInfo ? '▲ Ocultar dados' : '▼ Ver todos os dados do cliente'}
               </button>
+              {showCustomerInfo && (
+                <div className="text-xs text-gray-600 space-y-0.5 border-t border-primary-100 pt-2">
+                  {selectedCustomer.email && <p><b>E-mail:</b> {selectedCustomer.email}</p>}
+                  {selectedCustomer.phone && <p><b>Telefone:</b> {selectedCustomer.phone}</p>}
+                  {selectedCustomer.mobile && <p><b>Celular:</b> {selectedCustomer.mobile}</p>}
+                  {selectedCustomer.cpf_cnpj && <p><b>CPF/CNPJ:</b> {selectedCustomer.cpf_cnpj}</p>}
+                  {selectedCustomer.rg_ie && <p><b>RG/IE:</b> {selectedCustomer.rg_ie}</p>}
+                  {selectedCustomer.instagram && <p><b>Instagram:</b> {selectedCustomer.instagram}</p>}
+                  {(() => {
+                    const a = selectedCustomer.address;
+                    if (!a || (!a.street && !a.city)) return null;
+                    return <p><b>Endereço:</b> {a.street}{a.number ? `, ${a.number}` : ''}{a.neighborhood ? ` - ${a.neighborhood}` : ''}{a.city ? ` - ${a.city}/${a.state || ''}` : ''}{a.zip ? ` (${a.zip})` : ''}</p>;
+                  })()}
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
@@ -422,7 +479,7 @@ export default function PDV({ onDone }) {
                   </div>
                 );
               })()}
-              <p className="text-xs text-gray-400 text-center">ou deixe em branco (consumidor final)</p>
+              <p className="text-xs text-amber-600 text-center">O cliente é obrigatório.</p>
             </div>
           )}
         </div>
