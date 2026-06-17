@@ -351,23 +351,24 @@ router.delete('/categories/:catId', async (req, res) => {
   }
 });
 
-// Exporta CSV com todos os produtos "explodidos" nas variações (cor × borda),
-// com o nome completo já descritivo, agrupados por categoria.
+// Exporta CSV agrupado por MODELO: o nome do modelo é um cabeçalho e logo abaixo
+// vêm todas as variações (cor × borda) já com o nome completo descritivo.
 router.get('/export', async (req, res) => {
   try {
     const { data: products, error } = await supabase
       .from('PRODUTOS')
-      .select('code, name, unit, variations, CATEGORIAS(name)')
+      .select('code, name, variations')
       .eq('tenant_id', req.tenantId)
       .order('name');
     if (error) throw error;
 
     const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
-    const rows = []; // { cat, produto }
+    const esc = s => `"${String(s).replace(/"/g, '""')}"`;
+    const lines = ['PRODUTO'];
 
     for (const p of (products || [])) {
-      const cat = norm(p.CATEGORIAS?.name) || 'SEM CATEGORIA';
       const name = norm(p.name);
+      if (!name) continue;
       const v = p.variations || {};
       // cores limpas (remove lixo de importação que contém "BORDA") e sem repetir
       const colors = [...new Set((v.colors || []).map(norm).filter(c => c && !/BORDA/i.test(c)))];
@@ -375,29 +376,30 @@ router.get('/export', async (req, res) => {
       const volumes = [...new Set((v.volumes || []).map(norm).filter(Boolean))];
       const vols = volumes.length ? volumes : [''];
 
+      // Monta as variações deste modelo
+      const variants = [];
       if (colors.length === 0) {
-        // produto sem variação de cor → só o nome (com volume, se houver)
-        for (const vol of vols) rows.push({ cat, produto: vol ? `${name} ${vol}` : name });
-        continue;
-      }
-
-      for (const vol of vols) {
-        for (const color of colors) {
-          // sem borda
-          rows.push({ cat, produto: vol ? `${name} - ${color} ${vol}` : `${name} - ${color}` });
-          // com cada borda (bordas já vêm com o prefixo "BORDA ...")
-          for (const border of borders) {
-            rows.push({ cat, produto: vol ? `${name} - ${color} - ${border} - ${vol}` : `${name} - ${color} - ${border}` });
+        for (const vol of vols) variants.push(vol ? `${name} ${vol}` : name);
+      } else {
+        for (const vol of vols) {
+          for (const color of colors) {
+            variants.push(vol ? `${name} - ${color} ${vol}` : `${name} - ${color}`);
+            // bordas já vêm com o prefixo "BORDA ..."
+            for (const border of borders) {
+              variants.push(vol ? `${name} - ${color} - ${border} - ${vol}` : `${name} - ${color} - ${border}`);
+            }
           }
         }
       }
+
+      // Cabeçalho do modelo + suas variações (sem repetir o cabeçalho)
+      lines.push(esc(name));
+      for (const variant of variants) {
+        if (variant !== name) lines.push(esc(variant));
+      }
+      lines.push(''); // linha em branco separando os modelos
     }
 
-    rows.sort((a, b) =>
-      a.cat.localeCompare(b.cat, 'pt-BR') || a.produto.localeCompare(b.produto, 'pt-BR'));
-
-    const esc = s => `"${String(s).replace(/"/g, '""')}"`;
-    const lines = ['CATEGORIA;PRODUTO', ...rows.map(r => `${esc(r.cat)};${esc(r.produto)}`)];
     const csv = '﻿' + lines.join('\r\n'); // BOM p/ acentos no Excel
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
