@@ -87,7 +87,21 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.name) { toast.error('Razão Social é obrigatória'); return; }
+    const a = form.address || {};
+    // Todos os campos são obrigatórios (menos Complemento e o e-mail continua minúsculo)
+    if (!form.cnpj?.trim())            { toast.error('Informe o CNPJ'); return; }
+    if (!form.ie?.trim())             { toast.error('Informe a Inscrição Estadual (ou ISENTO)'); return; }
+    if (!form.name?.trim())            { toast.error('Razão Social é obrigatória'); return; }
+    if (!a.nome_fantasia?.trim())      { toast.error('Informe o Nome Fantasia'); return; }
+    if (!form.contact_name?.trim())    { toast.error('Informe o Contato / Responsável'); return; }
+    if (!form.phone?.trim())           { toast.error('Informe o Telefone'); return; }
+    if (!form.email?.trim())           { toast.error('Informe o E-mail'); return; }
+    if (!a.zip?.trim())                { toast.error('Informe o CEP'); return; }
+    if (!a.street?.trim())             { toast.error('Informe a Rua / Logradouro'); return; }
+    if (!String(a.number || '').trim()){ toast.error('Informe o Número'); return; }
+    if (!a.neighborhood?.trim())       { toast.error('Informe o Bairro'); return; }
+    if (!a.city?.trim())               { toast.error('Informe a Cidade'); return; }
+    if (!a.state?.trim())              { toast.error('Informe o Estado (UF)'); return; }
     setLoading(true);
     try {
       if (supplier?.id) {
@@ -108,7 +122,7 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
       {/* CNPJ com auto-fill + Inscrição Estadual */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label">CNPJ</label>
+          <label className="label">CNPJ *</label>
           <div className="relative">
             <input
               className="input pr-10"
@@ -129,7 +143,7 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
           )}
         </div>
         <div>
-          <label className="label">Inscrição Estadual (IE)</label>
+          <label className="label">Inscrição Estadual (IE) *</label>
           <input className="input" value={form.ie}
             onChange={e => set('ie', e.target.value)}
             placeholder="000.000.000.000 ou ISENTO" />
@@ -144,47 +158,47 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
             onChange={e => set('name', e.target.value)} />
         </div>
         <div className="col-span-2">
-          <label className="label">Nome Fantasia</label>
+          <label className="label">Nome Fantasia *</label>
           <input className="input" value={form.address.nome_fantasia}
             onChange={e => setAddr('nome_fantasia', e.target.value)}
             placeholder="Nome comercial (auto-preenchido)" />
         </div>
 
         <div>
-          <label className="label">Contato / Responsável</label>
+          <label className="label">Contato / Responsável *</label>
           <input className="input" value={form.contact_name}
             onChange={e => set('contact_name', e.target.value)} />
         </div>
         <div>
-          <label className="label">Telefone</label>
+          <label className="label">Telefone *</label>
           <input className="input" value={form.phone}
             onChange={e => set('phone', e.target.value)} placeholder="(44) 99999-9999" />
         </div>
         <div className="col-span-2">
-          <label className="label">E-mail</label>
+          <label className="label">E-mail *</label>
           <input type="email" className="input" value={form.email}
             onChange={e => set('email', e.target.value)} />
         </div>
       </div>
 
       {/* Endereço — auto-preenchido, expansível */}
-      <details className="border border-gray-200 rounded-lg" open={!!form.address.street}>
+      <details className="border border-gray-200 rounded-lg" open>
         <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg select-none">
           Endereço {form.address.street && <span className="text-gray-400 font-normal">— {form.address.street}, {form.address.city}/{form.address.state}</span>}
         </summary>
         <div className="px-4 pb-4 grid grid-cols-3 gap-3 mt-3">
           <div>
-            <label className="label">CEP</label>
+            <label className="label">CEP *</label>
             <input className="input" value={form.address.zip}
               onChange={e => setAddr('zip', e.target.value)} placeholder="00000-000" />
           </div>
           <div className="col-span-2">
-            <label className="label">Rua / Logradouro</label>
+            <label className="label">Rua / Logradouro *</label>
             <input className="input" value={form.address.street}
               onChange={e => setAddr('street', e.target.value)} />
           </div>
           <div>
-            <label className="label">Número</label>
+            <label className="label">Número *</label>
             <input className="input" value={form.address.number}
               onChange={e => setAddr('number', e.target.value)} />
           </div>
@@ -194,17 +208,17 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
               onChange={e => setAddr('complement', e.target.value)} />
           </div>
           <div>
-            <label className="label">Bairro</label>
+            <label className="label">Bairro *</label>
             <input className="input" value={form.address.neighborhood}
               onChange={e => setAddr('neighborhood', e.target.value)} />
           </div>
           <div>
-            <label className="label">Cidade</label>
+            <label className="label">Cidade *</label>
             <input className="input" value={form.address.city}
               onChange={e => setAddr('city', e.target.value)} />
           </div>
           <div>
-            <label className="label">Estado</label>
+            <label className="label">Estado *</label>
             <select className="input" value={form.address.state}
               onChange={e => setAddr('state', e.target.value)}>
               <option value="">UF</option>

@@ -56,7 +56,7 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
   const [loading,      setLoading]      = useState(false);
   const [cnpjLoading,  setCnpjLoading]  = useState(false);
   const [cnpjStatus,   setCnpjStatus]   = useState(null);
-  const [addressOpen,  setAddressOpen]  = useState(!!carrier?.address?.street);
+  const [addressOpen,  setAddressOpen]  = useState(true);
 
   const up = s => (typeof s === 'string' ? s.toUpperCase() : s);
   function set(k, v)    { setForm(p => ({ ...p, [k]: (k === 'email' ? v : up(v)) })); }
@@ -132,7 +132,22 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.name) { toast.error('Razão Social é obrigatória'); return; }
+    const a = form.address || {};
+    // Todos os campos são obrigatórios (menos Complemento e o e-mail continua minúsculo)
+    if (!form.cnpj?.trim())            { toast.error('Informe o CNPJ'); return; }
+    if (!form.ie?.trim())             { toast.error('Informe a Inscrição Estadual (ou ISENTO)'); return; }
+    if (!form.name?.trim())            { toast.error('Razão Social é obrigatória'); return; }
+    if (!form.trade_name?.trim())      { toast.error('Informe o Nome Fantasia'); return; }
+    if (!form.contact_name?.trim())    { toast.error('Informe o Responsável / Contato'); return; }
+    if (!form.email?.trim())           { toast.error('Informe o E-mail'); return; }
+    if (!form.phone?.trim())           { toast.error('Informe o Telefone'); return; }
+    if (!form.whatsapp?.trim())        { toast.error('Informe o WhatsApp'); return; }
+    if (!a.zip?.trim())                { setAddressOpen(true); toast.error('Informe o CEP'); return; }
+    if (!a.street?.trim())             { setAddressOpen(true); toast.error('Informe a Rua / Logradouro'); return; }
+    if (!String(a.number || '').trim()){ setAddressOpen(true); toast.error('Informe o Número'); return; }
+    if (!a.neighborhood?.trim())       { setAddressOpen(true); toast.error('Informe o Bairro'); return; }
+    if (!a.city?.trim())               { setAddressOpen(true); toast.error('Informe a Cidade'); return; }
+    if (!a.state?.trim())              { setAddressOpen(true); toast.error('Informe o Estado (UF)'); return; }
     setLoading(true);
     try {
       if (carrier?.id) {
@@ -156,7 +171,7 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
       {/* CNPJ + IE */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="label">CNPJ</label>
+          <label className="label">CNPJ *</label>
           <div className="relative">
             <input
               className="input pr-10"
@@ -187,12 +202,12 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
         </div>
 
         <div>
-          <label className="label">Inscrição Estadual (IE)</label>
+          <label className="label">Inscrição Estadual (IE) *</label>
           <input
             className="input"
             value={form.ie}
             onChange={e => set('ie', e.target.value)}
-            placeholder="Auto-preenchido pelo CNPJ"
+            placeholder="Auto-preenchido pelo CNPJ ou ISENTO"
           />
         </div>
       </div>
@@ -205,30 +220,30 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
             onChange={e => set('name', e.target.value)} />
         </div>
         <div className="sm:col-span-2">
-          <label className="label">Nome Fantasia</label>
+          <label className="label">Nome Fantasia *</label>
           <input className="input" value={form.trade_name}
             onChange={e => set('trade_name', e.target.value)}
             placeholder="Nome comercial" />
         </div>
 
         <div>
-          <label className="label">Responsável / Contato</label>
+          <label className="label">Responsável / Contato *</label>
           <input className="input" value={form.contact_name}
             onChange={e => set('contact_name', e.target.value)} />
         </div>
         <div>
-          <label className="label">E-mail</label>
+          <label className="label">E-mail *</label>
           <input type="email" className="input" value={form.email}
             onChange={e => set('email', e.target.value)} />
         </div>
         <div>
-          <label className="label">Telefone</label>
+          <label className="label">Telefone *</label>
           <input className="input" value={form.phone}
             onChange={e => set('phone', e.target.value)}
             placeholder="(44) 3333-3333" />
         </div>
         <div>
-          <label className="label">WhatsApp</label>
+          <label className="label">WhatsApp *</label>
           <input className="input" value={form.whatsapp}
             onChange={e => set('whatsapp', e.target.value)}
             placeholder="(44) 99999-9999" />
@@ -252,17 +267,17 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
         </button>
         {addressOpen && <div className="px-4 pb-4 grid grid-cols-3 gap-3 border-t border-gray-100 pt-3">
           <div>
-            <label className="label">CEP</label>
+            <label className="label">CEP *</label>
             <input className="input" value={form.address.zip}
               onChange={e => setAddr('zip', e.target.value)} placeholder="00000-000" />
           </div>
           <div className="col-span-2">
-            <label className="label">Rua / Logradouro</label>
+            <label className="label">Rua / Logradouro *</label>
             <input className="input" value={form.address.street}
               onChange={e => setAddr('street', e.target.value)} />
           </div>
           <div>
-            <label className="label">Número</label>
+            <label className="label">Número *</label>
             <input className="input" value={form.address.number}
               onChange={e => setAddr('number', e.target.value)} />
           </div>
@@ -272,17 +287,17 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
               onChange={e => setAddr('complement', e.target.value)} />
           </div>
           <div>
-            <label className="label">Bairro</label>
+            <label className="label">Bairro *</label>
             <input className="input" value={form.address.neighborhood}
               onChange={e => setAddr('neighborhood', e.target.value)} />
           </div>
           <div>
-            <label className="label">Cidade</label>
+            <label className="label">Cidade *</label>
             <input className="input" value={form.address.city}
               onChange={e => setAddr('city', e.target.value)} />
           </div>
           <div>
-            <label className="label">Estado</label>
+            <label className="label">Estado *</label>
             <select className="input" value={form.address.state}
               onChange={e => setAddr('state', e.target.value)}>
               <option value="">UF</option>
