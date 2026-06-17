@@ -3,6 +3,7 @@ import { CheckCircle2, Loader2, Truck, Play } from 'lucide-react';
 import storeApi from '@/store/storeApi';
 import '@/store/store.css';
 import toast from 'react-hot-toast';
+import CadastroDone from './CadastroDone';
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 const INPUT = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none text-sm transition';
@@ -49,6 +50,10 @@ export default function CadastroTransportadora() {
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
   const [cnpjLoading, setCnpjLoading] = useState(false);
+  const [storeCfg, setStoreCfg] = useState(null);
+
+  // Config do site (modo manutenção dos cadastros)
+  useEffect(() => { storeApi.get('/store').then(d => setStoreCfg(d?.cadastro || null)).catch(() => {}); }, []);
 
   const [phase, setPhase] = useState('start'); // start | video | black2 | form
   const videoRef = useRef(null);
@@ -146,6 +151,11 @@ export default function CadastroTransportadora() {
       <div className="fixed inset-0 bg-gradient-to-br from-white/60 via-white/40 to-fuchsia-50/50" style={{ zIndex: -1 }} />
     </>
   );
+
+  // Modo manutenção: mostra só o card "VOCÊ CONCLUIU O CADASTRO"
+  if (done && storeCfg?.maintenance) {
+    return <CadastroDone message={storeCfg.message} whatsapp={storeCfg.whatsapp} />;
+  }
 
   if (done) {
     return (

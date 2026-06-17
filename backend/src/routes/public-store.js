@@ -22,11 +22,26 @@ router.get('/store', async (req, res) => {
     const { data: empresa } = await supabase
       .from('EMPRESAS').select('name, phone, email, cnpj, address')
       .eq('id', STORE_TENANT).maybeSingle();
+    // Lê settings separadamente — se a coluna ainda não existir, ignora sem quebrar a loja.
+    let s = {};
+    try {
+      const { data: cfg } = await supabase
+        .from('EMPRESAS').select('settings').eq('id', STORE_TENANT).maybeSingle();
+      s = cfg?.settings || {};
+    } catch { s = {}; }
+    const onlyDigits = v => String(v || '').replace(/\D/g, '');
     res.json({
       name:  empresa?.name  || 'Nossa Loja',
       phone: empresa?.phone || null,
       email: empresa?.email || null,
       cnpj:  empresa?.cnpj  || null,
+      // Modo manutenção dos cadastros: quando ativo, após concluir qualquer
+      // cadastro o site mostra só um card pedindo para voltar ao WhatsApp.
+      cadastro: {
+        maintenance: !!s.cadastro_maintenance,
+        whatsapp: onlyDigits(s.cadastro_whatsapp || empresa?.phone) || null,
+        message: s.cadastro_message || 'Você concluiu o cadastro! Volte para o WhatsApp.',
+      },
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

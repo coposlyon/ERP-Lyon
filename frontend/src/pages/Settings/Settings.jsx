@@ -29,6 +29,7 @@ export default function Settings() {
     name: '', app_name: '', cnpj: '', phone: '', email: '',
     logo_url: '',
     address: { street: '', number: '', city: '', state: '', zip: '' },
+    settings: {},
   });
 
   const [userModal, setUserModal] = useState(false);
@@ -45,6 +46,7 @@ export default function Settings() {
         email: settings.email || '',
         logo_url: settings.logo_url || '',
         address: settings.address || {},
+        settings: settings.settings || {},
       });
     }
   }, [settings]);
@@ -70,6 +72,7 @@ export default function Settings() {
 
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
   function setAddr(k, v) { setForm(p => ({ ...p, address: { ...p.address, [k]: v } })); }
+  function setSetting(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, [k]: v } })); }
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -79,7 +82,7 @@ export default function Settings() {
 
       <div className="card">
         <div className="card-header flex gap-6">
-          {[['company','Empresa'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
+          {[['company','Empresa'],['cadastro','Cadastro (site)'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`pb-2 text-sm font-medium border-b-2 transition-colors ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
               {l}
@@ -154,6 +157,61 @@ export default function Settings() {
               <div className="flex justify-end">
                 <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
                   {saveMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Salvando...</> : <><Save size={15} /> Salvar Configurações</>}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'cadastro' && (
+          <div className="card-body space-y-5">
+            {!isAdmin && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-2">Apenas admins podem alterar estas configurações.</p>}
+
+            <div>
+              <h3 className="font-medium text-gray-900">Alterar caminho do cadastro</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Controla o que acontece <b>depois</b> que o cliente, fornecedor ou transportadora
+                conclui um cadastro pelo site (links públicos).
+              </p>
+            </div>
+
+            {/* Modo manutenção */}
+            <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${form.settings?.cadastro_maintenance ? 'border-primary-300 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}>
+              <input type="checkbox" className="mt-1 rounded"
+                checked={!!form.settings?.cadastro_maintenance}
+                onChange={e => setSetting('cadastro_maintenance', e.target.checked)}
+                disabled={!isAdmin} />
+              <span>
+                <span className="block text-sm font-semibold text-gray-800">Modo manutenção do site</span>
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  Quando ligado, após concluir <b>qualquer</b> cadastro o site mostra apenas um card
+                  pedindo para voltar ao WhatsApp (não entra na loja nem mostra outras telas).
+                  Use enquanto o site estiver em manutenção.
+                </span>
+              </span>
+            </label>
+
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="label">Mensagem exibida no card</label>
+                <input className="input" value={form.settings?.cadastro_message || ''}
+                  onChange={e => setSetting('cadastro_message', e.target.value)}
+                  placeholder="Você concluiu o cadastro! Volte para o WhatsApp." disabled={!isAdmin} />
+                <p className="text-xs text-gray-400 mt-1">O título do card é sempre “VOCÊ CONCLUIU O CADASTRO”.</p>
+              </div>
+              <div>
+                <label className="label">WhatsApp do botão “Voltar ao WhatsApp”</label>
+                <input className="input" value={form.settings?.cadastro_whatsapp || ''}
+                  onChange={e => setSetting('cadastro_whatsapp', e.target.value)}
+                  placeholder="(44) 99999-9999" disabled={!isAdmin} />
+                <p className="text-xs text-gray-400 mt-1">Se ficar em branco, usa o telefone da empresa. Se não houver número, o card não mostra o botão.</p>
+              </div>
+            </div>
+
+            {isAdmin && (
+              <div className="flex justify-end">
+                <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
+                  {saveMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Salvando...</> : <><Save size={15} /> Salvar</>}
                 </button>
               </div>
             )}

@@ -25,12 +25,23 @@ router.put('/', async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabase
+    const base = { name, app_name, cnpj, logo_url, phone, email, address, updated_at: new Date().toISOString() };
+    let { data, error } = await supabase
       .from('EMPRESAS')
-      .update({ name, app_name, cnpj, logo_url, phone, email, address, settings, updated_at: new Date().toISOString() })
+      .update({ ...base, settings })
       .eq('id', req.tenantId)
       .select()
       .single();
+
+    // Se a coluna `settings` ainda não existe, salva o resto mesmo assim.
+    if (error && /settings/i.test(error.message || '')) {
+      ({ data, error } = await supabase
+        .from('EMPRESAS')
+        .update(base)
+        .eq('id', req.tenantId)
+        .select()
+        .single());
+    }
 
     if (error) throw error;
     res.json(data);

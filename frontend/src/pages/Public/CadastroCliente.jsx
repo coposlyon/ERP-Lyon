@@ -5,6 +5,7 @@ import storeApi from '@/store/storeApi';
 import { setStoreCustomer } from '@/store/StoreAuthContext';
 import '@/store/store.css';
 import toast from 'react-hot-toast';
+import CadastroDone from './CadastroDone';
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 const INPUT = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none text-sm transition';
@@ -79,6 +80,10 @@ export default function CadastroCliente() {
   const [done, setDone] = useState(false);
   const [doneKind, setDoneKind] = useState('new'); // new | updated | login
   const [welcomeName, setWelcomeName] = useState('');
+  const [storeCfg, setStoreCfg] = useState(null);
+
+  // Config do site (modo manutenção dos cadastros)
+  useEffect(() => { storeApi.get('/store').then(d => setStoreCfg(d?.cadastro || null)).catch(() => {}); }, []);
 
   // Detecção de cliente já cadastrado (ao preencher o CPF/CNPJ)
   const [existing, setExisting] = useState(null); // { first_name, type, has_birth }
@@ -265,8 +270,8 @@ export default function CadastroCliente() {
         address: addr,
         update: editMode || undefined,
       });
-      // já deixa o cliente logado na loja
-      if (res?.customer) {
+      // Em modo manutenção NÃO loga na loja — só mostra o card de conclusão.
+      if (!storeCfg?.maintenance && res?.customer) {
         setStoreCustomer(res.customer);
         setWelcomeName((res.customer.name || f.name).trim().split(/\s+/)[0]);
       } else {
@@ -288,6 +293,11 @@ export default function CadastroCliente() {
       <div className="fixed inset-0 bg-gradient-to-br from-white/60 via-white/40 to-fuchsia-50/50" style={{ zIndex: -1 }} />
     </>
   );
+
+  // Modo manutenção: mostra só o card "VOCÊ CONCLUIU O CADASTRO"
+  if (done && storeCfg?.maintenance) {
+    return <CadastroDone message={storeCfg.message} whatsapp={storeCfg.whatsapp} />;
+  }
 
   if (done) {
     return (
