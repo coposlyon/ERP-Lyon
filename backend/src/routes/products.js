@@ -588,16 +588,25 @@ router.post('/import-grouped', async (req, res) => {
     return id;
   }
 
-  // Próximo código sequencial de 4 dígitos (0001, 0002, ...)
+  // Código = iniciais do nome + sequência global de 4 dígitos.
+  // Ex.: "LONG DRINK DEGRADÊ" → "LDD 0001"; "LONG DRINK TRADICIONAL" → "LDT 0046".
+  const STOP = new Set(['DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'COM', 'PARA', 'A', 'O']);
+  function initials(nm) {
+    const words = String(nm || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^A-Z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+    let ini = words.filter(w => !STOP.has(w)).map(w => w[0]).join('');
+    if (!ini) ini = words.map(w => w[0]).join('') || 'X';
+    return ini.slice(0, 8);
+  }
   let seq = 0;
   try {
     const { data: codes } = await supabase.from('PRODUTOS').select('code').eq('tenant_id', req.tenantId).limit(20000);
     for (const r of (codes || [])) {
-      const c = String(r.code || '').trim();
-      if (/^\d+$/.test(c)) { const n = parseInt(c, 10); if (n > seq) seq = n; }
+      const m = String(r.code || '').trim().match(/(\d+)\s*$/); // número no fim (com ou sem prefixo)
+      if (m) { const n = parseInt(m[1], 10); if (n > seq) seq = n; }
     }
   } catch { /* ignora */ }
-  const nextCode = () => { seq += 1; return String(seq).padStart(4, '0'); };
+  const nextCode = (nm) => { seq += 1; return `${initials(nm)} ${String(seq).padStart(4, '0')}`; };
 
   let created = 0, updated = 0, skipped = 0;
   let variationsMissing = false; // true se a coluna `variations` não existir (migration 027)
@@ -631,7 +640,7 @@ router.post('/import-grouped', async (req, res) => {
           items: uniq([...(cur.items || []), ...variations.items]),
         };
         // mantém o código; se ainda não tiver, gera um de 4 dígitos
-        const codePatch = String(existing.code || '').trim() ? {} : { code: nextCode() };
+        const codePatch = String(existing.code || '').trim() ? {} : { code: nextCode(name) };
         let { error } = await supabase.from('PRODUTOS').update({ variations: merged, category_id: catId, ...codePatch })
           .eq('id', existing.id).eq('tenant_id', req.tenantId);
         if (error && /variations/i.test(error.message || '')) {
@@ -645,7 +654,7 @@ router.post('/import-grouped', async (req, res) => {
 
       // novo produto (com código de 4 dígitos)
       const baseRow = {
-        tenant_id: req.tenantId, name, unit: 'UN', category_id: catId, code: nextCode(),
+        tenant_id: req.tenantId, name, unit: 'UN', category_id: catId, code: nextCode(name),
         sale_price: 0, cost_price: 0, current_stock: 0, is_active: true,
       };
       const fullRow = { ...baseRow, min_order_qty: 10, store_group: name, variations };
