@@ -9,7 +9,7 @@ import Modal from '@/components/UI/Modal';
 import PDV from './PDV';
 import { id4 } from '@/lib/ids';
 import { SALE_STATUSES, SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
-import { format, parseISO, subDays } from 'date-fns';
+import { format, parseISO, subDays, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 
@@ -79,6 +79,19 @@ export default function Sales() {
   function clearFilters() {
     setSearch(''); setSearchInput(''); setStatus('');
     setStartDate(''); setEndDate(''); setPage(1);
+  }
+
+  // Atalhos de período rápido
+  function setPreset(kind) {
+    const now = new Date();
+    let from = now;
+    if (kind === 'today')  from = now;
+    if (kind === 'd7')     from = subDays(now, 6);
+    if (kind === 'd30')    from = subDays(now, 29);
+    if (kind === 'month')  from = startOfMonth(now);
+    setStartDate(format(from, 'yyyy-MM-dd'));
+    setEndDate(format(now, 'yyyy-MM-dd'));
+    setPage(1);
   }
 
   const hasFilters = search || status || startDate || endDate;
@@ -214,16 +227,24 @@ export default function Sales() {
             </select>
           </div>
 
-          {/* Data de */}
+          {/* Período (data do pedido) */}
           <div>
-            <label className="label">De</label>
-            <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} className="input w-36 text-sm" />
-          </div>
-
-          {/* Data até */}
-          <div>
-            <label className="label">Até</label>
-            <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} className="input w-36 text-sm" />
+            <label className="label">Período (data do pedido)</label>
+            <div className="flex items-center gap-2">
+              <input type="date" value={startDate} title="Data inicial"
+                onChange={e => { setStartDate(e.target.value); setPage(1); }} className="input w-36 text-sm" />
+              <span className="text-gray-400 text-sm">até</span>
+              <input type="date" value={endDate} title="Data final"
+                onChange={e => { setEndDate(e.target.value); setPage(1); }} className="input w-36 text-sm" />
+            </div>
+            <div className="flex gap-1 mt-1.5">
+              {[['today','Hoje'],['d7','7 dias'],['d30','30 dias'],['month','Este mês']].map(([k,lbl]) => (
+                <button key={k} type="button" onClick={() => setPreset(k)}
+                  className="text-[11px] px-2 py-0.5 rounded bg-gray-100 hover:bg-primary-100 text-gray-600 transition-colors">
+                  {lbl}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex gap-2">

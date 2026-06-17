@@ -47,8 +47,15 @@ router.get('/', async (req, res) => {
 
     if (status) query = query.eq('status', status);
     if (type) query = query.eq('type', type);
-    if (start_date) query = query.gte('created_at', start_date);
-    if (end_date) query = query.lte('created_at', end_date + 'T23:59:59');
+    // Filtro por período: usa a Data da Operação (operation_date) que é a que
+    // aparece na coluna "Data"; quando ela não existe, cai para created_at.
+    if (start_date || end_date) {
+      const op = [];
+      const ca = ['operation_date.is.null'];
+      if (start_date) { op.push(`operation_date.gte.${start_date}`); ca.push(`created_at.gte.${start_date}`); }
+      if (end_date)   { op.push(`operation_date.lte.${end_date}`);   ca.push(`created_at.lte.${end_date}T23:59:59`); }
+      query = query.or(`and(${op.join(',')}),and(${ca.join(',')})`);
+    }
     if (customerIds) query = query.in('customer_id', customerIds);
     query = query.range(offset, offset + limit - 1);
 
