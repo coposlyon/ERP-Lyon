@@ -89,12 +89,8 @@ export default function Products() {
   const columns = [
     { key: 'code', label: 'ID', width: 70, render: v => <span className="font-mono text-xs">{id4(v)}</span> },
     { key: 'name', label: 'Produto',
-      render: (v, row) => (
-        <button onClick={() => setVariantsProduct(row)}
-          className="text-left font-medium text-gray-800 hover:text-primary-600 hover:underline"
-          title="Ver todas as variações (cores e bordas)">
-          {v}
-        </button>
+      render: (v) => (
+        <span className="font-medium text-gray-800" title="Ver todas as variações (cores e bordas)">{v}</span>
       )
     },
     { key: 'CATEGORIAS', label: 'Categoria', render: (v, row) => v?.name || row.categories?.name || '—' },
@@ -117,7 +113,7 @@ export default function Products() {
     },
     { key: 'id', label: '', width: 110,
       render: (_, row) => (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
           <button onClick={() => openEdit(row)} className="btn-ghost p-1.5" title="Editar">
             <Edit2 size={14} />
           </button>
@@ -187,7 +183,8 @@ export default function Products() {
           </form>
         </div>
 
-        <Table columns={columns} data={data?.data} loading={isLoading} />
+        <p className="px-4 pt-3 text-xs text-gray-400">💡 Clique em um produto para ver e pesquisar todas as variações (cores e bordas).</p>
+        <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => setVariantsProduct(row)} />
         <Pagination page={page} total={data?.total || 0} limit={20} onPageChange={setPage} />
       </div>
 
