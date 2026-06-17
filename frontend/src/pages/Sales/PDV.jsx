@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Search, Trash2, ShoppingCart, User, Check, Loader2, X } from 'lucide-react';
 import api from '@/lib/api';
@@ -36,12 +36,25 @@ export default function PDV({ onDone }) {
     return d.toISOString().split('T')[0];
   });
   const searchRef = useRef();
+  const [prodFocus, setProdFocus] = useState(false);
 
-  const { data: productResults } = useQuery({
-    queryKey: ['pdv-products', productSearch],
-    queryFn: () => api.get(`/products?search=${productSearch}&limit=10&is_active=true`),
-    enabled: productSearch.length >= 2,
+  // Carrega todos os produtos ativos (o backend já devolve em ordem alfabética)
+  // para mostrar a lista completa ao abrir, e filtra no cliente conforme digita.
+  const { data: allProducts } = useQuery({
+    queryKey: ['pdv-all-products'],
+    queryFn: () => api.get('/products?limit=2000&is_active=true'),
   });
+
+  const productList = useMemo(() => {
+    const arr = [...(allProducts?.data || [])].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', 'pt-BR'));
+    const term = productSearch.trim().toLowerCase();
+    if (!term) return arr;
+    return arr.filter(p =>
+      (p.name || '').toLowerCase().includes(term) ||
+      String(p.code || '').toLowerCase().includes(term)
+    );
+  }, [allProducts, productSearch]);
 
   const { data: customerResults } = useQuery({
     queryKey: ['pdv-customers', customerSearch],
@@ -101,8 +114,8 @@ export default function PDV({ onDone }) {
   }
 
   function handleProductKeyDown(e) {
-    if (e.key === 'Enter' && productResults?.data?.length >= 1) {
-      addProduct(productResults.data[0]);
+    if (e.key === 'Enter' && productList.length >= 1) {
+      addProduct(productList[0]);
     }
   }
 
@@ -175,20 +188,26 @@ export default function PDV({ onDone }) {
           <input
             ref={searchRef}
             type="text"
-            placeholder="Buscar produto... (Enter para adicionar o 1º)"
+            placeholder="Buscar produto ou clique para ver todos (Enter adiciona o 1º)"
             value={productSearch}
             onChange={e => setProductSearch(e.target.value)}
             onKeyDown={handleProductKeyDown}
+            onFocus={() => setProdFocus(true)}
+            onBlur={() => setTimeout(() => { if (document.activeElement !== searchRef.current) setProdFocus(false); }, 150)}
             className="input pl-9 text-base"
             autoFocus
           />
-          {productSearch.length >= 2 && productResults?.data?.length > 0 && (
-            <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
-              {productResults.data.map((p, idx) => (
-                <button key={p.id} onClick={() => addProduct(p)}
-                  className={`w-full flex items-center justify-between px-4 py-3 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 ? 'bg-blue-50/40' : ''}`}>
-                  <div>
-                    <p className="font-medium text-gray-900 text-sm">{p.name}</p>
+          {(prodFocus || productSearch.trim().length >= 1) && productList.length > 0 && (
+            <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-96 overflow-y-auto">
+              <p className="text-[11px] text-gray-400 px-4 py-1.5 bg-gray-50 sticky top-0 flex justify-between">
+                <span>{productSearch.trim() ? `${productList.length} produto(s) encontrado(s)` : 'Todos os produtos (A–Z)'}</span>
+                <span>{productList.length}</span>
+              </p>
+              {productList.map((p, idx) => (
+                <button key={p.id} type="button" onMouseDown={() => addProduct(p)}
+                  className={`w-full flex items-center justify-between px-4 py-3 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 text-sm truncate">{p.name}</p>
                     <p className="text-xs text-gray-400">
                       Estoque: {p.current_stock}
                       {p.price_tiers?.length > 0 && (
@@ -198,7 +217,7 @@ export default function PDV({ onDone }) {
                       )}
                     </p>
                   </div>
-                  <span className="font-semibold text-primary-600">{fmt(p.sale_price)}</span>
+                  <span className="font-semibold text-primary-600 shrink-0 ml-2">{fmt(p.sale_price)}</span>
                 </button>
               ))}
             </div>
