@@ -187,7 +187,8 @@ export default function CadastroCliente() {
     setIeIsento(c.rg_ie === 'ISENTO' || !!c.admission_data?.ie_isento);
     setCanPublish(c.admission_data?.can_publish === false ? 'nao' : 'sim');
     const a = c.address || {};
-    setAddr({ zip: maskCEP(a.zip || ''), street: a.street || '', number: a.number || '', complement: a.complement || '', neighborhood: a.neighborhood || '', city: a.city || '', state: a.state || '' });
+    const up = s => String(s || '').toUpperCase();
+    setAddr({ zip: maskCEP(a.zip || ''), street: up(a.street), number: up(a.number), complement: up(a.complement), neighborhood: up(a.neighborhood), city: up(a.city), state: up(a.state) });
     setEditMode(true);
     setReview(null); setExisting(null);
   }

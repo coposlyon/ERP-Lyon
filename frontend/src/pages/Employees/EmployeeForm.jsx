@@ -177,8 +177,9 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
     }
   }, [employee]);
 
-  function set(f, v)    { setForm(p => ({ ...p, [f]: v })); }
-  function setAddr(f,v) { setForm(p => ({ ...p, address: { ...p.address, [f]: v } })); }
+  const up = s => (typeof s === 'string' ? s.toUpperCase() : s);
+  function set(f, v)    { setForm(p => ({ ...p, [f]: ((f === 'email' || f === 'instagram') ? v : up(v)) })); }
+  function setAddr(f,v) { setForm(p => ({ ...p, address: { ...p.address, [f]: up(v) } })); }
   function setAdm(f,v)  { setForm(p => ({ ...p, admission_data: { ...p.admission_data, [f]: v } })); }
 
   function toggleModule(key) {
@@ -197,7 +198,7 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
       if (!res.ok) { toast.error(data.error || 'CEP não encontrado'); return; }
       setForm(p => ({
         ...p,
-        address: { ...p.address, street: data.street||'', neighborhood: data.neighborhood||'', city: data.city||'', state: data.state||'', zip: raw },
+        address: { ...p.address, street: up(data.street)||'', neighborhood: up(data.neighborhood)||'', city: up(data.city)||'', state: up(data.state)||'', zip: raw },
       }));
     } catch { toast.error('Erro ao buscar CEP'); }
     finally   { setCepLoading(false); }

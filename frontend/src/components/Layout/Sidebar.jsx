@@ -1,8 +1,8 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   LayoutDashboard, Package, Users, Truck, ShoppingCart,
-  ShoppingBag, BarChart3, FileText, Settings, LogOut,
+  ShoppingBag, BarChart3, FileText, Settings,
   Boxes, Wallet, Receipt, ChevronDown, ChevronRight,
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
@@ -214,14 +214,8 @@ function filterMenu(items, hasModule, isAdmin) {
 }
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
-  const { tenant, user, logout, hasModule, isAdmin } = useAuth();
-  const navigate = useNavigate();
+  const { tenant, hasModule, isAdmin } = useAuth();
   const visibleItems = filterMenu(menuItems, hasModule, isAdmin);
-
-  async function handleLogout() {
-    await logout();
-    navigate('/login');
-  }
 
   return (
     <aside
@@ -279,22 +273,6 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         ))}
       </nav>
 
-      {/* Usuário / Logout */}
-      <div className="border-t border-indigo-800 px-2 py-3">
-        {!collapsed && (
-          <div className="px-3 py-2 mb-1">
-            <p className="text-white text-xs font-medium truncate">{user?.name}</p>
-            <p className="text-indigo-300 text-xs truncate capitalize">{user?.role}</p>
-          </div>
-        )}
-        <button
-          onClick={handleLogout}
-          className="sidebar-item w-full text-red-300 hover:text-red-200 hover:bg-red-900/20"
-        >
-          <LogOut size={18} />
-          {!collapsed && <span>Sair</span>}
-        </button>
-      </div>
     </aside>
   );
 }
