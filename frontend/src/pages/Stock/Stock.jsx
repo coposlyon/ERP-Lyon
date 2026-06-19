@@ -10,6 +10,7 @@ import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
+import ProductVariantsModal from '@/pages/Products/ProductVariantsModal';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
@@ -449,6 +450,7 @@ export default function Stock() {
   const [page, setPage]           = useState(1);
   const [showZeroOnly, setShowZeroOnly] = useState(false);
   const [perdaOpen, setPerdaOpen] = useState(false);
+  const [variantsProduct, setVariantsProduct] = useState(null); // ver variações ao clicar
 
   // Modal de reposição
   const [replenishModal, setReplenishModal]             = useState(false);
@@ -658,7 +660,7 @@ export default function Stock() {
     {
       key: 'id', label: '', width: 110,
       render: (_, row) => (
-        <button onClick={() => openSupplierWhatsApp(row)}
+        <button onClick={(e) => { e.stopPropagation(); openSupplierWhatsApp(row); }}
           className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 bg-green-50 hover:bg-green-100 px-2 py-1 rounded-lg transition-colors"
           title={row.FORNECEDORES?.phone ? `Enviar WhatsApp para ${row.FORNECEDORES.name}` : 'Fornecedor sem telefone'}>
           <MessageCircle size={12} /> Solicitar
@@ -819,7 +821,8 @@ export default function Stock() {
                 ✅ Nenhum produto negativo!
               </p>
             )}
-            <Table columns={posColumns} data={displayProducts} loading={repLoading} />
+            <p className="px-1 pb-2 text-xs text-gray-400">💡 Clique em um produto para ver e pesquisar todas as variações.</p>
+            <Table columns={posColumns} data={displayProducts} loading={repLoading} onRowClick={row => setVariantsProduct(row)} />
           </>
         )}
 
@@ -1105,6 +1108,8 @@ export default function Stock() {
           onCancel={() => setPerdaOpen(false)}
         />
       </Modal>
+
+      <ProductVariantsModal product={variantsProduct} onClose={() => setVariantsProduct(null)} />
 
       {/* ── Confirmação: Reenvio de solicitação já pendente ──────── */}
       {confirmResend && (

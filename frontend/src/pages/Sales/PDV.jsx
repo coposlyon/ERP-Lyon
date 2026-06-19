@@ -236,9 +236,9 @@ export default function PDV({ onDone }) {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:h-full" style={{ maxHeight: 'none' }}>
+    <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
       {/* Esquerda — Produtos */}
-      <div className="flex-1 flex flex-col gap-3 lg:overflow-hidden">
+      <div className="flex-1 flex flex-col gap-3 min-w-0">
         {!inModal && <h1 className="page-title">PDV — Ponto de Venda</h1>}
 
         {/* Busca produto */}
@@ -311,7 +311,7 @@ export default function PDV({ onDone }) {
         </div>
 
         {/* Lista de itens */}
-        <div className="card flex-1 overflow-y-auto">
+        <div className="card max-h-[45vh] overflow-y-auto">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 text-gray-400">
               <ShoppingCart size={32} className="mb-2 opacity-30" />
@@ -375,7 +375,7 @@ export default function PDV({ onDone }) {
       </div>
 
       {/* Direita — Checkout */}
-      <div className="w-full lg:w-80 flex flex-col gap-3">
+      <div className="w-full lg:w-80 lg:shrink-0 flex flex-col gap-3">
 
         {/* Pedido — chave aleatória + datas (tudo obrigatório) */}
         <div className="card p-4 space-y-3">

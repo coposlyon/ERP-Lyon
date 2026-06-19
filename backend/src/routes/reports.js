@@ -28,7 +28,7 @@ router.get('/stock-position', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('PRODUTOS')
-      .select('id, code, name, unit, current_stock, min_stock, cost_price, sale_price, supplier_id, CATEGORIAS(name), FORNECEDORES(id, name, phone)')
+      .select('id, code, name, unit, current_stock, min_stock, cost_price, sale_price, supplier_id, variations, CATEGORIAS(name), FORNECEDORES(id, name, phone)')
       .eq('tenant_id', req.tenantId)
       .eq('is_active', true)
       .order('name');
