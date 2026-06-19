@@ -25,6 +25,26 @@ export default function Settings() {
     enabled: tab === 'users',
   });
 
+  // ── Serigrafia ──────────────────────────────────────────────
+  const [seri, setSeri] = useState(null);
+  const { data: seriData } = useQuery({
+    queryKey: ['seri-config-settings'],
+    queryFn: () => api.get('/production/serigrafia/config'),
+    enabled: tab === 'serigrafia',
+  });
+  useEffect(() => { if (seriData) setSeri(seriData); }, [seriData]);
+  const { data: seriProducts } = useQuery({
+    queryKey: ['seri-products'],
+    queryFn: () => api.get('/products?limit=2000&is_active=true'),
+    enabled: tab === 'serigrafia',
+  });
+  const setSe = (k, v) => setSeri(s => ({ ...s, [k]: v }));
+  const saveSeri = useMutation({
+    mutationFn: () => api.put('/production/serigrafia/config', seri),
+    onSuccess: () => { toast.success('Configuração de serigrafia salva!'); qc.invalidateQueries(['seri-config']); },
+    onError: e => toast.error(e.error || 'Erro ao salvar'),
+  });
+
   const [form, setForm] = useState({
     name: '', app_name: '', cnpj: '', phone: '', email: '',
     logo_url: '',
@@ -82,7 +102,7 @@ export default function Settings() {
 
       <div className="card">
         <div className="card-header flex gap-6">
-          {[['company','Empresa'],['cadastro','Cadastro (site)'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
+          {[['company','Empresa'],['cadastro','Cadastro (site)'],['serigrafia','Serigrafia'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`pb-2 text-sm font-medium border-b-2 transition-colors ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
               {l}
@@ -214,6 +234,65 @@ export default function Settings() {
                   {saveMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Salvando...</> : <><Save size={15} /> Salvar</>}
                 </button>
               </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'serigrafia' && (
+          <div className="card-body space-y-5">
+            {!isAdmin && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-2">Apenas admins podem alterar estas configurações.</p>}
+            {!seri ? <p className="text-sm text-gray-400">Carregando...</p> : (
+              <>
+                <div>
+                  <h3 className="font-medium text-gray-900">Gravação de matriz (telas)</h3>
+                  <p className="text-sm text-gray-500 mt-1">Usado para calcular a <b>perda</b> quando uma matriz dá erro (emulsão · sensibilizante · removedor) e a durabilidade das telas.</p>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Tamanho padrão da tela</h4>
+                  <div className="grid grid-cols-3 gap-4 max-w-md">
+                    <div><label className="label">Largura (cm)</label><input type="number" className="input" value={seri.screen_w ?? ''} onChange={e => setSe('screen_w', e.target.value)} disabled={!isAdmin} /></div>
+                    <div><label className="label">Comprimento (cm)</label><input type="number" className="input" value={seri.screen_h ?? ''} onChange={e => setSe('screen_h', e.target.value)} disabled={!isAdmin} /></div>
+                    <div><label className="label">Área (cm²)</label><input className="input bg-gray-50" disabled value={(Number(seri.screen_w) || 0) * (Number(seri.screen_h) || 0)} /></div>
+                  </div>
+                </div>
+
+                {/* Consumo + custo + produto de estoque por insumo */}
+                {[
+                  ['Emulsão', 'emulsao_g_m2', 'g/m²', 'emulsao_cost_kg', 'R$/kg', 'emulsao_product_id'],
+                  ['Sensibilizante', 'sensib_g_m2', 'g/m²', 'sensib_cost_kg', 'R$/kg', 'sensib_product_id'],
+                  ['Removedor', 'removedor_ml_m2', 'ml/m²', 'removedor_cost_l', 'R$/L', 'removedor_product_id'],
+                ].map(([label, ck, cu, costk, costu, pk]) => (
+                  <div key={ck} className="border border-gray-100 rounded-xl p-3">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">{label}</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div><label className="label">Consumo ({cu})</label><input type="number" className="input" value={seri[ck] ?? ''} onChange={e => setSe(ck, e.target.value)} disabled={!isAdmin} /></div>
+                      <div><label className="label">Custo ({costu})</label><input type="number" className="input" value={seri[costk] ?? ''} onChange={e => setSe(costk, e.target.value)} disabled={!isAdmin} /></div>
+                      <div>
+                        <label className="label">Produto no estoque (baixa)</label>
+                        <select className="input" value={seri[pk] || ''} onChange={e => setSe(pk, e.target.value || null)} disabled={!isAdmin}>
+                          <option value="">— não dar baixa —</option>
+                          {(seriProducts?.data || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="max-w-xs">
+                  <label className="label">Trocar a tela após (recuperações)</label>
+                  <input type="number" className="input" value={seri.troca_limite ?? ''} onChange={e => setSe('troca_limite', e.target.value)} disabled={!isAdmin} />
+                  <p className="text-xs text-gray-400 mt-1">Acima desse número de recuperações, o sistema avisa que a tela pode precisar de troca.</p>
+                </div>
+
+                {isAdmin && (
+                  <div className="flex justify-end">
+                    <button onClick={() => saveSeri.mutate()} disabled={saveSeri.isPending} className="btn-primary">
+                      {saveSeri.isPending ? <><Loader2 size={15} className="animate-spin" /> Salvando...</> : <><Save size={15} /> Salvar</>}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

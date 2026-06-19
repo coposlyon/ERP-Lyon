@@ -77,6 +77,121 @@ router.get('/', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ════════ Serigrafia: configuração, perda de matriz e quadros (telas) ════════
+const SERI_DEFAULTS = {
+  screen_w: 25, screen_h: 35,                                   // cm
+  emulsao_g_m2: 200, emulsao_cost_kg: 0, emulsao_product_id: null,
+  sensib_g_m2: 20,   sensib_cost_kg: 0,  sensib_product_id: null,
+  removedor_ml_m2: 50, removedor_cost_l: 0, removedor_product_id: null,
+  troca_limite: 20,                                             // recuperações antes de trocar a tela
+};
+
+async function getSeriConfig(tenantId) {
+  let s = {};
+  try {
+    const { data } = await supabase.from('EMPRESAS').select('settings').eq('id', tenantId).maybeSingle();
+    s = (data?.settings && data.settings.serigrafia) || {};
+  } catch { s = {}; }
+  return { ...SERI_DEFAULTS, ...s };
+}
+
+// incrementa gravacoes/recuperacoes de um quadro (cria se não existir)
+async function bumpQuadro(tenantId, numero, field, inc = 1) {
+  numero = String(numero || '').trim();
+  if (!numero) return null;
+  const { data: q } = await supabase.from('QUADROS').select('id, gravacoes, recuperacoes')
+    .eq('tenant_id', tenantId).eq('numero', numero).maybeSingle();
+  if (q) {
+    const patch = { updated_at: new Date().toISOString() };
+    patch[field] = (Number(q[field]) || 0) + inc;
+    await supabase.from('QUADROS').update(patch).eq('id', q.id);
+    return { ...q, ...patch };
+  }
+  const row = { tenant_id: tenantId, numero, gravacoes: 0, recuperacoes: 0 };
+  row[field] = inc;
+  const { data: ins } = await supabase.from('QUADROS').insert(row).select().single();
+  return ins;
+}
+
+router.get('/serigrafia/config', async (req, res) => {
+  try { res.json(await getSeriConfig(req.tenantId)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.put('/serigrafia/config', async (req, res) => {
+  if (req.userProfile?.role !== 'admin') return res.status(403).json({ error: 'Apenas administradores podem alterar a configuração.' });
+  try {
+    const { data } = await supabase.from('EMPRESAS').select('settings').eq('id', req.tenantId).maybeSingle();
+    const cur = data?.settings || {};
+    const merged = { ...cur, serigrafia: { ...SERI_DEFAULTS, ...(cur.serigrafia || {}), ...(req.body || {}) } };
+    const { error } = await supabase.from('EMPRESAS').update({ settings: merged }).eq('id', req.tenantId);
+    if (error) throw error;
+    res.json(merged.serigrafia);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/serigrafia/quadros', async (req, res) => {
+  try {
+    const cfg = await getSeriConfig(req.tenantId);
+    const { data } = await supabase.from('QUADROS').select('*').eq('tenant_id', req.tenantId)
+      .order('recuperacoes', { ascending: false });
+    const list = (data || []).map(q => ({ ...q, precisa_troca: (Number(q.recuperacoes) || 0) >= Number(cfg.troca_limite || 0) }));
+    res.json({ data: list, troca_limite: cfg.troca_limite });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/serigrafia/perdas', async (req, res) => {
+  try {
+    const { data } = await supabase.from('PERDAS_MATRIZ').select('*').eq('tenant_id', req.tenantId)
+      .order('created_at', { ascending: false }).limit(200);
+    res.json({ data: data || [] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/serigrafia/perda', async (req, res) => {
+  const { sale_id, quadro, motivo, obs, area_cm2, emulsao_g, sensib_g, removedor_ml } = req.body;
+  if (!String(quadro || '').trim()) return res.status(400).json({ error: 'Informe a numeração do quadro.' });
+  try {
+    const cfg = await getSeriConfig(req.tenantId);
+    const area = Number(area_cm2) > 0 ? Number(area_cm2) : (Number(cfg.screen_w) * Number(cfg.screen_h));
+    const m2 = area / 10000;
+    const emu = emulsao_g != null && emulsao_g !== '' ? Number(emulsao_g) : m2 * Number(cfg.emulsao_g_m2 || 0);
+    const sen = sensib_g != null && sensib_g !== '' ? Number(sensib_g) : m2 * Number(cfg.sensib_g_m2 || 0);
+    const rem = removedor_ml != null && removedor_ml !== '' ? Number(removedor_ml) : m2 * Number(cfg.removedor_ml_m2 || 0);
+    const custo = (emu / 1000) * Number(cfg.emulsao_cost_kg || 0)
+                + (sen / 1000) * Number(cfg.sensib_cost_kg || 0)
+                + (rem / 1000) * Number(cfg.removedor_cost_l || 0);
+
+    const { data: rec, error } = await supabase.from('PERDAS_MATRIZ').insert({
+      tenant_id: req.tenantId, sale_id: sale_id || null, quadro: String(quadro).trim(),
+      motivo: motivo || null, obs: obs || null, area_cm2: area,
+      emulsao_g: emu, sensib_g: sen, removedor_ml: rem, custo,
+      user_id: req.user?.id || null, user_name: req.user?.name || req.user?.email || null,
+    }).select().single();
+    if (error) throw error;
+
+    // baixa no estoque dos insumos configurados
+    const baixa = async (pid, qty, label) => {
+      if (!pid || !(qty > 0)) return;
+      try {
+        await supabase.rpc('atualizar_estoque', {
+          p_tenant_id: req.tenantId, p_product_id: pid, p_quantity: -qty, p_type: 'adjustment',
+          p_reference_type: 'matriz_perda', p_reference_id: rec.id, p_user_id: req.user?.id || null,
+          p_notes: `Perda de matriz ${quadro} — ${label}`,
+        });
+      } catch { /* estoque pode não estar configurado */ }
+    };
+    await baixa(cfg.emulsao_product_id, emu, 'emulsão');
+    await baixa(cfg.sensib_product_id, sen, 'sensibilizante');
+    await baixa(cfg.removedor_product_id, rem, 'removedor');
+
+    const q = await bumpQuadro(req.tenantId, quadro, 'recuperacoes');
+    const precisa_troca = q && (Number(q.recuperacoes) || 0) >= Number(cfg.troca_limite || 0);
+    audit(req, 'create', 'matriz_perda', rec.id, { quadro, motivo, custo });
+    res.status(201).json({ ...rec, quadro_recuperacoes: q?.recuperacoes, precisa_troca });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Detalhe (itens + arte) ────────────────────────────────
 router.get('/:id', async (req, res) => {
   try {
@@ -170,6 +285,10 @@ router.post('/:id/stage', async (req, res) => {
     const { error } = await supabase.from('VENDAS').update(patch)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId);
     if (error) throw error;
+    // Revelação concluída com sucesso = +1 gravação na vida daquele quadro
+    if (stage === 'revelacao' && action === 'finish') {
+      try { await bumpQuadro(req.tenantId, quadro, 'gravacoes'); } catch { /* ignora */ }
+    }
     audit(req, 'update', 'production', req.params.id, { stage, action });
     res.json({ ok: true, stage: patch.production_stage || sale.production_stage });
   } catch (err) { res.status(500).json({ error: err.message }); }

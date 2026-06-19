@@ -4,6 +4,7 @@ import { Factory, Play, Check, Search, RefreshCw, Loader2, Save, Image as ImageI
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import Modal from '@/components/UI/Modal';
+import SerigrafiaPanel from './SerigrafiaPanel';
 import toast from 'react-hot-toast';
 
 const fmtMoney = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -233,6 +234,12 @@ export default function Production() {
           </table>
         </div>
       </div>
+
+      {/* Serigrafia — perda de matriz + durabilidade das telas */}
+      <SerigrafiaPanel
+        saleId={selId}
+        defaultQuadro={(detail?.history || []).filter(h => h.stage === 'revelacao' && h.quadro).slice(-1)[0]?.quadro || ''}
+      />
 
       {/* Detalhe do pedido selecionado */}
       {selected && (
