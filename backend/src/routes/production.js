@@ -4,10 +4,13 @@ const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { uploadDataUrl } = require('../lib/storage');
 
+const { makeClient } = require('../config/supabase');
+
 // Etapas e suas colunas de início/fim
 const STAGE_FIELDS = {
   revelacao: { start: 'revelacao_inicio', end: 'revelacao_fim', label: 'Revelação' },
   producao:  { start: 'producao_inicio',  end: 'producao_fim',  label: 'Produção' },
+  pintura:   { start: 'pintura_inicio',   end: 'pintura_fim',   label: 'Pintura' },
   embalagem: { start: 'embalagem_inicio', end: 'embalagem_fim', label: 'Embalagem' },
 };
 
@@ -127,18 +130,33 @@ router.patch('/:id', async (req, res) => {
 
 // ── Iniciar / Finalizar etapa (registra quem e quando) ────
 router.post('/:id/stage', async (req, res) => {
-  const { stage, action } = req.body;
+  const { stage, action, password, actor_user, quadro, conferido } = req.body;
   const def = STAGE_FIELDS[stage];
   if (!def || !['start', 'finish'].includes(action)) return res.status(400).json({ error: 'Etapa ou ação inválida' });
   try {
+    // Revelação exige confirmação: usuário + nº do quadro + conferido + senha
+    if (stage === 'revelacao') {
+      if (!String(actor_user || '').trim()) return res.status(400).json({ error: 'Informe o usuário.' });
+      if (!String(quadro || '').trim()) return res.status(400).json({ error: 'Informe a numeração do quadro.' });
+      if (!conferido) return res.status(400).json({ error: 'Marque "Conferido" para confirmar.' });
+      const email = req.user?.email;
+      if (!password) return res.status(400).json({ error: 'Digite sua senha para confirmar.' });
+      if (!email) return res.status(401).json({ error: 'Sessão inválida — entre novamente.' });
+      const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+      const { error: authErr } = await client.auth.signInWithPassword({ email, password });
+      if (authErr) return res.status(401).json({ error: 'Senha incorreta.' });
+    }
+
     const { data: sale, error: e0 } = await supabase.from('VENDAS')
       .select('production_log, production_stage').eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
     if (e0 || !sale) return res.status(404).json({ error: 'Pedido não encontrado' });
 
     const now = new Date().toISOString();
-    const actor = req.user?.name || req.user?.email || 'Usuário';
+    const actor = String(actor_user || '').trim() || req.user?.name || req.user?.email || 'Usuário';
     const log = Array.isArray(sale.production_log) ? sale.production_log : [];
-    log.push({ stage, action, at: now, user_id: req.user?.id || null, user: actor });
+    const entry = { stage, action, at: now, user_id: req.user?.id || null, user: actor };
+    if (stage === 'revelacao') { entry.quadro = String(quadro).trim(); entry.conferido = true; }
+    log.push(entry);
 
     const patch = { production_log: log };
     patch[action === 'start' ? def.start : def.end] = now;

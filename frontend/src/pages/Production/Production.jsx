@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 
 const fmtMoney = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 const fmtDT = s => s ? new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-const STEP_LABEL = { revelacao: 'Revelação', producao: 'Produção', embalagem: 'Embalagem', perda: 'Perda', status: 'Status' };
+const STEP_LABEL = { revelacao: 'Revelação', producao: 'Produção', pintura: 'Pintura', embalagem: 'Embalagem', perda: 'Perda', status: 'Status' };
 const ACT_LABEL = { start: 'iniciou', finish: 'finalizou', registro: 'registrou' };
 
 const STAGES = {
@@ -16,12 +16,14 @@ const STAGES = {
   aguardando_producao: { label: 'Aguardando Produção', cls: 'bg-blue-100 text-blue-700' },
   revelacao:           { label: 'Em Revelação',        cls: 'bg-yellow-100 text-yellow-700' },
   producao:            { label: 'Em Produção',         cls: 'bg-orange-100 text-orange-700' },
+  pintura:             { label: 'Em Pintura',          cls: 'bg-pink-100 text-pink-700' },
   embalagem:           { label: 'Em Embalagem',        cls: 'bg-violet-100 text-violet-700' },
   finalizado:          { label: 'Finalizado',          cls: 'bg-green-100 text-green-700' },
 };
 const STEPS = [
   { stage: 'revelacao', label: 'Revelação' },
   { stage: 'producao',  label: 'Produção' },
+  { stage: 'pintura',   label: 'Pintura' },
   { stage: 'embalagem', label: 'Embalagem' },
 ];
 const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
@@ -31,7 +33,8 @@ function canDo(s, stage, action) {
   if (action === 'finish') return s.stage === stage;
   if (stage === 'revelacao') return ['aguardando_arte', 'aguardando_producao'].includes(s.stage);
   if (stage === 'producao')  return s.stage === 'revelacao';
-  if (stage === 'embalagem') return s.stage === 'producao';
+  if (stage === 'pintura')   return s.stage === 'producao';
+  if (stage === 'embalagem') return s.stage === 'pintura';
   return false;
 }
 
@@ -55,10 +58,29 @@ export default function Production() {
   });
 
   const stageMut = useMutation({
-    mutationFn: ({ stage, action }) => api.post(`/production/${selId}/stage`, { stage, action }),
-    onSuccess: () => { qc.invalidateQueries(['production']); qc.invalidateQueries(['production-detail', selId]); toast.success('Etapa registrada!'); },
-    onError: e => toast.error(e.error || 'Erro (rodou a migration 019?)'),
+    mutationFn: (payload) => api.post(`/production/${selId}/stage`, payload),
+    onSuccess: () => { qc.invalidateQueries(['production']); qc.invalidateQueries(['production-detail', selId]); toast.success('Etapa registrada!'); setRevConfirm(null); },
+    onError: e => toast.error(e.error || 'Erro ao registrar etapa'),
   });
+
+  // Confirmação da Revelação (usuário + nº do quadro + conferido + senha)
+  const [revConfirm, setRevConfirm] = useState(null); // { action } | null
+  const [revForm, setRevForm] = useState({ user: '', quadro: '', conferido: false, password: '' });
+  function openRev(action) { setRevForm({ user: '', quadro: '', conferido: false, password: '' }); setRevConfirm({ action }); }
+  function confirmRev() {
+    stageMut.mutate({
+      stage: 'revelacao', action: revConfirm.action,
+      actor_user: revForm.user.trim(), quadro: revForm.quadro.trim(),
+      conferido: revForm.conferido, password: revForm.password,
+    });
+  }
+  const revReady = revForm.user.trim() && revForm.quadro.trim() && revForm.conferido && revForm.password;
+
+  // Dispara a etapa: revelação abre o modal de confirmação; as outras vão direto.
+  function doStage(stage, action) {
+    if (stage === 'revelacao') openRev(action);
+    else stageMut.mutate({ stage, action });
+  }
 
   const [edit, setEdit] = useState({});
   const saveFields = useMutation({
@@ -129,12 +151,12 @@ export default function Production() {
         {STEPS.map(s => (
           <div key={s.stage} className="flex items-center gap-1">
             <button disabled={!canDo(selected, s.stage, 'start') || stageMut.isPending}
-              onClick={() => stageMut.mutate({ stage: s.stage, action: 'start' })}
+              onClick={() => doStage(s.stage, 'start')}
               className="text-xs font-medium px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-30 inline-flex items-center gap-1">
               <Play size={13} /> Iniciar {s.label}
             </button>
             <button disabled={!canDo(selected, s.stage, 'finish') || stageMut.isPending}
-              onClick={() => stageMut.mutate({ stage: s.stage, action: 'finish' })}
+              onClick={() => doStage(s.stage, 'finish')}
               className="text-xs font-medium px-3 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-30 inline-flex items-center gap-1">
               <Check size={13} /> Finalizar {s.label}
             </button>
@@ -394,6 +416,56 @@ export default function Production() {
             <button onClick={() => setPerdaOpen(false)} className="btn-secondary">Cancelar</button>
             <button onClick={() => perdaMut.mutate()} disabled={perdaMut.isPending || !perda.quantity} className="btn-primary disabled:opacity-50">
               {perdaMut.isPending ? 'Salvando...' : 'Registrar'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Confirmação da Revelação */}
+      <Modal isOpen={!!revConfirm} onClose={() => !stageMut.isPending && setRevConfirm(null)}
+        title={`${revConfirm?.action === 'finish' ? 'Finalizar' : 'Iniciar'} Revelação`} size="sm">
+        <div className="space-y-3">
+          <div>
+            <label className="label">Usuário *</label>
+            <input className="input" autoFocus value={revForm.user}
+              onChange={e => setRevForm(s => ({ ...s, user: e.target.value.toUpperCase() }))}
+              placeholder="Quem está fazendo a revelação" />
+          </div>
+
+          {/* O restante aparece após informar o usuário */}
+          {revForm.user.trim() && (
+            <div className="space-y-3 border-t border-gray-100 pt-3">
+              <div>
+                <label className="label">Qual a numeração do quadro? *</label>
+                <input className="input font-mono" value={revForm.quadro}
+                  onChange={e => setRevForm(s => ({ ...s, quadro: e.target.value }))}
+                  placeholder="Ex.: 04827" />
+              </div>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                <b>Obs:</b> favor conferir se a gravação da matriz está conforme a vegetal impressa.
+              </p>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={revForm.conferido}
+                  onChange={e => setRevForm(s => ({ ...s, conferido: e.target.checked }))}
+                  className="w-4 h-4 accent-primary-600" />
+                Conferido
+              </label>
+              <div>
+                <label className="label">Confirme com a sua senha *</label>
+                <input type="password" className="input" value={revForm.password}
+                  onChange={e => setRevForm(s => ({ ...s, password: e.target.value }))}
+                  onKeyDown={e => e.key === 'Enter' && revReady && !stageMut.isPending && confirmRev()}
+                  placeholder="Sua senha" />
+                <p className="text-[11px] text-gray-400 mt-1">Só confirma quando todos os campos acima estiverem preenchidos.</p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2 justify-end pt-2 border-t border-gray-100">
+            <button onClick={() => setRevConfirm(null)} disabled={stageMut.isPending} className="btn-secondary">Cancelar</button>
+            <button onClick={confirmRev} disabled={!revReady || stageMut.isPending}
+              className="btn-primary disabled:opacity-40">
+              {stageMut.isPending ? <><Loader2 size={15} className="animate-spin" /> Confirmando...</> : <><Check size={15} /> Confirmar</>}
             </button>
           </div>
         </div>
