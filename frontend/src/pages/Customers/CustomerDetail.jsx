@@ -1,14 +1,14 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { ArrowLeft, Phone, Mail, MapPin, Edit2, Instagram, Cake, Hash, IdCard, CalendarPlus, RefreshCw, History, User } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Edit2, Instagram, Cake, Hash, IdCard, CalendarPlus, RefreshCw, History, User, ShieldCheck, Loader2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useState } from 'react';
 import Modal from '@/components/UI/Modal';
 import CustomerForm from './CustomerForm';
 import { id4 } from '@/lib/ids';
-import { useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 
 function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -48,12 +48,26 @@ export default function CustomerDetail() {
   const qc = useQueryClient();
   const [tab, setTab] = useState('sales');
   const [editOpen, setEditOpen] = useState(false);
+  const [creditOpen, setCreditOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['customer-history', id],
     queryFn: () => api.get(`/customers/${id}/history`),
     enabled: !!id,
   });
+
+  // Consulta de crédito (Serasa/SPC via API agregadora)
+  const { data: creditHist } = useQuery({
+    queryKey: ['credit-checks', id],
+    queryFn: () => api.get(`/customers/${id}/credit-checks`),
+    enabled: !!id && creditOpen,
+  });
+  const creditMut = useMutation({
+    mutationFn: () => api.post(`/customers/${id}/credit-check`),
+    onSuccess: () => { qc.invalidateQueries(['credit-checks', id]); toast.success('Consulta realizada!'); },
+    onError: e => toast.error(e.error || 'Não foi possível consultar'),
+  });
+  const lastCredit = (creditHist?.data || [])[0];
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -88,9 +102,14 @@ export default function CustomerDetail() {
             </p>
           </div>
         </div>
-        <button onClick={() => setEditOpen(true)} className="btn-secondary">
-          <Edit2 size={15} /> Editar
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setCreditOpen(true)} className="btn-secondary" title="Consultar score/Serasa pelo CPF">
+            <ShieldCheck size={15} /> Consultar crédito
+          </button>
+          <button onClick={() => setEditOpen(true)} className="btn-secondary">
+            <Edit2 size={15} /> Editar
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -254,6 +273,75 @@ export default function CustomerDetail() {
           onSaved={() => { setEditOpen(false); qc.invalidateQueries(['customer-history', id]); }}
           onCancel={() => setEditOpen(false)}
         />
+      </Modal>
+
+      {/* Consulta de crédito */}
+      <Modal isOpen={creditOpen} onClose={() => setCreditOpen(false)} title="Consulta de crédito" size="md">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              <p><b>{customer.name}</b></p>
+              <p className="text-xs text-gray-400">{customer.cpf_cnpj || 'Sem CPF/CNPJ'}</p>
+            </div>
+            <button onClick={() => creditMut.mutate()} disabled={creditMut.isPending || !customer.cpf_cnpj} className="btn-primary disabled:opacity-50">
+              {creditMut.isPending ? <><Loader2 size={15} className="animate-spin" /> Consultando...</> : <><ShieldCheck size={15} /> Consultar agora</>}
+            </button>
+          </div>
+
+          {/* Resultado mais recente */}
+          {lastCredit ? (
+            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-400">Score</p>
+                  <p className="text-2xl font-bold text-gray-900">{lastCredit.score ?? '—'}
+                    {lastCredit.score_faixa && <span className="text-sm font-medium text-gray-500 ml-2">{lastCredit.score_faixa}</span>}</p>
+                </div>
+                {lastCredit.negativado == null ? null : lastCredit.negativado ? (
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5">
+                    <AlertTriangle size={15} /> Negativado{lastCredit.total_restricoes ? ` — ${fmt(lastCredit.total_restricoes)}` : ''}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-green-700 bg-green-50 border border-green-100 rounded-lg px-3 py-1.5">
+                    <CheckCircle2 size={15} /> Sem restrições
+                  </span>
+                )}
+              </div>
+              {Array.isArray(lastCredit.restricoes) && lastCredit.restricoes.length > 0 && (
+                <div className="text-xs text-gray-600 border-t border-gray-100 pt-2 space-y-1 max-h-40 overflow-y-auto">
+                  {lastCredit.restricoes.slice(0, 20).map((r, i) => (
+                    <p key={i}>• {typeof r === 'string' ? r : (r.descricao || r.tipo || JSON.stringify(r))}</p>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-gray-400">Consultado em {fmtDateTimeBR(lastCredit.created_at)} {lastCredit.user_name ? `por ${lastCredit.user_name}` : ''} {lastCredit.provider ? `· ${lastCredit.provider}` : ''}</p>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-4">Nenhuma consulta ainda. Clique em “Consultar agora”.</p>
+          )}
+
+          {/* Histórico */}
+          {(creditHist?.data || []).length > 1 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Consultas anteriores</p>
+              <div className="border border-gray-100 rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto">
+                {creditHist.data.slice(1).map(c => (
+                  <div key={c.id} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                    <span className="text-gray-500">{fmtDateTimeBR(c.created_at)}</span>
+                    <span className="flex items-center gap-2">
+                      <span>Score {c.score ?? '—'}</span>
+                      {c.negativado ? <span className="text-red-600 font-medium">Negativado</span> : <span className="text-green-600">OK</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p className="text-[11px] text-gray-400 border-t border-gray-100 pt-2">
+            Consulte só com finalidade legítima (ex.: venda a prazo). Cada consulta pode ter custo conforme o provedor configurado.
+          </p>
+        </div>
       </Modal>
     </div>
   );

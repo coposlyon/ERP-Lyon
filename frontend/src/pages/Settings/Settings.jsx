@@ -93,6 +93,7 @@ export default function Settings() {
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
   function setAddr(k, v) { setForm(p => ({ ...p, address: { ...p.address, [k]: v } })); }
   function setSetting(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, [k]: v } })); }
+  function setCredito(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, credito: { ...(p.settings?.credito || {}), [k]: v } } })); }
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -102,7 +103,7 @@ export default function Settings() {
 
       <div className="card">
         <div className="card-header flex gap-6">
-          {[['company','Empresa'],['cadastro','Cadastro (site)'],['serigrafia','Serigrafia'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
+          {[['company','Empresa'],['cadastro','Cadastro (site)'],['serigrafia','Serigrafia'],['credito','Crédito'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`pb-2 text-sm font-medium border-b-2 transition-colors ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
               {l}
@@ -293,6 +294,51 @@ export default function Settings() {
                   </div>
                 )}
               </>
+            )}
+          </div>
+        )}
+
+        {tab === 'credito' && (
+          <div className="card-body space-y-5">
+            {!isAdmin && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-2">Apenas admins podem alterar estas configurações.</p>}
+            <div>
+              <h3 className="font-medium text-gray-900">Consulta de crédito (Serasa / SPC)</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Conecte uma <b>API agregadora</b> (BigDataCorp, Assertiva, idwall…) para consultar o CPF do cliente
+                direto na ficha. Crie a conta no provedor, pegue a <b>chave (API key)</b> e cole aqui.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Provedor (nome)</label>
+                <input className="input" value={form.settings?.credito?.provider || ''} onChange={e => setCredito('provider', e.target.value)} placeholder="Ex.: BigDataCorp" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">URL da API (endpoint da consulta)</label>
+                <input className="input" value={form.settings?.credito?.api_url || ''} onChange={e => setCredito('api_url', e.target.value)} placeholder="https://api.provedor.com/consulta-cpf" disabled={!isAdmin} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label">Chave da API (API key / token)</label>
+                <input className="input font-mono" value={form.settings?.credito?.api_key || ''} onChange={e => setCredito('api_key', e.target.value)} placeholder="cole aqui" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Nome do cabeçalho de auth (opcional)</label>
+                <input className="input" value={form.settings?.credito?.auth_header || ''} onChange={e => setCredito('auth_header', e.target.value)} placeholder="vazio = Authorization: Bearer" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Campo do CPF no corpo (opcional)</label>
+                <input className="input" value={form.settings?.credito?.cpf_field || ''} onChange={e => setCredito('cpf_field', e.target.value)} placeholder="cpf" disabled={!isAdmin} />
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">
+              Se algum campo do retorno (score, negativado, restrições) não aparecer certo, me mande um exemplo da resposta do provedor que eu ajusto a leitura.
+            </p>
+            {isAdmin && (
+              <div className="flex justify-end">
+                <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
+                  {saveMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Salvando...</> : <><Save size={15} /> Salvar</>}
+                </button>
+              </div>
             )}
           </div>
         )}
