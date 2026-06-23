@@ -33,7 +33,7 @@ function buildSearchOr(search, useDigits) {
 }
 
 router.get('/', async (req, res) => {
-  const { page = 1, limit = 50, search, type, is_active, rating, sort } = req.query;
+  const { page = 1, limit = 50, search, type, is_active, rating, sort, state } = req.query;
   const offset = (page - 1) * limit;
 
   const buildQuery = (useDigits) => {
@@ -54,6 +54,7 @@ router.get('/', async (req, res) => {
     else if (type === 'cliente') query = query.in('type', ['PF', 'PJ']);
 
     if (rating) query = query.eq('rating', parseInt(rating));
+    if (state) query = query.eq('address->>state', state); // filtra pela UF do endereço (JSONB)
     if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
     return query.range(offset, offset + limit - 1);
   };

@@ -38,12 +38,15 @@ const FILTERS = [
   { value: '',        label: 'Todos'    },
 ];
 
+const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
 export default function Customers() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [typeFilter, setTypeFilter] = useState('cliente');
   const [ratingFilter, setRatingFilter] = useState(null);
+  const [stateFilter, setStateFilter] = useState('');
   const [marketingOpen, setMarketingOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -95,12 +98,13 @@ export default function Customers() {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customers', page, search, typeFilter, ratingFilter],
+    queryKey: ['customers', page, search, typeFilter, ratingFilter, stateFilter],
     queryFn: () => {
       let url = `/customers?page=${page}&limit=20`;
       if (search)       url += `&search=${encodeURIComponent(search)}`;
       if (typeFilter)   url += `&type=${typeFilter}`;
       if (ratingFilter) url += `&rating=${ratingFilter}`;
+      if (stateFilter)  url += `&state=${stateFilter}`;
       return api.get(url);
     },
   });
@@ -272,6 +276,13 @@ export default function Customers() {
               >✕</button>
             )}
           </div>
+
+          {/* Filtro por estado (UF) */}
+          <select value={stateFilter} onChange={e => { setStateFilter(e.target.value); setPage(1); }}
+            className="border border-gray-200 rounded-lg px-2 py-2 text-sm text-gray-600" title="Filtrar por estado">
+            <option value="">Todos os estados</option>
+            {UFS.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+          </select>
 
           {/* Botão Marketing */}
           <button
