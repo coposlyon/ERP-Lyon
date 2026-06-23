@@ -94,7 +94,7 @@ export default function CustomerDetail() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div className="card p-4 text-center">
           <p className="text-2xl font-bold text-primary-600">{summary.sales_count}</p>
           <p className="text-xs text-gray-500 mt-1">Pedidos</p>
@@ -103,20 +103,10 @@ export default function CustomerDetail() {
           <p className="text-lg font-bold text-gray-900">{fmt(summary.total_sales)}</p>
           <p className="text-xs text-gray-500 mt-1">Total Comprado</p>
         </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-bold text-indigo-600">{summary.quotes_count}</p>
-          <p className="text-xs text-gray-500 mt-1">Orçamentos</p>
-        </div>
-        <div className="card p-4 text-center">
-          <p className={`text-lg font-bold ${summary.open_receivables > 0 ? 'text-red-600' : 'text-green-600'}`}>
-            {fmt(summary.open_receivables)}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">Saldo a Receber</p>
-        </div>
       </div>
 
       {/* Info + Contato */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
         <div className="card p-5 space-y-2">
           <h3 className="font-semibold text-gray-900 mb-3">Informações</h3>
           <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -185,21 +175,6 @@ export default function CustomerDetail() {
           )}
         </div>
 
-        <div className="card p-5">
-          <h3 className="font-semibold text-gray-900 mb-3">Personalizações</h3>
-          {customizations.length === 0 ? (
-            <p className="text-sm text-gray-400">Nenhuma personalização</p>
-          ) : (
-            <div className="space-y-2">
-              {customizations.slice(0, 4).map(c => (
-                <div key={c.id} className="flex items-center justify-between">
-                  <p className="text-sm truncate max-w-[180px]">{c.title}</p>
-                  <span className="badge badge-gray text-xs">{c.status}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Histórico de alterações feitas pelo cliente */}
@@ -229,19 +204,12 @@ export default function CustomerDetail() {
         </div>
       )}
 
-      {/* Tabs */}
+      {/* Pedidos */}
       <div className="card">
-        <div className="card-header flex gap-6">
-          {[
-            ['sales', `Pedidos (${sales.length})`],
-            ['quotes', `Orçamentos (${quotes.length})`],
-            ['receivables', `Financeiro (${receivables.length})`],
-          ].map(([k, l]) => (
-            <button key={k} onClick={() => setTab(k)}
-              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
-              {l}
-            </button>
-          ))}
+        <div className="card-header">
+          <span className="pb-2 text-sm font-medium border-b-2 border-primary-600 text-primary-600">
+            Pedidos ({sales.length})
+          </span>
         </div>
 
         {/* Sales tab */}
@@ -263,59 +231,6 @@ export default function CustomerDetail() {
                   </tr>
                 ))}
                 {sales.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-gray-400">Nenhum pedido encontrado</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Quotes tab */}
-        {tab === 'quotes' && (
-          <div className="overflow-x-auto">
-            <table className="table-auto">
-              <thead>
-                <tr><th>#</th><th>Data</th><th>Status</th><th>Validade</th><th className="text-right">Total</th></tr>
-              </thead>
-              <tbody>
-                {quotes.map(q => (
-                  <tr key={q.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/quotes/${q.id}`)}>
-                    <td className="font-mono font-semibold">#{String(q.number).padStart(4,'0')}</td>
-                    <td>{q.created_at ? format(parseISO(q.created_at), 'dd/MM/yyyy') : '—'}</td>
-                    <td><span className="badge badge-gray text-xs">{quoteStatusLabel[q.status] || q.status}</span></td>
-                    <td className="text-sm text-gray-500">{q.valid_until || '—'}</td>
-                    <td className="text-right font-semibold">{fmt(q.total)}</td>
-                  </tr>
-                ))}
-                {quotes.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-gray-400">Nenhum orçamento encontrado</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Receivables tab */}
-        {tab === 'receivables' && (
-          <div className="overflow-x-auto">
-            <table className="table-auto">
-              <thead>
-                <tr><th>Descrição</th><th>Vencimento</th><th>Status</th><th className="text-right">Valor</th><th className="text-right">Pago</th><th className="text-right">Saldo</th></tr>
-              </thead>
-              <tbody>
-                {receivables.map(r => {
-                  const saldo = Math.max(0, (r.amount || 0) - (r.paid_amount || 0));
-                  const overdue = r.due_date < new Date().toISOString().split('T')[0] && r.status !== 'paid';
-                  return (
-                    <tr key={r.id} className={overdue ? 'bg-red-50/40' : ''}>
-                      <td>{r.description}</td>
-                      <td className={`text-sm ${overdue ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
-                        {r.due_date}
-                      </td>
-                      <td><span className={`badge text-xs ${finStatusClass[r.status] || 'badge-gray'}`}>{finStatusLabel[r.status] || r.status}</span></td>
-                      <td className="text-right">{fmt(r.amount)}</td>
-                      <td className="text-right text-green-600">{fmt(r.paid_amount)}</td>
-                      <td className={`text-right font-semibold ${saldo > 0 ? 'text-red-600' : 'text-gray-400'}`}>{fmt(saldo)}</td>
-                    </tr>
-                  );
-                })}
-                {receivables.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-gray-400">Nenhum lançamento financeiro</td></tr>}
               </tbody>
             </table>
           </div>
