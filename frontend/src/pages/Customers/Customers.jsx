@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone, Trash2, Loader2, Instagram } from 'lucide-react';
+import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone, Trash2, Loader2, Instagram, Contact } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
@@ -53,6 +53,23 @@ export default function Customers() {
   const [delTarget, setDelTarget] = useState(null);
   const [delPassword, setDelPassword] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [exportingContacts, setExportingContacts] = useState(false);
+
+  async function exportContacts() {
+    setExportingContacts(true);
+    try {
+      const vcf = await api.get('/customers/export-contacts', { responseType: 'text' });
+      const blob = new Blob([vcf], { type: 'text/vcard;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `clientes-lyon-${new Date().toISOString().slice(0, 10)}.vcf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Contatos exportados! Importe em contacts.google.com → Importar.');
+    } catch (e) {
+      toast.error(e.error || 'Erro ao exportar contatos');
+    } finally { setExportingContacts(false); }
+  }
 
   async function handleDelete() {
     if (!delTarget || !delPassword) return;
@@ -186,6 +203,10 @@ export default function Customers() {
           <p className="text-sm text-gray-500 mt-1">{data?.total || 0} cadastrados</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={exportContacts} disabled={exportingContacts} className="btn-secondary disabled:opacity-50"
+            title="Baixa um arquivo .vcf com nome + código + telefone para importar no Google Contatos / celular">
+            {exportingContacts ? <Loader2 size={16} className="animate-spin" /> : <Contact size={16} />} Exportar contatos
+          </button>
           <CopyLinkButton path="/cadastro" />
           <button onClick={openNew} className="btn-primary"><Plus size={16} /> Novo</button>
         </div>

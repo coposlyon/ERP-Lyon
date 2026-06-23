@@ -71,6 +71,47 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Exporta os clientes como vCard (.vcf) para importar no Google Contatos / celular.
+// O nome do contato sai como "NOME #0004" para já aparecer identificado no WhatsApp.
+router.get('/export-contacts', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('CLIENTES')
+      .select('name, phone, mobile, display_id, email')
+      .eq('tenant_id', req.tenantId)
+      .in('type', ['PF', 'PJ'])
+      .eq('is_active', true)
+      .order('name');
+    if (error) throw error;
+
+    const code4 = n => (n == null ? '' : String(n).padStart(4, '0'));
+    const e164 = v => {
+      let d = String(v || '').replace(/\D/g, '');
+      if (!d) return null;
+      if (d.length === 10 || d.length === 11) d = '55' + d; // DDD + número (BR) → +55
+      return '+' + d;
+    };
+    const esc = s => String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
+
+    const cards = [];
+    for (const c of (data || [])) {
+      const phones = [...new Set([e164(c.phone), e164(c.mobile)].filter(Boolean))];
+      if (!phones.length) continue;
+      const fn = `${c.name}${c.display_id != null ? ` #${code4(c.display_id)}` : ''}`;
+      const lines = ['BEGIN:VCARD', 'VERSION:3.0', `N:;${esc(fn)};;;`, `FN:${esc(fn)}`];
+      phones.forEach((p, i) => lines.push(`TEL;TYPE=${i === 0 ? 'CELL' : 'VOICE'}:${p}`));
+      if (c.email) lines.push(`EMAIL:${esc(c.email)}`);
+      lines.push('ORG:Lyon Copos');
+      lines.push('END:VCARD');
+      cards.push(lines.join('\r\n'));
+    }
+
+    res.setHeader('Content-Type', 'text/vcard; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="clientes-lyon.vcf"');
+    res.send(cards.join('\r\n'));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const { data, error } = await supabase
