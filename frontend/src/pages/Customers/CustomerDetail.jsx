@@ -147,10 +147,20 @@ export default function CustomerDetail() {
           {customer.admission_data?.can_publish && (
             <p className="text-xs text-violet-600">💜 Autoriza publicar foto e marcar no Instagram</p>
           )}
-          {customer.address?.street && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <MapPin size={14} className="text-gray-400" />
-              {customer.address.street}, {customer.address.number} — {customer.address.city}/{customer.address.state}
+          {customer.address && (customer.address.street || customer.address.city || customer.address.zip) && (
+            <div className="flex gap-2 text-sm text-gray-600 pt-2 mt-2 border-t border-gray-100">
+              <MapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
+              <div className="leading-relaxed">
+                <p className="font-medium text-gray-700">Endereço</p>
+                {customer.address.street && (
+                  <p>{customer.address.street}{customer.address.number ? `, ${customer.address.number}` : ''}{customer.address.complement ? ` — ${customer.address.complement}` : ''}</p>
+                )}
+                {customer.address.neighborhood && <p>Bairro: {customer.address.neighborhood}</p>}
+                {(customer.address.city || customer.address.state) && (
+                  <p>{customer.address.city}{customer.address.state ? `/${customer.address.state}` : ''}</p>
+                )}
+                {customer.address.zip && <p className="text-gray-400 text-xs">CEP {customer.address.zip}</p>}
+              </div>
             </div>
           )}
           {customer.notes && (
