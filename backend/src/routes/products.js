@@ -708,6 +708,50 @@ router.post('/:id/delete', async (req, res) => {
   }
 });
 
+// Edita UMA variação do produto: nome e/ou foto própria.
+// A lista (variations.items) continua sendo nomes; a foto por variação fica em
+// variations.images = { "<nome da variação>": url }.
+router.patch('/:id/variation', async (req, res) => {
+  const { index, name, oldName, image } = req.body;
+  const newName = String(name || '').trim();
+  if (!newName) return res.status(400).json({ error: 'Informe o nome da variação.' });
+  try {
+    const { data: prod, error: e0 } = await supabase.from('PRODUTOS')
+      .select('variations').eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
+    if (e0 || !prod) return res.status(404).json({ error: 'Produto não encontrado' });
+
+    const v = prod.variations || {};
+    const items = Array.isArray(v.items) ? [...v.items] : [];
+    const images = (v.images && typeof v.images === 'object') ? { ...v.images } : {};
+
+    // atualiza o nome na posição certa — confere pelo nome antigo p/ não trocar o item errado
+    const nz = s => String(s || '').replace(/\s+/g, ' ').trim();
+    let idx = Number.isInteger(index) ? index : -1;
+    if (!(idx >= 0 && idx < items.length && nz(items[idx]) === nz(oldName))) {
+      idx = items.findIndex(x => nz(x) === nz(oldName));
+    }
+    if (idx >= 0 && idx < items.length) items[idx] = newName;
+
+    // renomeou → leva a foto junto
+    if (oldName && oldName !== newName && images[oldName] !== undefined) {
+      images[newName] = images[oldName];
+      delete images[oldName];
+    }
+    // foto: data URL → upload; '' ou null → remove; URL → mantém; undefined → não mexe
+    if (image !== undefined) {
+      if (typeof image === 'string' && /^data:/.test(image)) images[newName] = await uploadDataUrl(image, 'produtos');
+      else if (image === '' || image === null) delete images[newName];
+      else images[newName] = image;
+    }
+
+    const variations = { ...v, items, images };
+    const { error } = await supabase.from('PRODUTOS').update({ variations })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId);
+    if (error) throw error;
+    res.json({ ok: true, name: newName, image_url: images[newName] || null });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Variantes ────────────────────────────────────────────────────
 router.get('/:id/variants', async (req, res) => {
   try {
