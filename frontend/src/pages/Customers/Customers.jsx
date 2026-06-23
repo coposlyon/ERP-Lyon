@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone, Trash2, Loader2, Instagram, Contact } from 'lucide-react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone, Trash2, Loader2, Instagram, Contact, ShieldCheck, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
@@ -54,6 +54,17 @@ export default function Customers() {
   const [delPassword, setDelPassword] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [exportingContacts, setExportingContacts] = useState(false);
+  const [scoreCustomer, setScoreCustomer] = useState(null); // cliente do modal de score
+
+  const scoreMut = useMutation({
+    mutationFn: (cid) => api.post(`/customers/${cid}/credit-check`),
+    onError: e => toast.error(e.error || 'Não foi possível consultar'),
+  });
+  function consultarScore(row) {
+    setScoreCustomer(row);
+    scoreMut.reset();
+    scoreMut.mutate(row.id);
+  }
 
   async function exportContacts() {
     setExportingContacts(true);
@@ -176,9 +187,12 @@ export default function Customers() {
     { key: 'is_active', label: 'Status', width: 70,
       render: v => <span className={`badge ${v ? 'badge-green' : 'badge-gray'}`}>{v ? 'Ativo' : 'Inativo'}</span>
     },
-    { key: 'id', label: '', width: 70,
+    { key: 'id', label: '', width: 110,
       render: (_, row) => (
         <div className="flex gap-1">
+          <button onClick={() => consultarScore(row)} className="btn-ghost p-1.5 text-indigo-500 hover:text-indigo-700" title="Consultar score / crédito">
+            <ShieldCheck size={14} />
+          </button>
           <button onClick={() => navigate(`/customers/${row.id}`)} className="btn-ghost p-1.5" title="Ver detalhes">
             <Eye size={14} />
           </button>
@@ -321,6 +335,37 @@ export default function Customers() {
               className="bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-xl flex items-center gap-2 disabled:opacity-50">
               {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />} Excluir
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Consulta de score/crédito a partir da lista */}
+      <Modal isOpen={!!scoreCustomer} onClose={() => setScoreCustomer(null)} title="Consulta de crédito" size="sm">
+        <div className="space-y-3">
+          <p className="text-sm"><b>{scoreCustomer?.name}</b> <span className="text-gray-400">· {scoreCustomer?.cpf_cnpj || 'sem CPF'}</span></p>
+          {scoreMut.isPending ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-gray-500"><Loader2 size={18} className="animate-spin" /> Consultando...</div>
+          ) : scoreMut.isError ? (
+            <p className="text-sm text-red-600 bg-red-50 rounded-lg p-3">{scoreMut.error?.error || 'Não foi possível consultar.'}</p>
+          ) : scoreMut.data ? (
+            <div className="border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-400">Score</p>
+                  <p className="text-2xl font-bold">{scoreMut.data.score ?? '—'}
+                    {scoreMut.data.score_faixa && <span className="text-sm text-gray-500 ml-2">{scoreMut.data.score_faixa}</span>}</p>
+                </div>
+                {scoreMut.data.negativado == null ? null : scoreMut.data.negativado ? (
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-700 bg-red-50 rounded-lg px-3 py-1.5"><AlertTriangle size={15} /> Negativado</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-green-700 bg-green-50 rounded-lg px-3 py-1.5"><CheckCircle2 size={15} /> Sem restrições</span>
+                )}
+              </div>
+            </div>
+          ) : null}
+          <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+            <button onClick={() => navigate(`/customers/${scoreCustomer?.id}`)} className="text-xs text-primary-600 hover:underline">Ver ficha completa</button>
+            <button onClick={() => scoreMut.mutate(scoreCustomer.id)} disabled={scoreMut.isPending} className="btn-secondary text-sm"><ShieldCheck size={14} /> Consultar de novo</button>
           </div>
         </div>
       </Modal>
