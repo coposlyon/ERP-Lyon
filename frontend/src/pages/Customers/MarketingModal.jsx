@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X, MessageCircle, Mail, Star, CheckSquare, Square, Send, Users } from 'lucide-react';
+import { X, MessageCircle, Mail, Star, CheckSquare, Square, Send, Users, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
+import toast from 'react-hot-toast';
 
 const TYPE_OPTIONS = [
   { value: '',        label: 'Todos' },
@@ -72,6 +73,20 @@ export default function MarketingModal({ isOpen, onClose }) {
     if (!emails.length) return;
     const link = `mailto:?bcc=${emails.join(',')}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
     window.location.href = link;
+  }
+
+  const [sendingEmail, setSendingEmail] = useState(false);
+  async function sendEmailViaSystem() {
+    const emails = selectedList.map(c => c.email).filter(Boolean);
+    if (!emails.length) { toast.error('Selecione clientes com e-mail'); return; }
+    if (!subject.trim() || !emailBody.trim()) { toast.error('Preencha assunto e mensagem'); return; }
+    setSendingEmail(true);
+    try {
+      const r = await api.post('/customers/marketing/email', { subject, message: emailBody, emails });
+      toast.success(`Enviado para ${r.sent} de ${r.total} destinatário(s)!`);
+    } catch (e) {
+      toast.error(e.error || 'Não foi possível enviar');
+    } finally { setSendingEmail(false); }
   }
 
   if (!isOpen) return null;
@@ -279,15 +294,22 @@ export default function MarketingModal({ isOpen, onClose }) {
                     )}
 
                     <button
-                      onClick={openEmailClient}
-                      disabled={selectedList.length === 0 || !subject || !emailBody}
+                      onClick={sendEmailViaSystem}
+                      disabled={sendingEmail || selectedList.length === 0 || !subject || !emailBody}
                       className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Mail size={15} />
-                      Abrir cliente de e-mail ({selectedList.length} destinatários)
+                      {sendingEmail ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                      Enviar pelo sistema ({selectedList.length} destinatários)
+                    </button>
+                    <button
+                      onClick={openEmailClient}
+                      disabled={selectedList.length === 0 || !subject || !emailBody}
+                      className="btn-secondary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Mail size={15} /> Abrir no meu app de e-mail
                     </button>
                     <p className="text-xs text-gray-400 text-center">
-                      Abre seu app de e-mail com todos os destinatários em CCO (BCC).
+                      “Enviar pelo sistema” usa o SMTP de <b>Configurações → E-mail</b>. A outra opção abre seu app com os destinatários em CCO.
                     </p>
                   </div>
 

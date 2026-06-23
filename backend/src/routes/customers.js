@@ -4,6 +4,7 @@ const multer = require('multer');
 const supabase = require('../config/supabase');
 const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
+const { getEmailConfig, makeTransport } = require('../lib/mailer');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -110,6 +111,37 @@ router.get('/export-contacts', async (req, res) => {
     res.setHeader('Content-Type', 'text/vcard; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="clientes-lyon.vcf"');
     res.send(cards.join('\r\n'));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── E-mail em massa (marketing) pelo SMTP configurado ────────────────
+router.post('/marketing/email', async (req, res) => {
+  const { subject, message, emails } = req.body;
+  const list = [...new Set((emails || []).map(e => String(e || '').trim().toLowerCase()).filter(e => /^\S+@\S+\.\S+$/.test(e)))];
+  if (!String(subject || '').trim() || !String(message || '').trim()) return res.status(400).json({ error: 'Informe o assunto e a mensagem.' });
+  if (!list.length) return res.status(400).json({ error: 'Selecione ao menos um destinatário com e-mail válido.' });
+  try {
+    const cfg = await getEmailConfig(req.tenantId);
+    if (!cfg.smtp_host || !cfg.smtp_user || !cfg.smtp_pass) {
+      return res.status(400).json({ error: 'E-mail não configurado. Vá em Configurações → E-mail e informe o servidor SMTP.' });
+    }
+    const fromEmail = cfg.from_email || cfg.smtp_user;
+    const fromName = cfg.from_name || cfg._companyName || 'Lyon Copos';
+    const transport = makeTransport(cfg);
+
+    const html = String(message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>');
+    let sent = 0; const errors = [];
+    const BATCH = 40; // envia em lotes via BCC (os destinatários não se veem)
+    for (let i = 0; i < list.length; i += BATCH) {
+      const batch = list.slice(i, i + BATCH);
+      try {
+        await transport.sendMail({ from: `"${fromName}" <${fromEmail}>`, to: fromEmail, bcc: batch, subject, text: message, html });
+        sent += batch.length;
+      } catch (e) { errors.push(e.message); }
+    }
+    audit(req, 'create', 'marketing_email', null, { subject, total: list.length, sent });
+    if (sent === 0) return res.status(502).json({ error: errors[0] || 'Falha ao enviar — confira as credenciais SMTP.' });
+    res.json({ sent, total: list.length, errors: errors.slice(0, 3) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

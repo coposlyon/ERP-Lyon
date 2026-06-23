@@ -94,6 +94,8 @@ export default function Settings() {
   function setAddr(k, v) { setForm(p => ({ ...p, address: { ...p.address, [k]: v } })); }
   function setSetting(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, [k]: v } })); }
   function setCredito(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, credito: { ...(p.settings?.credito || {}), [k]: v } } })); }
+  function setEmailCfg(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, email: { ...(p.settings?.email || {}), [k]: v } } })); }
+  function gmailPreset() { setForm(p => ({ ...p, settings: { ...p.settings, email: { ...(p.settings?.email || {}), smtp_host: 'smtp.gmail.com', smtp_port: 465, smtp_secure: true } } })); }
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -103,7 +105,7 @@ export default function Settings() {
 
       <div className="card">
         <div className="card-header flex gap-6">
-          {[['company','Empresa'],['cadastro','Cadastro (site)'],['serigrafia','Serigrafia'],['credito','Crédito'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
+          {[['company','Empresa'],['cadastro','Cadastro (site)'],['email','E-mail'],['serigrafia','Serigrafia'],['credito','Crédito'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`pb-2 text-sm font-medium border-b-2 transition-colors ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
               {l}
@@ -229,6 +231,64 @@ export default function Settings() {
               </div>
             </div>
 
+            {isAdmin && (
+              <div className="flex justify-end">
+                <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
+                  {saveMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Salvando...</> : <><Save size={15} /> Salvar</>}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'email' && (
+          <div className="card-body space-y-5">
+            {!isAdmin && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-2">Apenas admins podem alterar estas configurações.</p>}
+            <div>
+              <h3 className="font-medium text-gray-900">Envio de e-mail (SMTP)</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Vincule um e-mail para o sistema <b>enviar e-mails em massa</b> (Marketing). Serve para o seu
+                <b> Gmail</b> (com “senha de app”) ou para serviços como <b>Brevo, SendGrid, Mailgun</b> (use o SMTP deles).
+              </p>
+              <button type="button" onClick={gmailPreset} disabled={!isAdmin} className="mt-2 text-xs text-primary-600 hover:underline">Preencher dados do Gmail</button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Servidor SMTP</label>
+                <input className="input" value={form.settings?.email?.smtp_host || ''} onChange={e => setEmailCfg('smtp_host', e.target.value)} placeholder="smtp.gmail.com" disabled={!isAdmin} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Porta</label>
+                  <input type="number" className="input" value={form.settings?.email?.smtp_port ?? ''} onChange={e => setEmailCfg('smtp_port', e.target.value)} placeholder="465" disabled={!isAdmin} />
+                </div>
+                <div className="flex items-end pb-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-600">
+                    <input type="checkbox" className="rounded" checked={!!form.settings?.email?.smtp_secure} onChange={e => setEmailCfg('smtp_secure', e.target.checked)} disabled={!isAdmin} />
+                    SSL (465)
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className="label">Usuário (e-mail de login)</label>
+                <input className="input" value={form.settings?.email?.smtp_user || ''} onChange={e => setEmailCfg('smtp_user', e.target.value)} placeholder="seuemail@gmail.com" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Senha (ou “senha de app”)</label>
+                <input type="password" className="input" value={form.settings?.email?.smtp_pass || ''} onChange={e => setEmailCfg('smtp_pass', e.target.value)} placeholder="••••••••" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Nome do remetente</label>
+                <input className="input" value={form.settings?.email?.from_name || ''} onChange={e => setEmailCfg('from_name', e.target.value)} placeholder="Lyon Copos" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">E-mail do remetente (opcional)</label>
+                <input className="input" value={form.settings?.email?.from_email || ''} onChange={e => setEmailCfg('from_email', e.target.value)} placeholder="vazio = usa o usuário acima" disabled={!isAdmin} />
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">
+              <b>Gmail:</b> ative a verificação em 2 etapas e gere uma <b>“senha de app”</b> em myaccount.google.com → Segurança → Senhas de app, e use ela aqui (não a senha normal).
+            </p>
             {isAdmin && (
               <div className="flex justify-end">
                 <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
