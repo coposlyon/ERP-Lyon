@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone, Trash2, Loader2, Instagram } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
@@ -136,6 +136,21 @@ export default function Customers() {
             <MessageCircle size={13} /> {compact}
           </a>
         ) : <span className="whitespace-nowrap">{compact}</span>;
+      }
+    },
+    { key: 'instagram', label: 'Instagram', width: 130,
+      render: (v) => {
+        const handle = String(v || '').trim()
+          .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?].*$/, '').replace(/^@/, '');
+        if (!handle) return <span className="text-gray-300">—</span>;
+        return (
+          <a href={`https://instagram.com/${handle}`} target="_blank" rel="noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-pink-600 hover:text-pink-700 text-sm font-medium whitespace-nowrap"
+            title="Abrir Instagram do cliente">
+            <Instagram size={13} /> @{handle}
+          </a>
+        );
       }
     },
     { key: 'rating', label: '⭐', width: 90,
