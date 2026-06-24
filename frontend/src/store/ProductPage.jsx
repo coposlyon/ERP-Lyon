@@ -86,8 +86,17 @@ export default function ProductPage() {
   const gradient = /degrad/i.test(product?.name || '');
   const bottleColor = selColor ? resolveColor({ name: selColor, value: selColor })
     : selVariant ? resolveColor(selVariant) : '#F26522';
-  // foto a exibir: foto da cor selecionada → foto principal → desenho 3D
-  const productImg = (selColor && product?.variation_images?.[selColor]) || product?.image_url || null;
+  // foto a exibir: cor selecionada (por cor ou por variação) → principal → qualquer foto → desenho 3D
+  const upc = s => String(s || '').toUpperCase();
+  const varImgs = product?.variations?.images || {};
+  const byColorVariant = selColor
+    ? varImgs[Object.keys(varImgs).find(k => upc(k).includes(upc(selColor))) || ''] || null
+    : null;
+  const anyImg = product?.image_url
+    || (product?.variation_images && Object.values(product.variation_images).find(Boolean))
+    || Object.values(varImgs).find(Boolean)
+    || null;
+  const productImg = (selColor && product?.variation_images?.[selColor]) || byColorVariant || product?.image_url || anyImg || null;
   const methods = availableMethods(product);
   const table = methodTable(product, printMethod);
 
