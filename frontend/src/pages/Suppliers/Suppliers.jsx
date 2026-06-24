@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, Search, Edit2, Loader2, CheckCircle2, XCircle, MessageCircle, Phone, Mail } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
@@ -276,8 +276,31 @@ export default function Suppliers() {
     },
     { key: 'cnpj', label: 'CNPJ', width: 170 },
     { key: 'contact_name', label: 'Contato' },
-    { key: 'phone', label: 'Telefone', width: 140 },
-    { key: 'email', label: 'E-mail' },
+    { key: 'phone', label: 'Telefone', width: 160,
+      render: v => {
+        const digits = String(v || '').replace(/\D/g, '');
+        if (!digits) return <span className="text-gray-300">—</span>;
+        const wa = (digits.length === 10 || digits.length === 11) ? '55' + digits : digits;
+        return (
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer"
+              className="flex items-center gap-1 text-green-600 hover:text-green-700 text-sm font-medium" title="Abrir no WhatsApp">
+              <MessageCircle size={14} /> {v}
+            </a>
+            <a href={`tel:+${wa}`} className="text-gray-400 hover:text-gray-700" title="Ligar (sem WhatsApp)">
+              <Phone size={13} />
+            </a>
+          </div>
+        );
+      }
+    },
+    { key: 'email', label: 'E-mail',
+      render: v => v ? (
+        <a href={`mailto:${v}`} className="inline-flex items-center gap-1 text-primary-600 hover:underline text-sm" title="Enviar e-mail">
+          <Mail size={13} className="shrink-0" /> {v}
+        </a>
+      ) : <span className="text-gray-300">—</span>
+    },
     { key: 'address', label: 'Cidade/UF', width: 130,
       render: v => v?.city ? `${v.city}/${v.state}` : '—'
     },
