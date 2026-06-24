@@ -42,6 +42,8 @@ router.get('/store', async (req, res) => {
         whatsapp: onlyDigits(s.cadastro_whatsapp || empresa?.phone) || null,
         message: s.cadastro_message || 'Você concluiu o cadastro! Volte para o WhatsApp.',
       },
+      // Textos/opções editáveis do site (Configurações → Site)
+      site: s.site || {},
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

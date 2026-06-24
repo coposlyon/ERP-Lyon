@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 import Modal from '@/components/UI/Modal';
+import { SITE_DEFAULTS, SITE_FIELDS } from '@/store/siteDefaults';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -95,6 +96,7 @@ export default function Settings() {
   function setSetting(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, [k]: v } })); }
   function setCredito(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, credito: { ...(p.settings?.credito || {}), [k]: v } } })); }
   function setEmailCfg(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, email: { ...(p.settings?.email || {}), [k]: v } } })); }
+  function setSite(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, site: { ...(p.settings?.site || {}), [k]: v } } })); }
   function gmailPreset() { setForm(p => ({ ...p, settings: { ...p.settings, email: { ...(p.settings?.email || {}), smtp_host: 'smtp.gmail.com', smtp_port: 465, smtp_secure: true } } })); }
 
   return (
@@ -105,7 +107,7 @@ export default function Settings() {
 
       <div className="card">
         <div className="card-header flex gap-6">
-          {[['company','Empresa'],['cadastro','Cadastro (site)'],['email','E-mail'],['serigrafia','Serigrafia'],['credito','Crédito'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
+          {[['company','Empresa'],['site','Site'],['cadastro','Cadastro (site)'],['email','E-mail'],['serigrafia','Serigrafia'],['credito','Crédito'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`pb-2 text-sm font-medium border-b-2 transition-colors ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
               {l}
@@ -229,6 +231,50 @@ export default function Settings() {
                   placeholder="(44) 99999-9999" disabled={!isAdmin} />
                 <p className="text-xs text-gray-400 mt-1">Se ficar em branco, usa o telefone da empresa. Se não houver número, o card não mostra o botão.</p>
               </div>
+            </div>
+
+            {isAdmin && (
+              <div className="flex justify-end">
+                <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
+                  {saveMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Salvando...</> : <><Save size={15} /> Salvar</>}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'site' && (
+          <div className="card-body space-y-5">
+            {!isAdmin && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-2">Apenas admins podem alterar o site.</p>}
+            <div>
+              <h3 className="font-medium text-gray-900">Textos e opções do site (loja)</h3>
+              <p className="text-sm text-gray-500 mt-1">Altere os títulos, textos e descrições da página inicial da loja. Deixe em branco para usar o texto padrão.</p>
+            </div>
+
+            {/* Toggle do 3D */}
+            <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${(form.settings?.site?.show_3d !== false) ? 'border-primary-300 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}>
+              <input type="checkbox" className="mt-1 rounded"
+                checked={form.settings?.site?.show_3d !== false}
+                onChange={e => setSite('show_3d', e.target.checked)} disabled={!isAdmin} />
+              <span>
+                <span className="block text-sm font-semibold text-gray-800">Mostrar "Personalizar em 3D"</span>
+                <span className="block text-xs text-gray-500 mt-0.5">Quando desligado, o botão e o banner do estúdio 3D somem do site.</span>
+              </span>
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {SITE_FIELDS.map(([k, label, type]) => (
+                <div key={k} className={type === 'textarea' ? 'sm:col-span-2' : ''}>
+                  <label className="label">{label}</label>
+                  {type === 'textarea' ? (
+                    <textarea className="input min-h-[64px] resize-y" value={form.settings?.site?.[k] ?? ''}
+                      onChange={e => setSite(k, e.target.value)} placeholder={SITE_DEFAULTS[k]} disabled={!isAdmin} />
+                  ) : (
+                    <input className="input" value={form.settings?.site?.[k] ?? ''}
+                      onChange={e => setSite(k, e.target.value)} placeholder={SITE_DEFAULTS[k]} disabled={!isAdmin} />
+                  )}
+                </div>
+              ))}
             </div>
 
             {isAdmin && (

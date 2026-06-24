@@ -8,6 +8,7 @@ import {
 import storeApi from './storeApi';
 import Bottle from './Bottle';
 import { Reveal, CountUp } from './Reveal';
+import { SITE_DEFAULTS } from './siteDefaults';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
@@ -33,6 +34,10 @@ export default function StoreHome() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
 
+  const { data: store } = useQuery({ queryKey: ['store-info'], queryFn: () => storeApi.get('/store') });
+  const S = { ...SITE_DEFAULTS, ...(store?.site || {}) }; // textos do site (config + padrão)
+  const show3d = S.show_3d !== false;
+
   const { data: categories = [] } = useQuery({ queryKey: ['store-cats'], queryFn: () => storeApi.get('/categories') });
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['store-products', search, category],
@@ -55,23 +60,22 @@ export default function StoreHome() {
         <div className="relative max-w-6xl mx-auto px-4 grid lg:grid-cols-2 gap-10 items-center py-20 text-white">
           <div>
             <Reveal as="span" className="inline-block bg-white/10 backdrop-blur border border-white/15 text-xs font-bold px-4 py-1.5 rounded-full mb-5 tracking-wide">
-              ✦ COPOS &amp; GARRAFAS PERSONALIZADOS
+              {S.hero_badge}
             </Reveal>
-            <Reveal as="h1" delay={80} className="text-5xl sm:text-6xl xl:text-7xl font-black leading-[0.95] tracking-tight">
-              A sua marca<br />
-              <span className="st-gradient-text">estampada</span><br />
-              em cada gole.
+            <Reveal as="h1" delay={80} className="text-5xl sm:text-6xl xl:text-7xl font-black leading-[0.95] tracking-tight st-gradient-text">
+              {S.hero_title}
             </Reveal>
             <Reveal as="p" delay={160} className="text-lg text-white/70 mt-6 max-w-md">
-              Dezenas de cores, degradês e impressão de alta definição. Monte seu pedido
-              e receba o orçamento na hora — sem complicação.
+              {S.hero_subtitle}
             </Reveal>
             <Reveal delay={240} className="flex flex-wrap gap-3 mt-8">
-              <Link to="/loja/personalizar" className="group bg-orange-500 hover:bg-orange-600 transition-all px-7 py-3.5 rounded-2xl font-bold flex items-center gap-2 shadow-xl shadow-orange-500/30 hover:scale-105">
-                <Wand2 size={18} /> Personalizar em 3D <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-              </Link>
+              {show3d && (
+                <Link to="/loja/personalizar" className="group bg-orange-500 hover:bg-orange-600 transition-all px-7 py-3.5 rounded-2xl font-bold flex items-center gap-2 shadow-xl shadow-orange-500/30 hover:scale-105">
+                  <Wand2 size={18} /> {S.btn_3d} <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                </Link>
+              )}
               <a href="#catalogo" className="bg-white/10 backdrop-blur border border-white/20 hover:bg-white/20 transition-colors px-7 py-3.5 rounded-2xl font-bold flex items-center gap-2">
-                <Palette size={18} /> Ver catálogo
+                <Palette size={18} /> {S.btn_catalog}
               </a>
             </Reveal>
           </div>
@@ -122,10 +126,10 @@ export default function StoreHome() {
       {/* ══ PILARES ══ */}
       <section className="max-w-6xl mx-auto px-4 pb-8">
         <Reveal as="h2" className="text-3xl sm:text-4xl font-black text-center mb-3">
-          Por que a sua marca merece
+          {S.pillars_title}
         </Reveal>
         <Reveal as="p" delay={80} className="text-gray-500 text-center mb-10 max-w-xl mx-auto">
-          Produto premium + personalização de verdade. É a sua identidade na mão do cliente todo dia.
+          {S.pillars_subtitle}
         </Reveal>
         <div className="grid md:grid-cols-3 gap-6">
           {PILLARS.map((p, i) => (
@@ -147,8 +151,8 @@ export default function StoreHome() {
         <div className="st-blob" style={{ width: 260, height: 260, background: '#2BB7B3', bottom: '0%', right: '0%', opacity: .25, animationDelay: '4s' }} />
         <div className="relative max-w-6xl mx-auto px-4">
           <Reveal as="span" className="inline-block bg-white/10 text-xs font-bold px-4 py-1.5 rounded-full mb-4">PALETA</Reveal>
-          <Reveal as="h2" delay={60} className="text-3xl sm:text-5xl font-black mb-3">Escolha a <span className="st-gradient-text">sua cor</span></Reveal>
-          <Reveal as="p" delay={120} className="text-white/60 mb-10 max-w-lg">Opacas, translúcidas e degradês. Tem cor pra toda identidade visual.</Reveal>
+          <Reveal as="h2" delay={60} className="text-3xl sm:text-5xl font-black mb-3 st-gradient-text">{S.colors_title}</Reveal>
+          <Reveal as="p" delay={120} className="text-white/60 mb-10 max-w-lg">{S.colors_subtitle}</Reveal>
 
           <div className="grid grid-cols-4 sm:grid-cols-8 gap-4 sm:gap-6">
             {PALETTE.map(([name, hex], i) => (
@@ -164,13 +168,14 @@ export default function StoreHome() {
       </section>
 
       {/* ══ BANNER ESTÚDIO 3D ══ */}
+      {show3d && (
       <section className="max-w-6xl mx-auto px-4 pt-16">
         <Reveal scale className="relative rounded-[2rem] overflow-hidden bg-gray-900 text-white grid md:grid-cols-2 items-center">
           <div className="st-blob" style={{ width: 280, height: 280, background: '#7E3FF2', top: '-10%', left: '20%', opacity: .35 }} />
           <div className="relative p-8 sm:p-12">
             <span className="inline-block bg-orange-500 text-xs font-bold px-3 py-1 rounded-full mb-4">NOVO · 3D</span>
-            <h2 className="text-3xl sm:text-4xl font-black leading-tight">Crie seu copo em <span className="st-gradient-text">3D</span></h2>
-            <p className="text-white/70 mt-3 max-w-sm">Escolha o modelo, pinte cada parte, aplique sua logo e veja girando em tempo real. Depois é só pedir o orçamento.</p>
+            <h2 className="text-3xl sm:text-4xl font-black leading-tight st-gradient-text">{S.studio_title}</h2>
+            <p className="text-white/70 mt-3 max-w-sm">{S.studio_subtitle}</p>
             <Link to="/loja/personalizar" className="inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-600 transition-all px-6 py-3.5 rounded-2xl font-bold mt-6 hover:scale-105">
               <Wand2 size={18} /> Abrir estúdio 3D <ArrowRight size={18} />
             </Link>
@@ -184,13 +189,14 @@ export default function StoreHome() {
           </div>
         </Reveal>
       </section>
+      )}
 
       {/* ══ CATÁLOGO ══ */}
       <section id="catalogo" className="max-w-6xl mx-auto px-4 py-16">
         <div className="flex items-end justify-between gap-4 flex-wrap mb-8">
           <div>
-            <Reveal as="span" className="text-orange-500 font-bold text-sm tracking-wide">NOSSOS PRODUTOS</Reveal>
-            <Reveal as="h2" delay={60} className="text-3xl sm:text-4xl font-black">Monte seu pedido</Reveal>
+            <Reveal as="span" className="text-orange-500 font-bold text-sm tracking-wide">{S.catalog_badge}</Reveal>
+            <Reveal as="h2" delay={60} className="text-3xl sm:text-4xl font-black">{S.catalog_title}</Reveal>
           </div>
           <div className="relative w-full sm:w-72">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -269,11 +275,11 @@ export default function StoreHome() {
           style={{ background: 'linear-gradient(120deg,#ff7a18,#ff2d75,#8a2be2)' }}>
           <Sparkles size={32} className="mx-auto mb-4 st-pulse" />
           <h2 className="text-3xl sm:text-5xl font-black max-w-2xl mx-auto leading-tight">
-            Pronto pra estampar a sua marca?
+            {S.cta_title}
           </h2>
-          <p className="text-white/85 mt-4 max-w-md mx-auto">Monte o pedido em minutos e receba seu orçamento sem compromisso.</p>
+          <p className="text-white/85 mt-4 max-w-md mx-auto">{S.cta_subtitle}</p>
           <a href="#catalogo" className="inline-flex items-center gap-2 bg-white text-gray-900 font-bold px-8 py-4 rounded-2xl mt-8 hover:scale-105 transition-transform shadow-2xl">
-            Começar agora <ArrowRight size={18} />
+            {S.cta_button} <ArrowRight size={18} />
           </a>
           <div className="flex items-center justify-center gap-1 mt-6 text-white/80 text-sm">
             {Array.from({ length: 5 }).map((_, i) => <Star key={i} size={15} className="fill-white" />)}

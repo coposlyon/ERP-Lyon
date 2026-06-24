@@ -37,10 +37,7 @@ export default function StoreLayout({ children }) {
               onError={e => { e.currentTarget.style.display = 'none'; }} />
             <span className="hidden sm:inline">{store?.name || 'Lyon Copos Personalizados'}</span>
           </Link>
-          <nav className="hidden md:flex items-center gap-6 text-sm font-semibold">
-            <a href="/loja#catalogo" className={`hover:text-orange-500 transition-colors ${solid ? '' : 'text-white/90'}`}>Catálogo</a>
-            <a href="/loja#cores" className={`hover:text-orange-500 transition-colors ${solid ? '' : 'text-white/90'}`}>Cores</a>
-          </nav>
+          <nav className="hidden md:flex items-center gap-6 text-sm font-semibold" />
           <div className="flex items-center gap-2 sm:gap-3">
             {customer ? (
               <div className="flex items-center gap-1 sm:gap-2">
