@@ -30,6 +30,7 @@ export default function PDV({ onDone }) {
   const [discount, setDiscount] = useState('');
   const [couponInput, setCouponInput] = useState('');
   const [coupon, setCoupon] = useState(null); // { coupon_id, code, discount_type, discount_value }
+  const [frete, setFrete] = useState(null); // { price, days, weightKg, uf }
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [receivedAmount, setReceivedAmount] = useState('');
   const [installments, setInstallments] = useState(1);
@@ -95,6 +96,7 @@ export default function PDV({ onDone }) {
       setShowCustomerInfo(false);
       setDiscount('');
       setCoupon(null); setCouponInput('');
+      setFrete(null);
       setReceivedAmount('');
       setEventDate(''); setShipDate(''); setDeliveryDate('');
       setOrderKey(genKey());
@@ -102,6 +104,25 @@ export default function PDV({ onDone }) {
       setTimeout(() => searchRef.current?.focus(), 100);
     },
     onError: (err) => toast.error(err.error || 'Erro ao finalizar venda'),
+  });
+
+  // Calcular frete + prazo pelo estado/CEP do cliente
+  const freteMut = useMutation({
+    mutationFn: () => api.post('/shipping/quote', {
+      uf: selectedCustomer?.address?.state || null,
+      cep: selectedCustomer?.address?.zip || null,
+      qty: items.reduce((s, i) => s + i.quantity, 0),
+      subtotal,
+    }),
+    onSuccess: (data) => {
+      setFrete(data);
+      // sugere a previsão de entrega = hoje + prazo
+      if (data.days && !deliveryDate) {
+        const d = new Date(); d.setDate(d.getDate() + Number(data.days));
+        setDeliveryDate(d.toISOString().split('T')[0]);
+      }
+    },
+    onError: (e) => { setFrete(null); toast.error(e.error || 'Não foi possível calcular o frete'); },
   });
 
   // Aplicar cupom — valida no servidor (data, limite, cliente) e guarda o cupom
@@ -613,6 +634,26 @@ export default function PDV({ onDone }) {
               </button>
             </div>
           )}
+
+          {/* Frete + prazo automáticos */}
+          <div className="border-t border-gray-100 pt-2">
+            {frete ? (
+              <div className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                <span className="text-sm text-blue-800">
+                  🚚 Frete {frete.uf ? `(${frete.uf})` : ''}: <b>{frete.free ? 'Grátis' : fmt(frete.price)}</b>
+                  {frete.days ? <> · chega em <b>{frete.days} dia{frete.days > 1 ? 's' : ''}</b></> : ''}
+                </span>
+                <button type="button" onClick={() => setFrete(null)} className="text-gray-400 hover:text-red-500"><X size={15} /></button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => freteMut.mutate()}
+                disabled={freteMut.isPending || items.length === 0 || !selectedCustomer}
+                className="btn-secondary text-sm w-full disabled:opacity-50"
+                title={!selectedCustomer ? 'Selecione o cliente para usar o estado/CEP dele' : 'Calcula o frete e o prazo pelo estado do cliente'}>
+                {freteMut.isPending ? <Loader2 size={14} className="animate-spin" /> : '🚚'} Calcular frete e prazo
+              </button>
+            )}
+          </div>
 
           <div className="flex justify-between font-bold text-2xl border-t border-gray-100 pt-2">
             <span>TOTAL</span>

@@ -70,6 +70,7 @@ router.use('/price-tables',   requireModules('price-tables','sales','pdv'), pric
 router.use('/coupons',   requireModules('sales','pdv','price-tables','settings'), require('./coupons'));
 router.use('/financial-config', requireModules('financial','settings'), financialConfigRoutes);
 router.use('/logistics', requireModules('logistics'), logisticsRoutes);
+router.use('/shipping',  requireModules('logistics','sales','pdv','settings'), require('./shipping'));
 router.use('/returns',   requireModules('returns','sales'), returnsRoutes);
 router.use('/quality',   requireModules('quality'), qualityRoutes);
 router.use('/crm',       requireModules('crm'), crmRoutes);

@@ -97,6 +97,8 @@ export default function Settings() {
   function setCredito(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, credito: { ...(p.settings?.credito || {}), [k]: v } } })); }
   function setEmailCfg(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, email: { ...(p.settings?.email || {}), [k]: v } } })); }
   function setSite(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, site: { ...(p.settings?.site || {}), [k]: v } } })); }
+  function setFrete(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, frete: { ...(p.settings?.frete || {}), [k]: v } } })); }
+  function setFreteTable(rows) { setForm(p => ({ ...p, settings: { ...p.settings, frete: { ...(p.settings?.frete || {}), table: rows } } })); }
   function gmailPreset() { setForm(p => ({ ...p, settings: { ...p.settings, email: { ...(p.settings?.email || {}), smtp_host: 'smtp.gmail.com', smtp_port: 465, smtp_secure: true } } })); }
 
   return (
@@ -107,7 +109,7 @@ export default function Settings() {
 
       <div className="card">
         <div className="card-header flex gap-6">
-          {[['company','Empresa'],['site','Site'],['cadastro','Cadastro (site)'],['email','E-mail'],['serigrafia','Serigrafia'],['credito','Crédito'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
+          {[['company','Empresa'],['site','Site'],['cadastro','Cadastro (site)'],['email','E-mail'],['frete','Transportadora'],['serigrafia','Serigrafia'],['credito','Crédito'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`pb-2 text-sm font-medium border-b-2 transition-colors ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
               {l}
@@ -335,6 +337,108 @@ export default function Settings() {
             <p className="text-xs text-gray-400">
               <b>Gmail:</b> ative a verificação em 2 etapas e gere uma <b>“senha de app”</b> em myaccount.google.com → Segurança → Senhas de app, e use ela aqui (não a senha normal).
             </p>
+            {isAdmin && (
+              <div className="flex justify-end">
+                <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
+                  {saveMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Salvando...</> : <><Save size={15} /> Salvar</>}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'frete' && (
+          <div className="card-body space-y-6">
+            {!isAdmin && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-2">Apenas admins podem alterar estas configurações.</p>}
+
+            {/* Tabela regional — funciona já */}
+            <div>
+              <h3 className="font-medium text-gray-900">Frete e prazo automáticos (por estado)</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Define o <b>valor do frete</b> e os <b>dias de entrega</b> por estado (UF). O sistema calcula
+                automaticamente no PDV usando o estado do cliente e o peso (nº de copos × peso unitário).
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div>
+                <label className="label">CEP de origem</label>
+                <input className="input" value={form.settings?.frete?.origin_cep || ''} onChange={e => setFrete('origin_cep', e.target.value)} placeholder="00000-000" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Peso por copo (g)</label>
+                <input type="number" className="input" value={form.settings?.frete?.weight_per_unit_g ?? ''} onChange={e => setFrete('weight_per_unit_g', e.target.value)} placeholder="200" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Frete grátis acima de (R$)</label>
+                <input type="number" className="input" value={form.settings?.frete?.free_above ?? ''} onChange={e => setFrete('free_above', e.target.value)} placeholder="0 = desligado" disabled={!isAdmin} />
+              </div>
+              <div>
+                <label className="label">Prazo padrão (dias)</label>
+                <input type="number" className="input" value={form.settings?.frete?.default_days ?? ''} onChange={e => setFrete('default_days', e.target.value)} placeholder="ex.: 7" disabled={!isAdmin} />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-semibold text-gray-700">Tabela por estado</h4>
+                {isAdmin && (
+                  <button type="button" onClick={() => setFreteTable([...(form.settings?.frete?.table || []), { uf: '', price: '', per_kg: '', days: '' }])}
+                    className="btn-secondary btn-sm"><Plus size={13} /> Adicionar UF</button>
+                )}
+              </div>
+              <div className="space-y-2">
+                <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 px-1">
+                  <span className="col-span-2">UF</span><span className="col-span-3">Frete base (R$)</span>
+                  <span className="col-span-3">+ por kg (R$)</span><span className="col-span-3">Prazo (dias)</span>
+                </div>
+                {(form.settings?.frete?.table || []).map((row, i) => {
+                  const upd = (k, v) => { const t = [...form.settings.frete.table]; t[i] = { ...t[i], [k]: v }; setFreteTable(t); };
+                  return (
+                    <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                      <select className="input col-span-2" value={row.uf || ''} onChange={e => upd('uf', e.target.value)} disabled={!isAdmin}>
+                        <option value="">UF</option>{states.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <input type="number" className="input col-span-3" value={row.price ?? ''} onChange={e => upd('price', e.target.value)} placeholder="0,00" disabled={!isAdmin} />
+                      <input type="number" className="input col-span-3" value={row.per_kg ?? ''} onChange={e => upd('per_kg', e.target.value)} placeholder="0,00" disabled={!isAdmin} />
+                      <input type="number" className="input col-span-3" value={row.days ?? ''} onChange={e => upd('days', e.target.value)} placeholder="dias" disabled={!isAdmin} />
+                      {isAdmin && <button type="button" onClick={() => setFreteTable(form.settings.frete.table.filter((_, j) => j !== i))} className="col-span-1 text-red-400 hover:text-red-600 text-lg leading-none">×</button>}
+                    </div>
+                  );
+                })}
+                {(form.settings?.frete?.table || []).length === 0 && <p className="text-xs text-gray-400">Nenhum estado configurado — usa o prazo/frete padrão acima.</p>}
+              </div>
+            </div>
+
+            {/* J&T API — precisa de conta/credenciais */}
+            <div className="border-t border-gray-100 pt-5">
+              <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${form.settings?.frete?.enabled ? 'border-primary-300 bg-primary-50' : 'border-gray-200'}`}>
+                <input type="checkbox" className="mt-1 rounded" checked={!!form.settings?.frete?.enabled} onChange={e => setFrete('enabled', e.target.checked)} disabled={!isAdmin} />
+                <span>
+                  <span className="block text-sm font-semibold text-gray-800">Integração J&T Express (rastreio pela API)</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">Para rastrear encomendas pela J&T você precisa de uma <b>conta de cliente da API J&T</b> (apiAccount, customerCode e privateKey). Solicite à J&T e cole abaixo.</span>
+                </span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                <div>
+                  <label className="label">apiAccount</label>
+                  <input className="input font-mono" value={form.settings?.frete?.jt_api_account || ''} onChange={e => setFrete('jt_api_account', e.target.value)} disabled={!isAdmin} />
+                </div>
+                <div>
+                  <label className="label">customerCode</label>
+                  <input className="input font-mono" value={form.settings?.frete?.jt_customer_code || ''} onChange={e => setFrete('jt_customer_code', e.target.value)} disabled={!isAdmin} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label">privateKey</label>
+                  <input className="input font-mono" value={form.settings?.frete?.jt_private_key || ''} onChange={e => setFrete('jt_private_key', e.target.value)} placeholder="cole a chave privada da J&T" disabled={!isAdmin} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label">URL base da API (opcional)</label>
+                  <input className="input font-mono" value={form.settings?.frete?.jt_base_url || ''} onChange={e => setFrete('jt_base_url', e.target.value)} placeholder="https://openapi.jtjms-br.com" disabled={!isAdmin} />
+                </div>
+              </div>
+            </div>
+
             {isAdmin && (
               <div className="flex justify-end">
                 <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
