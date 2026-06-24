@@ -70,6 +70,12 @@ export default function Sales() {
     onError: (e) => toast.error(e.error || 'Não foi possível atualizar o status'),
   });
 
+  const startSale = useMutation({
+    mutationFn: (id) => api.post(`/sales/${id}/start`),
+    onSuccess: () => { qc.invalidateQueries(['sales']); toast.success('Pedido iniciado — Aguardando Anexo da Arte'); },
+    onError: (e) => toast.error(e.error || 'Não foi possível iniciar o pedido'),
+  });
+
   function handleSearch(e) {
     e.preventDefault();
     setSearch(searchInput);
@@ -96,8 +102,17 @@ export default function Sales() {
         </div>
       )
     },
-    { key: 'created_at', label: 'Data', width: 100,
+    { key: 'created_at', label: 'Data', width: 96,
       render: (v, row) => { const d = row.operation_date || v; try { return format(parseISO(d), 'dd/MM/yyyy', { locale: ptBR }); } catch { return d; } }
+    },
+    { key: 'event_date', label: 'Evento', width: 96,
+      render: v => { if (!v) return '—'; try { return format(parseISO(v), 'dd/MM/yyyy'); } catch { return v; } }
+    },
+    { key: 'ship_date', label: 'Saída', width: 96,
+      render: v => { if (!v) return '—'; try { return format(parseISO(v), 'dd/MM/yyyy'); } catch { return v; } }
+    },
+    { key: 'cod_cliente', label: 'Cód.', width: 60,
+      render: (_, row) => { const c = row.CLIENTES || row.customers; return c?.display_id != null ? <span className="font-mono text-xs text-gray-500">{id4(c.display_id)}</span> : '—'; }
     },
     { key: 'CLIENTES', label: 'Cliente',
       render: (v, row) => (v || row.customers)?.name || <span className="text-gray-400">Consumidor Final</span>
@@ -130,17 +145,27 @@ export default function Sales() {
         return <span className="text-xs text-gray-500">{map[v] || v || '—'}</span>;
       }
     },
-    { key: 'total', label: 'Total', width: 120,
+    { key: 'total', label: 'Total', width: 110,
       render: v => <span className="font-semibold">{fmt(v)}</span>
+    },
+    { key: 'freight', label: 'Frete', width: 90,
+      render: v => v > 0 ? <span className="text-xs text-gray-600">{fmt(v)}</span> : <span className="text-gray-300">—</span>
     },
     { key: 'artwork_url', label: 'Arte', width: 55,
       render: v => v ? (
         <a href={v} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline text-xs">Ver</a>
       ) : '—'
     },
-    { key: 'id', label: '', width: 80,
+    { key: 'id', label: '', width: 170,
       render: (_, row) => (
         <div className="flex items-center gap-0.5">
+          {row.status === 'iniciando_pedido' && (
+            <button onClick={() => startSale.mutate(row.id)} disabled={startSale.isPending}
+              className="text-[11px] font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg px-2 py-1 mr-1 disabled:opacity-50 whitespace-nowrap"
+              title="Inicia o pedido → Aguardando Anexo da Arte">
+              ▶ Iniciar Pedido
+            </button>
+          )}
           <button onClick={() => navigate(`/sales/${row.id}`)} className="btn-ghost p-1.5" title="Ver detalhes">
             <Eye size={14} />
           </button>

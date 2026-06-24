@@ -41,7 +41,7 @@ router.get('/', async (req, res) => {
 
     let query = supabase
       .from('VENDAS')
-      .select('*, CLIENTES(id, name, cpf_cnpj), USUARIOS(name)', { count: 'exact' })
+      .select('*, CLIENTES(id, name, cpf_cnpj, display_id), USUARIOS(name)', { count: 'exact' })
       .eq('tenant_id', req.tenantId)
       .order('created_at', { ascending: false });
 
@@ -305,6 +305,26 @@ router.patch('/:id/status', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// "Iniciar Pedido": de Iniciando Pedido → Aguardando Anexo da Arte
+router.post('/:id/start', async (req, res) => {
+  try {
+    const { data: cur } = await supabase.from('VENDAS')
+      .select('status, production_log').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!cur) return res.status(404).json({ error: 'Pedido não encontrado' });
+    const log = Array.isArray(cur.production_log) ? cur.production_log : [];
+    log.push({ stage: 'status', action: 'aguardando_arte', at: new Date().toISOString(), user_id: req.user?.id || null, user: req.user?.name || req.user?.email || 'Usuário' });
+    let { data, error } = await supabase.from('VENDAS').update({ status: 'aguardando_arte', production_log: log })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
+    if (error && /production_log|column|does not exist/i.test(error.message || '')) {
+      ({ data, error } = await supabase.from('VENDAS').update({ status: 'aguardando_arte' })
+        .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single());
+    }
+    if (error) throw error;
+    audit(req, 'update', 'sale', req.params.id, { action: 'iniciar_pedido' });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Exclusão do pedido de venda — só ADMIN e com a senha dele
