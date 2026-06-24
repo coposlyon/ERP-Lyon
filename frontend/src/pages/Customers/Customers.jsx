@@ -140,7 +140,14 @@ export default function Customers() {
     { key: 'name', label: 'Nome',
       render: (v, row) => (
         <div>
-          <p className="font-medium text-gray-900 text-sm">{v}</p>
+          <p className="font-medium text-gray-900 text-sm flex items-center gap-1.5">
+            {row.notes && String(row.notes).trim() && (
+              <span title={row.notes} className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 text-amber-600 shrink-0">
+                <AlertTriangle size={11} />
+              </span>
+            )}
+            {v}
+          </p>
           {row.nome_fantasia && <p className="text-xs text-gray-400">{row.nome_fantasia}</p>}
         </div>
       )

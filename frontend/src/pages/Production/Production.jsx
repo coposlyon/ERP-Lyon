@@ -15,16 +15,17 @@ const ACT_LABEL = { start: 'iniciou', finish: 'finalizou', registro: 'registrou'
 const STAGES = {
   aguardando_arte:     { label: 'Aguardando Arte',     cls: 'bg-gray-100 text-gray-600' },
   aguardando_producao: { label: 'Aguardando Produção', cls: 'bg-blue-100 text-blue-700' },
-  revelacao:           { label: 'Em Revelação',        cls: 'bg-yellow-100 text-yellow-700' },
-  producao:            { label: 'Em Produção',         cls: 'bg-orange-100 text-orange-700' },
+  revelacao:           { label: 'Em processo de gravação', cls: 'bg-yellow-100 text-yellow-700' },
   pintura:             { label: 'Em Pintura',          cls: 'bg-pink-100 text-pink-700' },
+  producao:            { label: 'Em Produção',         cls: 'bg-orange-100 text-orange-700' },
   embalagem:           { label: 'Em Embalagem',        cls: 'bg-violet-100 text-violet-700' },
   finalizado:          { label: 'Finalizado',          cls: 'bg-green-100 text-green-700' },
 };
+// Fluxo: Revelação → Pintura → Produção → Embalagem
 const STEPS = [
   { stage: 'revelacao', label: 'Revelação' },
-  { stage: 'producao',  label: 'Produção' },
   { stage: 'pintura',   label: 'Pintura' },
+  { stage: 'producao',  label: 'Produção' },
   { stage: 'embalagem', label: 'Embalagem' },
 ];
 const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
@@ -33,9 +34,9 @@ function canDo(s, stage, action) {
   if (!s) return false;
   if (action === 'finish') return s.stage === stage;
   if (stage === 'revelacao') return ['aguardando_arte', 'aguardando_producao'].includes(s.stage);
-  if (stage === 'producao')  return s.stage === 'revelacao';
-  if (stage === 'pintura')   return s.stage === 'producao';
-  if (stage === 'embalagem') return s.stage === 'pintura';
+  if (stage === 'pintura')   return s.stage === 'revelacao';
+  if (stage === 'producao')  return s.stage === 'pintura';
+  if (stage === 'embalagem') return s.stage === 'producao';
   return false;
 }
 
@@ -64,23 +65,24 @@ export default function Production() {
     onError: e => toast.error(e.error || 'Erro ao registrar etapa'),
   });
 
-  // Confirmação da Revelação (usuário + nº do quadro + conferido + senha)
-  const [revConfirm, setRevConfirm] = useState(null); // { action } | null
+  // Confirmação de QUALQUER etapa: usuário + senha (revelação pede nº do quadro + conferido)
+  const [revConfirm, setRevConfirm] = useState(null); // { stage, action } | null
   const [revForm, setRevForm] = useState({ user: '', quadro: '', conferido: false, password: '' });
-  function openRev(action) { setRevForm({ user: '', quadro: '', conferido: false, password: '' }); setRevConfirm({ action }); }
   function confirmRev() {
+    const isRev = revConfirm.stage === 'revelacao';
     stageMut.mutate({
-      stage: 'revelacao', action: revConfirm.action,
-      actor_user: revForm.user.trim(), quadro: revForm.quadro.trim(),
-      conferido: revForm.conferido, password: revForm.password,
+      stage: revConfirm.stage, action: revConfirm.action,
+      actor_user: revForm.user.trim(), password: revForm.password,
+      ...(isRev ? { quadro: revForm.quadro.trim(), conferido: revForm.conferido } : {}),
     });
   }
-  const revReady = revForm.user.trim() && revForm.quadro.trim() && revForm.conferido && revForm.password;
+  const isRevConfirm = revConfirm?.stage === 'revelacao';
+  const revReady = revForm.user.trim() && revForm.password && (!isRevConfirm || (revForm.quadro.trim() && revForm.conferido));
 
-  // Dispara a etapa: revelação abre o modal de confirmação; as outras vão direto.
+  // Toda etapa passa pelo modal de confirmação (senha + histórico).
   function doStage(stage, action) {
-    if (stage === 'revelacao') openRev(action);
-    else stageMut.mutate({ stage, action });
+    setRevForm({ user: '', quadro: '', conferido: false, password: '' });
+    setRevConfirm({ stage, action });
   }
 
   const [edit, setEdit] = useState({});
@@ -428,35 +430,39 @@ export default function Production() {
         </div>
       </Modal>
 
-      {/* Confirmação da Revelação */}
+      {/* Confirmação da etapa (senha + histórico). Revelação pede nº do quadro + conferido. */}
       <Modal isOpen={!!revConfirm} onClose={() => !stageMut.isPending && setRevConfirm(null)}
-        title={`${revConfirm?.action === 'finish' ? 'Finalizar' : 'Iniciar'} Revelação`} size="sm">
+        title={`${revConfirm?.action === 'finish' ? 'Finalizar' : 'Iniciar'} ${STEP_LABEL[revConfirm?.stage] || ''}`} size="sm">
         <div className="space-y-3">
           <div>
             <label className="label">Usuário *</label>
             <input className="input" autoFocus value={revForm.user}
               onChange={e => setRevForm(s => ({ ...s, user: e.target.value.toUpperCase() }))}
-              placeholder="Quem está fazendo a revelação" />
+              placeholder="Quem está fazendo esta etapa" />
           </div>
 
           {/* O restante aparece após informar o usuário */}
           {revForm.user.trim() && (
             <div className="space-y-3 border-t border-gray-100 pt-3">
-              <div>
-                <label className="label">Qual a numeração do quadro? *</label>
-                <input className="input font-mono" value={revForm.quadro}
-                  onChange={e => setRevForm(s => ({ ...s, quadro: e.target.value }))}
-                  placeholder="Ex.: 04827" />
-              </div>
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                <b>Obs:</b> favor conferir se a gravação da matriz está conforme a vegetal impressa.
-              </p>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={revForm.conferido}
-                  onChange={e => setRevForm(s => ({ ...s, conferido: e.target.checked }))}
-                  className="w-4 h-4 accent-primary-600" />
-                Conferido
-              </label>
+              {isRevConfirm && (
+                <>
+                  <div>
+                    <label className="label">Qual a numeração do quadro? *</label>
+                    <input className="input font-mono" value={revForm.quadro}
+                      onChange={e => setRevForm(s => ({ ...s, quadro: e.target.value }))}
+                      placeholder="Ex.: 04827" />
+                  </div>
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                    <b>Obs:</b> favor conferir se a gravação da matriz está conforme a vegetal impressa.
+                  </p>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" checked={revForm.conferido}
+                      onChange={e => setRevForm(s => ({ ...s, conferido: e.target.checked }))}
+                      className="w-4 h-4 accent-primary-600" />
+                    Conferido
+                  </label>
+                </>
+              )}
               <div>
                 <label className="label">Confirme com a sua senha *</label>
                 <input type="password" className="input" value={revForm.password}

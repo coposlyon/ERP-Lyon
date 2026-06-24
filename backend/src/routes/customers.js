@@ -253,7 +253,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   const {
     type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
-    credit_limit, instagram, nome_fantasia, rating, admission_data, is_active, birth_date
+    credit_limit, instagram, nome_fantasia, rating, admission_data, is_active, birth_date, notes
   } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome do cliente é obrigatório' });
 
@@ -289,6 +289,7 @@ router.post('/', async (req, res) => {
       rating: rating || null,
       admission_data: admission_data || {},
       is_active: is_active !== false,
+      notes: notes || null,
     };
     const payload = { ...base, birth_date: birth_date || null };
     let { data, error } = await supabase.from('CLIENTES').insert(payload).select().single();
@@ -305,7 +306,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const {
     type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
-    credit_limit, is_active, instagram, nome_fantasia, rating, admission_data, birth_date
+    credit_limit, is_active, instagram, nome_fantasia, rating, admission_data, birth_date, notes
   } = req.body;
 
   try {
@@ -325,6 +326,7 @@ router.put('/:id', async (req, res) => {
       type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
       credit_limit, is_active, instagram, nome_fantasia,
       rating: rating || null,
+      notes: notes != null ? notes : undefined,
       admission_data: {
         ...(admission_data || {}),
         attachments: existingAttachments, // sempre preserva os documentos do banco

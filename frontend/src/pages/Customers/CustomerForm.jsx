@@ -114,7 +114,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
     email: '', phone: '', mobile: '',
     address: { ...emptyAddress },
     credit_limit: '', instagram: '', nome_fantasia: '',
-    rating: null, is_active: true,
+    rating: null, is_active: true, notes: '',
   });
   const [loading, setLoading]       = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
@@ -142,6 +142,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
         nome_fantasia: customer.nome_fantasia || '',
         rating:       customer.rating || null,
         is_active:    customer.is_active !== false,
+        notes:        customer.notes || '',
       });
     }
   }, [customer]);
@@ -417,6 +418,15 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
           <StarRating value={form.rating} onChange={v => set('rating', v)} />
         </div>
       )}
+
+      {/* Observação */}
+      <div>
+        <label className="label">Observação</label>
+        <textarea className="input min-h-[70px] resize-y" value={form.notes}
+          onChange={e => set('notes', e.target.value)}
+          placeholder="Ex.: cliente sempre paga atrasado, atenção no crédito..." />
+        <p className="text-xs text-gray-400 mt-1">Quando houver observação, aparece um ⚠️ ao lado do nome do cliente na lista.</p>
+      </div>
 
       {/* Endereço */}
       <details className="border border-gray-200 rounded-lg">

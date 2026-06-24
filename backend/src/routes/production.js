@@ -249,17 +249,19 @@ router.post('/:id/stage', async (req, res) => {
   const def = STAGE_FIELDS[stage];
   if (!def || !['start', 'finish'].includes(action)) return res.status(400).json({ error: 'Etapa ou ação inválida' });
   try {
-    // Revelação exige confirmação: usuário + nº do quadro + conferido + senha
+    // Toda mudança de etapa exige usuário + senha (confirmação + histórico)
+    if (!String(actor_user || '').trim()) return res.status(400).json({ error: 'Informe o usuário.' });
+    if (!password) return res.status(400).json({ error: 'Digite sua senha para confirmar.' });
+    const email = req.user?.email;
+    if (!email) return res.status(401).json({ error: 'Sessão inválida — entre novamente.' });
+    const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { error: authErr } = await client.auth.signInWithPassword({ email, password });
+    if (authErr) return res.status(401).json({ error: 'Senha incorreta.' });
+
+    // Revelação tem campos extras: nº do quadro + conferido
     if (stage === 'revelacao') {
-      if (!String(actor_user || '').trim()) return res.status(400).json({ error: 'Informe o usuário.' });
       if (!String(quadro || '').trim()) return res.status(400).json({ error: 'Informe a numeração do quadro.' });
       if (!conferido) return res.status(400).json({ error: 'Marque "Conferido" para confirmar.' });
-      const email = req.user?.email;
-      if (!password) return res.status(400).json({ error: 'Digite sua senha para confirmar.' });
-      if (!email) return res.status(401).json({ error: 'Sessão inválida — entre novamente.' });
-      const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-      const { error: authErr } = await client.auth.signInWithPassword({ email, password });
-      if (authErr) return res.status(401).json({ error: 'Senha incorreta.' });
     }
 
     const { data: sale, error: e0 } = await supabase.from('VENDAS')
