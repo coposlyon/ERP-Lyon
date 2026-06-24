@@ -5,6 +5,7 @@ const supabase = require('../config/supabase');
 const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
+const { recomputeRating } = require('../lib/customerRating');
 
 const saleSchema = Joi.object({
   items: Joi.array().min(1).items(
@@ -167,6 +168,8 @@ router.post('/', validate(saleSchema), async (req, res) => {
     audit(req, 'create', 'sale', data?.id, {
       number: data?.number, total: data?.total, items: items.length, payment_method,
     });
+    // Atualiza as estrelas automáticas do cliente pela compra (12 meses) — sem travar a resposta
+    if (customer_id) recomputeRating(req.tenantId, customer_id).catch(() => {});
     res.status(201).json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone, Trash2, Loader2, Instagram, Contact, ShieldCheck, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone, Trash2, Loader2, Instagram, Contact, ShieldCheck, AlertTriangle, CheckCircle2, Ban, RefreshCw } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
@@ -62,6 +62,12 @@ export default function Customers() {
   const scoreMut = useMutation({
     mutationFn: (cid) => api.post(`/customers/${cid}/credit-check`),
     onError: e => toast.error(e.error || 'Não foi possível consultar'),
+  });
+
+  const recomputeMut = useMutation({
+    mutationFn: () => api.post('/customers/recompute-ratings'),
+    onSuccess: (r) => { toast.success(`Estrelas recalculadas (${r.customers || 0} clientes)`); qc.invalidateQueries(['customers']); },
+    onError: e => toast.error(e.error || 'Erro ao recalcular'),
   });
   function consultarScore(row) {
     setScoreCustomer(row);
@@ -141,6 +147,11 @@ export default function Customers() {
       render: (v, row) => (
         <div>
           <p className="font-medium text-gray-900 text-sm flex items-center gap-1.5">
+            {row.blocked && (
+              <span title={row.block_reason || 'Cliente bloqueado / com problemas'} className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 shrink-0">
+                <Ban size={11} />
+              </span>
+            )}
             {row.notes && String(row.notes).trim() && (
               <span title={row.notes} className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 text-amber-600 shrink-0">
                 <AlertTriangle size={11} />
@@ -192,8 +203,17 @@ export default function Customers() {
         );
       }
     },
-    { key: 'rating', label: '⭐', width: 90,
-      render: v => <StarDisplay value={v} />
+    { key: 'rating', label: '⭐', width: 100,
+      render: (v, row) => (
+        <div>
+          <StarDisplay value={v} />
+          {row.total_12m > 0 && (
+            <p className="text-[10px] text-gray-400 mt-0.5 whitespace-nowrap" title="Total comprado nos últimos 12 meses">
+              R$ {Number(row.total_12m).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/12m
+            </p>
+          )}
+        </div>
+      )
     },
     { key: 'is_active', label: 'Status', width: 70,
       render: v => <span className={`badge ${v ? 'badge-green' : 'badge-gray'}`}>{v ? 'Ativo' : 'Inativo'}</span>
@@ -228,6 +248,10 @@ export default function Customers() {
           <p className="text-sm text-gray-500 mt-1">{data?.total || 0} cadastrados</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => recomputeMut.mutate()} disabled={recomputeMut.isPending} className="btn-secondary disabled:opacity-50"
+            title="Recalcula as estrelas dos clientes pelo total comprado nos últimos 12 meses (≥1mil=3★, ≥2mil=4★, ≥5mil=5★)">
+            {recomputeMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Recalcular estrelas
+          </button>
           <button onClick={exportContacts} disabled={exportingContacts} className="btn-secondary disabled:opacity-50"
             title="Baixa um arquivo .vcf com nome + código + telefone para importar no Google Contatos / celular">
             {exportingContacts ? <Loader2 size={16} className="animate-spin" /> : <Contact size={16} />} Exportar contatos

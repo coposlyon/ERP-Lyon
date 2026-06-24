@@ -32,6 +32,7 @@ const menuItems = [
       { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
       { label: 'Personalização', path: '/customizations', icon: Palette, module: 'customizations' },
       { label: 'Estúdio 3D', path: '/studio', icon: Box, module: 'customizations' },
+      { label: 'Cupons de Desconto', path: '/coupons', icon: Tag, module: 'sales' },
     ],
   },
   {

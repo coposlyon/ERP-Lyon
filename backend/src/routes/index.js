@@ -67,6 +67,7 @@ router.use('/settings',  requireModules('settings'), settingsRoutes);
 router.use('/quotes',    requireModules('quotes','sales'), quotesRoutes);
 router.use('/customizations', requireModules('customizations','sales'), customizationsRoutes);
 router.use('/price-tables',   requireModules('price-tables','sales','pdv'), priceTablesRoutes);
+router.use('/coupons',   requireModules('sales','pdv','price-tables','settings'), require('./coupons'));
 router.use('/financial-config', requireModules('financial','settings'), financialConfigRoutes);
 router.use('/logistics', requireModules('logistics'), logisticsRoutes);
 router.use('/returns',   requireModules('returns','sales'), returnsRoutes);

@@ -28,6 +28,8 @@ export default function PDV({ onDone }) {
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [discount, setDiscount] = useState('');
+  const [couponInput, setCouponInput] = useState('');
+  const [coupon, setCoupon] = useState(null); // { coupon_id, code, discount_type, discount_value }
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [receivedAmount, setReceivedAmount] = useState('');
   const [installments, setInstallments] = useState(1);
@@ -79,12 +81,20 @@ export default function PDV({ onDone }) {
 
   const saleMutation = useMutation({
     mutationFn: (data) => api.post('/sales', data),
-    onSuccess: () => {
+    onSuccess: async (sale) => {
+      // Consome o cupom (1 uso) vinculado a esta venda
+      if (coupon?.coupon_id) {
+        await api.post('/coupons/redeem', {
+          coupon_id: coupon.coupon_id, customer_id: selectedCustomer?.id || null,
+          sale_id: sale?.id || null, discount: couponDiscount,
+        }).catch(() => {});
+      }
       toast.success('Venda finalizada com sucesso!');
       setItems([]);
       setSelectedCustomer(null);
       setShowCustomerInfo(false);
       setDiscount('');
+      setCoupon(null); setCouponInput('');
       setReceivedAmount('');
       setEventDate(''); setShipDate(''); setDeliveryDate('');
       setOrderKey(genKey());
@@ -92,6 +102,15 @@ export default function PDV({ onDone }) {
       setTimeout(() => searchRef.current?.focus(), 100);
     },
     onError: (err) => toast.error(err.error || 'Erro ao finalizar venda'),
+  });
+
+  // Aplicar cupom — valida no servidor (data, limite, cliente) e guarda o cupom
+  const couponMut = useMutation({
+    mutationFn: () => api.post('/coupons/validate', {
+      code: couponInput, total: subtotal, customer_id: selectedCustomer?.id || null,
+    }),
+    onSuccess: (data) => { setCoupon(data); toast.success(`Cupom ${data.code} aplicado!`); },
+    onError: (e) => { setCoupon(null); toast.error(e.error || 'Cupom inválido'); },
   });
 
   // Modelo cujas variações estão sendo exibidas (drill-down). null = lista de modelos.
@@ -198,7 +217,12 @@ export default function PDV({ onDone }) {
 
   const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
   const discountValue = parseFloat(discount) || 0;
-  const total = Math.max(0, subtotal - discountValue);
+  const couponDiscount = coupon
+    ? (coupon.discount_type === 'percent'
+        ? Math.min(subtotal, Math.round(subtotal * Number(coupon.discount_value)) / 100)
+        : Math.min(subtotal, Number(coupon.discount_value)))
+    : 0;
+  const total = Math.max(0, subtotal - discountValue - couponDiscount);
   const received = parseFloat(receivedAmount) || 0;
   const change = paymentMethod === 'cash' && received > 0 ? received - total : 0;
 
@@ -229,7 +253,8 @@ export default function PDV({ onDone }) {
         // guarda a variação escolhida (código + nome) no item da venda
         ...(i.variant ? { customization: { ...(i.variant_code ? { 'Código': i.variant_code } : {}), 'Variação': i.variant } } : {}),
       })),
-      discount: discountValue,
+      discount: discountValue + couponDiscount,
+      coupon_code: coupon?.code || null,
       payment_method: paymentMethod,
       ...(paymentMethod === 'a_prazo' ? { installments, first_due_date: firstDueDate } : {}),
     });
@@ -564,6 +589,31 @@ export default function PDV({ onDone }) {
               value={discount} onChange={e => setDiscount(e.target.value)}
               className="input text-right w-28 text-sm" placeholder="0,00" />
           </div>
+
+          {/* Cupom de desconto */}
+          {coupon ? (
+            <div className="flex items-center justify-between gap-3 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+              <span className="text-sm text-green-700 font-medium">
+                🎟️ {coupon.code} — {coupon.discount_type === 'percent' ? `${coupon.discount_value}%` : fmt(coupon.discount_value)}
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-green-700 font-semibold">−{fmt(couponDiscount)}</span>
+                <button type="button" onClick={() => { setCoupon(null); setCouponInput(''); }}
+                  className="text-gray-400 hover:text-red-500"><X size={15} /></button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input value={couponInput} onChange={e => setCouponInput(e.target.value.toUpperCase().replace(/\s/g, ''))}
+                onKeyDown={e => { if (e.key === 'Enter' && couponInput.trim()) { e.preventDefault(); couponMut.mutate(); } }}
+                className="input text-sm font-mono flex-1" placeholder="Cupom de desconto" />
+              <button type="button" onClick={() => couponMut.mutate()} disabled={!couponInput.trim() || couponMut.isPending || items.length === 0}
+                className="btn-secondary text-sm disabled:opacity-50">
+                {couponMut.isPending ? <Loader2 size={14} className="animate-spin" /> : 'Aplicar'}
+              </button>
+            </div>
+          )}
+
           <div className="flex justify-between font-bold text-2xl border-t border-gray-100 pt-2">
             <span>TOTAL</span>
             <span className="text-primary-600">{fmt(total)}</span>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Loader2, Star, Instagram, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, Star, Instagram, CheckCircle2, XCircle, Ban } from 'lucide-react';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -115,6 +115,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
     address: { ...emptyAddress },
     credit_limit: '', instagram: '', nome_fantasia: '',
     rating: null, is_active: true, notes: '',
+    blocked: false, block_reason: '',
   });
   const [loading, setLoading]       = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
@@ -143,6 +144,8 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
         rating:       customer.rating || null,
         is_active:    customer.is_active !== false,
         notes:        customer.notes || '',
+        blocked:      !!customer.blocked,
+        block_reason: customer.block_reason || '',
       });
     }
   }, [customer]);
@@ -426,6 +429,25 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
           onChange={e => set('notes', e.target.value)}
           placeholder="Ex.: cliente sempre paga atrasado, atenção no crédito..." />
         <p className="text-xs text-gray-400 mt-1">Quando houver observação, aparece um ⚠️ ao lado do nome do cliente na lista.</p>
+      </div>
+
+      {/* Cliente problemático / bloqueado */}
+      <div className={`rounded-xl border p-3 ${form.blocked ? 'border-red-200 bg-red-50' : 'border-gray-200'}`}>
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" checked={form.blocked}
+            onChange={e => set('blocked', e.target.checked)} className="accent-red-600 w-4 h-4" />
+          <span className="text-sm font-medium text-gray-800 flex items-center gap-1.5">
+            <Ban size={15} className="text-red-500" /> Cliente bloqueado / com problemas
+          </span>
+        </label>
+        {form.blocked && (
+          <div className="mt-2">
+            <input className="input" value={form.block_reason}
+              onChange={e => set('block_reason', e.target.value)}
+              placeholder="Motivo (ex.: calote, devolução abusiva, não retira pedidos...)" />
+            <p className="text-xs text-red-500 mt-1">Aparece um 🚫 vermelho ao lado do nome do cliente na lista.</p>
+          </div>
+        )}
       </div>
 
       {/* Endereço */}

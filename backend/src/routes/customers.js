@@ -5,6 +5,7 @@ const supabase = require('../config/supabase');
 const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { getEmailConfig, makeTransport } = require('../lib/mailer');
+const { recomputeRating, recomputeAll } = require('../lib/customerRating');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -253,7 +254,8 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   const {
     type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
-    credit_limit, instagram, nome_fantasia, rating, admission_data, is_active, birth_date, notes
+    credit_limit, instagram, nome_fantasia, rating, admission_data, is_active, birth_date, notes,
+    blocked, block_reason
   } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome do cliente é obrigatório' });
 
@@ -290,6 +292,8 @@ router.post('/', async (req, res) => {
       admission_data: admission_data || {},
       is_active: is_active !== false,
       notes: notes || null,
+      blocked: !!blocked,
+      block_reason: block_reason || null,
     };
     const payload = { ...base, birth_date: birth_date || null };
     let { data, error } = await supabase.from('CLIENTES').insert(payload).select().single();
@@ -306,7 +310,8 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const {
     type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
-    credit_limit, is_active, instagram, nome_fantasia, rating, admission_data, birth_date, notes
+    credit_limit, is_active, instagram, nome_fantasia, rating, admission_data, birth_date, notes,
+    blocked, block_reason
   } = req.body;
 
   try {
@@ -327,6 +332,8 @@ router.put('/:id', async (req, res) => {
       credit_limit, is_active, instagram, nome_fantasia,
       rating: rating || null,
       notes: notes != null ? notes : undefined,
+      blocked: !!blocked,
+      block_reason: block_reason || null,
       admission_data: {
         ...(admission_data || {}),
         attachments: existingAttachments, // sempre preserva os documentos do banco
@@ -345,6 +352,22 @@ router.put('/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Recalcula as estrelas automáticas de TODOS os clientes pelas compras de 12 meses.
+router.post('/recompute-ratings', async (req, res) => {
+  try {
+    const r = await recomputeAll(req.tenantId);
+    res.json({ ok: true, ...r });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Recalcula um cliente específico.
+router.post('/:id/recompute-rating', async (req, res) => {
+  try {
+    const r = await recomputeRating(req.tenantId, req.params.id);
+    res.json({ ok: true, ...(r || {}) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.patch('/:id/rating', async (req, res) => {

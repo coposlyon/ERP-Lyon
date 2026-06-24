@@ -38,6 +38,7 @@ const Customizations     = lazy(() => import('@/pages/Customizations/Customizati
 const CustomizationDetail = lazy(() => import('@/pages/Customizations/CustomizationDetail'));
 const CustomizationStudio = lazy(() => import('@/pages/Studio/CustomizationStudio'));
 const PriceTables        = lazy(() => import('@/pages/PriceTable/PriceTables'));
+const Coupons            = lazy(() => import('@/pages/Coupons/Coupons'));
 const Employees          = lazy(() => import('@/pages/Employees/Employees'));
 const Logistics          = lazy(() => import('@/pages/Logistics/Logistics'));
 const Returns            = lazy(() => import('@/pages/Returns/Returns'));
@@ -99,6 +100,7 @@ function AppRoutes() {
         <Route path="employees" element={<Mod m="employees"><Employees /></Mod>} />
         <Route path="logistics" element={<Mod m="logistics"><Logistics /></Mod>} />
         <Route path="price-tables" element={<Mod m="price-tables"><PriceTables /></Mod>} />
+        <Route path="coupons" element={<Mod m={['price-tables','sales','pdv']}><Coupons /></Mod>} />
         {/* Vendas */}
         <Route path="sales" element={<Mod m="sales"><Sales /></Mod>} />
         <Route path="sales/new" element={<Mod m="sales"><SaleForm /></Mod>} />
