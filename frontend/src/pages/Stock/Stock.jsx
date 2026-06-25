@@ -1,16 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   AlertTriangle, MessageCircle, FileText, Loader2,
   PackageX, CheckCircle2, ChevronDown, ChevronRight,
   TrendingUp, TrendingDown, ArrowRight, Package,
   AlertCircle, PackageCheck, TriangleAlert,
+  Edit2, Check, Plus, Minus,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
-import ProductVariantsModal from '@/pages/Products/ProductVariantsModal';
+import ProductForm from '@/pages/Products/ProductForm';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
@@ -444,13 +445,123 @@ function InventoryCount() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Linha da lista de estoque — quantidade editável + entrada/saída rápida
+// ─────────────────────────────────────────────────────────────────────────────
+function StockRow({ p, onSetStock, onAdjust, onEdit }) {
+  const [val, setVal] = useState(String(p.current_stock ?? 0));
+  useEffect(() => { setVal(String(p.current_stock ?? 0)); }, [p.current_stock]); // sincroniza quando muda fora
+  const cur = Number(p.current_stock ?? 0);
+  const changed = val !== '' && Number(val) !== cur;
+  const low = cur <= Number(p.min_stock ?? 0);
+
+  return (
+    <tr className="border-t border-gray-50 hover:bg-gray-50/60">
+      <td className="px-3 py-2 font-mono text-xs text-gray-500">{id4(p.code)}</td>
+      <td className="px-3 py-2 text-sm font-medium text-gray-800">{p.name}</td>
+      <td className="px-3 py-2 text-xs text-gray-500">{p.CATEGORIAS?.name || '—'}</td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1 justify-end">
+          <input type="number" step="1" value={val}
+            onChange={e => setVal(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && changed) onSetStock(p, Number(val)); }}
+            className={`w-20 text-right border rounded-lg px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-primary-100 ${low ? 'text-red-600 font-bold border-red-200' : 'border-gray-200'}`} />
+          <span className="text-xs text-gray-400 w-7">{p.unit}</span>
+          {changed && (
+            <button onClick={() => onSetStock(p, Number(val))} title="Salvar quantidade"
+              className="p-1 rounded-md bg-green-100 text-green-700 hover:bg-green-200"><Check size={13} /></button>
+          )}
+        </div>
+      </td>
+      <td className="px-3 py-2 text-right text-xs text-gray-500">{Number(p.min_stock ?? 0)}</td>
+      <td className="px-3 py-2 text-right text-sm text-gray-600">{fmt(p.cost_price)}</td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1 justify-end">
+          <button onClick={() => onAdjust(p, 'in')} title="Entrada (+)"
+            className="p-1.5 rounded-md bg-green-50 text-green-600 hover:bg-green-100"><Plus size={14} /></button>
+          <button onClick={() => onAdjust(p, 'out')} title="Saída (−)"
+            className="p-1.5 rounded-md bg-orange-50 text-orange-600 hover:bg-orange-100"><Minus size={14} /></button>
+          <button onClick={() => onEdit(p)} title="Editar produto" className="btn-ghost p-1.5"><Edit2 size={14} /></button>
+          <button onClick={() => openSupplierWhatsApp(p)} title={p.FORNECEDORES?.phone ? `Solicitar a ${p.FORNECEDORES.name}` : 'Fornecedor sem telefone'}
+            className="btn-ghost p-1.5 text-green-600"><MessageCircle size={14} /></button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function StockPositionTable({ products, loading, onSetStock, onAdjust, onEdit }) {
+  if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-primary-500" /></div>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead>
+          <tr className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-400">
+            <th className="px-3 py-2 text-left font-semibold w-16">ID</th>
+            <th className="px-3 py-2 text-left font-semibold">Produto</th>
+            <th className="px-3 py-2 text-left font-semibold w-40">Tipo</th>
+            <th className="px-3 py-2 text-right font-semibold w-40">Estoque</th>
+            <th className="px-3 py-2 text-right font-semibold w-16">Mín.</th>
+            <th className="px-3 py-2 text-right font-semibold w-24">Custo</th>
+            <th className="px-3 py-2 text-right font-semibold w-40">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {products.map(p => (
+            <StockRow key={p.id} p={p} onSetStock={onSetStock} onAdjust={onAdjust} onEdit={onEdit} />
+          ))}
+          {products.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-gray-400 text-sm">Nenhum produto</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Modal de entrada/saída rápida
+function QuickAdjustModal({ target, onClose, onConfirm, pending }) {
+  const [qty, setQty] = useState('');
+  const [reason, setReason] = useState('');
+  if (!target) return null;
+  const isIn = target.dir === 'in';
+  return (
+    <Modal isOpen={!!target} onClose={onClose} title={isIn ? '➕ Entrada de estoque' : '➖ Saída de estoque'} size="sm">
+      <div className="space-y-4">
+        <div className={`rounded-xl px-3 py-2 ${isIn ? 'bg-green-50' : 'bg-orange-50'}`}>
+          <p className="text-sm font-semibold text-gray-800">{target.p.name}</p>
+          <p className="text-xs text-gray-500">Estoque atual: {target.p.current_stock} {target.p.unit}</p>
+        </div>
+        <div>
+          <label className="label">Quantidade {isIn ? 'a adicionar' : 'a retirar'} *</label>
+          <input type="number" step="1" min="1" className="input" autoFocus value={qty}
+            onChange={e => setQty(e.target.value)} placeholder="Ex.: 50"
+            onKeyDown={e => { if (e.key === 'Enter' && Number(qty) > 0) onConfirm(target, Number(qty), reason); }} />
+        </div>
+        <div>
+          <label className="label">Motivo / observação</label>
+          <input className="input" value={reason} onChange={e => setReason(e.target.value)}
+            placeholder={isIn ? 'Ex.: compra, devolução...' : 'Ex.: uso interno, brinde...'} />
+        </div>
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+          <button onClick={onClose} className="btn-secondary">Cancelar</button>
+          <button onClick={() => onConfirm(target, Number(qty), reason)} disabled={pending || !(Number(qty) > 0)}
+            className={`flex items-center gap-1.5 text-white rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 ${isIn ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-500 hover:bg-orange-600'}`}>
+            {pending ? <Loader2 size={14} className="animate-spin" /> : isIn ? <Plus size={14} /> : <Minus size={14} />}
+            {isIn ? 'Adicionar' : 'Retirar'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function Stock() {
   const { tenant } = useAuth();
   const [tab, setTab]             = useState('position');
   const [page, setPage]           = useState(1);
   const [showZeroOnly, setShowZeroOnly] = useState(false);
   const [perdaOpen, setPerdaOpen] = useState(false);
-  const [variantsProduct, setVariantsProduct] = useState(null); // ver variações ao clicar
+  const [productModal, setProductModal] = useState(null); // 'new' | produto p/ editar
+  const [adjust, setAdjust] = useState(null);             // { p, dir }
 
   // Modal de reposição
   const [replenishModal, setReplenishModal]             = useState(false);
@@ -461,6 +572,34 @@ export default function Stock() {
   const [protocolInput, setProtocolInput]               = useState('');
 
   const qc = useQueryClient();
+
+  // Ajuste de estoque (entrada/saída/definir quantidade)
+  const adjustMut = useMutation({
+    mutationFn: ({ product_id, quantity, notes }) => api.post('/stock/adjustment', { product_id, quantity, notes }),
+    onSuccess: () => {
+      qc.invalidateQueries(['stock-report']);
+      qc.invalidateQueries(['stock-movements']);
+      qc.invalidateQueries(['stock-movements-summary']);
+    },
+  });
+
+  function setStock(p, target) {
+    const delta = Number(target) - Number(p.current_stock ?? 0);
+    if (!delta) return;
+    adjustMut.mutate(
+      { product_id: p.id, quantity: delta, notes: `AJUSTE MANUAL: estoque definido para ${target} ${p.unit || ''}`.trim() },
+      { onSuccess: () => toast.success(`Estoque de ${p.name} = ${target}`) }
+    );
+  }
+  function applyAdjust(t, qty, reason) {
+    if (!(qty > 0)) { toast.error('Informe a quantidade'); return; }
+    const signed = t.dir === 'in' ? qty : -qty;
+    const tag = t.dir === 'in' ? 'ENTRADA' : 'SAÍDA';
+    adjustMut.mutate(
+      { product_id: t.p.id, quantity: signed, notes: `${tag}${reason ? `: ${reason}` : ''}` },
+      { onSuccess: () => { toast.success(`${tag} de ${qty} registrada`); setAdjust(null); } }
+    );
+  }
 
   // ── Movimentações ──────────────────────────────────────────────
   const { data: movements, isLoading: movLoading } = useQuery({
@@ -811,6 +950,14 @@ export default function Stock() {
               <AlertTriangle size={13} /> Registrar Perda
             </button>
           )}
+
+          {/* Novo produto direto da tela de estoque */}
+          {tab === 'position' && (
+            <button onClick={() => setProductModal('new')}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors">
+              <Plus size={13} /> Novo Produto
+            </button>
+          )}
         </div>
 
         {/* ── Aba: Lista Completa ───────────────────────────────── */}
@@ -821,8 +968,9 @@ export default function Stock() {
                 ✅ Nenhum produto negativo!
               </p>
             )}
-            <p className="px-1 pb-2 text-xs text-gray-400">💡 Clique em um produto para ver e pesquisar todas as variações.</p>
-            <Table columns={posColumns} data={displayProducts} loading={repLoading} onRowClick={row => setVariantsProduct(row)} />
+            <p className="px-1 pb-2 text-xs text-gray-400">💡 Edite a quantidade direto na lista (✓ para salvar), use + / − para entrada e saída, ou ✏️ para editar o produto.</p>
+            <StockPositionTable products={displayProducts} loading={repLoading}
+              onSetStock={setStock} onAdjust={(p, dir) => setAdjust({ p, dir })} onEdit={p => setProductModal(p)} />
           </>
         )}
 
@@ -1109,7 +1257,18 @@ export default function Stock() {
         />
       </Modal>
 
-      <ProductVariantsModal product={variantsProduct} onClose={() => setVariantsProduct(null)} />
+      {/* Novo / editar produto direto da tela de estoque */}
+      <Modal isOpen={!!productModal} onClose={() => setProductModal(null)}
+        title={productModal === 'new' ? 'Novo Produto' : 'Editar Produto'} size="lg">
+        <ProductForm
+          product={productModal === 'new' ? null : productModal}
+          onSaved={() => { setProductModal(null); qc.invalidateQueries(['stock-report']); }}
+          onCancel={() => setProductModal(null)} />
+      </Modal>
+
+      {/* Entrada / saída rápida */}
+      <QuickAdjustModal target={adjust} pending={adjustMut.isPending}
+        onClose={() => setAdjust(null)} onConfirm={applyAdjust} />
 
       {/* ── Confirmação: Reenvio de solicitação já pendente ──────── */}
       {confirmResend && (

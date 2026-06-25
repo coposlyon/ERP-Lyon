@@ -5,7 +5,6 @@ import { ArrowLeft, Check, ShoppingCart, Minus, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import storeApi from './storeApi';
 import Bottle from './Bottle';
-import { resolveColor, needsBorder } from './colors';
 import { useCart } from './CartContext';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -39,14 +38,8 @@ export default function ProductPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { add } = useCart();
-  const [selVariant, setSelVariant] = useState(null);
   const [printMethod, setPrintMethod] = useState(null);
   const [qty, setQty] = useState(1);
-
-  // variações importadas (cor / borda / volume como listas de texto)
-  const [selColor, setSelColor] = useState(null);
-  const [selBorder, setSelBorder] = useState(null);
-  const [selVolume, setSelVolume] = useState(null);
 
   const { data: product, isLoading, error } = useQuery({
     queryKey: ['store-product', id],
@@ -54,27 +47,9 @@ export default function ProductPage() {
     retry: false,
   });
 
-  const varColors  = product?.variations?.colors  || [];
-  const varBorders = product?.variations?.borders || [];
-  const varVolumes = product?.variations?.volumes || [];
-
-  // seleciona a 1ª opção de cada variação ao carregar
-  useEffect(() => {
-    if (!product) return;
-    if (varColors.length)  setSelColor(c => c ?? varColors[0]);
-    if (varVolumes.length) setSelVolume(v => v ?? varVolumes[0]);
-  }, [product]); // eslint-disable-line
-
   const minQty = Math.max(1, product?.min_order_qty || 1);
 
-  useEffect(() => {
-    if (product?.variants?.length && !selVariant) setSelVariant(product.variants[0]);
-  }, [product, selVariant]);
-
-  // ao carregar o produto, garante a quantidade mínima do pedido
-  useEffect(() => {
-    if (product) setQty(q => Math.max(q, minQty));
-  }, [product, minQty]);
+  useEffect(() => { if (product) setQty(q => Math.max(q, minQty)); }, [product, minQty]);
 
   // seleciona o primeiro tipo de impressão disponível
   useEffect(() => {
@@ -84,26 +59,19 @@ export default function ProductPage() {
   }, [product]);
 
   const gradient = /degrad/i.test(product?.name || '');
-  const bottleColor = selColor ? resolveColor({ name: selColor, value: selColor })
-    : selVariant ? resolveColor(selVariant) : '#F26522';
-  // foto a exibir: cor selecionada (por cor ou por variação) → principal → qualquer foto → desenho 3D
-  const upc = s => String(s || '').toUpperCase();
-  const varImgs = product?.variations?.images || {};
-  const byColorVariant = selColor
-    ? varImgs[Object.keys(varImgs).find(k => upc(k).includes(upc(selColor))) || ''] || null
-    : null;
+  // foto: foto principal → qualquer foto que o produto tenha (compatível com cadastros antigos)
   const anyImg = product?.image_url
     || (product?.variation_images && Object.values(product.variation_images).find(Boolean))
-    || Object.values(varImgs).find(Boolean)
+    || (product?.variations?.images && Object.values(product.variations.images).find(Boolean))
     || null;
-  const productImg = (selColor && product?.variation_images?.[selColor]) || byColorVariant || product?.image_url || anyImg || null;
+  const productImg = anyImg;
   const methods = availableMethods(product);
   const table = methodTable(product, printMethod);
 
   const unitPrice = useMemo(() => {
     if (!product) return 0;
-    return precoFaixa(table.tiers, table.base, qty) + (Number(selVariant?.extra_price) || 0);
-  }, [product, qty, selVariant, printMethod]); // eslint-disable-line
+    return precoFaixa(table.tiers, table.base, qty);
+  }, [product, qty, printMethod]); // eslint-disable-line
 
   if (isLoading) return <div className="max-w-6xl mx-auto px-4 py-16 text-center text-gray-400">Carregando...</div>;
   if (error || !product) return (
@@ -114,14 +82,10 @@ export default function ProductPage() {
   );
 
   function addToCart() {
-    if (varBorders.length && !selBorder) { toast.error('Escolha a borda'); return; }
     const methodLabel = methods.find(m => m.key === printMethod)?.label;
     add({
       product_id: product.id,
       product_name: product.name,
-      color: selColor || product.color_label || selVariant?.name || null,
-      border: selBorder || null,
-      volume: selVolume || null,
       print_method: printMethod || null,
       print_name: methodLabel || null,
       unit_price: unitPrice,
@@ -137,16 +101,16 @@ export default function ProductPage() {
       </Link>
 
       <div className="grid md:grid-cols-2 gap-8">
-        {/* Visual — foto real (troca com a cor) ou desenho 3D */}
+        {/* Visual — foto real ou desenho 3D */}
         <div className="relative rounded-3xl overflow-hidden flex items-center justify-center py-16 bg-gray-900">
-          <div className="st-blob" style={{ width: 240, height: 240, background: bottleColor, top: '8%', left: '6%', opacity: .5 }} />
-          <div className="st-blob" style={{ width: 200, height: 200, background: bottleColor, bottom: '4%', right: '8%', opacity: .35, animationDelay: '3s' }} />
+          <div className="st-blob" style={{ width: 240, height: 240, background: '#F26522', top: '8%', left: '6%', opacity: .5 }} />
+          <div className="st-blob" style={{ width: 200, height: 200, background: '#F26522', bottom: '4%', right: '8%', opacity: .35, animationDelay: '3s' }} />
           {productImg ? (
             <img key={productImg} src={productImg} alt={product.name}
               className="relative z-10 max-h-[360px] w-auto object-contain st-float drop-shadow-2xl" />
           ) : (
             <div className="relative st-float">
-              <Bottle color={bottleColor} gradient={gradient} size={240} />
+              <Bottle color="#F26522" gradient={gradient} size={240} />
             </div>
           )}
         </div>
@@ -154,108 +118,13 @@ export default function ProductPage() {
         {/* Info */}
         <div>
           {product.category && <span className="text-xs text-orange-500 font-semibold uppercase tracking-wide">{product.category}</span>}
-          <h1 className="text-3xl font-extrabold text-gray-900 mt-1">{product.group || product.name}</h1>
+          <h1 className="text-3xl font-extrabold text-gray-900 mt-1">{product.name}</h1>
           {product.description && <p className="text-gray-500 mt-2">{product.description}</p>}
 
           <div className="mt-4">
             <p className="text-sm text-gray-400">{product.price_tiers?.length ? 'a partir de' : 'preço unitário'}</p>
             <p className="text-3xl font-extrabold text-gray-900">{fmt(unitPrice)}</p>
           </div>
-
-          {/* Variações importadas: Cor */}
-          {varColors.length > 0 && (
-            <div className="mt-6">
-              <p className="text-sm font-semibold text-gray-700 mb-2">
-                Cor: <span className="text-gray-500 font-normal">{selColor}</span>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {varColors.map(cName => {
-                  const c = resolveColor({ name: cName, value: cName });
-                  const active = selColor === cName;
-                  return (
-                    <button key={cName} onClick={() => setSelColor(cName)} title={cName}
-                      className={`w-9 h-9 rounded-full transition-transform ${active ? 'ring-2 ring-orange-500 ring-offset-2 scale-110' : 'hover:scale-105'}`}
-                      style={{ background: c, border: needsBorder(c) ? '1px solid #D8DCE2' : 'none' }} />
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Variações importadas: Borda */}
-          {varBorders.length > 0 && (
-            <div className="mt-5">
-              <p className="text-sm font-semibold text-gray-700 mb-2">
-                Borda: <span className="text-gray-500 font-normal">{selBorder || 'selecione'}</span>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => setSelBorder(null)}
-                  className={`px-3 py-1.5 rounded-lg text-sm border-2 transition-colors ${!selBorder ? 'border-orange-500 bg-orange-50 text-orange-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                  Sem borda
-                </button>
-                {varBorders.map(b => (
-                  <button key={b} onClick={() => setSelBorder(b)}
-                    className={`px-3 py-1.5 rounded-lg text-sm border-2 transition-colors ${selBorder === b ? 'border-orange-500 bg-orange-50 text-orange-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                    {b.replace(/^BORDA\s*/i, '')}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Variações importadas: Volume */}
-          {varVolumes.length > 1 && (
-            <div className="mt-5">
-              <p className="text-sm font-semibold text-gray-700 mb-2">
-                Volume: <span className="text-gray-500 font-normal">{selVolume}</span>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {varVolumes.map(v => (
-                  <button key={v} onClick={() => setSelVolume(v)}
-                    className={`px-3 py-1.5 rounded-lg text-sm border-2 transition-colors ${selVolume === v ? 'border-orange-500 bg-orange-50 text-orange-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                    {v}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Cores do modelo (cada cor é um produto) */}
-          {product.color_options?.length > 1 && (
-            <div className="mt-6">
-              <p className="text-sm font-semibold text-gray-700 mb-2">
-                Cor: <span className="text-gray-500 font-normal">{product.color_label}</span>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {product.color_options.map(o => (
-                  <button key={o.id} onClick={() => navigate(`/loja/produto/${o.id}`)}
-                    className={`px-3 py-1.5 rounded-lg text-sm border-2 transition-colors ${o.id === product.id ? 'border-orange-500 bg-orange-50 text-orange-700 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Cores */}
-          {product.variants?.length > 0 && (
-            <div className="mt-6">
-              <p className="text-sm font-semibold text-gray-700 mb-2">
-                Cor: <span className="text-gray-500 font-normal">{selVariant?.name}</span>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {product.variants.map(v => {
-                  const c = resolveColor(v);
-                  const active = selVariant?.id === v.id;
-                  return (
-                    <button key={v.id} onClick={() => setSelVariant(v)} title={v.name}
-                      className={`w-9 h-9 rounded-full transition-transform ${active ? 'ring-2 ring-orange-500 ring-offset-2 scale-110' : 'hover:scale-105'}`}
-                      style={{ background: c, border: needsBorder(c) ? '1px solid #D8DCE2' : 'none' }} />
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Tipo de impressão */}
           {methods.length > 0 && (
