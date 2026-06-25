@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Globe, Loader2, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Globe, Loader2, ChevronRight, ChevronLeft, Truck, Save, MapPin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -391,14 +391,7 @@ function SaleDetail({ saleId, onChanged }) {
               </div>
             )}
 
-            {tab === 'transportadores' && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-                <div><span className="text-gray-400 text-xs block">Vr. Frete</span><b>{fmt(sale.freight)}</b></div>
-                <div><span className="text-gray-400 text-xs block">Data da Saída</span><b>{d(sale.ship_date) || '—'}</b></div>
-                <div><span className="text-gray-400 text-xs block">Previsão de Entrega</span><b>{d(sale.delivery_date || sale.max_delivery_date) || '—'}</b></div>
-                <div><span className="text-gray-400 text-xs block">Data do Evento</span><b>{d(sale.event_date) || '—'}</b></div>
-              </div>
-            )}
+            {tab === 'transportadores' && <TransportTab key={sale.id} sale={sale} onChanged={onChanged} />}
 
             {tab === 'status' && (
               <div>
@@ -439,6 +432,80 @@ function SaleDetail({ saleId, onChanged }) {
             )}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Aba Transportadores: define a transportadora + código de rastreio e consulta o rastreio (J&T)
+function TransportTab({ sale, onChanged }) {
+  const qc = useQueryClient();
+  const [carrierId, setCarrierId] = useState(sale.carrier_id || '');
+  const [tracking, setTracking] = useState(sale.tracking_code || '');
+  const [events, setEvents] = useState(null);
+
+  const { data: carriers } = useQuery({ queryKey: ['carriers'], queryFn: () => api.get('/shipping/carriers') });
+
+  const saveMut = useMutation({
+    mutationFn: () => api.patch(`/sales/${sale.id}/shipping`, { carrier_id: carrierId || null, tracking_code: tracking }),
+    onSuccess: () => { qc.invalidateQueries(['sale', sale.id]); onChanged?.(); toast.success('Transportadora salva'); },
+    onError: (e) => toast.error(e.error || 'Erro ao salvar'),
+  });
+
+  const trackMut = useMutation({
+    mutationFn: () => api.get(`/shipping/track/${encodeURIComponent(tracking.trim())}`),
+    onSuccess: (r) => { setEvents(r.events || []); if (!(r.events || []).length) toast('Sem movimentações ainda.'); },
+    onError: (e) => { setEvents(null); toast.error(e.error || 'Não foi possível rastrear'); },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+        <div><span className="text-gray-400 text-xs block">Vr. Frete</span><b>{fmt(sale.freight)}</b></div>
+        <div><span className="text-gray-400 text-xs block">Data da Saída</span><b>{d(sale.ship_date) || '—'}</b></div>
+        <div><span className="text-gray-400 text-xs block">Previsão de Entrega</span><b>{d(sale.delivery_date || sale.max_delivery_date) || '—'}</b></div>
+        <div><span className="text-gray-400 text-xs block">Data do Evento</span><b>{d(sale.event_date) || '—'}</b></div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3 items-end border-t border-gray-100 pt-3">
+        <div>
+          <label className="label flex items-center gap-1"><Truck size={13} /> Transportadora</label>
+          <select className="input text-sm" value={carrierId} onChange={e => setCarrierId(e.target.value)}>
+            <option value="">— selecione —</option>
+            {(carriers?.data || []).map(c => <option key={c.id} value={c.id}>{c.trade_name || c.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Código de rastreio</label>
+          <div className="flex gap-2">
+            <input className="input text-sm font-mono" value={tracking} onChange={e => setTracking(e.target.value)} placeholder="Ex.: JT0000000000" />
+            <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending} className="btn-secondary text-sm whitespace-nowrap">
+              {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <button onClick={() => trackMut.mutate()} disabled={trackMut.isPending || !tracking.trim()}
+          className="flex items-center gap-1.5 text-sm font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg px-3 py-1.5 disabled:opacity-40">
+          {trackMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <MapPin size={14} />} Rastrear encomenda
+        </button>
+        {events && events.length > 0 && (
+          <ul className="mt-3 space-y-2">
+            {events.map((ev, i) => (
+              <li key={i} className="flex gap-3 text-xs">
+                <span className="text-gray-400 whitespace-nowrap w-32 shrink-0">{ev.time ? dt(ev.time) : ''}</span>
+                <span>
+                  <b className="text-gray-800">{ev.status || ev.desc || '—'}</b>
+                  {ev.where && <span className="text-gray-500"> · {ev.where}</span>}
+                  {ev.desc && ev.desc !== ev.status && <span className="text-gray-500 block">{ev.desc}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {events && events.length === 0 && <p className="text-xs text-gray-400 mt-2">Sem movimentações registradas para este código.</p>}
       </div>
     </div>
   );

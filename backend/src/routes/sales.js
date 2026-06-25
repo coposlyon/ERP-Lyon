@@ -335,6 +335,22 @@ router.post('/:id/start', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Define a transportadora + código de rastreio do pedido (aba Transportadores)
+router.patch('/:id/shipping', async (req, res) => {
+  const { carrier_id, tracking_code } = req.body || {};
+  try {
+    const patch = {
+      carrier_id: carrier_id || null,
+      tracking_code: (tracking_code || '').trim() || null,
+    };
+    const { data, error } = await supabase.from('VENDAS').update(patch)
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
+    if (error) throw error;
+    audit(req, 'update', 'sale', req.params.id, { action: 'shipping', tracking_code: patch.tracking_code });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Exclusão do pedido de venda — só ADMIN e com a senha dele
 router.post('/:id/delete', async (req, res) => {
   try {

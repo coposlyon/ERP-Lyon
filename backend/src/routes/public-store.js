@@ -4,6 +4,7 @@ const supabase = require('../config/supabase');
 const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
 const { uploadDataUrl } = require('../lib/storage');
 const { calcularFrete, packItem } = require('../lib/frete');
+const { cotar, ufFromCep } = require('../lib/shipping');
 
 // Loja pública: serve UM tenant (a empresa dona da loja).
 // Sem autenticação — montada antes do authMiddleware.
@@ -191,7 +192,7 @@ router.get('/products/:id', async (req, res) => {
 
 // ── Enviar pedido de orçamento ────────────────────────────
 router.post('/quote', async (req, res) => {
-  const { customer = {}, items = [], notes, event_date, customer_id } = req.body;
+  const { customer = {}, items = [], notes, event_date, customer_id, freight } = req.body;
   const name  = (customer.name  || '').trim();
   const phone = (customer.phone || '').trim();
   const email = (customer.email || '').trim();
@@ -283,13 +284,14 @@ router.post('/quote', async (req, res) => {
     } catch { /* sem RPC: número fica nulo */ }
 
     const subtotal = orderItems.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+    const freightVal = Number(freight) || 0;
     const eventNote = eventDate ? `\nData do evento: ${eventDate.split('-').reverse().join('/')}` : '';
     const fullNotes = `PEDIDO PELO SITE — Contato: ${name} / ${phone}${email ? ' / ' + email : ''}${company ? ' / ' + company : ''}${eventNote}${notes ? `\nObs: ${notes}` : ''}`;
 
     // Pedido do site → vira VENDA "Aguardando aprovação" (source=site, status=open)
     const baseSale = {
       tenant_id: STORE_TENANT, user_id: null, number,
-      customer_id: customerId, subtotal, discount: 0, total: subtotal,
+      customer_id: customerId, subtotal, discount: 0, freight: freightVal, total: subtotal + freightVal,
       notes: fullNotes, status: 'iniciando_pedido',
     };
     const trySale = (extra) => supabase.from('VENDAS').insert({ ...baseSale, ...extra }).select('id, number').single();
@@ -739,18 +741,38 @@ router.post('/frete', async (req, res) => {
 
     const ids = [...new Set(items.map(i => i.product_id).filter(Boolean))];
     let products = [];
+    let qty = 0, subtotal = 0;
     if (ids.length) {
       const { data: prods } = await supabase
         .from('PRODUTOS').select('id, sale_price, height, weight, length, width')
         .eq('tenant_id', STORE_TENANT).in('id', ids);
       const pm = Object.fromEntries((prods || []).map(p => [p.id, p]));
       products = items.filter(i => pm[i.product_id]).map(i => packItem(pm[i.product_id], i.quantity));
+      for (const i of items) {
+        const p = pm[i.product_id]; if (!p) continue;
+        qty += Number(i.quantity) || 0;
+        subtotal += (Number(p.sale_price) || 0) * (Number(i.quantity) || 0);
+      }
     }
-    if (!products.length) return res.status(400).json({ error: 'Carrinho sem produtos do catálogo para calcular frete.' });
 
-    const out = await calcularFrete({ fromCep, toCep: cep, products });
-    if (!out.ok) return res.status(400).json({ error: out.error });
-    res.json({ options: out.options });
+    // 1) Melhor Envio (cotação real multi-transportadora) — se houver token
+    if (process.env.MELHORENVIO_TOKEN && products.length) {
+      const out = await calcularFrete({ fromCep, toCep: cep, products });
+      if (out.ok && (out.options || []).length) return res.json({ options: out.options });
+    }
+
+    // 2) Fallback: tabela por estado (Configurações → Transportadora)
+    const uf = ufFromCep(cep);
+    if (!uf) return res.status(400).json({ error: 'Não consegui identificar o estado pelo CEP.' });
+    const r = await cotar(STORE_TENANT, { uf, cep, qty, subtotal });
+    const options = [{
+      id: 'tabela',
+      company: 'Entrega',
+      service: r.free ? 'Frete grátis' : 'Padrão',
+      price: r.price,
+      days: r.days,
+    }];
+    res.json({ options });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -51,6 +51,7 @@ export default function CartPage() {
         customer: form,
         customer_id: customer?.id || null,
         event_date: form.event_date || null,
+        freight: freteSel?.price || 0,
         notes: (form.notes || '') + freteNote,
         items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, color: i.color, border: i.border || null, volume: i.volume || null, print_method: i.print_method || null, quantity: i.quantity, design: i.design || null, preview: i.preview || null })),
       });
