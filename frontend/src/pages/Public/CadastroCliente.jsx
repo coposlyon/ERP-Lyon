@@ -16,6 +16,15 @@ const maskPhone = v => { const d=v.replace(/\D/g,'').slice(0,11); return d.lengt
 const maskCEP = v => v.replace(/\D/g,'').slice(0,8).replace(/(\d{5})(\d)/,'$1-$2');
 const maskDate = v => v.replace(/\D/g,'').slice(0,8).replace(/(\d{2})(\d)/,'$1/$2').replace(/(\d{2})(\d)/,'$1/$2');
 const igHandle = v => String(v||'').trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i,'').replace(/[/?].*$/,'').replace(/^@/,'');
+// Valida o @perfil: 1–30 caracteres, só letras/números/ponto/_, sem ponto no início/fim nem ".."
+function validIG(v) {
+  const h = igHandle(v);
+  if (!h) return true; // campo opcional
+  if (h.length > 30) return false;
+  if (!/^[a-zA-Z0-9._]+$/.test(h)) return false;
+  if (/^\./.test(h) || /\.$/.test(h) || /\.\./.test(h)) return false;
+  return true;
+}
 
 // Data digitada (DD/MM/AAAA) → ISO (AAAA-MM-DD). Valida data real, ano 1900..hoje.
 function brToISO(s) {
@@ -96,12 +105,13 @@ export default function CadastroCliente() {
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  // Ao concluir, mostra a animação e leva o cliente para a loja JÁ LOGADO.
+  // Cliente que ENTROU (já era cadastrado) vai para a loja logado.
+  // Quem acabou de FAZER o cadastro volta para o WhatsApp (ver render abaixo).
   useEffect(() => {
-    if (!done) return;
+    if (!done || doneKind !== 'login') return;
     const t = setTimeout(() => navigate('/loja'), 2800);
     return () => clearTimeout(t);
-  }, [done, navigate]);
+  }, [done, doneKind, navigate]);
 
   // Abertura: botão "INICIAR CADASTRO" → toca o vídeo (com som) → preto → card sobe.
   const [phase, setPhase] = useState('start'); // start | video | black2 | form
@@ -256,6 +266,7 @@ export default function CadastroCliente() {
     if (!f.email.trim()) return toast.error('Informe o e-mail');
     if (!/^\S+@\S+\.\S+$/.test(f.email.trim())) return toast.error('E-mail inválido');
     if (!f.phone.trim()) return toast.error('Informe o telefone / WhatsApp');
+    if (f.instagram.trim() && !validIG(f.instagram)) return toast.error('Instagram inválido — confira o @perfil (só letras, números, ponto e _)');
     if (!addr.zip.trim() || !addr.street.trim() || !addr.number.trim() || !addr.neighborhood.trim() || !addr.city.trim() || !addr.state.trim())
       return toast.error('Preencha o endereço completo (CEP, rua, número, bairro, cidade e estado)');
     setSending(true);
@@ -294,9 +305,10 @@ export default function CadastroCliente() {
     </>
   );
 
-  // Modo manutenção: mostra só o card "VOCÊ CONCLUIU O CADASTRO"
-  if (done && storeCfg?.maintenance) {
-    return <CadastroDone message={storeCfg.message} whatsapp={storeCfg.whatsapp} />;
+  // Após FAZER/ATUALIZAR o cadastro → mostra "VOCÊ CONCLUIU O CADASTRO" e
+  // volta para o WhatsApp (não entra na loja). Só quem fez login entra na loja.
+  if (done && doneKind !== 'login') {
+    return <CadastroDone message={storeCfg?.message} whatsapp={storeCfg?.whatsapp} />;
   }
 
   if (done) {
@@ -563,14 +575,21 @@ function ReviewRow({ label, value }) {
 
 function InstaInput({ value, onChange }) {
   const handle = igHandle(value);
+  const invalid = !!String(value).trim() && !validIG(value);
   return (
-    <div className="relative">
-      <Instagram size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" />
-      <input className={`${INPUT} pl-9 pr-9`} value={value} placeholder="@seu_perfil" onChange={e => onChange(e.target.value)} />
-      {handle && (
-        <a href={`https://instagram.com/${handle}`} target="_blank" rel="noreferrer" title="Abrir perfil"
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-pink-500"><ExternalLink size={15} /></a>
-      )}
+    <div>
+      <div className="relative">
+        <Instagram size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" />
+        <input className={`${INPUT} pl-9 pr-9 ${invalid ? 'border-red-400 focus:border-red-400 focus:ring-red-100' : ''}`}
+          value={value} placeholder="@seu_perfil" onChange={e => onChange(e.target.value)} />
+        {handle && !invalid && (
+          <a href={`https://instagram.com/${handle}`} target="_blank" rel="noreferrer" title="Abrir perfil para conferir"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-pink-500"><ExternalLink size={15} /></a>
+        )}
+      </div>
+      {invalid
+        ? <p className="text-xs text-red-500 mt-1">Instagram inválido — use só letras, números, ponto e _ (ex.: @lyon.copos)</p>
+        : handle && <p className="text-xs text-gray-400 mt-1">Toque no ícone → para conferir se abre o perfil certo.</p>}
     </div>
   );
 }

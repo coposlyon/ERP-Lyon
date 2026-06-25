@@ -100,7 +100,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
   const {
     customer_id, type, items, notes, discount, delivery_date,
     artwork_url, artwork_notes, payment_method, installments, first_due_date,
-    operation_date, event_date, ship_date, max_delivery_date, order_key,
+    operation_date, event_date, ship_date, max_delivery_date, order_key, freight,
   } = req.body;
 
   if (!items || items.length === 0) {
@@ -150,6 +150,9 @@ router.post('/', validate(saleSchema), async (req, res) => {
       if (delivery_date) patch.delivery_date = delivery_date;
       if (max_delivery_date) patch.max_delivery_date = max_delivery_date;
       if (order_key) patch.order_key = order_key;
+      // Frete: grava o valor e soma no total da venda
+      const freightVal = Number(freight) || 0;
+      if (freightVal > 0) { patch.freight = freightVal; patch.total = (Number(data.total) || 0) + freightVal; }
       // tenta gravar tudo; se alguma coluna não existir, remove a citada e tenta de novo
       let attempt = { ...patch };
       for (let i = 0; i < 6; i++) {
@@ -179,14 +182,15 @@ router.post('/', validate(saleSchema), async (req, res) => {
 // Caminho legado (não transacional) — usado apenas enquanto a função
 // criar_venda não tiver sido criada no banco via MIGRATIONS.sql
 async function legacyCreateSale(req, res) {
-  const { customer_id, type, items, notes, discount, delivery_date, artwork_url, artwork_notes, payment_method, operation_date } = req.body;
+  const { customer_id, type, items, notes, discount, delivery_date, artwork_url, artwork_notes, payment_method, operation_date, freight } = req.body;
   try {
     const { data: nextNumber } = await supabase
       .rpc('proximo_numero_venda', { p_tenant_id: req.tenantId });
 
     const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
     const totalDiscount = discount || 0;
-    const total = subtotal - totalDiscount;
+    const freightVal = Number(freight) || 0;
+    const total = subtotal - totalDiscount + freightVal;
 
     const { data: sale, error: saleError } = await supabase
       .from('VENDAS')
@@ -200,6 +204,7 @@ async function legacyCreateSale(req, res) {
         ...(operation_date ? { operation_date } : {}),
         subtotal,
         discount: totalDiscount,
+        freight: freightVal,
         total,
         notes,
         artwork_url,

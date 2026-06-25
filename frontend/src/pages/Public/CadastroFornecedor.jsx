@@ -12,6 +12,14 @@ const maskCNPJ = v => v.replace(/\D/g,'').slice(0,14).replace(/(\d{2})(\d)/,'$1.
 const maskPhone = v => { const d=v.replace(/\D/g,'').slice(0,11); return d.length<=10 ? d.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{4})(\d{1,4})$/,'$1-$2') : d.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{5})(\d{1,4})$/,'$1-$2'); };
 const maskCEP = v => v.replace(/\D/g,'').slice(0,8).replace(/(\d{5})(\d)/,'$1-$2');
 const igHandle = v => String(v||'').trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i,'').replace(/[/?].*$/,'').replace(/^@/,'');
+function validIG(v) {
+  const h = igHandle(v);
+  if (!h) return true;
+  if (h.length > 30) return false;
+  if (!/^[a-zA-Z0-9._]+$/.test(h)) return false;
+  if (/^\./.test(h) || /\.$/.test(h) || /\.\./.test(h)) return false;
+  return true;
+}
 
 function validCNPJ(v) {
   const c = String(v||'').replace(/\D/g,'');
@@ -47,14 +55,19 @@ function Starfield() {
 
 function InstaInput({ value, onChange }) {
   const handle = igHandle(value);
+  const invalid = !!String(value).trim() && !validIG(value);
   return (
-    <div className="relative">
-      <Instagram size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" />
-      <input className={`${INPUT} pl-9 pr-9`} value={value} placeholder="@sua_empresa" onChange={e => onChange(e.target.value)} />
-      {handle && (
-        <a href={`https://instagram.com/${handle}`} target="_blank" rel="noreferrer" title="Abrir perfil"
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-pink-500"><ExternalLink size={15} /></a>
-      )}
+    <div>
+      <div className="relative">
+        <Instagram size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-500" />
+        <input className={`${INPUT} pl-9 pr-9 ${invalid ? 'border-red-400 focus:border-red-400 focus:ring-red-100' : ''}`}
+          value={value} placeholder="@sua_empresa" onChange={e => onChange(e.target.value)} />
+        {handle && !invalid && (
+          <a href={`https://instagram.com/${handle}`} target="_blank" rel="noreferrer" title="Abrir perfil para conferir"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-pink-500"><ExternalLink size={15} /></a>
+        )}
+      </div>
+      {invalid && <p className="text-xs text-red-500 mt-1">Instagram inválido — use só letras, números, ponto e _</p>}
     </div>
   );
 }
@@ -145,6 +158,7 @@ export default function CadastroFornecedor() {
     if (!f.contact_name.trim()) return toast.error('Informe o contato / vendedor(a)');
     if (!f.email.trim()) return toast.error('Informe o e-mail');
     if (!/^\S+@\S+\.\S+$/.test(f.email.trim())) return toast.error('E-mail inválido');
+    if (f.instagram.trim() && !validIG(f.instagram)) return toast.error('Instagram inválido — confira o @perfil');
     if (!f.phone.trim()) return toast.error('Informe o telefone / WhatsApp');
     if (!addr.zip.trim() || !addr.street.trim() || !addr.number.trim() || !addr.neighborhood.trim() || !addr.city.trim() || !addr.state.trim())
       return toast.error('Preencha o endereço completo (CEP, rua, número, bairro, cidade e estado)');
@@ -173,25 +187,9 @@ export default function CadastroFornecedor() {
   );
 
   // Modo manutenção: mostra só o card "VOCÊ CONCLUIU O CADASTRO"
-  if (done && storeCfg?.maintenance) {
-    return <CadastroDone message={storeCfg.message} whatsapp={storeCfg.whatsapp} />;
-  }
-
+  // Concluiu o cadastro → volta para o WhatsApp.
   if (done) {
-    return (
-      <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
-        {Bg}
-        <div className="relative z-10 bg-white/90 backdrop-blur rounded-3xl shadow-2xl max-w-md w-full p-8 text-center st-rise">
-          <div className="relative mx-auto mb-5 w-20 h-20">
-            <span className="absolute inset-0 rounded-full bg-green-100 st-pulse" />
-            <CheckCircle2 size={80} className="relative text-green-500 mx-auto" />
-          </div>
-          <h1 className="text-2xl font-black text-gray-900">Cadastro enviado! 🎉</h1>
-          <p className="text-lg font-bold st-gradient-text mt-1">Obrigado!</p>
-          <p className="text-gray-500 mt-3">Recebemos os dados da sua empresa. Em breve nossa equipe entra em contato. 💜</p>
-        </div>
-      </div>
-    );
+    return <CadastroDone message={storeCfg?.message} whatsapp={storeCfg?.whatsapp} />;
   }
 
   return (

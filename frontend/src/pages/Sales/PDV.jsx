@@ -243,7 +243,8 @@ export default function PDV({ onDone }) {
         ? Math.min(subtotal, Math.round(subtotal * Number(coupon.discount_value)) / 100)
         : Math.min(subtotal, Number(coupon.discount_value)))
     : 0;
-  const total = Math.max(0, subtotal - discountValue - couponDiscount);
+  const freteValue = frete && !frete.free ? (Number(frete.price) || 0) : 0;
+  const total = Math.max(0, subtotal - discountValue - couponDiscount + freteValue);
   const received = parseFloat(receivedAmount) || 0;
   const change = paymentMethod === 'cash' && received > 0 ? received - total : 0;
 
@@ -276,6 +277,7 @@ export default function PDV({ onDone }) {
       })),
       discount: discountValue + couponDiscount,
       coupon_code: coupon?.code || null,
+      freight: freteValue,
       payment_method: paymentMethod,
       ...(paymentMethod === 'a_prazo' ? { installments, first_due_date: firstDueDate } : {}),
     });

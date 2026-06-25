@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Loader2, Star, Instagram, CheckCircle2, XCircle, Ban } from 'lucide-react';
+import { Loader2, Star, Instagram, CheckCircle2, XCircle, Ban, ExternalLink } from 'lucide-react';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -37,6 +37,17 @@ function StarRating({ value, onChange }) {
 }
 
 const emptyAddress = { street:'', number:'', complement:'', neighborhood:'', city:'', state:'', zip:'' };
+
+// Instagram: extrai o @handle e valida o formato (letras/números/ponto/_)
+const igHandle = v => String(v||'').trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i,'').replace(/[/?].*$/,'').replace(/^@/,'');
+function validIG(v) {
+  const h = igHandle(v);
+  if (!h) return true; // opcional
+  if (h.length > 30) return false;
+  if (!/^[a-zA-Z0-9._]+$/.test(h)) return false;
+  if (/^\./.test(h) || /\.$/.test(h) || /\.\./.test(h)) return false;
+  return true;
+}
 
 // ── Formatação CPF / CNPJ ────────────────────────────────────────────────────
 function formatCpf(v) {
@@ -251,6 +262,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.name) { toast.error('Nome é obrigatório'); return; }
+    if (form.instagram && !validIG(form.instagram)) { toast.error('Instagram inválido — confira o @perfil (só letras, números, ponto e _)'); return; }
     // Bloqueia documento inválido (evita CPF/CNPJ digitado errado)
     const docDigits = (form.cpf_cnpj || '').replace(/\D/g, '');
     if (docDigits) {
@@ -397,8 +409,18 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
           <label className="label">Instagram</label>
           <div className="relative">
             <Instagram size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-400" />
-            <input className="input pl-8" value={form.instagram} onChange={e => set('instagram', e.target.value)} placeholder="@perfil" />
+            <input className={`input pl-8 ${form.instagram && !validIG(form.instagram) ? 'border-red-400 focus:border-red-400' : ''}`}
+              value={form.instagram} onChange={e => set('instagram', e.target.value)} placeholder="@perfil" />
+            {validIG(form.instagram) && igHandle(form.instagram) && (
+              <a href={`https://instagram.com/${igHandle(form.instagram)}`} target="_blank" rel="noreferrer"
+                title="Abrir perfil para conferir" className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-pink-500">
+                <ExternalLink size={14} />
+              </a>
+            )}
           </div>
+          {form.instagram && !validIG(form.instagram) && (
+            <p className="text-xs text-red-500 mt-1">Instagram inválido — use só letras, números, ponto e _</p>
+          )}
         </div>
 
         <div>

@@ -153,25 +153,9 @@ export default function CadastroTransportadora() {
   );
 
   // Modo manutenção: mostra só o card "VOCÊ CONCLUIU O CADASTRO"
-  if (done && storeCfg?.maintenance) {
-    return <CadastroDone message={storeCfg.message} whatsapp={storeCfg.whatsapp} />;
-  }
-
+  // Concluiu o cadastro → volta para o WhatsApp.
   if (done) {
-    return (
-      <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
-        {Bg}
-        <div className="relative z-10 bg-white/90 backdrop-blur rounded-3xl shadow-2xl max-w-md w-full p-8 text-center st-rise">
-          <div className="relative mx-auto mb-5 w-20 h-20">
-            <span className="absolute inset-0 rounded-full bg-green-100 st-pulse" />
-            <CheckCircle2 size={80} className="relative text-green-500 mx-auto" />
-          </div>
-          <h1 className="text-2xl font-black text-gray-900">Cadastro enviado! 🎉</h1>
-          <p className="text-lg font-bold st-gradient-text mt-1">Obrigado!</p>
-          <p className="text-gray-500 mt-3">Recebemos os dados da sua transportadora. Em breve nossa equipe entra em contato. 💜</p>
-        </div>
-      </div>
-    );
+    return <CadastroDone message={storeCfg?.message} whatsapp={storeCfg?.whatsapp} />;
   }
 
   return (
