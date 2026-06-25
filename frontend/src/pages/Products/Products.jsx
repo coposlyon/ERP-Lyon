@@ -6,7 +6,6 @@ import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import ProductForm from './ProductForm';
-import ProductVariantsModal from './ProductVariantsModal';
 import BulkEditModal from './BulkEditModal';
 import ImportStockModal from './ImportStockModal';
 import ImportProductsModal from './ImportProductsModal';
@@ -26,7 +25,6 @@ export default function Products() {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [delTarget, setDelTarget] = useState(null); // produto a apagar (confirmação)
-  const [variantsProduct, setVariantsProduct] = useState(null); // produto p/ ver as variações
   const [exporting, setExporting] = useState(false);
   const qc = useQueryClient();
 
@@ -89,11 +87,9 @@ export default function Products() {
   const columns = [
     { key: 'code', label: 'ID', width: 70, render: v => <span className="font-mono text-xs">{id4(v)}</span> },
     { key: 'name', label: 'Produto',
-      render: (v) => (
-        <span className="font-medium text-gray-800" title="Ver todas as variações (cores e bordas)">{v}</span>
-      )
+      render: (v) => <span className="font-medium text-gray-800">{v}</span>
     },
-    { key: 'CATEGORIAS', label: 'Categoria', render: (v, row) => v?.name || row.categories?.name || '—' },
+    { key: 'CATEGORIAS', label: 'Tipo', render: (v, row) => v?.name || row.categories?.name || '—' },
     { key: 'unit', label: 'Un.', width: 60 },
     { key: 'current_stock', label: 'Estoque', width: 100,
       render: (v, row) => (
@@ -183,16 +179,13 @@ export default function Products() {
           </form>
         </div>
 
-        <p className="px-4 pt-3 text-xs text-gray-400">💡 Clique em um produto para ver e pesquisar todas as variações (cores e bordas).</p>
-        <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => setVariantsProduct(row)} />
+        <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => openEdit(row)} />
         <Pagination page={page} total={data?.total || 0} limit={20} onPageChange={setPage} />
       </div>
 
       <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Editar Produto' : 'Novo Produto'} size="lg">
         <ProductForm product={editing} onSaved={onSaved} onCancel={closeModal} />
       </Modal>
-
-      <ProductVariantsModal product={variantsProduct} onClose={() => setVariantsProduct(null)} />
 
       <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
       <ImportStockModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
