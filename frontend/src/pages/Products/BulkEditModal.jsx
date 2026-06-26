@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Search, Loader2, Plus, Trash2, FolderPlus, Check, X } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import PrintPricingEditor, { cleanPrintPricing } from './PrintPricingEditor';
@@ -13,7 +13,11 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [categoryId, setCategoryId] = useState('');
   const [selected, setSelected] = useState({});
 
+  const [applyAll, setApplyAll] = useState(false);  // aplicar a TODOS do filtro
   // campos a aplicar (só os preenchidos)
+  const [newCategoryId, setNewCategoryId] = useState(''); // '' = não alterar | '__none__' = limpar | id = define
+  const [creatingType, setCreatingType] = useState(false);
+  const [newTypeName, setNewTypeName] = useState('');
   const [costPrice, setCostPrice] = useState('');
   const [salePrice, setSalePrice] = useState('');
   const [minOrder, setMinOrder] = useState('');
@@ -37,8 +41,25 @@ export default function BulkEditModal({ isOpen, onClose }) {
     enabled: isOpen,
   });
   const products = data?.data || [];
+  const totalMatching = data?.total || 0;
   const selectedIds = Object.keys(selected).filter(id => selected[id]);
   const allSelected = products.length > 0 && products.every(p => selected[p.id]);
+
+  const createType = useMutation({
+    mutationFn: (name) => api.post('/products/categories', { name }),
+    onSuccess: async (cat) => {
+      await qc.invalidateQueries(['categories-list']);
+      setNewCategoryId(cat.id); setCreatingType(false); setNewTypeName('');
+      toast.success('Tipo criado!');
+    },
+    onError: (e) => toast.error(e.error || 'Erro ao criar tipo'),
+  });
+  function confirmNewType() {
+    const n = newTypeName.trim().toUpperCase();
+    if (!n) return;
+    if ((cats || []).some(c => c.name?.toUpperCase() === n)) { toast.error('Esse tipo já existe'); return; }
+    createType.mutate(n);
+  }
 
   function toggle(id) { setSelected(s => ({ ...s, [id]: !s[id] })); }
   function toggleAll() {
@@ -54,6 +75,8 @@ export default function BulkEditModal({ isOpen, onClose }) {
   function removeTier(i) { setTiers(ts => ts.filter((_, idx) => idx !== i)); }
 
   const fields = {};
+  if (newCategoryId === '__none__') fields.category_id = null;
+  else if (newCategoryId) fields.category_id = newCategoryId;
   if (costPrice !== '') fields.cost_price = costPrice;
   if (salePrice !== '') fields.sale_price = salePrice;
   if (minOrder !== '') fields.min_order_qty = minOrder;
@@ -65,15 +88,23 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const hasFields = Object.keys(fields).length > 0;
 
   const apply = useMutation({
-    mutationFn: () => api.patch('/products/bulk', { ids: selectedIds, fields }),
+    mutationFn: () => api.patch('/products/bulk', applyAll
+      ? { all: true, match: { search, category_id: categoryId }, fields }
+      : { ids: selectedIds, fields }),
     onSuccess: (r) => {
       toast.success(`${r.updated} produto(s) atualizado(s)!`);
       qc.invalidateQueries(['products']);
       qc.invalidateQueries(['bulk-products']);
+      qc.invalidateQueries(['categories']);
+      qc.invalidateQueries(['categories-list']);
       setSelected({});
     },
     onError: (e) => toast.error(e.error || 'Erro ao aplicar'),
   });
+
+  const hasFilter = !!(search || categoryId);
+  const targetCount = applyAll ? totalMatching : selectedIds.length;
+  const canApply = hasFields && (applyAll ? hasFilter : selectedIds.length > 0);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Edição em massa" size="lg">
@@ -123,6 +154,37 @@ export default function BulkEditModal({ isOpen, onClose }) {
               </label>
             ))}
           </div>
+        </div>
+
+        {/* Alterar o TIPO (categoria) em massa */}
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Tipo do produto</p>
+          {creatingType ? (
+            <div className="flex gap-2">
+              <input className="input flex-1 uppercase" autoFocus value={newTypeName}
+                onChange={e => setNewTypeName(e.target.value.toUpperCase())}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirmNewType(); } if (e.key === 'Escape') { setCreatingType(false); setNewTypeName(''); } }}
+                placeholder="NOME DO NOVO TIPO (ex.: LONG DRINK - BORDA)" />
+              <button type="button" onClick={confirmNewType} disabled={createType.isPending} className="btn-primary px-3" title="Salvar tipo">
+                {createType.isPending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+              </button>
+              <button type="button" onClick={() => { setCreatingType(false); setNewTypeName(''); }} className="btn-secondary px-3"><X size={15} /></button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <select className="input flex-1" value={newCategoryId} onChange={e => setNewCategoryId(e.target.value)}>
+                <option value="">— não alterar o tipo —</option>
+                <option value="__none__">Sem tipo (limpar)</option>
+                {(cats || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <button type="button" onClick={() => setCreatingType(true)} className="btn-secondary px-3 whitespace-nowrap" title="Criar novo tipo">
+                <FolderPlus size={15} /> Novo tipo
+              </button>
+            </div>
+          )}
+          {newCategoryId && newCategoryId !== '__none__' && (
+            <p className="text-xs text-violet-600 mt-1">Os produtos selecionados passam a ser do tipo <b>{(cats || []).find(c => c.id === newCategoryId)?.name}</b>.</p>
+          )}
         </div>
 
         {/* Preço + qtd mínima */}
@@ -189,12 +251,24 @@ export default function BulkEditModal({ isOpen, onClose }) {
           <p className="text-xs text-gray-400 mt-1">CFOP interno do Paraná (5101) vira 6101 automático para outros estados na NF-e.</p>
         </div>
 
+        {/* Aplicar a todos do filtro */}
+        <label className={`flex items-start gap-2 text-sm rounded-xl border p-3 cursor-pointer ${applyAll ? 'border-violet-300 bg-violet-50' : 'border-gray-200'}`}>
+          <input type="checkbox" checked={applyAll} onChange={e => setApplyAll(e.target.checked)} className="mt-0.5 w-4 h-4 accent-violet-600" disabled={!hasFilter} />
+          <span>
+            <span className="font-medium text-gray-800">Aplicar a TODOS os {totalMatching} produtos do filtro</span>
+            <span className="block text-xs text-gray-500 mt-0.5">
+              Ignora a seleção e altera todos que casam com o filtro atual (tipo + busca), mesmo além dos {products.length} visíveis.
+              {!hasFilter && <b className="text-amber-600"> Filtre por tipo ou texto para habilitar.</b>}
+            </span>
+          </span>
+        </label>
+
         <div className="flex gap-2 justify-end pt-3 border-t border-gray-100 sticky bottom-0 bg-white">
           <button onClick={onClose} className="btn-secondary">Fechar</button>
           <button onClick={() => apply.mutate()}
-            disabled={apply.isPending || selectedIds.length === 0 || !hasFields}
+            disabled={apply.isPending || !canApply}
             className="btn-primary disabled:opacity-50">
-            {apply.isPending ? 'Aplicando...' : `Aplicar a ${selectedIds.length} produto(s)`}
+            {apply.isPending ? 'Aplicando...' : `Aplicar a ${targetCount} produto(s)`}
           </button>
         </div>
       </div>

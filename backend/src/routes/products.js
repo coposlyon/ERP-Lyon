@@ -84,9 +84,10 @@ router.get('/', async (req, res) => {
 // Edição em massa: aplica os campos enviados (fiscal, preço, qtd mínima,
 // faixas de preço) a vários produtos de uma vez. Só altera o que for enviado.
 router.patch('/bulk', async (req, res) => {
-  const { ids, fields = {} } = req.body;
-  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'Selecione ao menos um produto' });
+  const { ids, fields = {}, all = false, match = {} } = req.body;
   const patch = {};
+  // Tipo (categoria): '' / null = limpa (Sem tipo); id = define
+  if (fields.category_id !== undefined) patch.category_id = fields.category_id || null;
   // texto fiscal
   for (const k of ['ncm', 'cst', 'cfop']) {
     if (fields[k] != null && String(fields[k]).trim() !== '') patch[k] = String(fields[k]).trim();
@@ -131,10 +132,29 @@ router.patch('/bulk', async (req, res) => {
   if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nada para aplicar — preencha ao menos um campo' });
   patch.updated_at = new Date().toISOString();
 
-  const runUpdate = (p) => supabase
-    .from('PRODUTOS').update(p)
-    .eq('tenant_id', req.tenantId).in('id', ids.slice(0, 2000))
-    .select('id');
+  // Alvo: todos do filtro (all + match) OU os ids selecionados
+  if (all) {
+    if (!match.category_id && !String(match.search || '').trim())
+      return res.status(400).json({ error: 'Para aplicar a todos, filtre por tipo ou por texto.' });
+  } else if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'Selecione ao menos um produto (ou marque "aplicar a todos do filtro")' });
+  }
+
+  const runUpdate = (p) => {
+    let q = supabase.from('PRODUTOS').update(p).eq('tenant_id', req.tenantId);
+    if (all) {
+      if (match.category_id) q = q.eq('category_id', match.category_id);
+      if (match.search) {
+        for (const tok of String(match.search).trim().split(/\s+/).filter(Boolean).slice(0, 8)) {
+          const t = tok.replace(/[%,()]/g, ' ').trim();
+          if (t) q = q.or(`name.ilike.%${t}%,code.ilike.%${t}%,ean.ilike.%${t}%`);
+        }
+      }
+    } else {
+      q = q.in('id', ids.slice(0, 20000));
+    }
+    return q.select('id');
+  };
   try {
     let { data, error } = await runUpdate(patch);
     // resiliência: se min_order_qty/print_pricing ainda não existem, aplica o resto
