@@ -108,7 +108,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Edição em massa" size="lg">
-      <div className="space-y-4 max-h-[76vh] overflow-y-auto pr-1">
+      <div className="space-y-4 max-h-[85vh] overflow-y-auto pr-1">
         <p className="text-sm text-gray-500">
           Filtre por <b>categoria</b> ou <b>modelo</b>, selecione os produtos e defina o que quer alterar.
           Só os campos preenchidos são aplicados. Preço e faixas atualizam a loja automaticamente.
@@ -139,7 +139,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
             </label>
             <span className="text-violet-600 font-medium">{selectedIds.length} selecionado(s)</span>
           </div>
-          <div className="max-h-48 overflow-y-auto divide-y divide-gray-50">
+          <div className="max-h-[46vh] min-h-[260px] overflow-y-auto divide-y divide-gray-50">
             {isFetching ? (
               <div className="p-6 text-center text-gray-400"><Loader2 className="animate-spin mx-auto" /></div>
             ) : products.length === 0 ? (
