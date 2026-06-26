@@ -38,28 +38,43 @@ const productSchema = Joi.object({
 }).unknown(true);
 
 router.get('/', async (req, res) => {
-  const { page = 1, limit = 50, search, category_id, is_active } = req.query;
+  const { page = 1, limit = 50, search, category_id, is_active, sort } = req.query;
   const offset = (page - 1) * limit;
 
-  try {
+  const buildQuery = (useCreatedAt) => {
     let query = supabase
       .from('PRODUTOS')
       .select('*, CATEGORIAS(name)', { count: 'exact' })
-      .eq('tenant_id', req.tenantId)
-      .order('name');
+      .eq('tenant_id', req.tenantId);
 
+    // Ordenação
+    if (sort === 'recent' && useCreatedAt) query = query.order('created_at', { ascending: false });
+    else if (sort === 'name_desc') query = query.order('name', { ascending: false });
+    else if (sort === 'code') query = query.order('code', { ascending: true });
+    else query = query.order('name', { ascending: true });
+
+    // Busca por VÁRIOS termos: cada palavra precisa aparecer (no nome/código/ean).
+    // Ex.: "long drink amarelo 350" só traz quem casa com todos os termos.
     if (search) {
-      const s = search.trim();
-      query = query.or(`name.ilike.%${s}%,code.ilike.%${s}%,ean.ilike.%${s}%`);
+      const terms = String(search).trim().split(/\s+/).filter(Boolean).slice(0, 8);
+      for (const tok of terms) {
+        const t = tok.replace(/[%,()]/g, ' ').trim();
+        if (t) query = query.or(`name.ilike.%${t}%,code.ilike.%${t}%,ean.ilike.%${t}%`);
+      }
     }
     if (category_id) query = query.eq('category_id', category_id);
     if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
 
-    query = query.range(offset, offset + limit - 1);
+    return query.range(offset, offset + limit - 1);
+  };
 
-    const { data, error, count } = await query;
+  try {
+    let { data, error, count } = await buildQuery(true);
+    // fallback se a coluna created_at não existir
+    if (error && /created_at|column|42703/i.test(error.message || '')) {
+      ({ data, error, count } = await buildQuery(false));
+    }
     if (error) throw error;
-
     res.json({ data, total: count, page: Number(page), limit: Number(limit) });
   } catch (err) {
     res.status(500).json({ error: err.message });

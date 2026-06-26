@@ -26,7 +26,14 @@ export default function Products() {
   const [editing, setEditing] = useState(null);
   const [delTarget, setDelTarget] = useState(null); // produto a apagar (confirmação)
   const [exporting, setExporting] = useState(false);
+  const [categoryId, setCategoryId] = useState('');
+  const [sort, setSort] = useState('name');
   const qc = useQueryClient();
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => api.get('/products/categories/list'),
+  });
 
   async function exportCSV() {
     setExporting(true);
@@ -46,8 +53,14 @@ export default function Products() {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', page, search],
-    queryFn: () => api.get(`/products?page=${page}&limit=20${search ? `&search=${search}` : ''}`),
+    queryKey: ['products', page, search, categoryId, sort],
+    queryFn: () => {
+      let url = `/products?page=${page}&limit=20`;
+      if (search)     url += `&search=${encodeURIComponent(search)}`;
+      if (categoryId) url += `&category_id=${categoryId}`;
+      if (sort)       url += `&sort=${sort}`;
+      return api.get(url);
+    },
   });
 
   const toggleMutation = useMutation({
@@ -158,14 +171,14 @@ export default function Products() {
       </div>
 
       <div className="card">
-        {/* Search */}
-        <div className="card-header">
-          <form onSubmit={handleSearch} className="flex gap-3 max-w-md">
+        {/* Filtros */}
+        <div className="card-header flex flex-wrap items-center gap-3">
+          <form onSubmit={handleSearch} className="flex gap-2 flex-1 min-w-[240px] max-w-md">
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Buscar por nome, código..."
+                placeholder="Buscar: nome, cor, tamanho, código… (ex.: long drink amarelo 350)"
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
                 className="input pl-9"
@@ -177,6 +190,22 @@ export default function Products() {
                 className="btn-ghost">Limpar</button>
             )}
           </form>
+
+          {/* Tipo */}
+          <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setPage(1); }}
+            className="input w-auto text-sm" title="Filtrar por tipo">
+            <option value="">Todos os tipos</option>
+            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+
+          {/* Ordenar */}
+          <select value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}
+            className="input w-auto text-sm" title="Ordenar">
+            <option value="name">A → Z</option>
+            <option value="name_desc">Z → A</option>
+            <option value="recent">Últimos adicionados</option>
+            <option value="code">Por código</option>
+          </select>
         </div>
 
         <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => openEdit(row)} />
