@@ -702,8 +702,13 @@ router.post('/import-grouped', async (req, res) => {
 // Importação PLANA — um produto por linha (sem cores/bordas).
 // Cada linha do CSV vira um produto; código = iniciais do modelo + sequência.
 router.post('/import-flat', async (req, res) => {
-  const raw = Array.isArray(req.body.names) ? req.body.names : [];
-  if (!raw.length) return res.status(400).json({ error: 'Nada para importar' });
+  // aceita { products: [{code, name}] } (Excel/planilha) ou { names: [...] } (lista simples)
+  const rawItems = Array.isArray(req.body.products)
+    ? req.body.products.map(p => ({ code: p && p.code, name: p && p.name }))
+    : Array.isArray(req.body.names)
+      ? req.body.names.map(n => ({ code: null, name: n }))
+      : [];
+  if (!rawItems.length) return res.status(400).json({ error: 'Nada para importar' });
 
   const clean = s => String(s || '')
     .replace(/\bRML\s*\d+\b/ig, '')
@@ -712,9 +717,17 @@ router.post('/import-flat', async (req, res) => {
     .replace(/\s+/g, ' ')
     .trim().replace(/^[-\s]+|[-\s]+$/g, '')
     .toUpperCase();
+  const cleanCode = c => String(c || '').replace(/\s+/g, ' ').trim().toUpperCase();
 
-  // nomes únicos e válidos
-  const names = [...new Set(raw.map(clean).filter(n => n.length >= 3))];
+  // itens únicos por nome (mantém o primeiro)
+  const seenNames = new Set();
+  const items = [];
+  for (const it of rawItems) {
+    const name = clean(it.name);
+    if (name.length < 3 || seenNames.has(name)) continue;
+    seenNames.add(name);
+    items.push({ name, code: cleanCode(it.code) });
+  }
 
   // Categoria/Tipo = modelo (parte antes do " - "); ex.: "LONG DRINK TRADICIONAL - BRANCO 350 ML" → "LONG DRINK"
   const categoriaDe = (nm) => {
@@ -745,6 +758,7 @@ router.post('/import-flat', async (req, res) => {
     // nomes já existentes (para não duplicar) + maior sequência atual
     const { data: existingRows } = await supabase.from('PRODUTOS').select('name, code').eq('tenant_id', req.tenantId).limit(50000);
     const existingNames = new Set((existingRows || []).map(r => String(r.name || '').trim().toUpperCase()));
+    const usedCodes = new Set((existingRows || []).map(r => cleanCode(r.code)).filter(Boolean));
     let seq = 0;
     for (const r of (existingRows || [])) {
       const m = String(r.code || '').trim().match(/(\d+)\s*$/);
@@ -754,21 +768,25 @@ router.post('/import-flat', async (req, res) => {
     let created = 0, skipped = 0;
     const errors = [];
     const toInsert = [];
-    for (const name of names) {
-      if (existingNames.has(name)) { skipped++; continue; }
-      const base = name.split(' - ')[0].trim();
+    for (const it of items) {
+      if (existingNames.has(it.name)) { skipped++; continue; }
+      const base = it.name.split(' - ')[0].trim();
       const catId = await categoriaId(categoriaDe(base));
-      seq += 1;
+      let code = it.code;
+      if (!code || usedCodes.has(code)) {            // sem código (ou repetido) → gera automático
+        do { seq += 1; code = `${initials(base)} ${String(seq).padStart(4, '0')}`; } while (usedCodes.has(code));
+      }
+      usedCodes.add(code);
+      existingNames.add(it.name);
       toInsert.push({
-        tenant_id: req.tenantId, name, unit: 'UN', category_id: catId,
-        code: `${initials(base)} ${String(seq).padStart(4, '0')}`,
+        tenant_id: req.tenantId, name: it.name, unit: 'UN', category_id: catId, code,
         sale_price: 0, cost_price: 0, current_stock: 0, is_active: true, min_order_qty: 1,
       });
     }
 
     // insere em lotes (rápido); se min_order_qty não existir, tenta sem
-    for (let i = 0; i < toInsert.length; i += 200) {
-      const chunk = toInsert.slice(i, i + 200);
+    for (let i = 0; i < toInsert.length; i += 500) {
+      const chunk = toInsert.slice(i, i + 500);
       let { error } = await supabase.from('PRODUTOS').insert(chunk);
       if (error && /min_order_qty/i.test(error.message || '')) {
         ({ error } = await supabase.from('PRODUTOS').insert(chunk.map(({ min_order_qty, ...r }) => r)));
@@ -777,7 +795,7 @@ router.post('/import-flat', async (req, res) => {
     }
 
     audit(req, 'create', 'product_import_flat', null, { created, skipped });
-    res.json({ created, skipped, errors: errors.slice(0, 20), total: names.length });
+    res.json({ created, skipped, errors: errors.slice(0, 20), total: items.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
