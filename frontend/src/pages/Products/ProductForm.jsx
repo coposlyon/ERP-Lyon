@@ -35,6 +35,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   // criação de novo tipo (categoria) na hora
   const [creatingType, setCreatingType] = useState(false);
   const [newType, setNewType] = useState('');
+  const [confirmDelType, setConfirmDelType] = useState(false);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
@@ -56,6 +57,17 @@ export default function ProductForm({ product, onSaved, onCancel }) {
       toast.success('Tipo criado!');
     },
     onError: (e) => toast.error(e.error || 'Erro ao criar tipo'),
+  });
+
+  const delType = useMutation({
+    mutationFn: (id) => api.delete(`/products/categories/${id}`),
+    onSuccess: async (r) => {
+      await qc.invalidateQueries(['categories']);
+      set('category_id', '');
+      setConfirmDelType(false);
+      toast.success(`Tipo apagado${r?.products_unlinked ? ` · ${r.products_unlinked} item(ns) ficaram sem tipo` : ''}`);
+    },
+    onError: (e) => toast.error(e.error || 'Erro ao apagar tipo'),
   });
 
   const selectedCat = categories.find(c => c.id === form.category_id);
@@ -205,16 +217,40 @@ export default function ProductForm({ product, onSaved, onCancel }) {
                 className="btn-secondary px-3" title="Cancelar"><X size={15} /></button>
             </div>
           ) : (
-            <div className="flex gap-2">
-              <select className="input flex-1" value={form.category_id} onChange={e => set('category_id', e.target.value)}>
-                <option value="">Sem tipo</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <button type="button" onClick={() => setCreatingType(true)}
-                className="btn-secondary px-3 whitespace-nowrap" title="Criar novo tipo de produto">
-                <FolderPlus size={15} /> Novo tipo
-              </button>
-            </div>
+            <>
+              <div className="flex gap-2">
+                <select className="input flex-1" value={form.category_id} onChange={e => { set('category_id', e.target.value); setConfirmDelType(false); }}>
+                  <option value="">Sem tipo</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <button type="button" onClick={() => setCreatingType(true)}
+                  className="btn-secondary px-3 whitespace-nowrap" title="Criar novo tipo de produto">
+                  <FolderPlus size={15} /> Novo tipo
+                </button>
+                {form.category_id && (
+                  <button type="button" onClick={() => setConfirmDelType(true)}
+                    className="btn-secondary px-3 text-red-500 hover:text-red-600" title="Apagar este tipo">
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </div>
+              {confirmDelType && selectedCat && (
+                <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm">
+                  <p className="text-gray-800">Tem certeza que deseja apagar o tipo <b>{selectedCat.name}</b>?</p>
+                  <p className="text-gray-600 mt-0.5">
+                    Possuem <b>{selectedCat.product_count || 0}</b> {Number(selectedCat.product_count) === 1 ? 'item' : 'itens'} com esse tipo —
+                    eles ficarão <b>sem tipo</b> (não serão apagados).
+                  </p>
+                  <div className="flex justify-end gap-2 mt-2">
+                    <button type="button" onClick={() => setConfirmDelType(false)} className="btn-secondary text-xs">Cancelar</button>
+                    <button type="button" onClick={() => delType.mutate(form.category_id)} disabled={delType.isPending}
+                      className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50">
+                      {delType.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Apagar tipo
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 

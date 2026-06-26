@@ -346,21 +346,27 @@ router.put('/categories/:catId', async (req, res) => {
 
 router.delete('/categories/:catId', async (req, res) => {
   try {
-    // Desvincula produtos desta categoria antes de deletar
-    await supabase
-      .from('PRODUTOS')
-      .update({ category_id: null })
-      .eq('category_id', req.params.catId)
-      .eq('tenant_id', req.tenantId);
+    // Descobre o NOME do tipo e pega todas as linhas com o mesmo nome (duplicatas)
+    const { data: cat } = await supabase.from('CATEGORIAS').select('name')
+      .eq('id', req.params.catId).eq('tenant_id', req.tenantId).maybeSingle();
+    let ids = [req.params.catId];
+    if (cat?.name) {
+      const { data: dups } = await supabase.from('CATEGORIAS').select('id')
+        .eq('tenant_id', req.tenantId).ilike('name', cat.name);
+      if (dups?.length) ids = [...new Set(dups.map(d => d.id))];
+    }
 
-    const { error } = await supabase
-      .from('CATEGORIAS')
-      .delete()
-      .eq('id', req.params.catId)
-      .eq('tenant_id', req.tenantId);
+    // Quantos produtos usam esse tipo (para informar) e desvincula (vira "Sem tipo")
+    const { count } = await supabase.from('PRODUTOS').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', req.tenantId).in('category_id', ids);
+    await supabase.from('PRODUTOS').update({ category_id: null })
+      .eq('tenant_id', req.tenantId).in('category_id', ids);
 
+    const { error } = await supabase.from('CATEGORIAS').delete()
+      .eq('tenant_id', req.tenantId).in('id', ids);
     if (error) throw error;
-    res.json({ message: 'Categoria excluída' });
+    audit(req, 'delete', 'category', req.params.catId, { name: cat?.name, products_unlinked: count || 0 });
+    res.json({ message: 'Tipo excluído', products_unlinked: count || 0 });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
