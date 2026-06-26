@@ -132,11 +132,8 @@ router.patch('/bulk', async (req, res) => {
   if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Nada para aplicar — preencha ao menos um campo' });
   patch.updated_at = new Date().toISOString();
 
-  // Alvo: todos do filtro (all + match) OU os ids selecionados
-  if (all) {
-    if (!match.category_id && !String(match.search || '').trim())
-      return res.status(400).json({ error: 'Para aplicar a todos, filtre por tipo ou por texto.' });
-  } else if (!Array.isArray(ids) || ids.length === 0) {
+  // Alvo: todos do filtro (all + match, vazio = catálogo inteiro) OU os ids selecionados
+  if (!all && (!Array.isArray(ids) || ids.length === 0)) {
     return res.status(400).json({ error: 'Selecione ao menos um produto (ou marque "aplicar a todos do filtro")' });
   }
 

@@ -104,7 +104,15 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
   const hasFilter = !!(search || categoryId);
   const targetCount = applyAll ? totalMatching : selectedIds.length;
-  const canApply = hasFields && (applyAll ? hasFilter : selectedIds.length > 0);
+  const canApply = hasFields && (applyAll ? totalMatching > 0 : selectedIds.length > 0);
+
+  function doApply() {
+    if (applyAll) {
+      const alvo = hasFilter ? `${totalMatching} produto(s) do filtro` : `TODOS os ${totalMatching} produtos do catálogo`;
+      if (!window.confirm(`Confirmar: aplicar as alterações a ${alvo}? Esta ação não pode ser desfeita.`)) return;
+    }
+    apply.mutate();
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Edição em massa" size="lg">
@@ -253,19 +261,21 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
         {/* Aplicar a todos do filtro */}
         <label className={`flex items-start gap-2 text-sm rounded-xl border p-3 cursor-pointer ${applyAll ? 'border-violet-300 bg-violet-50' : 'border-gray-200'}`}>
-          <input type="checkbox" checked={applyAll} onChange={e => setApplyAll(e.target.checked)} className="mt-0.5 w-4 h-4 accent-violet-600" disabled={!hasFilter} />
+          <input type="checkbox" checked={applyAll} onChange={e => setApplyAll(e.target.checked)} className="mt-0.5 w-4 h-4 accent-violet-600" />
           <span>
-            <span className="font-medium text-gray-800">Aplicar a TODOS os {totalMatching} produtos do filtro</span>
+            <span className="font-medium text-gray-800">
+              Aplicar a TODOS os {totalMatching} produtos {hasFilter ? 'do filtro' : 'do catálogo'}
+            </span>
             <span className="block text-xs text-gray-500 mt-0.5">
               Ignora a seleção e altera todos que casam com o filtro atual (tipo + busca), mesmo além dos {products.length} visíveis.
-              {!hasFilter && <b className="text-amber-600"> Filtre por tipo ou texto para habilitar.</b>}
+              {!hasFilter && <b className="text-amber-600"> Sem filtro = aplica ao catálogo inteiro.</b>}
             </span>
           </span>
         </label>
 
         <div className="flex gap-2 justify-end pt-3 border-t border-gray-100 sticky bottom-0 bg-white">
           <button onClick={onClose} className="btn-secondary">Fechar</button>
-          <button onClick={() => apply.mutate()}
+          <button onClick={doApply}
             disabled={apply.isPending || !canApply}
             className="btn-primary disabled:opacity-50">
             {apply.isPending ? 'Aplicando...' : `Aplicar a ${targetCount} produto(s)`}
