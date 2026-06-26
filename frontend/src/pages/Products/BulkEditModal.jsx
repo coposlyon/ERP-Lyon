@@ -37,7 +37,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
   const { data, isFetching } = useQuery({
     queryKey: ['bulk-products', search, categoryId],
-    queryFn: () => api.get(`/products?limit=300&is_active=true${search ? `&search=${encodeURIComponent(search)}` : ''}${categoryId ? `&category_id=${categoryId}` : ''}`),
+    queryFn: () => api.get(`/products?limit=1000&is_active=true${search ? `&search=${encodeURIComponent(search)}` : ''}${categoryId ? `&category_id=${categoryId}` : ''}`),
     enabled: isOpen,
   });
   const products = data?.data || [];
