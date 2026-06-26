@@ -5,7 +5,7 @@ import {
   PackageX, CheckCircle2, ChevronDown, ChevronRight,
   TrendingUp, TrendingDown, ArrowRight, Package,
   AlertCircle, PackageCheck, TriangleAlert,
-  Edit2, Check, Plus, Minus,
+  Edit2, Check, Plus, Minus, Search,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
@@ -562,6 +562,10 @@ export default function Stock() {
   const [perdaOpen, setPerdaOpen] = useState(false);
   const [productModal, setProductModal] = useState(null); // 'new' | produto p/ editar
   const [adjust, setAdjust] = useState(null);             // { p, dir }
+  // filtros da Lista Completa
+  const [posSearch, setPosSearch] = useState('');
+  const [posCategory, setPosCategory] = useState('');
+  const [posSort, setPosSort] = useState('name');
 
   // Modal de reposição
   const [replenishModal, setReplenishModal]             = useState(false);
@@ -636,10 +640,40 @@ export default function Stock() {
     return map;
   }, [pendingOrdersData]);
 
+  // tipos para o filtro
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => api.get('/products/categories/list'),
+  });
+
   const allProducts     = stockReport?.data || [];
-  const displayProducts = showZeroOnly
+  const baseProducts    = showZeroOnly
     ? allProducts.filter(p => (p.current_stock ?? 0) < 0)
     : allProducts;
+
+  // aplica busca (multi-termo) + tipo + ordenação
+  const seqOf = c => { const m = String(c || '').match(/(\d+)\s*$/); return m ? parseInt(m[1], 10) : 0; };
+  const displayProducts = useMemo(() => {
+    let list = baseProducts;
+    const terms = posSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length) {
+      list = list.filter(p => {
+        const hay = `${p.name || ''} ${p.code || ''}`.toLowerCase();
+        return terms.every(t => hay.includes(t));
+      });
+    }
+    if (posCategory) {
+      const catName = (categories.find(c => c.id === posCategory)?.name || '').toUpperCase();
+      list = list.filter(p => p.category_id === posCategory || (catName && (p.CATEGORIAS?.name || '').toUpperCase() === catName));
+    }
+    list = [...list].sort((a, b) => {
+      if (posSort === 'name_desc') return (b.name || '').localeCompare(a.name || '', 'pt-BR');
+      if (posSort === 'code')      return seqOf(a.code) - seqOf(b.code);
+      if (posSort === 'recent')    return seqOf(b.code) - seqOf(a.code);
+      return (a.name || '').localeCompare(b.name || '', 'pt-BR');
+    });
+    return list;
+  }, [baseProducts, posSearch, posCategory, posSort, categories]);
 
   const negativeProducts = useMemo(
     () => allProducts.filter(p => (p.current_stock ?? 0) < 0),
@@ -963,6 +997,27 @@ export default function Stock() {
         {/* ── Aba: Lista Completa ───────────────────────────────── */}
         {tab === 'position' && (
           <>
+            {/* Filtros: busca multi-termo + tipo + ordenar */}
+            <div className="flex flex-wrap items-center gap-2 px-1 pb-2">
+              <div className="relative flex-1 min-w-[220px] max-w-md">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input value={posSearch} onChange={e => setPosSearch(e.target.value)}
+                  placeholder="Buscar: nome, cor, tamanho, código… (ex.: long drink amarelo 350)"
+                  className="input pl-9 text-sm" />
+              </div>
+              <select value={posCategory} onChange={e => setPosCategory(e.target.value)} className="input w-auto text-sm" title="Filtrar por tipo">
+                <option value="">Todos os tipos</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select value={posSort} onChange={e => setPosSort(e.target.value)} className="input w-auto text-sm" title="Ordenar">
+                <option value="name">A → Z</option>
+                <option value="name_desc">Z → A</option>
+                <option value="recent">Últimos adicionados</option>
+                <option value="code">Por código</option>
+              </select>
+              <span className="text-xs text-gray-400 ml-auto">{displayProducts.length} de {baseProducts.length}</span>
+            </div>
+
             {showZeroOnly && displayProducts.length === 0 && (
               <p className="text-center py-8 text-green-600 font-medium text-sm">
                 ✅ Nenhum produto negativo!
