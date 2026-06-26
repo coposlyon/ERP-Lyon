@@ -80,16 +80,8 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
         </span>
       </div>
 
-      {/* Busca global — desktop (abre a paleta Ctrl+K) */}
-      <div className="hidden lg:flex flex-1 max-w-md">
-        <button type="button" onClick={() => window.dispatchEvent(new Event('open-global-search'))}
-          className="relative w-full flex items-center" style={inputStyle}>
-          <Search size={15} className="absolute left-3" style={{ color: searchIconColor }} />
-          <span className="text-sm" style={{ color: searchIconColor }}>Buscar produtos, clientes, vendas...</span>
-          <kbd className="absolute right-2 text-xs px-1.5 py-0.5 rounded"
-            style={{ background: isDark ? '#374151' : '#e5e7eb', color: searchIconColor }}>Ctrl K</kbd>
-        </button>
-      </div>
+      {/* Espaçador (a busca global do topo foi removida; ainda dá pra abrir por Ctrl+K) */}
+      <div className="hidden lg:flex flex-1" />
 
       {/* Ações direita */}
       <div className="flex items-center gap-1 lg:gap-1.5 ml-auto">
