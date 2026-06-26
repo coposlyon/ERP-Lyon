@@ -126,11 +126,10 @@ router.patch('/bulk', async (req, res) => {
     for (const key of PRINT_METHODS.map(m => m.key)) {
       const d = fields.print_pricing[key];
       if (!d || typeof d !== 'object') continue;
-      const price = (d.price != null && d.price !== '') ? Number(d.price) : null;
       const tiers = Array.isArray(d.tiers)
         ? d.tiers.map(t => ({ min_qty: parseInt(t.min_qty) || 0, max_qty: (t.max_qty === '' || t.max_qty == null) ? null : (parseInt(t.max_qty) || null), price: Number(t.price) || 0 })).filter(t => t.min_qty > 0 && t.price > 0)
         : [];
-      if ((price != null && !Number.isNaN(price)) || tiers.length) pp[key] = { ...(price != null && !Number.isNaN(price) ? { price } : {}), tiers };
+      if (tiers.length) pp[key] = { tiers };
     }
     patch.print_pricing = pp;
   }
