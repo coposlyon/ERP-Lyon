@@ -457,7 +457,7 @@ function StockRow({ p, onSetStock, onAdjust, onEdit }) {
 
   return (
     <tr className="border-t border-gray-50 hover:bg-gray-50/60">
-      <td className="px-3 py-2 font-mono text-xs text-gray-500">{id4(p.code)}</td>
+      <td className="px-3 py-2 font-mono text-xs text-gray-500 whitespace-nowrap">{p.code || '—'}</td>
       <td className="px-3 py-2 text-sm font-medium text-gray-800">{p.name}</td>
       <td className="px-3 py-2 text-xs text-gray-500">{p.CATEGORIAS?.name || '—'}</td>
       <td className="px-3 py-2">
@@ -497,7 +497,7 @@ function StockPositionTable({ products, loading, onSetStock, onAdjust, onEdit })
       <table className="w-full">
         <thead>
           <tr className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-400">
-            <th className="px-3 py-2 text-left font-semibold w-16">ID</th>
+            <th className="px-3 py-2 text-left font-semibold w-24">Código</th>
             <th className="px-3 py-2 text-left font-semibold">Produto</th>
             <th className="px-3 py-2 text-left font-semibold w-40">Tipo</th>
             <th className="px-3 py-2 text-right font-semibold w-40">Estoque</th>

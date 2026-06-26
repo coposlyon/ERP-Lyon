@@ -55,7 +55,7 @@ export default function Products() {
   const { data, isLoading } = useQuery({
     queryKey: ['products', page, search, categoryId, sort],
     queryFn: () => {
-      let url = `/products?page=${page}&limit=20`;
+      let url = `/products?page=${page}&limit=50`;
       if (search)     url += `&search=${encodeURIComponent(search)}`;
       if (categoryId) url += `&category_id=${categoryId}`;
       if (sort)       url += `&sort=${sort}`;
@@ -98,7 +98,7 @@ export default function Products() {
   function onSaved() { closeModal(); qc.invalidateQueries(['products']); }
 
   const columns = [
-    { key: 'code', label: 'ID', width: 70, render: v => <span className="font-mono text-xs">{id4(v)}</span> },
+    { key: 'code', label: 'Código', width: 120, render: v => <span className="font-mono text-xs whitespace-nowrap">{v || '—'}</span> },
     { key: 'name', label: 'Produto',
       render: (v) => <span className="font-medium text-gray-800">{v}</span>
     },
@@ -209,7 +209,7 @@ export default function Products() {
         </div>
 
         <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => openEdit(row)} />
-        <Pagination page={page} total={data?.total || 0} limit={20} onPageChange={setPage} />
+        <Pagination page={page} total={data?.total || 0} limit={50} onPageChange={setPage} />
       </div>
 
       <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Editar Produto' : 'Novo Produto'} size="lg">
@@ -230,7 +230,7 @@ export default function Products() {
             <div>
               <p className="font-semibold text-gray-900">Tem certeza que deseja apagar este produto?</p>
               <p className="text-sm text-gray-600 mt-1">
-                <b>{id4(delTarget.code)}</b> — {delTarget.name}
+                <b>{delTarget.code}</b> — {delTarget.name}
               </p>
               <p className="text-xs text-red-500 mt-2">Esta ação é definitiva e não pode ser desfeita.</p>
             </div>
