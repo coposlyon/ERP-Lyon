@@ -31,6 +31,7 @@ export default function PDV({ onDone }) {
   const [couponInput, setCouponInput] = useState('');
   const [coupon, setCoupon] = useState(null); // { coupon_id, code, discount_type, discount_value }
   const [frete, setFrete] = useState(null); // { price, days, weightKg, uf }
+  const [payTerm, setPayTerm] = useState(null); // condição de pagamento { label, percent }
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [receivedAmount, setReceivedAmount] = useState('');
   const [installments, setInstallments] = useState(1);
@@ -80,6 +81,13 @@ export default function PDV({ onDone }) {
     queryFn: () => api.get('/customers?limit=50&sort=recent&is_active=true&type=cliente'),
   });
 
+  // Condições de pagamento (desconto/juros) configuradas em Configurações → Pagamento
+  const { data: payTermsData } = useQuery({
+    queryKey: ['payment-terms'],
+    queryFn: () => api.get('/sales/payment-terms'),
+  });
+  const payTerms = payTermsData?.data || [];
+
   const saleMutation = useMutation({
     mutationFn: (data) => api.post('/sales', data),
     onSuccess: async (sale) => {
@@ -97,6 +105,7 @@ export default function PDV({ onDone }) {
       setDiscount('');
       setCoupon(null); setCouponInput('');
       setFrete(null);
+      setPayTerm(null);
       setReceivedAmount('');
       setEventDate(''); setShipDate(''); setDeliveryDate('');
       setOrderKey(genKey());
@@ -244,7 +253,10 @@ export default function PDV({ onDone }) {
         : Math.min(subtotal, Number(coupon.discount_value)))
     : 0;
   const freteValue = frete && !frete.free ? (Number(frete.price) || 0) : 0;
-  const total = Math.max(0, subtotal - discountValue - couponDiscount + freteValue);
+  const goodsBase = subtotal - discountValue - couponDiscount;
+  const payPercent = payTerm ? (Number(payTerm.percent) || 0) : 0;
+  const paymentAdj = payTerm ? Math.round(goodsBase * payPercent) / 100 : 0; // − desconto / + juros
+  const total = Math.max(0, goodsBase + paymentAdj + freteValue);
   const received = parseFloat(receivedAmount) || 0;
   const change = paymentMethod === 'cash' && received > 0 ? received - total : 0;
 
@@ -278,6 +290,8 @@ export default function PDV({ onDone }) {
       discount: discountValue + couponDiscount,
       coupon_code: coupon?.code || null,
       freight: freteValue,
+      payment_adjustment: paymentAdj,
+      ...(payTerm ? { notes: `Pagamento: ${payTerm.label}${payPercent ? ` (${payPercent > 0 ? '+' : ''}${payPercent}%)` : ''}` } : {}),
       payment_method: paymentMethod,
       ...(paymentMethod === 'a_prazo' ? { installments, first_due_date: firstDueDate } : {}),
     });
@@ -634,6 +648,29 @@ export default function PDV({ onDone }) {
                 className="btn-secondary text-sm disabled:opacity-50">
                 {couponMut.isPending ? <Loader2 size={14} className="animate-spin" /> : 'Aplicar'}
               </button>
+            </div>
+          )}
+
+          {/* Condição de pagamento (desconto / juros) */}
+          {payTerms.length > 0 && (
+            <div className="border-t border-gray-100 pt-2 space-y-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-gray-600">Condição de pagamento</span>
+                <select value={payTerm?.label || ''}
+                  onChange={e => setPayTerm(payTerms.find(t => t.label === e.target.value) || null)}
+                  className="input text-sm w-44">
+                  <option value="">À vista (sem ajuste)</option>
+                  {payTerms.map((t, i) => (
+                    <option key={i} value={t.label}>{t.label}{t.percent ? ` (${t.percent > 0 ? '+' : ''}${t.percent}%)` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              {payTerm && paymentAdj !== 0 && (
+                <div className={`flex justify-between text-sm font-medium ${paymentAdj < 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                  <span>{paymentAdj < 0 ? 'Desconto' : 'Juros'} {payTerm.label} ({payPercent > 0 ? '+' : ''}{payPercent}%)</span>
+                  <span>{paymentAdj < 0 ? '−' : '+'}{fmt(Math.abs(paymentAdj))}</span>
+                </div>
+              )}
             </div>
           )}
 

@@ -20,6 +20,16 @@ const saleSchema = Joi.object({
   installments: Joi.number().integer().min(1),
 }).unknown(true);
 
+// Condições de pagamento (juros/desconto por forma) — config global em EMPRESAS.settings.payment_terms.
+// percent negativo = desconto (ex.: PIX -8); positivo = acréscimo/juros (ex.: 12x +10).
+router.get('/payment-terms', async (req, res) => {
+  try {
+    const { data } = await supabase.from('EMPRESAS').select('settings').eq('id', req.tenantId).maybeSingle();
+    const terms = data?.settings?.payment_terms;
+    res.json({ data: Array.isArray(terms) ? terms : [] });
+  } catch (err) { res.json({ data: [] }); }
+});
+
 router.get('/', async (req, res) => {
   const { page = 1, limit = 50, status, type, start_date, end_date, search } = req.query;
   const offset = (page - 1) * limit;
@@ -100,7 +110,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
   const {
     customer_id, type, items, notes, discount, delivery_date,
     artwork_url, artwork_notes, payment_method, installments, first_due_date,
-    operation_date, event_date, ship_date, max_delivery_date, order_key, freight,
+    operation_date, event_date, ship_date, max_delivery_date, order_key, freight, payment_adjustment,
   } = req.body;
 
   if (!items || items.length === 0) {
@@ -150,9 +160,13 @@ router.post('/', validate(saleSchema), async (req, res) => {
       if (delivery_date) patch.delivery_date = delivery_date;
       if (max_delivery_date) patch.max_delivery_date = max_delivery_date;
       if (order_key) patch.order_key = order_key;
-      // Frete: grava o valor e soma no total da venda
+      // Frete + ajuste por condição de pagamento (juros/desconto): somam no total da venda
       const freightVal = Number(freight) || 0;
-      if (freightVal > 0) { patch.freight = freightVal; patch.total = (Number(data.total) || 0) + freightVal; }
+      const payAdj = Number(payment_adjustment) || 0;
+      if (freightVal || payAdj) {
+        if (freightVal) patch.freight = freightVal;
+        patch.total = Math.max(0, (Number(data.total) || 0) + freightVal + payAdj);
+      }
       // tenta gravar tudo; se alguma coluna não existir, remove a citada e tenta de novo
       let attempt = { ...patch };
       for (let i = 0; i < 6; i++) {
@@ -182,7 +196,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
 // Caminho legado (não transacional) — usado apenas enquanto a função
 // criar_venda não tiver sido criada no banco via MIGRATIONS.sql
 async function legacyCreateSale(req, res) {
-  const { customer_id, type, items, notes, discount, delivery_date, artwork_url, artwork_notes, payment_method, operation_date, freight } = req.body;
+  const { customer_id, type, items, notes, discount, delivery_date, artwork_url, artwork_notes, payment_method, operation_date, freight, payment_adjustment } = req.body;
   try {
     const { data: nextNumber } = await supabase
       .rpc('proximo_numero_venda', { p_tenant_id: req.tenantId });
@@ -190,7 +204,8 @@ async function legacyCreateSale(req, res) {
     const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
     const totalDiscount = discount || 0;
     const freightVal = Number(freight) || 0;
-    const total = subtotal - totalDiscount + freightVal;
+    const payAdj = Number(payment_adjustment) || 0;
+    const total = Math.max(0, subtotal - totalDiscount + freightVal + payAdj);
 
     const { data: sale, error: saleError } = await supabase
       .from('VENDAS')

@@ -9,6 +9,17 @@ import { SITE_DEFAULTS, SITE_FIELDS } from '@/store/siteDefaults';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
+// Sugestão inicial de condições de pagamento (% negativo = desconto, positivo = juros)
+const PAY_SUGGESTION = [
+  { label: 'PIX',          percent: -8 },
+  { label: 'Dinheiro',     percent: -8 },
+  { label: '1x (à vista)', percent: 0 },
+  { label: '2x',           percent: 2 },
+  { label: '4x',           percent: 4 },
+  { label: '6x',           percent: 6 },
+  { label: '12x',          percent: 10 },
+];
+
 export default function Settings() {
   const { user, tenant } = useAuth();
   const [tab, setTab] = useState('company');
@@ -98,6 +109,7 @@ export default function Settings() {
   function setEmailCfg(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, email: { ...(p.settings?.email || {}), [k]: v } } })); }
   function setSite(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, site: { ...(p.settings?.site || {}), [k]: v } } })); }
   function setFrete(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, frete: { ...(p.settings?.frete || {}), [k]: v } } })); }
+  function setPaymentTerms(rows) { setForm(p => ({ ...p, settings: { ...p.settings, payment_terms: rows } })); }
   function setFreteTable(rows) { setForm(p => ({ ...p, settings: { ...p.settings, frete: { ...(p.settings?.frete || {}), table: rows } } })); }
   function gmailPreset() { setForm(p => ({ ...p, settings: { ...p.settings, email: { ...(p.settings?.email || {}), smtp_host: 'smtp.gmail.com', smtp_port: 465, smtp_secure: true } } })); }
 
@@ -109,7 +121,7 @@ export default function Settings() {
 
       <div className="card">
         <div className="card-header flex gap-6">
-          {[['company','Empresa'],['site','Site'],['cadastro','Cadastro (site)'],['email','E-mail'],['frete','Transportadora'],['serigrafia','Serigrafia'],['credito','Crédito'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
+          {[['company','Empresa'],['site','Site'],['cadastro','Cadastro (site)'],['email','E-mail'],['pagamento','Pagamento'],['frete','Transportadora'],['serigrafia','Serigrafia'],['credito','Crédito'],['users','Usuários'],['fiscal','Fiscal / NF-e']].map(([k,l]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`pb-2 text-sm font-medium border-b-2 transition-colors ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
               {l}
@@ -337,6 +349,55 @@ export default function Settings() {
             <p className="text-xs text-gray-400">
               <b>Gmail:</b> ative a verificação em 2 etapas e gere uma <b>“senha de app”</b> em myaccount.google.com → Segurança → Senhas de app, e use ela aqui (não a senha normal).
             </p>
+            {isAdmin && (
+              <div className="flex justify-end">
+                <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
+                  {saveMutation.isPending ? <><Loader2 size={15} className="animate-spin" /> Salvando...</> : <><Save size={15} /> Salvar</>}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'pagamento' && (
+          <div className="card-body space-y-5">
+            {!isAdmin && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-2">Apenas admins podem alterar estas configurações.</p>}
+            <div>
+              <h3 className="font-medium text-gray-900">Condições de pagamento (desconto / juros)</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Defina o ajuste de preço por forma de pagamento. <b>%</b> negativo = <b>desconto</b> (ex.: PIX −8),
+                positivo = <b>acréscimo/juros</b> (ex.: 12x +10). No PDV, ao escolher a condição, o total é ajustado automaticamente.
+              </p>
+            </div>
+
+            {(!form.settings?.payment_terms || form.settings.payment_terms.length === 0) && (
+              <button type="button" onClick={() => setPaymentTerms(PAY_SUGGESTION)} disabled={!isAdmin}
+                className="btn-secondary text-sm"><Plus size={14} /> Preencher com a sugestão (PIX −8%, 2x +2%, …)</button>
+            )}
+
+            <div className="space-y-2 max-w-lg">
+              {(form.settings?.payment_terms || []).length > 0 && (
+                <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 px-1">
+                  <span className="col-span-7">Forma de pagamento</span>
+                  <span className="col-span-4">% (− desconto / + juros)</span>
+                </div>
+              )}
+              {(form.settings?.payment_terms || []).map((row, i) => {
+                const upd = (k, v) => { const t = [...form.settings.payment_terms]; t[i] = { ...t[i], [k]: v }; setPaymentTerms(t); };
+                return (
+                  <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                    <input className="input col-span-7" value={row.label || ''} onChange={e => upd('label', e.target.value)} placeholder="Ex.: PIX, 2x, 12x..." disabled={!isAdmin} />
+                    <input type="number" step="0.1" className="input col-span-4" value={row.percent ?? ''} onChange={e => upd('percent', e.target.value === '' ? '' : Number(e.target.value))} placeholder="0" disabled={!isAdmin} />
+                    {isAdmin && <button type="button" onClick={() => setPaymentTerms(form.settings.payment_terms.filter((_, j) => j !== i))} className="col-span-1 text-red-400 hover:text-red-600 text-lg leading-none">×</button>}
+                  </div>
+                );
+              })}
+              {isAdmin && (
+                <button type="button" onClick={() => setPaymentTerms([...(form.settings?.payment_terms || []), { label: '', percent: 0 }])}
+                  className="btn-secondary btn-sm mt-1"><Plus size={13} /> Adicionar condição</button>
+              )}
+            </div>
+
             {isAdmin && (
               <div className="flex justify-end">
                 <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
