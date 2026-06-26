@@ -24,8 +24,6 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [ncm, setNcm] = useState('');
   const [cst, setCst] = useState('');
   const [cfop, setCfop] = useState('');
-  const [applyTiers, setApplyTiers] = useState(false);
-  const [tiers, setTiers] = useState([{ min: '', max: '', price: '' }]);
   const [applyPrint, setApplyPrint] = useState(false);
   const [printPricing, setPrintPricing] = useState({});
 
@@ -70,10 +68,6 @@ export default function BulkEditModal({ isOpen, onClose }) {
   }
   function doSearch(e) { e.preventDefault(); setSearch(searchInput.trim()); }
 
-  function setTier(i, k, v) { setTiers(ts => ts.map((t, idx) => idx === i ? { ...t, [k]: v } : t)); }
-  function addTier() { setTiers(ts => [...ts, { min: '', max: '', price: '' }]); }
-  function removeTier(i) { setTiers(ts => ts.filter((_, idx) => idx !== i)); }
-
   const fields = {};
   if (newCategoryId === '__none__') fields.category_id = null;
   else if (newCategoryId) fields.category_id = newCategoryId;
@@ -83,7 +77,6 @@ export default function BulkEditModal({ isOpen, onClose }) {
   if (ncm.trim()) fields.ncm = ncm.trim();
   if (cst.trim()) fields.cst = cst.trim();
   if (cfop.trim()) fields.cfop = cfop.trim();
-  if (applyTiers) fields.price_tiers = tiers.filter(t => t.min && t.price).map(t => ({ min: t.min, max: t.max, price: t.price }));
   if (applyPrint) fields.print_pricing = cleanPrintPricing(printPricing);
   const hasFields = Object.keys(fields).length > 0;
 
@@ -120,6 +113,11 @@ export default function BulkEditModal({ isOpen, onClose }) {
         <p className="text-sm text-gray-500">
           Filtre por <b>categoria</b> ou <b>modelo</b>, selecione os produtos e defina o que quer alterar.
           Só os campos preenchidos são aplicados. Preço e faixas atualizam a loja automaticamente.
+        </p>
+        <p className="text-xs text-violet-600 bg-violet-50 rounded-lg px-3 py-2">
+          💡 Use <b>-</b> antes de uma palavra para EXCLUIR. Ex.: <code>tradicional -borda</code> = Tradicional liso ·
+          <code> tradicional borda</code> = Tradicional com borda · <code>degradê -borda</code> = Degradê liso ·
+          <code> degradê borda</code> = Degradê + borda.
         </p>
 
         {/* Filtros */}
@@ -214,36 +212,11 @@ export default function BulkEditModal({ isOpen, onClose }) {
           </div>
         </div>
 
-        {/* Faixas de preço por quantidade */}
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <input type="checkbox" checked={applyTiers} onChange={e => setApplyTiers(e.target.checked)} className="w-4 h-4 accent-violet-600" />
-            Substituir as faixas de preço por quantidade
-          </label>
-          {applyTiers && (
-            <div className="space-y-2 bg-violet-50/40 border border-violet-100 rounded-xl p-3">
-              {tiers.map((t, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm">
-                  <span className="text-gray-400">De</span>
-                  <input className="input w-20" type="number" value={t.min} onChange={e => setTier(i, 'min', e.target.value)} placeholder="10" />
-                  <span className="text-gray-400">até</span>
-                  <input className="input w-20" type="number" value={t.max} onChange={e => setTier(i, 'max', e.target.value)} placeholder="20" />
-                  <span className="text-gray-400">un. → R$</span>
-                  <input className="input w-24" type="number" step="0.01" value={t.price} onChange={e => setTier(i, 'price', e.target.value)} placeholder="6,00" />
-                  <button onClick={() => removeTier(i)} className="text-gray-300 hover:text-red-500"><Trash2 size={15} /></button>
-                </div>
-              ))}
-              <button onClick={addTier} className="btn-secondary text-xs"><Plus size={13} /> Adicionar faixa</button>
-              <p className="text-xs text-gray-400">Deixe sem faixas (e marcado) para limpar as faixas dos selecionados.</p>
-            </div>
-          )}
-        </div>
-
-        {/* Preço por tipo de impressão */}
+        {/* Tabelas de preço por impressão (Serigrafia 1 Cor / 2 Cores / Transfer / Laser) */}
         <div>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
             <input type="checkbox" checked={applyPrint} onChange={e => setApplyPrint(e.target.checked)} className="w-4 h-4 accent-violet-600" />
-            Substituir preços por tipo de impressão (Serigrafia / Transfer / DTF)
+            Substituir as tabelas de preço (Serigrafia 1 Cor, 2 Cores, Transfer, Laser Frente, Laser F/V)
           </label>
           {applyPrint && <PrintPricingEditor value={printPricing} onChange={setPrintPricing} />}
         </div>

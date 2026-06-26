@@ -1,10 +1,11 @@
 import { Plus, Trash2 } from 'lucide-react';
 
 export const PRINT_METHODS = [
-  { key: 'serigrafia', label: 'Serigrafia (1 cor)' },
-  { key: 'transfer',   label: 'Transfer (2 cores)' },
-  { key: 'dtf',        label: 'DTF (3 cores)' },
-  { key: 'laser',      label: 'Laser' },
+  { key: 'serigrafia_1', label: 'Serigrafia 1 Cor' },
+  { key: 'serigrafia_2', label: 'Serigrafia 2 Cores' },
+  { key: 'transfer',     label: 'Transfer' },
+  { key: 'laser_frente', label: 'Gravação a Laser - Frente' },
+  { key: 'laser_fv',     label: 'Gravação a Laser - Frente e Verso' },
 ];
 
 // Editor das 3 tabelas de preço por tipo de impressão.
@@ -23,8 +24,8 @@ export default function PrintPricingEditor({ value, onChange }) {
 
   return (
     <div className="border border-violet-200 rounded-lg bg-violet-50/30 p-4 space-y-3">
-      <p className="text-sm font-semibold text-violet-800">🎨 Preço por tipo de impressão (loja)</p>
-      <p className="text-xs text-violet-500 -mt-1">Cada tipo tem sua própria tabela por quantidade. Deixe em branco para usar o preço de venda padrão.</p>
+      <p className="text-sm font-semibold text-violet-800">🎨 Tabelas de preço por impressão</p>
+      <p className="text-xs text-violet-500 -mt-1">Cada tipo (Serigrafia 1 Cor, 2 Cores, Transfer, Laser…) tem sua própria tabela de preço por quantidade. Deixe em branco para usar o preço de venda padrão.</p>
       {PRINT_METHODS.map(m => {
         const d = pp[m.key] || {};
         const tiers = d.tiers || [];

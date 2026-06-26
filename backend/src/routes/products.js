@@ -5,6 +5,7 @@ const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
 const { uploadDataUrl } = require('../lib/storage');
+const { PRINT_METHODS } = require('../lib/calc');
 
 // Sobe data-URLs (fotos) para o Storage; mantém URLs já existentes.
 async function processImage(val) {
@@ -55,11 +56,15 @@ router.get('/', async (req, res) => {
 
     // Busca por VÁRIOS termos: cada palavra precisa aparecer (no nome/código/ean).
     // Ex.: "long drink amarelo 350" só traz quem casa com todos os termos.
+    // Prefixo "-" EXCLUI o termo. Ex.: "tradicional -borda" = tradicional sem borda.
     if (search) {
-      const terms = String(search).trim().split(/\s+/).filter(Boolean).slice(0, 8);
-      for (const tok of terms) {
-        const t = tok.replace(/[%,()]/g, ' ').trim();
-        if (t) query = query.or(`name.ilike.%${t}%,code.ilike.%${t}%,ean.ilike.%${t}%`);
+      const terms = String(search).trim().split(/\s+/).filter(Boolean).slice(0, 10);
+      for (const rawTok of terms) {
+        const neg = rawTok.startsWith('-') && rawTok.length > 1;
+        const t = (neg ? rawTok.slice(1) : rawTok).replace(/[%,()]/g, ' ').trim();
+        if (!t) continue;
+        if (neg) query = query.not('name', 'ilike', `%${t}%`);
+        else query = query.or(`name.ilike.%${t}%,code.ilike.%${t}%,ean.ilike.%${t}%`);
       }
     }
     if (category_id) query = query.eq('category_id', category_id);
@@ -115,10 +120,10 @@ router.patch('/bulk', async (req, res) => {
       })
       .filter(t => t.min_qty > 0 && t.price > 0);
   }
-  // preço por tipo de impressão (Serigrafia/Transfer/DTF) — substitui as 3 tabelas
+  // tabelas de preço por impressão (Serigrafia 1 Cor/2 Cores/Transfer/Laser) — substitui as tabelas
   if (fields.print_pricing && typeof fields.print_pricing === 'object' && !Array.isArray(fields.print_pricing)) {
     const pp = {};
-    for (const key of ['serigrafia', 'transfer', 'dtf']) {
+    for (const key of PRINT_METHODS.map(m => m.key)) {
       const d = fields.print_pricing[key];
       if (!d || typeof d !== 'object') continue;
       const price = (d.price != null && d.price !== '') ? Number(d.price) : null;
@@ -142,9 +147,12 @@ router.patch('/bulk', async (req, res) => {
     if (all) {
       if (match.category_id) q = q.eq('category_id', match.category_id);
       if (match.search) {
-        for (const tok of String(match.search).trim().split(/\s+/).filter(Boolean).slice(0, 8)) {
-          const t = tok.replace(/[%,()]/g, ' ').trim();
-          if (t) q = q.or(`name.ilike.%${t}%,code.ilike.%${t}%,ean.ilike.%${t}%`);
+        for (const rawTok of String(match.search).trim().split(/\s+/).filter(Boolean).slice(0, 10)) {
+          const neg = rawTok.startsWith('-') && rawTok.length > 1;
+          const t = (neg ? rawTok.slice(1) : rawTok).replace(/[%,()]/g, ' ').trim();
+          if (!t) continue;
+          if (neg) q = q.not('name', 'ilike', `%${t}%`);
+          else q = q.or(`name.ilike.%${t}%,code.ilike.%${t}%,ean.ilike.%${t}%`);
         }
       }
     } else {

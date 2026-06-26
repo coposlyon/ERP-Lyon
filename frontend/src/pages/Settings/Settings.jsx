@@ -10,14 +10,15 @@ import { SITE_DEFAULTS, SITE_FIELDS } from '@/store/siteDefaults';
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
 // Sugestão inicial de condições de pagamento (% negativo = desconto, positivo = juros)
+// Valores aproximados das tabelas Lyon (PIX −8% e parcelas "sem juros" com acréscimo embutido).
 const PAY_SUGGESTION = [
   { label: 'PIX',          percent: -8 },
   { label: 'Dinheiro',     percent: -8 },
   { label: '1x (à vista)', percent: 0 },
-  { label: '2x',           percent: 2 },
-  { label: '4x',           percent: 4 },
-  { label: '6x',           percent: 6 },
-  { label: '12x',          percent: 10 },
+  { label: '3x sem juros', percent: 7.7 },
+  { label: '6x sem juros', percent: 10.9 },
+  { label: '9x sem juros', percent: 16.6 },
+  { label: '12x sem juros', percent: 20.2 },
 ];
 
 export default function Settings() {

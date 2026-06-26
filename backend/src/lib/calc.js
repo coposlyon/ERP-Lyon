@@ -45,10 +45,11 @@ function precoFaixa(tiers, salePrice, qty) {
 
 // ── Tipos de impressão (1/2/3 cores) ──────────────────────
 const PRINT_METHODS = [
-  { key: 'serigrafia', label: 'Serigrafia (1 cor)' },
-  { key: 'transfer',   label: 'Transfer (2 cores)' },
-  { key: 'dtf',        label: 'DTF (3 cores)' },
-  { key: 'laser',      label: 'Laser' },
+  { key: 'serigrafia_1', label: 'Serigrafia 1 Cor' },
+  { key: 'serigrafia_2', label: 'Serigrafia 2 Cores' },
+  { key: 'transfer',     label: 'Transfer' },
+  { key: 'laser_frente', label: 'Gravação a Laser - Frente' },
+  { key: 'laser_fv',     label: 'Gravação a Laser - Frente e Verso' },
 ];
 
 // Preço considerando o tipo de impressão escolhido. Cada tipo tem sua própria
