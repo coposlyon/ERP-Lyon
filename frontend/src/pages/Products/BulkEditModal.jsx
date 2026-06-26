@@ -11,6 +11,8 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [finish, setFinish] = useState(''); // '' | 'tradicional' | 'degrade'
+  const [border, setBorder] = useState(''); // '' | 'com' | 'sem'
   const [selected, setSelected] = useState({});
 
   const [applyAll, setApplyAll] = useState(false);  // aplicar a TODOS do filtro
@@ -33,9 +35,14 @@ export default function BulkEditModal({ isOpen, onClose }) {
     enabled: isOpen,
   });
 
+  // Filtros por botão (acabamento/borda) viram termos de busca (com exclusão) automaticamente
+  const finishTerm = finish === 'tradicional' ? 'tradicional' : finish === 'degrade' ? 'degradê' : '';
+  const borderTerm = border === 'com' ? 'borda' : border === 'sem' ? '-borda' : '';
+  const effectiveSearch = [search, finishTerm, borderTerm].filter(Boolean).join(' ').trim();
+
   const { data, isFetching } = useQuery({
-    queryKey: ['bulk-products', search, categoryId],
-    queryFn: () => api.get(`/products?limit=1000&is_active=true${search ? `&search=${encodeURIComponent(search)}` : ''}${categoryId ? `&category_id=${categoryId}` : ''}`),
+    queryKey: ['bulk-products', effectiveSearch, categoryId],
+    queryFn: () => api.get(`/products?limit=1000&is_active=true${effectiveSearch ? `&search=${encodeURIComponent(effectiveSearch)}` : ''}${categoryId ? `&category_id=${categoryId}` : ''}`),
     enabled: isOpen,
   });
   const products = data?.data || [];
@@ -82,7 +89,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
   const apply = useMutation({
     mutationFn: () => api.patch('/products/bulk', applyAll
-      ? { all: true, match: { search, category_id: categoryId }, fields }
+      ? { all: true, match: { search: effectiveSearch, category_id: categoryId }, fields }
       : { ids: selectedIds, fields }),
     onSuccess: (r) => {
       toast.success(`${r.updated} produto(s) atualizado(s)!`);
@@ -95,7 +102,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
     onError: (e) => toast.error(e.error || 'Erro ao aplicar'),
   });
 
-  const hasFilter = !!(search || categoryId);
+  const hasFilter = !!(effectiveSearch || categoryId);
   const targetCount = applyAll ? totalMatching : selectedIds.length;
   const canApply = hasFields && (applyAll ? totalMatching > 0 : selectedIds.length > 0);
 
@@ -114,11 +121,23 @@ export default function BulkEditModal({ isOpen, onClose }) {
           Filtre por <b>categoria</b> ou <b>modelo</b>, selecione os produtos e defina o que quer alterar.
           Só os campos preenchidos são aplicados. Preço e faixas atualizam a loja automaticamente.
         </p>
-        <p className="text-xs text-violet-600 bg-violet-50 rounded-lg px-3 py-2">
-          💡 Use <b>-</b> antes de uma palavra para EXCLUIR. Ex.: <code>tradicional -borda</code> = Tradicional liso ·
-          <code> tradicional borda</code> = Tradicional com borda · <code>degradê -borda</code> = Degradê liso ·
-          <code> degradê borda</code> = Degradê + borda.
-        </p>
+        {/* Filtros rápidos por botão (acabamento + borda) */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 bg-gray-50 rounded-lg px-3 py-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-gray-500">Acabamento:</span>
+            {[['', 'Todos'], ['tradicional', 'Tradicional'], ['degrade', 'Degradê']].map(([v, l]) => (
+              <button key={v} type="button" onClick={() => setFinish(v)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${finish === v ? 'border-violet-500 bg-violet-100 text-violet-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'}`}>{l}</button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-gray-500">Borda:</span>
+            {[['', 'Todas'], ['sem', 'Sem borda'], ['com', 'Com borda']].map(([v, l]) => (
+              <button key={v} type="button" onClick={() => setBorder(v)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${border === v ? 'border-violet-500 bg-violet-100 text-violet-700' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'}`}>{l}</button>
+            ))}
+          </div>
+        </div>
 
         {/* Filtros */}
         <div className="flex flex-col sm:flex-row gap-2">
