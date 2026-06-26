@@ -143,7 +143,7 @@ export default function Products() {
             <Upload size={16} /> Importar Estoque
           </button>
           <button onClick={() => setCatalogOpen(true)} className="btn-secondary">
-            <Upload size={16} /> Importar Catálogo
+            <Upload size={16} /> Importar Produtos
           </button>
           <button onClick={() => setBulkOpen(true)} className="btn-secondary">
             <Layers size={16} /> Edição em massa

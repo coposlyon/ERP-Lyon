@@ -1,74 +1,41 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { UploadCloud, Loader2, Package, CheckCircle2, Palette } from 'lucide-react';
+import { UploadCloud, Loader2, Package, CheckCircle2 } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
 
-// ── Parser do catálogo (mesma lógica usada na análise) ──────────────
-// Linha: "BASE - COR [RML 000] - [BORDA ...] - 000 ML"
-const VOL_RE  = /(\d+(?:[.,]\d+)?)\s*ML/i;
-const CODE_RE = /\bRML\s*\d+\b/ig;
-
-function clean(s) {
-  return String(s || '').replace(/\s+/g, ' ').replace(/\bNORMAL\b/ig, '')
-    .replace(/\s+/g, ' ').trim().replace(/^[-/\s]+|[-/\s]+$/g, '');
+// Limpa o nome do produto (uma linha = um produto)
+function cleanName(raw) {
+  return String(raw || '')
+    .replace(/\bRML\s*\d+\b/ig, '')
+    .replace(/\bNORMAL\b/ig, '')
+    .replace(/\s*-\s*/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim().replace(/^[-\s]+|[-\s]+$/g, '')
+    .toUpperCase();
 }
-function fixBase(b) {
-  return b
-    .replace(/\bWHISKYTRADICIONAL\b/i, 'WHISKY TRADICIONAL')
-    .replace(/\bTWISTERTRADICIONAL\b/i, 'TWISTER TRADICIONAL')
-    .replace(/\s+/g, ' ').trim();
-}
-const JUNK = [/^PRODUTO MODELO$/i, /^PREENCHER$/i];
 
-function parseCatalog(text) {
-  const lines = String(text || '').split(/\r?\n/).map(s => s.trim())
-    .filter(s => s && s.toUpperCase() !== 'PREENCHER');
-  const map = new Map();
-  for (const raw of lines) {
-    let s = raw.replace(/\s+/g, ' ').trim();
-    let vol = null;
-    const m = s.match(VOL_RE);
-    if (m) { vol = m[1].replace(',', '.') + ' ML'; s = s.replace(VOL_RE, '').replace(/\s+/g, ' ').trim().replace(/[-\s]+$/, ''); }
-    const parts = s.split(' - ').map(p => p.trim()).filter(Boolean);
-    let base = fixBase(clean(parts[0] || s)).toUpperCase();
-    if (base.length < 3 || JUNK.some(re => re.test(base))) continue;
-    let color = null, border = null;
-    for (let p of parts.slice(1)) {
-      p = p.replace(CODE_RE, '').trim();
-      if (/^BORDA/i.test(p)) border = clean(p).toUpperCase();
-      else if (p) color = color ? `${color} / ${clean(p).toUpperCase()}` : clean(p).toUpperCase();
-    }
-    if (!map.has(base)) map.set(base, { name: base, colors: new Set(), borders: new Set(), volumes: new Set(), items: new Set() });
-    const g = map.get(base);
-    if (color) g.colors.add(color);
-    if (border) g.borders.add(border);
-    if (vol) g.volumes.add(vol);
-    // nome real (limpo) desta linha — esta é a variação que de fato existe
-    let item;
-    if (border) { const mid = color ? `${color} - ${border}` : border; item = vol ? `${base} - ${mid} - ${vol}` : `${base} - ${mid}`; }
-    else if (color) { item = vol ? `${base} - ${color} ${vol}` : `${base} - ${color}`; }
-    else { item = vol ? `${base} ${vol}` : base; }
-    g.items.add(item);
+function parseNames(text) {
+  const seen = new Set();
+  const out = [];
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const n = cleanName(line);
+    if (n.length < 3 || n === 'PREENCHER' || /^PRODUTO MODELO$/.test(n)) continue;
+    if (seen.has(n)) continue;
+    seen.add(n); out.push(n);
   }
-  return [...map.values()].map(g => ({
-    name: g.name,
-    colors: [...g.colors].sort(),
-    borders: [...g.borders].sort(),
-    volumes: [...g.volumes].sort(),
-    items: [...g.items].sort(),
-  })).sort((a, b) => a.name.localeCompare(b.name));
+  return out;
 }
 
 export default function ImportProductsModal({ isOpen, onClose }) {
   const qc = useQueryClient();
   const [text, setText] = useState('');
-  const [groups, setGroups] = useState([]);
+  const [names, setNames] = useState([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
-  function reparse(t) { setText(t); setGroups(parseCatalog(t)); setResult(null); }
+  function reparse(t) { setText(t); setNames(parseNames(t)); setResult(null); }
 
   async function onFiles(e) {
     const files = [...(e.target.files || [])];
@@ -80,28 +47,25 @@ export default function ImportProductsModal({ isOpen, onClose }) {
   }
 
   async function importar() {
-    if (!groups.length) { toast.error('Nada para importar — cole ou envie o CSV'); return; }
+    if (!names.length) { toast.error('Nada para importar — cole ou envie o CSV'); return; }
     setLoading(true); setResult(null);
     try {
-      const res = await api.post('/products/import-grouped', { groups });
+      const res = await api.post('/products/import-flat', { names });
       setResult(res);
       qc.invalidateQueries(['products']);
-      toast.success(`${res.created} criados · ${res.updated} atualizados`);
+      qc.invalidateQueries(['stock-report']);
+      toast.success(`${res.created} produtos criados · ${res.skipped} já existiam`);
     } catch (err) {
       toast.error(err.error || 'Erro ao importar');
     } finally { setLoading(false); }
   }
 
-  const totColors = groups.reduce((s, g) => s + g.colors.length, 0);
-  const totBorders = groups.reduce((s, g) => s + g.borders.length, 0);
-  const totItems = groups.reduce((s, g) => s + (g.items?.length || 0), 0);
-
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Importar catálogo (cores e bordas)" size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title="Importar produtos (lista)" size="lg">
       <div className="space-y-4">
         <p className="text-sm text-gray-500">
-          Envie os arquivos <b>.csv</b> (uma linha por produto) ou cole a lista abaixo. O sistema agrupa em
-          <b> um produto por modelo</b>, com as <b>cores</b> e <b>bordas</b> como variações selecionáveis.
+          Envie os arquivos <b>.csv</b> ou cole a lista abaixo — <b>uma linha = um produto</b>.
+          Cada linha vira um produto individual no estoque (sem agrupar por cor/borda).
         </p>
 
         <div className="flex flex-wrap gap-2">
@@ -109,67 +73,43 @@ export default function ImportProductsModal({ isOpen, onClose }) {
             <UploadCloud size={16} /> Enviar CSV(s)
             <input type="file" accept=".csv,.txt" multiple className="hidden" onChange={onFiles} />
           </label>
-          {(text || groups.length > 0) && (
+          {(text || names.length > 0) && (
             <button onClick={() => reparse('')} className="btn-ghost text-sm text-gray-500">Limpar</button>
           )}
         </div>
 
         <textarea
           className="input w-full h-28 resize-none font-mono text-xs"
-          placeholder={'Cole aqui, ex.:\nTAÇA GIN JATEADO - AZUL TIFANNY - BORDA METALIZADA AZUL - 600 ML\nLONG DRINK TRADICIONAL - BRANCO 350 ML'}
+          placeholder={'Cole aqui, uma linha por produto:\nLONG DRINK TRADICIONAL - BRANCO 350 ML\nLONG DRINK TRADICIONAL - PRETO 350 ML'}
           value={text}
           onChange={e => reparse(e.target.value)}
         />
 
         {/* Prévia */}
-        {groups.length > 0 && (
+        {names.length > 0 && (
           <div className="border border-gray-200 rounded-xl overflow-hidden">
-            <div className="bg-gray-50 px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-              <span className="flex items-center gap-1.5 font-semibold text-gray-800"><Package size={15} className="text-indigo-500" /> {groups.length} produtos</span>
-              <span className="flex items-center gap-1.5 text-gray-500"><Palette size={14} className="text-pink-500" /> {totColors} cores</span>
-              <span className="text-gray-500">{totBorders} bordas</span>
-              <span className="font-semibold text-indigo-600">{totItems} variações reais</span>
+            <div className="bg-gray-50 px-4 py-2.5 flex items-center gap-2 text-sm">
+              <Package size={15} className="text-indigo-500" />
+              <span className="font-semibold text-gray-800">{names.length} produto{names.length !== 1 ? 's' : ''}</span>
+              <span className="text-gray-400">serão criados (um por linha)</span>
             </div>
-            <div className="max-h-72 overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-white sticky top-0 shadow-sm">
-                  <tr className="text-xs text-gray-400 uppercase text-left">
-                    <th className="px-4 py-2 font-semibold">Produto</th>
-                    <th className="px-3 py-2 font-semibold text-center w-20">Cores</th>
-                    <th className="px-3 py-2 font-semibold text-center w-20">Bordas</th>
-                    <th className="px-3 py-2 font-semibold text-center w-24">Variações</th>
-                    <th className="px-3 py-2 font-semibold w-40">Volume(s)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {groups.map(g => (
-                    <tr key={g.name} className="border-t border-gray-50">
-                      <td className="px-4 py-1.5 font-medium text-gray-800">{g.name}</td>
-                      <td className="px-3 py-1.5 text-center">{g.colors.length || '—'}</td>
-                      <td className="px-3 py-1.5 text-center">{g.borders.length || '—'}</td>
-                      <td className="px-3 py-1.5 text-center font-semibold text-indigo-600">{g.items?.length || '—'}</td>
-                      <td className="px-3 py-1.5 text-gray-500 text-xs">{g.volumes.join(', ') || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="max-h-72 overflow-y-auto divide-y divide-gray-50">
+              {names.slice(0, 600).map((n, i) => (
+                <div key={i} className="px-4 py-1.5 text-sm text-gray-700 flex gap-3">
+                  <span className="text-gray-300 font-mono w-10 text-right shrink-0">{i + 1}</span>
+                  <span>{n}</span>
+                </div>
+              ))}
+              {names.length > 600 && <p className="px-4 py-2 text-xs text-gray-400">…e mais {names.length - 600}.</p>}
             </div>
           </div>
         )}
 
         {/* Resultado */}
         {result && (
-          <div className={`border rounded-xl p-4 text-sm ${result.variations_missing ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
-            <p className={`font-semibold flex items-center gap-2 ${result.variations_missing ? 'text-red-800' : 'text-green-800'}`}>
-              <CheckCircle2 size={16} /> Importação concluída!
-            </p>
-            <p className={`mt-1 ${result.variations_missing ? 'text-red-700' : 'text-green-700'}`}>{result.created} criados · {result.updated} atualizados · {result.skipped} ignorados</p>
-            {result.variations_missing && (
-              <p className="mt-2 text-red-700 font-medium bg-red-100 rounded-lg px-3 py-2">
-                ⚠️ As <b>cores e bordas NÃO foram salvas</b> porque a coluna <code>variations</code> ainda não existe no banco.
-                Rode o SQL <b>PENDENTES_023_a_028.sql</b> no Supabase e importe de novo.
-              </p>
-            )}
+          <div className="border rounded-xl p-4 text-sm bg-green-50 border-green-200">
+            <p className="font-semibold flex items-center gap-2 text-green-800"><CheckCircle2 size={16} /> Importação concluída!</p>
+            <p className="mt-1 text-green-700">{result.created} criados · {result.skipped} já existiam</p>
             {result.errors?.length > 0 && (
               <details className="mt-2"><summary className="text-xs text-red-600 cursor-pointer">{result.errors.length} avisos</summary>
                 <ul className="text-xs text-red-500 mt-1 list-disc pl-4">{result.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
@@ -180,8 +120,8 @@ export default function ImportProductsModal({ isOpen, onClose }) {
 
         <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
           <button onClick={onClose} className="btn-secondary">Fechar</button>
-          <button onClick={importar} disabled={loading || groups.length === 0} className="btn-primary disabled:opacity-50">
-            {loading ? <><Loader2 size={15} className="animate-spin" /> Importando...</> : <><UploadCloud size={15} /> Importar {groups.length} produtos</>}
+          <button onClick={importar} disabled={loading || names.length === 0} className="btn-primary disabled:opacity-50">
+            {loading ? <><Loader2 size={15} className="animate-spin" /> Importando...</> : <><UploadCloud size={15} /> Importar {names.length} produtos</>}
           </button>
         </div>
       </div>

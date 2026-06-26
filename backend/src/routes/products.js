@@ -684,6 +684,90 @@ router.post('/import-grouped', async (req, res) => {
   }
 });
 
+// Importação PLANA — um produto por linha (sem cores/bordas).
+// Cada linha do CSV vira um produto; código = iniciais do modelo + sequência.
+router.post('/import-flat', async (req, res) => {
+  const raw = Array.isArray(req.body.names) ? req.body.names : [];
+  if (!raw.length) return res.status(400).json({ error: 'Nada para importar' });
+
+  const clean = s => String(s || '')
+    .replace(/\bRML\s*\d+\b/ig, '')
+    .replace(/\bNORMAL\b/ig, '')
+    .replace(/\s*-\s*/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim().replace(/^[-\s]+|[-\s]+$/g, '')
+    .toUpperCase();
+
+  // nomes únicos e válidos
+  const names = [...new Set(raw.map(clean).filter(n => n.length >= 3))];
+
+  // Categoria/Tipo = modelo (parte antes do " - "); ex.: "LONG DRINK TRADICIONAL - BRANCO 350 ML" → "LONG DRINK"
+  const categoriaDe = (nm) => {
+    const n = String(nm || '').toUpperCase().trim();
+    if (n.startsWith('LONG DRINK')) return 'LONG DRINK';
+    if (n.startsWith('PORTA ')) return 'PORTA GARRAFA';
+    return n.split(/\s+/)[0] || 'OUTROS';
+  };
+  const catCache = new Map();
+  async function categoriaId(catName) {
+    if (catCache.has(catName)) return catCache.get(catName);
+    let { data: cat } = await supabase.from('CATEGORIAS').select('id')
+      .eq('tenant_id', req.tenantId).ilike('name', catName).limit(1).maybeSingle();
+    if (!cat) { const r = await supabase.from('CATEGORIAS').insert({ tenant_id: req.tenantId, name: catName }).select('id').single(); cat = r.data; }
+    const id = cat?.id || null; catCache.set(catName, id); return id;
+  }
+
+  const STOP = new Set(['DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'COM', 'PARA', 'A', 'O']);
+  function initials(nm) {
+    const words = String(nm || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^A-Z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+    let ini = words.filter(w => !STOP.has(w)).map(w => w[0]).join('');
+    if (!ini) ini = words.map(w => w[0]).join('') || 'X';
+    return ini.slice(0, 8);
+  }
+
+  try {
+    // nomes já existentes (para não duplicar) + maior sequência atual
+    const { data: existingRows } = await supabase.from('PRODUTOS').select('name, code').eq('tenant_id', req.tenantId).limit(50000);
+    const existingNames = new Set((existingRows || []).map(r => String(r.name || '').trim().toUpperCase()));
+    let seq = 0;
+    for (const r of (existingRows || [])) {
+      const m = String(r.code || '').trim().match(/(\d+)\s*$/);
+      if (m) { const n = parseInt(m[1], 10); if (n > seq) seq = n; }
+    }
+
+    let created = 0, skipped = 0;
+    const errors = [];
+    const toInsert = [];
+    for (const name of names) {
+      if (existingNames.has(name)) { skipped++; continue; }
+      const base = name.split(' - ')[0].trim();
+      const catId = await categoriaId(categoriaDe(base));
+      seq += 1;
+      toInsert.push({
+        tenant_id: req.tenantId, name, unit: 'UN', category_id: catId,
+        code: `${initials(base)} ${String(seq).padStart(4, '0')}`,
+        sale_price: 0, cost_price: 0, current_stock: 0, is_active: true, min_order_qty: 1,
+      });
+    }
+
+    // insere em lotes (rápido); se min_order_qty não existir, tenta sem
+    for (let i = 0; i < toInsert.length; i += 200) {
+      const chunk = toInsert.slice(i, i + 200);
+      let { error } = await supabase.from('PRODUTOS').insert(chunk);
+      if (error && /min_order_qty/i.test(error.message || '')) {
+        ({ error } = await supabase.from('PRODUTOS').insert(chunk.map(({ min_order_qty, ...r }) => r)));
+      }
+      if (error) errors.push(error.message); else created += chunk.length;
+    }
+
+    audit(req, 'create', 'product_import_flat', null, { created, skipped });
+    res.json({ created, skipped, errors: errors.slice(0, 20), total: names.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Exclusão DEFINITIVA do produto (apaga de verdade)
 router.post('/:id/delete', async (req, res) => {
   try {
