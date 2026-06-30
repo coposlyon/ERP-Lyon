@@ -436,6 +436,11 @@ export default function Settings() {
                 <input type="number" className="input" value={form.settings?.frete?.free_above ?? ''} onChange={e => setFrete('free_above', e.target.value)} placeholder="0 = desligado" disabled={!isAdmin} />
               </div>
               <div>
+                <label className="label">Acréscimo no frete (%)</label>
+                <input type="number" step="0.1" className="input" value={form.settings?.frete?.freight_markup ?? ''} onChange={e => setFrete('freight_markup', e.target.value)} placeholder="14" disabled={!isAdmin} />
+                <p className="text-xs text-gray-400 mt-1">% somado ao frete (caixa + peso). Vazio = 14%. Ex.: R$50 → R$57.</p>
+              </div>
+              <div>
                 <label className="label">Prazo padrão (dias)</label>
                 <input type="number" className="input" value={form.settings?.frete?.default_days ?? ''} onChange={e => setFrete('default_days', e.target.value)} placeholder="ex.: 7" disabled={!isAdmin} />
               </div>

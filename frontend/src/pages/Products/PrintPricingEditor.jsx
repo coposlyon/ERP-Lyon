@@ -12,6 +12,9 @@ export const PRINT_METHODS = [
 
 const fmt = v => 'R$ ' + (Number(v) || 0).toFixed(2).replace('.', ',');
 
+// Faixas de tiragem padrão do comercial (preço fica em branco p/ preencher)
+const STD_TIERS = [[10, 25], [30, 50], [75, 100], [100, 200], [300, 500], [500, 1000]];
+
 // Editor das tabelas de preço por impressão.
 // Só faixas por quantidade (sem preço base). value = { serigrafia_1:{tiers:[]}, ... }
 export default function PrintPricingEditor({ value, onChange }) {
@@ -28,6 +31,7 @@ export default function PrintPricingEditor({ value, onChange }) {
     set(key, { tiers: t });
   };
   const removeTier = (key, i) => set(key, { tiers: (pp[key]?.tiers || []).filter((_, idx) => idx !== i) });
+  const fillStd = (key) => set(key, { tiers: STD_TIERS.map(([a, b]) => ({ min_qty: a, max_qty: b, price: (pp[key]?.tiers || []).find(t => +t.min_qty === a)?.price || '' })) });
 
   return (
     <div className="border border-violet-200 rounded-lg bg-violet-50/30 p-4 space-y-3">
@@ -42,10 +46,14 @@ export default function PrintPricingEditor({ value, onChange }) {
           <div key={m.key} className="bg-white rounded-lg border border-violet-100 p-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium text-gray-700">{m.label}</span>
-              <button type="button" onClick={() => addTier(m.key)}
-                className="text-xs font-medium text-violet-700 bg-violet-100 hover:bg-violet-200 px-2 py-1 rounded-lg flex items-center gap-1">
-                <Plus size={12} /> faixa
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button type="button" onClick={() => fillStd(m.key)} title="Faixas padrão: 10-25, 30-50, 75-100, 100-200, 300-500, 500-1000"
+                  className="text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-lg">faixas padrão</button>
+                <button type="button" onClick={() => addTier(m.key)}
+                  className="text-xs font-medium text-violet-700 bg-violet-100 hover:bg-violet-200 px-2 py-1 rounded-lg flex items-center gap-1">
+                  <Plus size={12} /> faixa
+                </button>
+              </div>
             </div>
             {tiers.length === 0 && <p className="text-xs text-gray-400">Sem faixas. Clique em "faixa" para adicionar.</p>}
             {tiers.map((t, i) => {

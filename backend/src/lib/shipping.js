@@ -37,6 +37,7 @@ async function getFreteConfig(tenantId) {
     origin_cep:       String(s.origin_cep || '').replace(/\D/g, ''),
     weight_per_unit_g: Number(s.weight_per_unit_g) || 200,     // peso por copo (g) p/ estimar
     free_above:       Number(s.free_above) || 0,               // frete grátis acima de R$
+    freight_markup:   (s.freight_markup != null && s.freight_markup !== '') ? Number(s.freight_markup) : null, // % de acréscimo no frete (caixa/peso)
     table:            Array.isArray(s.table) ? s.table : [],   // tabela por UF
     default_price:    Number(s.default_price) || 0,            // base p/ UF sem regra
     default_per_kg:   Number(s.default_per_kg) || 0,

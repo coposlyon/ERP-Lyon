@@ -4,7 +4,7 @@ const supabase = require('../config/supabase');
 const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
 const { uploadDataUrl } = require('../lib/storage');
 const { calcularFrete, packItem } = require('../lib/frete');
-const { cotar, ufFromCep } = require('../lib/shipping');
+const { cotar, ufFromCep, getFreteConfig } = require('../lib/shipping');
 
 // Loja pública: serve UM tenant (a empresa dona da loja).
 // Sem autenticação — montada antes do authMiddleware.
@@ -755,23 +755,27 @@ router.post('/frete', async (req, res) => {
       }
     }
 
+    let options = null;
+
     // 1) Melhor Envio (cotação real multi-transportadora) — se houver token
     if (process.env.MELHORENVIO_TOKEN && products.length) {
       const out = await calcularFrete({ fromCep, toCep: cep, products });
-      if (out.ok && (out.options || []).length) return res.json({ options: out.options });
+      if (out.ok && (out.options || []).length) options = out.options;
     }
 
     // 2) Fallback: tabela por estado (Configurações → Transportadora)
-    const uf = ufFromCep(cep);
-    if (!uf) return res.status(400).json({ error: 'Não consegui identificar o estado pelo CEP.' });
-    const r = await cotar(STORE_TENANT, { uf, cep, qty, subtotal });
-    const options = [{
-      id: 'tabela',
-      company: 'Entrega',
-      service: r.free ? 'Frete grátis' : 'Padrão',
-      price: r.price,
-      days: r.days,
-    }];
+    if (!options) {
+      const uf = ufFromCep(cep);
+      if (!uf) return res.status(400).json({ error: 'Não consegui identificar o estado pelo CEP.' });
+      const r = await cotar(STORE_TENANT, { uf, cep, qty, subtotal });
+      options = [{ id: 'tabela', company: 'Entrega', service: r.free ? 'Frete grátis' : 'Padrão', price: r.price, days: r.days }];
+    }
+
+    // Markup automático sobre o frete (custo de caixa + variação de peso) — padrão 14%
+    const cfg = await getFreteConfig(STORE_TENANT);
+    const markup = (cfg.freight_markup != null && cfg.freight_markup !== '') ? Number(cfg.freight_markup) : 14;
+    if (markup) options = options.map(o => ({ ...o, price: Math.round((Number(o.price) || 0) * (1 + markup / 100) * 100) / 100 }));
+
     res.json({ options });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
