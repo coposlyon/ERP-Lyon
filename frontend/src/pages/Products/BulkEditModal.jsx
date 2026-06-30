@@ -143,7 +143,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
         <div className="flex flex-col sm:flex-row gap-2">
           <select className="input sm:w-56" value={categoryId} onChange={e => setCategoryId(e.target.value)}>
             <option value="">Todas as categorias</option>
-            {(cats || []).map(c => <option key={c.id} value={c.id}>{c.name} ({c.product_count})</option>)}
+            {(cats || []).filter(c => c.product_count > 0).map(c => <option key={c.id} value={c.id}>{c.name} ({c.product_count})</option>)}
           </select>
           <form onSubmit={doSearch} className="flex gap-2 flex-1">
             <div className="relative flex-1">
@@ -200,7 +200,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
               <select className="input flex-1" value={newCategoryId} onChange={e => setNewCategoryId(e.target.value)}>
                 <option value="">— não alterar o tipo —</option>
                 <option value="__none__">Sem tipo (limpar)</option>
-                {(cats || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {(cats || []).filter(c => c.name?.toUpperCase().includes('LONG DRINK') || c.id === newCategoryId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <button type="button" onClick={() => setCreatingType(true)} className="btn-secondary px-3 whitespace-nowrap" title="Criar novo tipo">
                 <FolderPlus size={15} /> Novo tipo
