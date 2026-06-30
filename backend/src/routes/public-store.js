@@ -66,7 +66,7 @@ router.get('/products', async (req, res) => {
   const build = (full) => {
     let q = supabase
       .from('PRODUTOS')
-      .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, store_group, store_color, variations, image_url, variation_images' : ''}, category_id, CATEGORIAS(name)`)
+      .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, store_group, store_color, variations, image_url, variation_images, show_in_store' : ''}, category_id, CATEGORIAS(name)`)
       .eq('tenant_id', STORE_TENANT)
       .eq('is_active', true)
       .order('name');
@@ -81,6 +81,10 @@ router.get('/products', async (req, res) => {
     let { data: products, error } = await build(true);
     if (error) ({ data: products, error } = await build(false));
     if (error) throw error;
+
+    // Só mostra na loja produtos marcados como visíveis (show_in_store).
+    // Se a coluna ainda não existe (fallback), products vem sem o campo → mostra todos.
+    products = (products || []).filter(p => p.show_in_store !== false);
 
     // Agrupa por modelo (store_group). Cada grupo vira 1 card; as cores ficam dentro.
     const groups = new Map();

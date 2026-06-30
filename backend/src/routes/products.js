@@ -93,6 +93,10 @@ router.patch('/bulk', async (req, res) => {
   const patch = {};
   // Tipo (categoria): '' / null = limpa (Sem tipo); id = define
   if (fields.category_id !== undefined) patch.category_id = fields.category_id || null;
+  // Visibilidade na loja (true/false). '' / undefined = não altera.
+  if (fields.show_in_store !== undefined && fields.show_in_store !== '') {
+    patch.show_in_store = fields.show_in_store === true || fields.show_in_store === 'true';
+  }
   // texto fiscal
   for (const k of ['ncm', 'cst', 'cfop']) {
     if (fields[k] != null && String(fields[k]).trim() !== '') patch[k] = String(fields[k]).trim();
@@ -162,8 +166,8 @@ router.patch('/bulk', async (req, res) => {
   try {
     let { data, error } = await runUpdate(patch);
     // resiliência: se min_order_qty/print_pricing ainda não existem, aplica o resto
-    if (error && /print_pricing|min_order_qty|does not exist|column|42703/i.test(error.message || '')) {
-      const { print_pricing, min_order_qty, ...rest } = patch;
+    if (error && /print_pricing|min_order_qty|show_in_store|does not exist|column|42703/i.test(error.message || '')) {
+      const { print_pricing, min_order_qty, show_in_store, ...rest } = patch;
       ({ data, error } = await runUpdate(rest));
     }
     if (error) throw error;
@@ -492,7 +496,7 @@ router.post('/', validate(productSchema), async (req, res) => {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing, variations, image, variation_images
+    price_tiers, min_order_qty, print_pricing, variations, image, variation_images, show_in_store
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Nome do produto é obrigatório' });
@@ -520,13 +524,15 @@ router.post('/', validate(productSchema), async (req, res) => {
       ...(variations != null ? { variations } : {}),
       ...(imageUrl !== undefined ? { image_url: imageUrl } : {}),
       ...(varImgs !== undefined ? { variation_images: varImgs } : {}),
+      show_in_store: show_in_store !== false,
     };
     const ins = () => supabase.from('PRODUTOS').insert(payload).select().single();
     let { data, error } = await ins();
-    while (error && /(variations|image_url|variation_images)/i.test(error.message || '')) {
+    while (error && /(variations|image_url|variation_images|show_in_store)/i.test(error.message || '')) {
       if (/variation_images/i.test(error.message)) delete payload.variation_images;
       else if (/image_url/i.test(error.message)) delete payload.image_url;
       else if (/variations/i.test(error.message)) delete payload.variations;
+      else if (/show_in_store/i.test(error.message)) delete payload.show_in_store;
       ({ data, error } = await ins());
     }
 
@@ -543,7 +549,7 @@ router.put('/:id', async (req, res) => {
     name, code, ean, description, category_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing, variations, image, variation_images
+    price_tiers, min_order_qty, print_pricing, variations, image, variation_images, show_in_store
   } = req.body;
 
   try {
@@ -574,16 +580,18 @@ router.put('/:id', async (req, res) => {
       ...(variations != null ? { variations } : {}),
       ...(imageUrl !== undefined ? { image_url: imageUrl } : {}),
       ...(varImgs !== undefined ? { variation_images: varImgs } : {}),
+      ...(show_in_store != null ? { show_in_store: !!show_in_store } : {}),
       updated_at: new Date().toISOString(),
     };
     const upd = () => supabase.from('PRODUTOS').update(payload)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     let { data, error } = await upd();
     // remove colunas novas que ainda não existem no banco e tenta de novo
-    while (error && /(variations|image_url|variation_images)/i.test(error.message || '')) {
+    while (error && /(variations|image_url|variation_images|show_in_store)/i.test(error.message || '')) {
       if (/variation_images/i.test(error.message)) delete payload.variation_images;
       else if (/image_url/i.test(error.message)) delete payload.image_url;
       else if (/variations/i.test(error.message)) delete payload.variations;
+      else if (/show_in_store/i.test(error.message)) delete payload.show_in_store;
       ({ data, error } = await upd());
     }
     if (error) throw error;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, Plus, Trash2, FolderPlus, Check, X } from 'lucide-react';
+import { Search, Loader2, Plus, Trash2, FolderPlus, Check, X, Image as ImageIcon } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import PrintPricingEditor, { cleanPrintPricing } from './PrintPricingEditor';
@@ -28,6 +28,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [cfop, setCfop] = useState('');
   const [applyPrint, setApplyPrint] = useState(false);
   const [printPricing, setPrintPricing] = useState({});
+  const [showInStore, setShowInStore] = useState(''); // '' = não altera | 'true' | 'false'
 
   const { data: cats } = useQuery({
     queryKey: ['categories-list'],
@@ -85,6 +86,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
   if (cst.trim()) fields.cst = cst.trim();
   if (cfop.trim()) fields.cfop = cfop.trim();
   if (applyPrint) fields.print_pricing = cleanPrintPricing(printPricing);
+  if (showInStore !== '') fields.show_in_store = showInStore === 'true';
   const hasFields = Object.keys(fields).length > 0;
 
   const apply = useMutation({
@@ -106,6 +108,18 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const targetCount = applyAll ? totalMatching : selectedIds.length;
   const canApply = hasFields && (applyAll ? totalMatching > 0 : selectedIds.length > 0);
 
+  // Ao fechar, zera a seleção e os campos para o modal abrir limpo na próxima vez.
+  function handleClose() {
+    setSelected({});
+    setApplyAll(false);
+    setNewCategoryId(''); setCreatingType(false); setNewTypeName('');
+    setCostPrice(''); setSalePrice(''); setMinOrder('');
+    setNcm(''); setCst(''); setCfop('');
+    setApplyPrint(false); setPrintPricing({});
+    setShowInStore('');
+    onClose();
+  }
+
   function doApply() {
     if (applyAll) {
       const alvo = hasFilter ? `${totalMatching} produto(s) do filtro` : `TODOS os ${totalMatching} produtos do catálogo`;
@@ -115,7 +129,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Edição em massa" size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Edição em massa" size="lg">
       <div className="space-y-4 max-h-[85vh] overflow-y-auto pr-1">
         <p className="text-sm text-gray-500">
           Filtre por <b>categoria</b> ou <b>modelo</b>, selecione os produtos e defina o que quer alterar.
@@ -172,6 +186,13 @@ export default function BulkEditModal({ isOpen, onClose }) {
             ) : products.map(p => (
               <label key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
                 <input type="checkbox" checked={!!selected[p.id]} onChange={() => toggle(p.id)} className="w-4 h-4 accent-violet-600" />
+                {p.image_url ? (
+                  <img src={p.image_url} alt="" className="w-8 h-8 rounded-md object-cover border border-gray-200 shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded-md border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center shrink-0" title="Sem foto">
+                    <ImageIcon size={13} className="text-gray-300" />
+                  </div>
+                )}
                 <span className="flex-1 min-w-0">
                   <span className="font-medium block truncate">{p.name}</span>
                   <span className="text-xs text-gray-400">{p.code || '—'} · Venda R$ {Number(p.sale_price || 0).toFixed(2)} · mín. {p.min_order_qty || 1}</span>
@@ -198,9 +219,8 @@ export default function BulkEditModal({ isOpen, onClose }) {
           ) : (
             <div className="flex gap-2">
               <select className="input flex-1" value={newCategoryId} onChange={e => setNewCategoryId(e.target.value)}>
-                <option value="">— não alterar o tipo —</option>
-                <option value="__none__">Sem tipo (limpar)</option>
-                {(cats || []).filter(c => c.name?.toUpperCase().includes('LONG DRINK') || c.id === newCategoryId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                <option value=""></option>
+                {(cats || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <button type="button" onClick={() => setCreatingType(true)} className="btn-secondary px-3 whitespace-nowrap" title="Criar novo tipo">
                 <FolderPlus size={15} /> Novo tipo
@@ -210,6 +230,16 @@ export default function BulkEditModal({ isOpen, onClose }) {
           {newCategoryId && newCategoryId !== '__none__' && (
             <p className="text-xs text-violet-600 mt-1">Os produtos selecionados passam a ser do tipo <b>{(cats || []).find(c => c.id === newCategoryId)?.name}</b>.</p>
           )}
+        </div>
+
+        {/* Exibição na loja */}
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Exibição na loja</p>
+          <select className="input w-full sm:w-72" value={showInStore} onChange={e => setShowInStore(e.target.value)}>
+            <option value="">— não alterar —</option>
+            <option value="true">Mostrar na loja</option>
+            <option value="false">Ocultar da loja</option>
+          </select>
         </div>
 
         {/* Preço + qtd mínima */}
@@ -266,7 +296,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
         </label>
 
         <div className="flex gap-2 justify-end pt-3 border-t border-gray-100 sticky bottom-0 bg-white">
-          <button onClick={onClose} className="btn-secondary">Fechar</button>
+          <button onClick={handleClose} className="btn-secondary">Fechar</button>
           <button onClick={doApply}
             disabled={apply.isPending || !canApply}
             className="btn-primary disabled:opacity-50">

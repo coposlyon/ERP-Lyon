@@ -21,7 +21,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   const [form, setForm] = useState({
     name: '', code: '', ean: '', category_id: '',
     cost_price: '', sale_price: '', min_stock: '', min_order_qty: '',
-    ncm: '', cst: '', cfop: '', is_active: true,
+    ncm: '', cst: '', cfop: '', is_active: true, show_in_store: true,
     supplier_id: '',
     height: '', weight: '', thickness: '',
     base_circumference: '', mouth_circumference: '',
@@ -90,6 +90,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         cst: product.cst || '',
         cfop: product.cfop || '',
         is_active: product.is_active !== false,
+        show_in_store: product.show_in_store !== false,
         supplier_id: product.supplier_id || '',
         height: product.height || '',
         weight: product.weight || '',
@@ -221,7 +222,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
               <div className="flex gap-2">
                 <select className="input flex-1" value={form.category_id} onChange={e => { set('category_id', e.target.value); setConfirmDelType(false); }}>
                   <option value="">Sem tipo</option>
-                  {categories.filter(c => c.name?.toUpperCase().includes('LONG DRINK') || c.id === form.category_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <button type="button" onClick={() => setCreatingType(true)}
                   className="btn-secondary px-3 whitespace-nowrap" title="Criar novo tipo de produto">
@@ -383,10 +384,16 @@ export default function ProductForm({ product, onSaved, onCancel }) {
       </div>
 
       {/* Status */}
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} className="w-4 h-4 text-primary-600 rounded" />
-        <span className="text-sm text-gray-700">Produto ativo</span>
-      </label>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} className="w-4 h-4 text-primary-600 rounded" />
+          <span className="text-sm text-gray-700">Produto ativo</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={form.show_in_store} onChange={e => set('show_in_store', e.target.checked)} className="w-4 h-4 text-primary-600 rounded" />
+          <span className="text-sm text-gray-700">Aparecer na loja (site)</span>
+        </label>
+      </div>
 
       <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
         <button type="button" onClick={onCancel} className="btn-secondary">Cancelar</button>
