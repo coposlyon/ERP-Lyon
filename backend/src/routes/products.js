@@ -582,24 +582,36 @@ router.put('/:id', async (req, res) => {
       .eq('tenant_id', req.tenantId)
       .maybeSingle();
 
-    const payload = {
-      name: name ? name.toUpperCase() : name,
-      code, ean, description, category_id,
-      cost_price, sale_price, min_stock, ncm, cst, cfop, is_active,
-      supplier_id: supplier_id || null,
-      height: height || null, weight: weight || null, thickness: thickness || null,
-      base_circumference: base_circumference || null,
-      mouth_circumference: mouth_circumference || null,
-      length: length || null, width: width || null,
-      price_tiers: price_tiers || [],
-      ...(min_order_qty != null ? { min_order_qty: Math.max(1, parseInt(min_order_qty) || 1) } : {}),
-      ...(print_pricing != null ? { print_pricing } : {}),
-      ...(variations != null ? { variations } : {}),
-      ...(imageUrl !== undefined ? { image_url: imageUrl } : {}),
-      ...(varImgs !== undefined ? { variation_images: varImgs } : {}),
-      ...(show_in_store != null ? { show_in_store: !!show_in_store } : {}),
-      updated_at: new Date().toISOString(),
-    };
+    // Só inclui no update os campos realmente enviados. Assim um update parcial
+    // (ex.: toggle que manda só { is_active }) não zera preço/faixas/dimensões.
+    const payload = { updated_at: new Date().toISOString() };
+    if (name !== undefined) payload.name = name ? name.toUpperCase() : name;
+    if (code !== undefined) payload.code = code;
+    if (ean !== undefined) payload.ean = ean;
+    if (description !== undefined) payload.description = description;
+    if (category_id !== undefined) payload.category_id = category_id || null;
+    if (cost_price !== undefined) payload.cost_price = cost_price;
+    if (sale_price !== undefined) payload.sale_price = sale_price;
+    if (min_stock !== undefined) payload.min_stock = min_stock;
+    if (ncm !== undefined) payload.ncm = ncm;
+    if (cst !== undefined) payload.cst = cst;
+    if (cfop !== undefined) payload.cfop = cfop;
+    if (is_active !== undefined) payload.is_active = is_active;
+    if (supplier_id !== undefined) payload.supplier_id = supplier_id || null;
+    if (height !== undefined) payload.height = height || null;
+    if (weight !== undefined) payload.weight = weight || null;
+    if (thickness !== undefined) payload.thickness = thickness || null;
+    if (base_circumference !== undefined) payload.base_circumference = base_circumference || null;
+    if (mouth_circumference !== undefined) payload.mouth_circumference = mouth_circumference || null;
+    if (length !== undefined) payload.length = length || null;
+    if (width !== undefined) payload.width = width || null;
+    if (price_tiers !== undefined) payload.price_tiers = price_tiers || [];
+    if (min_order_qty != null) payload.min_order_qty = Math.max(1, parseInt(min_order_qty) || 1);
+    if (print_pricing != null) payload.print_pricing = print_pricing;
+    if (variations != null) payload.variations = variations;
+    if (imageUrl !== undefined) payload.image_url = imageUrl;
+    if (varImgs !== undefined) payload.variation_images = varImgs;
+    if (show_in_store != null) payload.show_in_store = !!show_in_store;
     const upd = () => supabase.from('PRODUTOS').update(payload)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     let { data, error } = await upd();
