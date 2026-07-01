@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Download, Trash2, Loader2, AlertTriangle, FolderTree, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
 import api from '@/lib/api';
@@ -28,6 +28,9 @@ export default function Products() {
   const [exporting, setExporting] = useState(false);
   const [categoryId, setCategoryId] = useState('');
   const [sort, setSort] = useState('name');
+  const [lightbox, setLightbox] = useState(null);      // url da foto ampliada
+  const uploadTargetId = useRef(null);                 // produto que vai receber a foto
+  const fileInputRef = useRef(null);
   const qc = useQueryClient();
 
   const { data: categories = [] } = useQuery({
@@ -75,6 +78,30 @@ export default function Products() {
     onError: (e) => toast.error(e.error || 'Erro ao atualizar visibilidade'),
   });
 
+  // Foto principal via clique no card (endpoint dedicado — não mexe em outros campos).
+  const imageMutation = useMutation({
+    mutationFn: ({ id, image }) => api.patch(`/products/${id}/image`, { image }),
+    onSuccess: () => { qc.invalidateQueries(['products']); toast.success('Foto atualizada!'); },
+    onError: (e) => toast.error(e.error || 'Erro ao enviar foto'),
+  });
+
+  function pickImageFor(id) {
+    uploadTargetId.current = id;
+    fileInputRef.current?.click();
+  }
+  function onFileChosen(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    const id = uploadTargetId.current;
+    if (!file || !id) return;
+    if (!file.type.startsWith('image/')) { toast.error('Selecione uma imagem'); return; }
+    if (file.size > 8 * 1024 * 1024) { toast.error('Imagem muito grande (máx. 8MB)'); return; }
+    const reader = new FileReader();
+    reader.onload = () => imageMutation.mutate({ id, image: reader.result });
+    reader.onerror = () => toast.error('Erro ao ler a imagem');
+    reader.readAsDataURL(file);
+  }
+
   const deleteMutation = useMutation({
     mutationFn: (id) => api.post(`/products/${id}/delete`),
     onSuccess: () => { qc.invalidateQueries(['products']); setDelTarget(null); toast.success('Produto excluído!'); },
@@ -110,11 +137,17 @@ export default function Products() {
       render: (v, row) => (
         <div className="flex items-center gap-2.5">
           {row.image_url ? (
-            <img src={row.image_url} alt="" className="w-9 h-9 rounded-md object-cover border border-gray-200 shrink-0" />
+            <img src={row.image_url} alt=""
+              onClick={e => { e.stopPropagation(); setLightbox(row.image_url); }}
+              className="w-9 h-9 rounded-md object-cover border border-gray-200 shrink-0 cursor-zoom-in hover:ring-2 hover:ring-violet-300 transition"
+              title="Ver foto ampliada" />
           ) : (
-            <div className="w-9 h-9 rounded-md border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center shrink-0" title="Sem foto">
+            <button type="button"
+              onClick={e => { e.stopPropagation(); pickImageFor(row.id); }}
+              className="w-9 h-9 rounded-md border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center shrink-0 cursor-pointer hover:border-violet-400 hover:bg-violet-50 transition"
+              title="Adicionar foto">
               <ImageIcon size={14} className="text-gray-300" />
-            </div>
+            </button>
           )}
           <span className="font-medium text-gray-800">{v}</span>
         </div>
@@ -235,6 +268,7 @@ export default function Products() {
             className="input w-auto text-sm" title="Ordenar">
             <option value="name">A → Z</option>
             <option value="name_desc">Z → A</option>
+            <option value="has_image">Com foto primeiro</option>
             <option value="recent">Últimos adicionados</option>
             <option value="code">Por código</option>
           </select>
@@ -247,6 +281,17 @@ export default function Products() {
       <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Editar Produto' : 'Novo Produto'} size="lg">
         <ProductForm product={editing} onSaved={onSaved} onCancel={closeModal} />
       </Modal>
+
+      {/* input escondido para anexar foto ao clicar no card vazio */}
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChosen} />
+
+      {/* Lightbox: foto ampliada */}
+      {lightbox && (
+        <div onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-6 cursor-zoom-out">
+          <img src={lightbox} alt="" className="max-w-full max-h-full rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
 
       <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
       <ImportStockModal isOpen={importOpen} onClose={() => setImportOpen(false)} />

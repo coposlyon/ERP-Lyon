@@ -52,6 +52,7 @@ router.get('/', async (req, res) => {
     if (sort === 'recent' && useCreatedAt) query = query.order('created_at', { ascending: false });
     else if (sort === 'name_desc') query = query.order('name', { ascending: false });
     else if (sort === 'code') query = query.order('code', { ascending: true });
+    else if (sort === 'has_image') query = query.order('image_url', { ascending: true, nullsFirst: false }).order('name', { ascending: true });
     else query = query.order('name', { ascending: true });
 
     // Busca por VÁRIOS termos: cada palavra precisa aparecer (no nome/código/ean).
@@ -173,6 +174,22 @@ router.patch('/bulk', async (req, res) => {
     if (error) throw error;
     audit(req, 'update', 'product', null, { bulk: Object.keys(patch), count: (data || []).length });
     res.json({ updated: (data || []).length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Atualiza APENAS a foto principal do produto (sem tocar nos demais campos).
+// Usado pelo clique no card de foto na lista de produtos.
+router.patch('/:id/image', async (req, res) => {
+  try {
+    const imageUrl = await processImage(req.body.image);
+    if (imageUrl === undefined) return res.status(400).json({ error: 'Nenhuma imagem enviada' });
+    const { data, error } = await supabase.from('PRODUTOS')
+      .update({ image_url: imageUrl, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId)
+      .select('id, image_url').single();
+    if (error) throw error;
+    audit(req, 'update', 'product', req.params.id, { image: imageUrl ? 'set' : 'removed' });
+    res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
