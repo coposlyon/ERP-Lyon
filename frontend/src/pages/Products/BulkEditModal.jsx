@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, Plus, Trash2, FolderPlus, Check, X, Image as ImageIcon } from 'lucide-react';
+import { Search, Loader2, Plus, Trash2, FolderPlus, Check, X, Image as ImageIcon, AlertTriangle } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import PrintPricingEditor, { cleanPrintPricing } from './PrintPricingEditor';
@@ -29,6 +29,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [applyPrint, setApplyPrint] = useState(false);
   const [printPricing, setPrintPricing] = useState({});
   const [showInStore, setShowInStore] = useState(''); // '' = não altera | 'true' | 'false'
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const { data: cats } = useQuery({
     queryKey: ['categories-list'],
@@ -116,19 +117,68 @@ export default function BulkEditModal({ isOpen, onClose }) {
     setCostPrice(''); setSalePrice(''); setMinOrder('');
     setNcm(''); setCst(''); setCfop('');
     setApplyPrint(false); setPrintPricing({});
-    setShowInStore('');
+    setShowInStore(''); setConfirmOpen(false);
     onClose();
   }
 
+  // Resumo da confirmação: compara os valores novos com os atuais dos produtos-alvo
+  // (carregados) e conta, por campo, quantos já têm o valor / têm outro / estão vazios.
+  const catName = (id) => (cats || []).find(c => c.id === id)?.name || '—';
+  function buildSummary() {
+    const targets = applyAll ? (products || []) : (products || []).filter(p => selected[p.id]);
+    const labels = {
+      category_id: 'Tipo', show_in_store: 'Exibição na loja',
+      cost_price: 'Custo', sale_price: 'Venda', min_order_qty: 'Qtd. mínima',
+      ncm: 'NCM', cst: 'CST', cfop: 'CFOP',
+      price_tiers: 'Faixas de preço', print_pricing: 'Tabelas de impressão',
+    };
+    const norm = (key, val) => {
+      if (val == null) return '';
+      if (key === 'category_id') return String(val || '');
+      if (key === 'show_in_store') return val === false ? 'nao' : 'sim';
+      if (['cost_price', 'sale_price', 'min_order_qty'].includes(key)) return val === '' ? '' : String(Number(val));
+      if (['ncm', 'cst', 'cfop'].includes(key)) return String(val).trim();
+      if (['price_tiers', 'print_pricing'].includes(key)) { try { const s = JSON.stringify(val); return (s === '[]' || s === '{}') ? '' : s; } catch { return ''; } }
+      return String(val);
+    };
+    const display = (key) => {
+      if (key === 'category_id') return fields.category_id ? catName(fields.category_id) : 'Sem tipo';
+      if (key === 'show_in_store') return fields.show_in_store ? 'Mostrar na loja' : 'Ocultar da loja';
+      if (['cost_price', 'sale_price'].includes(key)) return `R$ ${Number(fields[key]).toFixed(2)}`;
+      if (key === 'min_order_qty') return String(fields[key]);
+      if (['ncm', 'cst', 'cfop'].includes(key)) return String(fields[key]);
+      if (key === 'price_tiers') return `${(fields.price_tiers || []).length} faixa(s)`;
+      if (key === 'print_pricing') return 'novas tabelas';
+      return String(fields[key]);
+    };
+    const rows = Object.keys(fields).map(key => {
+      const newN = norm(key, fields[key]);
+      let same = 0, diff = 0, empty = 0;
+      for (const p of targets) {
+        const cur = key === 'show_in_store' ? (p.show_in_store !== false) : p[key];
+        const curN = norm(key, cur);
+        if (curN === newN) same++;
+        else if (curN === '') empty++;
+        else diff++;
+      }
+      return { key, label: labels[key] || key, value: display(key), same, diff, empty };
+    });
+    return { rows, analyzed: targets.length };
+  }
+
   function doApply() {
-    if (applyAll) {
-      const alvo = hasFilter ? `${totalMatching} produto(s) do filtro` : `TODOS os ${totalMatching} produtos do catálogo`;
-      if (!window.confirm(`Confirmar: aplicar as alterações a ${alvo}? Esta ação não pode ser desfeita.`)) return;
-    }
+    if (!canApply) return;
+    setConfirmOpen(true);
+  }
+  function confirmApply() {
+    setConfirmOpen(false);
     apply.mutate();
   }
 
+  const summary = confirmOpen ? buildSummary() : null;
+
   return (
+    <>
     <Modal isOpen={isOpen} onClose={handleClose} title="Edição em massa" size="lg">
       <div className="space-y-4 max-h-[85vh] overflow-y-auto pr-1">
         <p className="text-sm text-gray-500">
@@ -305,5 +355,51 @@ export default function BulkEditModal({ isOpen, onClose }) {
         </div>
       </div>
     </Modal>
+
+    {/* Confirmação com resumo do que será alterado */}
+    <Modal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} title="Confirmar edição em massa" size="md"
+      footer={
+        <>
+          <button onClick={() => setConfirmOpen(false)} className="btn-secondary">Cancelar</button>
+          <button onClick={confirmApply} disabled={apply.isPending} className="btn-primary disabled:opacity-50">
+            {apply.isPending ? 'Aplicando...' : 'Confirmar e aplicar'}
+          </button>
+        </>
+      }>
+      {summary && (
+        <div className="space-y-4 text-sm">
+          <p className="text-gray-700">
+            Você vai alterar <b>{targetCount} produto(s)</b>
+            {applyAll && summary.analyzed < targetCount ? <span className="text-gray-500"> (resumo baseado em {summary.analyzed} carregados)</span> : ''}.
+          </p>
+          {summary.rows.length === 0 ? (
+            <p className="text-gray-500">Nenhum campo preenchido para alterar.</p>
+          ) : (
+            <div className="space-y-3">
+              {summary.rows.map(r => (
+                <div key={r.key} className="rounded-lg border border-gray-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-800">{r.label}</span>
+                    <span className="text-violet-600 font-medium">→ {r.value}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs">
+                    {r.empty > 0 && <span className="text-green-600">{r.empty} serão preenchidos</span>}
+                    {r.diff > 0 && <span className="text-amber-600">{r.diff} tinham outro valor (serão trocados)</span>}
+                    {r.same > 0 && <span className="text-gray-500">{r.same} já têm esse valor</span>}
+                  </div>
+                  {r.same > 0 && (
+                    <p className="mt-2 flex items-center gap-1.5 text-amber-700 bg-amber-50 rounded px-2 py-1 text-xs">
+                      <AlertTriangle size={13} className="shrink-0" /> {r.same} já {r.same === 1 ? 'está preenchido' : 'estão preenchidos'} com essa informação.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-gray-600">Tem certeza que deseja continuar? Esta ação não pode ser desfeita.</p>
+        </div>
+      )}
+    </Modal>
+    </>
   );
 }
