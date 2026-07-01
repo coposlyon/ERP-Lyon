@@ -22,7 +22,7 @@ app.use(helmet({
       defaultSrc:  ["'self'"],
       scriptSrc:   ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
       styleSrc:    ["'self'", "'unsafe-inline'"],
-      imgSrc:      ["'self'", "data:", "blob:"],
+      imgSrc:      ["'self'", "data:", "blob:", "https:"],
       fontSrc:     ["'self'", "data:"],
       connectSrc:  ["'self'"],
       objectSrc:   ["'none'"],
