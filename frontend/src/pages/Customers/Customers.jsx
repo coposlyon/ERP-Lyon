@@ -113,6 +113,11 @@ export default function Customers() {
       if (stateFilter)  url += `&state=${stateFilter}`;
       return api.get(url);
     },
+    // Atualiza sozinho: novos cadastros (ex.: cliente que se cadastra na loja)
+    // aparecem sem precisar dar F5. Só enquanto a aba está visível.
+    refetchInterval: 20000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 
   function handleSearch(e) {
