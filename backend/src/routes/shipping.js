@@ -11,7 +11,7 @@ const {
 router.get('/carriers', async (req, res) => {
   try {
     const { data } = await supabase.from('TRANSPORTADORAS')
-      .select('id, name, trade_name, whatsapp, phone')
+      .select('id, name, trade_name, whatsapp, phone, pickup_schedule')
       .eq('tenant_id', req.tenantId).eq('is_active', true).order('name');
     res.json({ data: data || [] });
   } catch (err) { res.status(500).json({ error: err.message }); }

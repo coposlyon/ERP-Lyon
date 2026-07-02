@@ -471,6 +471,30 @@ export default function PDV({ onDone }) {
                 onChange={e => setFreightInput(e.target.value)} placeholder="0,00" />
             </div>
           </div>
+
+          {/* Horários de coleta da transportadora selecionada */}
+          {carrierId && (() => {
+            const c = (carriers?.data || []).find(x => x.id === carrierId);
+            const sched = Array.isArray(c?.pickup_schedule) ? c.pickup_schedule : [];
+            const DAY_LABELS = { seg: 'Seg', ter: 'Ter', qua: 'Qua', qui: 'Qui', sex: 'Sex', sab: 'Sáb', dom: 'Dom' };
+            return (
+              <div className="mt-2 text-xs bg-blue-50/60 border border-blue-100 rounded-lg px-3 py-2">
+                <p className="font-semibold text-gray-700 mb-1">🕒 Horários de coleta — {c?.trade_name || c?.name || 'transportadora'}</p>
+                {sched.length === 0 ? (
+                  <p className="text-gray-400">Nenhum horário de coleta cadastrado (cadastre em Logística → Transportadoras).</p>
+                ) : (
+                  <ul className="space-y-0.5">
+                    {sched.map((slot, i) => (
+                      <li key={i} className="text-gray-600">
+                        <b>{(slot.days || []).map(d => DAY_LABELS[d] || d).join(', ') || 'Todos os dias'}</b>
+                        {slot.time && <span className="text-gray-500"> às {slot.time}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })()}
           </>
         ) : (
           <div className="space-y-2 max-w-xl">
