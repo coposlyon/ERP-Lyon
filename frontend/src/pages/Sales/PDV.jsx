@@ -19,6 +19,8 @@ function maskMoney(n) {
   return (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+const todayISO = () => new Date().toISOString().split('T')[0];
+
 // Preço oficial pela quantidade: faixa (price_tiers) ou preço de venda.
 // O backend recalcula do lado dele — isso aqui é para a UI mostrar certo.
 function tierPrice(tiers, salePrice, qty) {
@@ -48,10 +50,24 @@ export default function PDV({ onDone }) {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [receivedAmount, setReceivedAmount] = useState('');
   const [installments, setInstallments] = useState(1);
-  const [operationDate, setOperationDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [eventDate, setEventDate] = useState('');
-  const [shipDate, setShipDate] = useState('');
-  const [deliveryDate, setDeliveryDate] = useState('');
+  const [operationDate, setOperationDate] = useState(todayISO);
+  // As demais datas já nascem com a data da operação — assim o ano (e o dd/mm)
+  // vêm preenchidos e o operador só ajusta o dia/mês que precisar.
+  const [eventDate, setEventDate] = useState(todayISO);
+  const [shipDate, setShipDate] = useState(todayISO);
+  const [deliveryDate, setDeliveryDate] = useState(todayISO);
+
+  // Mudou a data da operação → replica o ano dela nas outras datas
+  function changeOperationDate(v) {
+    setOperationDate(v);
+    const y = String(v || '').slice(0, 4);
+    if (/^\d{4}$/.test(y)) {
+      const withYear = iso => (iso ? `${y}${iso.slice(4)}` : iso);
+      setEventDate(withYear);
+      setShipDate(withYear);
+      setDeliveryDate(withYear);
+    }
+  }
   const [showCustomerInfo, setShowCustomerInfo] = useState(false);
   // Chave aleatória de até 5 dígitos para o pedido
   const genKey = () => String(Math.floor(Math.random() * 100000)).padStart(5, '0');
@@ -135,7 +151,7 @@ export default function PDV({ onDone }) {
       setCarrierId(''); setFreightInput('');
       setPayTerm(null);
       setReceivedAmount('');
-      setEventDate(''); setShipDate(''); setDeliveryDate('');
+      setEventDate(todayISO()); setShipDate(todayISO()); setDeliveryDate(todayISO());
       setOrderKey(genKey());
       if (inModal) { onDone(); return; } // fecha o card e atualiza a lista
       setTimeout(() => searchRef.current?.focus(), 100);
@@ -267,14 +283,22 @@ export default function PDV({ onDone }) {
     setItems(prev => prev.filter((_, i) => i !== idx));
   }
 
-  function updatePrice(idx, price) {
+  // Guarda o texto digitado (priceStr) e o número já convertido (unit_price)
+  function updatePrice(idx, str) {
     setItems(prev => prev.map((item, i) =>
-      i === idx ? { ...item, unit_price: parseFloat(price) || 0, priceTouched: true } : item
+      i === idx ? { ...item, priceStr: str, unit_price: parseMoney(str), priceTouched: true } : item
+    ));
+  }
+
+  // Ao sair do campo, formata com a pontuação (40 → 40,00)
+  function blurPrice(idx) {
+    setItems(prev => prev.map((item, i) =>
+      i === idx ? { ...item, priceStr: undefined } : item
     ));
   }
 
   const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
-  const discountValue = parseFloat(discount) || 0;
+  const discountValue = parseMoney(discount);
   const couponDiscount = coupon
     ? (coupon.discount_type === 'percent'
         ? Math.min(subtotal, Math.round(subtotal * Number(coupon.discount_value)) / 100)
@@ -285,7 +309,7 @@ export default function PDV({ onDone }) {
   const payPercent = payTerm ? (Number(payTerm.percent) || 0) : 0;
   const paymentAdj = payTerm ? Math.round(goodsBase * payPercent) / 100 : 0; // − desconto / + juros
   const total = Math.max(0, goodsBase + paymentAdj + freteValue);
-  const received = parseFloat(receivedAmount) || 0;
+  const received = parseMoney(receivedAmount);
   const change = paymentMethod === 'cash' && received > 0 ? received - total : 0;
 
   function finalizeSale() {
@@ -422,7 +446,7 @@ export default function PDV({ onDone }) {
         {/* Data da operação — acima do cliente */}
         <div className="mb-3 pb-3 border-b border-gray-100">
           <label className="text-xs font-medium text-gray-500 block mb-1">Data da operação *</label>
-          <input type="date" className="input text-sm w-44" value={operationDate} onChange={e => setOperationDate(e.target.value)} />
+          <input type="date" className="input text-sm w-44" value={operationDate} onChange={e => changeOperationDate(e.target.value)} />
         </div>
         <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
           <User size={15} /> Cliente *
@@ -613,9 +637,10 @@ export default function PDV({ onDone }) {
                     </td>
                     <td className="px-4 py-2 text-right">
                       <input
-                        type="number" step="0.01" min="0"
-                        value={item.unit_price}
-                        onChange={e => updatePrice(i, e.target.value)}
+                        type="text" inputMode="decimal"
+                        value={item.priceStr ?? maskMoney(item.unit_price)}
+                        onChange={e => updatePrice(i, e.target.value.replace(/[^\d.,]/g, ''))}
+                        onBlur={() => blurPrice(i)}
                         className="input text-right w-24 text-sm"
                       />
                       {item.price_tiers?.length > 0 && !item.priceTouched && (
@@ -665,8 +690,9 @@ export default function PDV({ onDone }) {
             <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium text-gray-700">Valor recebido</span>
-                <input type="number" step="0.01" min="0"
-                  value={receivedAmount} onChange={e => setReceivedAmount(e.target.value)}
+                <input type="text" inputMode="decimal"
+                  value={receivedAmount} onChange={e => setReceivedAmount(e.target.value.replace(/[^\d.,]/g, ''))}
+                  onBlur={() => { if (receivedAmount.trim() !== '') setReceivedAmount(maskMoney(parseMoney(receivedAmount))); }}
                   className="input text-right w-28 text-sm font-semibold" placeholder="0,00" />
               </div>
               {received > 0 && (
@@ -713,8 +739,9 @@ export default function PDV({ onDone }) {
           </div>
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm text-gray-600">Desconto (R$)</span>
-            <input type="number" step="0.01" min="0"
-              value={discount} onChange={e => setDiscount(e.target.value)}
+            <input type="text" inputMode="decimal"
+              value={discount} onChange={e => setDiscount(e.target.value.replace(/[^\d.,]/g, ''))}
+              onBlur={() => { if (discount.trim() !== '') setDiscount(maskMoney(parseMoney(discount))); }}
               className="input text-right w-28 text-sm" placeholder="0,00" />
           </div>
 
