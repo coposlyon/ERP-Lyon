@@ -9,6 +9,16 @@ function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 }
 
+// Dinheiro digitado no padrão BR: "40" → 40, "100,5" → 100.5, "1.234,56" → 1234.56
+function parseMoney(s) {
+  const n = parseFloat(String(s ?? '').replace(/\./g, '').replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+// Formata para exibir no campo: 40 → "40,00" | 100 → "100,00"
+function maskMoney(n) {
+  return (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 // Preço oficial pela quantidade: faixa (price_tiers) ou preço de venda.
 // O backend recalcula do lado dele — isso aqui é para a UI mostrar certo.
 function tierPrice(tiers, salePrice, qty) {
@@ -143,7 +153,7 @@ export default function PDV({ onDone }) {
     }),
     onSuccess: (data) => {
       setFrete(data);
-      setFreightInput(data.free ? '' : String(data.price ?? ''));
+      setFreightInput(data.free || !data.price ? '' : maskMoney(data.price));
       // sugere a previsão de entrega = hoje + prazo
       if (data.days && !deliveryDate) {
         const d = new Date(); d.setDate(d.getDate() + Number(data.days));
@@ -270,7 +280,7 @@ export default function PDV({ onDone }) {
         ? Math.min(subtotal, Math.round(subtotal * Number(coupon.discount_value)) / 100)
         : Math.min(subtotal, Number(coupon.discount_value)))
     : 0;
-  const freteValue = parseFloat(freightInput) || 0;
+  const freteValue = parseMoney(freightInput);
   const goodsBase = subtotal - discountValue - couponDiscount;
   const payPercent = payTerm ? (Number(payTerm.percent) || 0) : 0;
   const paymentAdj = payTerm ? Math.round(goodsBase * payPercent) / 100 : 0; // − desconto / + juros
@@ -467,8 +477,10 @@ export default function PDV({ onDone }) {
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Valor do frete (R$)</label>
-              <input type="number" step="0.01" min="0" className="input text-sm w-full" value={freightInput}
-                onChange={e => setFreightInput(e.target.value)} placeholder="0,00" />
+              <input type="text" inputMode="decimal" className="input text-sm w-full" value={freightInput}
+                onChange={e => setFreightInput(e.target.value.replace(/[^\d.,]/g, ''))}
+                onBlur={() => { if (freightInput.trim() !== '') setFreightInput(maskMoney(parseMoney(freightInput))); }}
+                placeholder="0,00" />
             </div>
           </div>
 
