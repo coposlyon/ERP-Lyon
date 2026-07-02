@@ -371,8 +371,12 @@ router.post('/:id/recompute-rating', async (req, res) => {
 });
 
 router.patch('/:id/rating', async (req, res) => {
-  const { rating } = req.body;
-  if (!rating || rating < 1 || rating > 5) return res.status(400).json({ error: 'Rating deve ser entre 1 e 5' });
+  // rating null/0 = remove a classificação; 1-5 = define as estrelas
+  const raw = req.body?.rating;
+  const rating = (raw == null || raw === 0 || raw === '') ? null : Number(raw);
+  if (rating != null && (!Number.isFinite(rating) || rating < 1 || rating > 5)) {
+    return res.status(400).json({ error: 'Rating deve ser entre 1 e 5' });
+  }
   try {
     const { data, error } = await supabase
       .from('CLIENTES')

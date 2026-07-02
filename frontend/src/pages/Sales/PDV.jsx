@@ -162,10 +162,13 @@ export default function PDV({ onDone }) {
     onError: (e) => { setCoupon(null); toast.error(e.error || 'Cupom inválido'); },
   });
 
-  // Editar as estrelas do cliente direto no pedido
+  // Editar as estrelas do cliente direto no pedido (clicar na mesma estrela remove)
   const ratingMut = useMutation({
     mutationFn: (stars) => api.patch(`/customers/${selectedCustomer.id}/rating`, { rating: stars }),
-    onSuccess: (_d, stars) => { setSelectedCustomer(c => ({ ...c, rating: stars })); toast.success('Estrelas do cliente atualizadas'); },
+    onSuccess: (_d, stars) => {
+      setSelectedCustomer(c => ({ ...c, rating: stars }));
+      toast.success(stars ? 'Estrelas do cliente atualizadas' : 'Estrelas removidas');
+    },
     onError: (e) => toast.error(e.error || 'Não foi possível atualizar as estrelas'),
   });
 
@@ -431,9 +434,9 @@ export default function PDV({ onDone }) {
                   {selectedCustomer.display_id != null && <span className="text-[10px] font-mono bg-white text-primary-700 rounded px-1.5 py-0.5 shrink-0 border border-primary-100">#{selectedCustomer.display_id}</span>}
                   <p className="text-sm font-semibold text-primary-800">{selectedCustomer.name}</p>
                   {/* Estrelas do cliente — clique para alterar */}
-                  <span className="flex items-center" title="Estrelas do cliente — clique para alterar">
+                  <span className="flex items-center" title="Estrelas do cliente — clique para alterar; clique na mesma para remover">
                     {[1, 2, 3, 4, 5].map(n => (
-                      <button key={n} type="button" onClick={() => ratingMut.mutate(n)} disabled={ratingMut.isPending} className="focus:outline-none px-0.5 disabled:opacity-60">
+                      <button key={n} type="button" onClick={() => ratingMut.mutate(selectedCustomer.rating === n ? null : n)} disabled={ratingMut.isPending} className="focus:outline-none px-0.5 disabled:opacity-60">
                         <Star size={14} className={`transition-colors ${(selectedCustomer.rating || 0) >= n ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300 hover:text-yellow-300'}`} />
                       </button>
                     ))}
