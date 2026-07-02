@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star } from 'lucide-react';
 import api from '@/lib/api';
@@ -20,6 +20,22 @@ function maskMoney(n) {
 }
 
 const todayISO = () => new Date().toISOString().split('T')[0];
+
+// Botão que aplica o passo no clique e, segurando, repete bem rápido
+function HoldBtn({ onStep, title, children, className }) {
+  const t = useRef(null);
+  const iv = useRef(null);
+  const stop = () => { clearTimeout(t.current); clearInterval(iv.current); };
+  useEffect(() => stop, []);
+  return (
+    <button type="button" title={title} className={className}
+      onPointerDown={(e) => { e.preventDefault(); onStep(); t.current = setTimeout(() => { iv.current = setInterval(onStep, 110); }, 350); }}
+      onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}
+      onContextMenu={e => e.preventDefault()}>
+      {children}
+    </button>
+  );
+}
 
 // Preço oficial pela quantidade: faixa (price_tiers) ou preço de venda.
 // O backend recalcula do lado dele — isso aqui é para a UI mostrar certo.
@@ -274,6 +290,19 @@ export default function PDV({ onDone }) {
         quantity: q,
         // reaplica a faixa de preço automaticamente, a menos que o
         // operador tenha editado o preço manualmente
+        unit_price: item.priceTouched ? item.unit_price : tierPrice(item.price_tiers, item.sale_price, q),
+      };
+    }));
+  }
+
+  // Sobe/desce a quantidade em passos (ex.: ±10), sem deixar abaixo de 1
+  function stepQty(idx, delta) {
+    setItems(prev => prev.map((item, i) => {
+      if (i !== idx) return item;
+      const q = Math.max(1, (Number(item.quantity) || 0) + delta);
+      return {
+        ...item,
+        quantity: q,
         unit_price: item.priceTouched ? item.unit_price : tierPrice(item.price_tiers, item.sale_price, q),
       };
     }));
@@ -610,7 +639,7 @@ export default function PDV({ onDone }) {
               <thead>
                 <tr className="border-b border-gray-100">
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Produto</th>
-                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-500 uppercase w-24">Qtd</th>
+                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-500 uppercase w-44">Qtd</th>
                   <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-28">Preço</th>
                   <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-28">Total</th>
                   <th className="w-8" />
@@ -626,14 +655,24 @@ export default function PDV({ onDone }) {
                       </p>
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <input
-                        type="number"
-                        step="1"
-                        min="1"
-                        value={item.quantity}
-                        onChange={e => setQty(i, e.target.value)}
-                        className="input text-center w-20 text-sm font-bold py-1"
-                      />
+                      <div className="flex items-center justify-center gap-1">
+                        <HoldBtn onStep={() => stepQty(i, -10)} title="Diminui 10 — segure para descer rápido"
+                          className="h-7 px-1.5 rounded-md border border-gray-200 text-[10px] font-bold text-red-500 hover:bg-red-50 select-none shrink-0">
+                          −10
+                        </HoldBtn>
+                        <input
+                          type="number"
+                          step="1"
+                          min="1"
+                          value={item.quantity}
+                          onChange={e => setQty(i, e.target.value)}
+                          className="input text-center w-16 text-sm font-bold py-1"
+                        />
+                        <HoldBtn onStep={() => stepQty(i, 10)} title="Aumenta 10 — segure para subir rápido"
+                          className="h-7 px-1.5 rounded-md border border-gray-200 text-[10px] font-bold text-green-600 hover:bg-green-50 select-none shrink-0">
+                          +10
+                        </HoldBtn>
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-right">
                       <input
