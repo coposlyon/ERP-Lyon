@@ -61,6 +61,18 @@ async function recomputeAll(tenantId) {
     await supabase.from('CLIENTES').update(patch).eq('id', customer_id).eq('tenant_id', tenantId);
     updated++;
   }
+
+  // Zera o total 12m de quem ficou sem vendas válidas (ex.: venda de teste excluída)
+  const { data: stale } = await supabase
+    .from('CLIENTES')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .gt('total_12m', 0);
+  for (const c of (stale || [])) {
+    if (totals.has(c.id)) continue;
+    await supabase.from('CLIENTES').update({ total_12m: 0 }).eq('id', c.id).eq('tenant_id', tenantId);
+    updated++;
+  }
   return { customers: updated };
 }
 

@@ -391,6 +391,9 @@ router.post('/:id/delete', async (req, res) => {
     if (authErr) return res.status(401).json({ error: 'Senha incorreta.' });
 
     const id = req.params.id;
+    // guarda o cliente para recalcular estrelas/total 12m depois da exclusão
+    const { data: saleRow } = await supabase.from('VENDAS')
+      .select('customer_id').eq('id', id).eq('tenant_id', req.tenantId).maybeSingle();
     // remove os vínculos (itens, financeiro e movimentações da venda)
     const safe = (p) => p.then(() => {}, () => {});
     await safe(supabase.from('VENDA_ITENS').delete().eq('sale_id', id));
@@ -405,6 +408,8 @@ router.post('/:id/delete', async (req, res) => {
       throw error;
     }
     audit(req, 'delete', 'sale', id, { hard: true });
+    // a venda excluída sai da soma dos 12 meses do cliente
+    if (saleRow?.customer_id) recomputeRating(req.tenantId, saleRow.customer_id).catch(() => {});
     res.json({ message: 'Pedido de venda excluído com sucesso' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
