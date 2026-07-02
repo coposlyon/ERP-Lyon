@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
+import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { expandVariants, expandVariantsWithCode } from '@/pages/Products/ProductVariantsModal';
@@ -160,6 +160,13 @@ export default function PDV({ onDone }) {
     }),
     onSuccess: (data) => { setCoupon(data); toast.success(`Cupom ${data.code} aplicado!`); },
     onError: (e) => { setCoupon(null); toast.error(e.error || 'Cupom inválido'); },
+  });
+
+  // Editar as estrelas do cliente direto no pedido
+  const ratingMut = useMutation({
+    mutationFn: (stars) => api.patch(`/customers/${selectedCustomer.id}/rating`, { rating: stars }),
+    onSuccess: (_d, stars) => { setSelectedCustomer(c => ({ ...c, rating: stars })); toast.success('Estrelas do cliente atualizadas'); },
+    onError: (e) => toast.error(e.error || 'Não foi possível atualizar as estrelas'),
   });
 
   // Modelo cujas variações estão sendo exibidas (drill-down). null = lista de modelos.
@@ -407,6 +414,11 @@ export default function PDV({ onDone }) {
     <div className="flex flex-col gap-4">
       {/* TOPO — Cliente (largura total) */}
       <div className="card p-4">
+        {/* Data da operação — acima do cliente */}
+        <div className="mb-3 pb-3 border-b border-gray-100">
+          <label className="text-xs font-medium text-gray-500 block mb-1">Data da operação *</label>
+          <input type="date" className="input text-sm w-44" value={operationDate} onChange={e => setOperationDate(e.target.value)} />
+        </div>
         <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
           <User size={15} /> Cliente *
         </p>
@@ -418,6 +430,14 @@ export default function PDV({ onDone }) {
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {selectedCustomer.display_id != null && <span className="text-[10px] font-mono bg-white text-primary-700 rounded px-1.5 py-0.5 shrink-0 border border-primary-100">#{selectedCustomer.display_id}</span>}
                   <p className="text-sm font-semibold text-primary-800">{selectedCustomer.name}</p>
+                  {/* Estrelas do cliente — clique para alterar */}
+                  <span className="flex items-center" title="Estrelas do cliente — clique para alterar">
+                    {[1, 2, 3, 4, 5].map(n => (
+                      <button key={n} type="button" onClick={() => ratingMut.mutate(n)} disabled={ratingMut.isPending} className="focus:outline-none px-0.5 disabled:opacity-60">
+                        <Star size={14} className={`transition-colors ${(selectedCustomer.rating || 0) >= n ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300 hover:text-yellow-300'}`} />
+                      </button>
+                    ))}
+                  </span>
                   <span className="text-xs text-primary-500">{selectedCustomer.cpf_cnpj || selectedCustomer.phone || ''}</span>
                 </div>
                 <button type="button" onClick={() => setShowCustomerInfo(v => !v)} className="text-xs text-primary-600 hover:underline mt-1">
@@ -514,11 +534,7 @@ export default function PDV({ onDone }) {
             <span className="text-sm font-semibold text-gray-700">🔑 Pedido</span>
             <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 rounded px-2 py-0.5" title="Chave do pedido (gerada automaticamente)">#{orderKey}</span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Data da operação *</label>
-              <input type="date" className="input w-full text-sm" value={operationDate} onChange={e => setOperationDate(e.target.value)} />
-            </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Data do evento *</label>
               <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => setEventDate(e.target.value)} />
