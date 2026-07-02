@@ -117,7 +117,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
   const {
     customer_id, type, items, notes, discount, delivery_date,
     artwork_url, artwork_notes, payment_method, installments, first_due_date,
-    operation_date, event_date, ship_date, max_delivery_date, order_key, freight, payment_adjustment,
+    operation_date, event_date, ship_date, max_delivery_date, order_key, freight, payment_adjustment, carrier_id,
   } = req.body;
 
   if (!items || items.length === 0) {
@@ -167,6 +167,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
       if (delivery_date) patch.delivery_date = delivery_date;
       if (max_delivery_date) patch.max_delivery_date = max_delivery_date;
       if (order_key) patch.order_key = order_key;
+      if (carrier_id) patch.carrier_id = carrier_id;
       // Frete + ajuste por condição de pagamento (juros/desconto): somam no total da venda
       const freightVal = Number(freight) || 0;
       const payAdj = Number(payment_adjustment) || 0;

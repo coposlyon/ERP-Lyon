@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { expandVariants, expandVariantsWithCode } from '@/pages/Products/ProductVariantsModal';
@@ -31,6 +31,8 @@ export default function PDV({ onDone }) {
   const [couponInput, setCouponInput] = useState('');
   const [coupon, setCoupon] = useState(null); // { coupon_id, code, discount_type, discount_value }
   const [frete, setFrete] = useState(null); // { price, days, weightKg, uf }
+  const [carrierId, setCarrierId] = useState(''); // transportadora desta venda
+  const [freightInput, setFreightInput] = useState(''); // valor do frete (R$) — editável
   const [payTerm, setPayTerm] = useState(null); // condição de pagamento { label, percent }
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [receivedAmount, setReceivedAmount] = useState('');
@@ -80,6 +82,13 @@ export default function PDV({ onDone }) {
     queryFn: () => api.get('/customers?limit=50&sort=recent&is_active=true&type=cliente'),
   });
 
+  // Transportadoras cadastradas — escolhida após selecionar o cliente
+  const { data: carriers } = useQuery({
+    queryKey: ['carriers'],
+    queryFn: () => api.get('/shipping/carriers'),
+    enabled: !!selectedCustomer,
+  });
+
   // Condições de pagamento (desconto/juros) configuradas em Configurações → Pagamento
   const { data: payTermsData } = useQuery({
     queryKey: ['payment-terms'],
@@ -104,6 +113,7 @@ export default function PDV({ onDone }) {
       setDiscount('');
       setCoupon(null); setCouponInput('');
       setFrete(null);
+      setCarrierId(''); setFreightInput('');
       setPayTerm(null);
       setReceivedAmount('');
       setEventDate(''); setShipDate(''); setDeliveryDate('');
@@ -124,6 +134,7 @@ export default function PDV({ onDone }) {
     }),
     onSuccess: (data) => {
       setFrete(data);
+      setFreightInput(data.free ? '' : String(data.price ?? ''));
       // sugere a previsão de entrega = hoje + prazo
       if (data.days && !deliveryDate) {
         const d = new Date(); d.setDate(d.getDate() + Number(data.days));
@@ -251,7 +262,7 @@ export default function PDV({ onDone }) {
         ? Math.min(subtotal, Math.round(subtotal * Number(coupon.discount_value)) / 100)
         : Math.min(subtotal, Number(coupon.discount_value)))
     : 0;
-  const freteValue = frete && !frete.free ? (Number(frete.price) || 0) : 0;
+  const freteValue = parseFloat(freightInput) || 0;
   const goodsBase = subtotal - discountValue - couponDiscount;
   const payPercent = payTerm ? (Number(payTerm.percent) || 0) : 0;
   const paymentAdj = payTerm ? Math.round(goodsBase * payPercent) / 100 : 0; // − desconto / + juros
@@ -289,6 +300,7 @@ export default function PDV({ onDone }) {
       discount: discountValue + couponDiscount,
       coupon_code: coupon?.code || null,
       freight: freteValue,
+      carrier_id: carrierId || null,
       payment_adjustment: paymentAdj,
       ...(payTerm ? { notes: `Pagamento: ${payTerm.label}${payPercent ? ` (${payPercent > 0 ? '+' : ''}${payPercent}%)` : ''}` } : {}),
       payment_method: paymentMethod,
@@ -318,7 +330,8 @@ export default function PDV({ onDone }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-[200px]">
+      {/* ~10 itens visíveis; o resto rola dentro do card */}
+      <div className="flex-1 overflow-y-auto min-h-[200px] max-h-[600px]">
         {drill ? (
           <>
             <button type="button" onClick={backToModels}
@@ -379,6 +392,7 @@ export default function PDV({ onDone }) {
           <User size={15} /> Cliente *
         </p>
         {selectedCustomer ? (
+          <>
           <div className="bg-primary-50 rounded-lg px-3 py-2.5">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -411,6 +425,23 @@ export default function PDV({ onDone }) {
               </div>
             )}
           </div>
+
+          {/* Transportadora + valor do frete desta venda */}
+          <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><Truck size={13} /> Transportadora</label>
+              <select className="input text-sm w-full" value={carrierId} onChange={e => setCarrierId(e.target.value)}>
+                <option value="">— selecione a transportadora —</option>
+                {(carriers?.data || []).map(c => <option key={c.id} value={c.id}>{c.trade_name || c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Valor do frete (R$)</label>
+              <input type="number" step="0.01" min="0" className="input text-sm w-full" value={freightInput}
+                onChange={e => setFreightInput(e.target.value)} placeholder="0,00" />
+            </div>
+          </div>
+          </>
         ) : (
           <div className="space-y-2 max-w-xl">
             <div className="relative">
@@ -680,18 +711,26 @@ export default function PDV({ onDone }) {
             {frete ? (
               <div className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
                 <span className="text-sm text-blue-800">
-                  🚚 Frete {frete.uf ? `(${frete.uf})` : ''}: <b>{frete.free ? 'Grátis' : fmt(frete.price)}</b>
+                  🚚 Frete {frete.uf ? `(${frete.uf})` : ''}: <b>{freteValue > 0 ? fmt(freteValue) : 'Grátis'}</b>
                   {frete.days ? <> · chega em <b>{frete.days} dia{frete.days > 1 ? 's' : ''}</b></> : ''}
                 </span>
-                <button type="button" onClick={() => setFrete(null)} className="text-gray-400 hover:text-red-500"><X size={15} /></button>
+                <button type="button" onClick={() => { setFrete(null); setFreightInput(''); }} className="text-gray-400 hover:text-red-500"><X size={15} /></button>
               </div>
             ) : (
-              <button type="button" onClick={() => freteMut.mutate()}
-                disabled={freteMut.isPending || items.length === 0 || !selectedCustomer}
-                className="btn-secondary text-sm w-full disabled:opacity-50"
-                title={!selectedCustomer ? 'Selecione o cliente para usar o estado/CEP dele' : 'Calcula o frete e o prazo pelo estado do cliente'}>
-                {freteMut.isPending ? <Loader2 size={14} className="animate-spin" /> : '🚚'} Calcular frete e prazo
-              </button>
+              <>
+                {freteValue > 0 && (
+                  <div className="flex justify-between text-sm text-gray-600 mb-1.5">
+                    <span>🚚 Frete</span>
+                    <span className="font-medium">{fmt(freteValue)}</span>
+                  </div>
+                )}
+                <button type="button" onClick={() => freteMut.mutate()}
+                  disabled={freteMut.isPending || items.length === 0 || !selectedCustomer}
+                  className="btn-secondary text-sm w-full disabled:opacity-50"
+                  title={!selectedCustomer ? 'Selecione o cliente para usar o estado/CEP dele' : 'Calcula o frete e o prazo pelo estado do cliente'}>
+                  {freteMut.isPending ? <Loader2 size={14} className="animate-spin" /> : '🚚'} Calcular frete e prazo
+                </button>
+              </>
             )}
           </div>
 
