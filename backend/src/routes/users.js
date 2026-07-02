@@ -23,6 +23,8 @@ router.post('/', async (req, res) => {
   const { name, email, password, role = 'operator', allowed_modules = null } = req.body;
   if (!name || !email || !password)
     return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios' });
+  if (String(password).length < 8)
+    return res.status(400).json({ error: 'Senha deve ter pelo menos 8 caracteres' });
   if (!['admin', 'manager', 'operator'].includes(role))
     return res.status(400).json({ error: 'Papel inválido' });
 
@@ -87,8 +89,8 @@ router.patch('/:id', async (req, res) => {
 // Redefine a senha de um usuário
 router.post('/:id/password', async (req, res) => {
   const { password } = req.body;
-  if (!password || password.length < 6)
-    return res.status(400).json({ error: 'Senha deve ter pelo menos 6 caracteres' });
+  if (!password || password.length < 8)
+    return res.status(400).json({ error: 'Senha deve ter pelo menos 8 caracteres' });
   try {
     // garante que o usuário pertence ao tenant antes de mexer no auth
     const { data: target } = await supabase

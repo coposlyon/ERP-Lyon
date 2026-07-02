@@ -30,9 +30,16 @@ router.get('/payment-terms', async (req, res) => {
   } catch (err) { res.json({ data: [] }); }
 });
 
+const isISODate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
+
 router.get('/', async (req, res) => {
-  const { page = 1, limit = 50, status, type, start_date, end_date, search } = req.query;
+  const { status, type, search } = req.query;
+  const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 200);
+  const page = Math.max(parseInt(req.query.page) || 1, 1);
   const offset = (page - 1) * limit;
+  // datas entram na string do filtro .or() → só aceita AAAA-MM-DD
+  const start_date = isISODate(req.query.start_date) ? req.query.start_date : null;
+  const end_date   = isISODate(req.query.end_date)   ? req.query.end_date   : null;
 
   try {
     // If searching by customer name, first resolve matching customer IDs

@@ -48,7 +48,6 @@ export default function PDV({ onDone }) {
     return d.toISOString().split('T')[0];
   });
   const searchRef = useRef();
-  const [prodFocus, setProdFocus] = useState(false);
 
   // Carrega todos os produtos ativos (o backend já devolve em ordem alfabética)
   // para mostrar a lista completa ao abrir, e filtra no cliente conforme digita.
@@ -297,87 +296,200 @@ export default function PDV({ onDone }) {
     });
   }
 
-  return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
-      {/* Esquerda — Produtos */}
-      <div className="flex-1 flex flex-col gap-3 min-w-0">
-        {!inModal && <h1 className="page-title">PDV — Ponto de Venda</h1>}
-
-        {/* Busca produto */}
-        <div className="relative z-30">
+  // ── Painel de busca/lista de produtos (fica na direita) ──
+  const ProductPanel = (
+    <div className="card flex flex-col overflow-hidden h-full">
+      <div className="p-3 border-b border-gray-100">
+        <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+          <Search size={15} /> Produtos
+        </p>
+        <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             ref={searchRef}
             type="text"
-            placeholder={drill ? `Buscar variação de ${drill.name}...` : 'Buscar produto ou clique para ver todos'}
+            placeholder={drill ? `Buscar variação de ${drill.name}...` : 'Buscar produto por nome ou código...'}
             value={productSearch}
             onChange={e => setProductSearch(e.target.value)}
             onKeyDown={handleProductKeyDown}
-            onFocus={() => setProdFocus(true)}
-            onBlur={() => setTimeout(() => { if (document.activeElement !== searchRef.current) setProdFocus(false); }, 150)}
             className="input pl-9 text-base"
             autoFocus
           />
-          {(prodFocus || productSearch.trim().length >= 1 || drill) && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-96 overflow-y-auto">
-              {drill ? (
-                <>
-                  <button type="button" onMouseDown={backToModels}
-                    className="w-full flex items-center justify-between px-4 py-2 bg-gray-50 sticky top-0 text-xs text-gray-600 hover:bg-gray-100 border-b border-gray-100">
-                    <span className="flex items-center gap-1"><ChevronLeft size={13} /> Voltar — <b className="ml-0.5">{drill.name}</b></span>
-                    <span>{variantList.length} variações</span>
-                  </button>
-                  {variantList.length === 0 ? (
-                    <p className="text-sm text-gray-400 text-center py-4">Nenhuma variação encontrada.</p>
-                  ) : variantList.map((v, idx) => (
-                    <button key={idx} type="button" onMouseDown={() => addVariant(v)}
-                      className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
-                      <span className="flex items-center gap-2 min-w-0">
-                        <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{v.code}</span>
-                        <span className="text-sm text-gray-800 truncate">{v.name}</span>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto min-h-[200px]">
+        {drill ? (
+          <>
+            <button type="button" onClick={backToModels}
+              className="w-full flex items-center justify-between px-4 py-2 bg-gray-50 sticky top-0 z-10 text-xs text-gray-600 hover:bg-gray-100 border-b border-gray-100">
+              <span className="flex items-center gap-1"><ChevronLeft size={13} /> Voltar — <b className="ml-0.5">{drill.name}</b></span>
+              <span>{variantList.length} variações</span>
+            </button>
+            {variantList.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">Nenhuma variação encontrada.</p>
+            ) : variantList.map((v, idx) => (
+              <button key={idx} type="button" onClick={() => addVariant(v)}
+                className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{v.code}</span>
+                  <span className="text-sm text-gray-800 truncate">{v.name}</span>
+                </span>
+                <span className="font-semibold text-primary-600 shrink-0">{fmt(drill.sale_price)}</span>
+              </button>
+            ))}
+          </>
+        ) : productList.length > 0 ? (
+          <>
+            <p className="text-[11px] text-gray-400 px-4 py-1.5 bg-gray-50 sticky top-0 z-10 flex justify-between">
+              <span>{productSearch.trim() ? `${productList.length} encontrado(s)` : 'Todos os produtos (A–Z)'}</span>
+              <span>{productList.length}</span>
+            </p>
+            {productList.map((p, idx) => {
+              const nv = expandVariants(p).length;
+              return (
+                <button key={p.id} type="button" onClick={() => pickProduct(p)}
+                  className={`w-full flex items-center justify-between px-4 py-3 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 text-sm truncate">{p.name}</p>
+                    <p className="text-xs text-gray-400">
+                      Estoque: {p.current_stock}
+                      {nv > 1 && <span className="ml-2 text-indigo-500 font-medium">{nv} variações</span>}
+                    </p>
+                  </div>
+                  {nv > 1
+                    ? <ChevronRight size={16} className="text-gray-300 shrink-0 ml-2" />
+                    : <span className="font-semibold text-primary-600 shrink-0 ml-2">{fmt(p.sale_price)}</span>}
+                </button>
+              );
+            })}
+          </>
+        ) : (
+          <p className="text-sm text-gray-400 text-center py-8">Nenhum produto encontrado.</p>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* TOPO — Cliente (largura total) */}
+      <div className="card p-4">
+        <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+          <User size={15} /> Cliente *
+        </p>
+        {selectedCustomer ? (
+          <div className="bg-primary-50 rounded-lg px-3 py-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {selectedCustomer.display_id != null && <span className="text-[10px] font-mono bg-white text-primary-700 rounded px-1.5 py-0.5 shrink-0 border border-primary-100">#{selectedCustomer.display_id}</span>}
+                  <p className="text-sm font-semibold text-primary-800">{selectedCustomer.name}</p>
+                  <span className="text-xs text-primary-500">{selectedCustomer.cpf_cnpj || selectedCustomer.phone || ''}</span>
+                </div>
+                <button type="button" onClick={() => setShowCustomerInfo(v => !v)} className="text-xs text-primary-600 hover:underline mt-1">
+                  {showCustomerInfo ? '▲ Ocultar dados' : '▼ Ver todos os dados do cliente'}
+                </button>
+              </div>
+              <button onClick={() => { setSelectedCustomer(null); setShowCustomerInfo(false); }} className="text-primary-400 hover:text-red-500 shrink-0">
+                <X size={16} />
+              </button>
+            </div>
+            {showCustomerInfo && (
+              <div className="text-xs text-gray-600 grid sm:grid-cols-2 gap-x-6 gap-y-0.5 border-t border-primary-100 pt-2 mt-2">
+                {selectedCustomer.email && <p><b>E-mail:</b> {selectedCustomer.email}</p>}
+                {selectedCustomer.phone && <p><b>Telefone:</b> {selectedCustomer.phone}</p>}
+                {selectedCustomer.mobile && <p><b>Celular:</b> {selectedCustomer.mobile}</p>}
+                {selectedCustomer.cpf_cnpj && <p><b>CPF/CNPJ:</b> {selectedCustomer.cpf_cnpj}</p>}
+                {selectedCustomer.rg_ie && <p><b>RG/IE:</b> {selectedCustomer.rg_ie}</p>}
+                {selectedCustomer.instagram && <p><b>Instagram:</b> {selectedCustomer.instagram}</p>}
+                {(() => {
+                  const a = selectedCustomer.address;
+                  if (!a || (!a.street && !a.city)) return null;
+                  return <p className="sm:col-span-2"><b>Endereço:</b> {a.street}{a.number ? `, ${a.number}` : ''}{a.neighborhood ? ` - ${a.neighborhood}` : ''}{a.city ? ` - ${a.city}/${a.state || ''}` : ''}{a.zip ? ` (${a.zip})` : ''}</p>;
+                })()}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2 max-w-xl">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar cliente por nome, ID ou telefone..."
+                value={customerSearch}
+                onChange={e => setCustomerSearch(e.target.value)}
+                onFocus={() => setCustFocus(true)}
+                onBlur={() => setTimeout(() => setCustFocus(false), 150)}
+                className="input text-sm pl-8"
+              />
+            </div>
+            {(() => {
+              const searching = customerSearch.trim().length >= 1;
+              const list = searching ? (customerResults?.data || []) : (custFocus ? (recentCustomers?.data || []) : []);
+              if (list.length === 0 && searching) {
+                return <p className="text-xs text-gray-400 py-1">Nenhum cliente encontrado.</p>;
+              }
+              if (list.length === 0) return <p className="text-xs text-amber-600">O cliente é obrigatório para o pedido.</p>;
+              return (
+                <div className="border border-gray-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                  {!searching && <p className="text-[11px] text-gray-400 px-3 py-1.5 bg-gray-50 sticky top-0">Últimos clientes cadastrados</p>}
+                  {list.map(c => (
+                    <button key={c.id} type="button"
+                      onMouseDown={() => { setSelectedCustomer(c); setCustomerSearch(''); setCustFocus(false); }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
+                      {c.display_id != null && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 shrink-0">#{c.display_id}</span>}
+                      <span className="min-w-0">
+                        <span className="font-medium block truncate">{c.name}</span>
+                        <span className="text-xs text-gray-400">{c.cpf_cnpj || c.phone}</span>
                       </span>
-                      <span className="font-semibold text-primary-600 shrink-0">{fmt(drill.sale_price)}</span>
                     </button>
                   ))}
-                </>
-              ) : productList.length > 0 ? (
-                <>
-                  <p className="text-[11px] text-gray-400 px-4 py-1.5 bg-gray-50 sticky top-0 flex justify-between">
-                    <span>{productSearch.trim() ? `${productList.length} produto(s) encontrado(s)` : 'Todos os produtos (A–Z)'}</span>
-                    <span>{productList.length}</span>
-                  </p>
-                  {productList.map((p, idx) => {
-                    const nv = expandVariants(p).length;
-                    return (
-                      <button key={p.id} type="button" onMouseDown={() => pickProduct(p)}
-                        className={`w-full flex items-center justify-between px-4 py-3 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900 text-sm truncate">{p.name}</p>
-                          <p className="text-xs text-gray-400">
-                            Estoque: {p.current_stock}
-                            {nv > 1 && <span className="ml-2 text-indigo-500 font-medium">{nv} variações</span>}
-                          </p>
-                        </div>
-                        {nv > 1
-                          ? <ChevronRight size={16} className="text-gray-300 shrink-0 ml-2" />
-                          : <span className="font-semibold text-primary-600 shrink-0 ml-2">{fmt(p.sale_price)}</span>}
-                      </button>
-                    );
-                  })}
-                </>
-              ) : (
-                <p className="text-sm text-gray-400 text-center py-4">Nenhum produto encontrado.</p>
-              )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
+      {/* CORPO — carrinho/checkout (esquerda) + produtos (direita) */}
+      <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
+        {/* Esquerda/centro — Pedido + carrinho + checkout */}
+        <div className="flex-1 flex flex-col gap-3 min-w-0 order-2 lg:order-1">
+
+        {/* Pedido — chave aleatória + datas (tudo obrigatório) */}
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-700">🔑 Pedido</span>
+            <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 rounded px-2 py-0.5" title="Chave do pedido (gerada automaticamente)">#{orderKey}</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Data da operação *</label>
+              <input type="date" className="input w-full text-sm" value={operationDate} onChange={e => setOperationDate(e.target.value)} />
             </div>
-          )}
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Data do evento *</label>
+              <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => setEventDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Data da saída *</label>
+              <input type="date" className="input w-full text-sm" value={shipDate} onChange={e => setShipDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Previsão de entrega *</label>
+              <input type="date" className="input w-full text-sm" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
+            </div>
+          </div>
         </div>
 
         {/* Lista de itens */}
-        <div className="card max-h-[45vh] overflow-y-auto">
+        <div className="card max-h-[42vh] overflow-y-auto">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 text-gray-400">
               <ShoppingCart size={32} className="mb-2 opacity-30" />
-              <p className="text-sm">Nenhum item adicionado</p>
+              <p className="text-sm">Nenhum item adicionado — busque produtos à direita</p>
             </div>
           ) : (
             <table className="w-full text-sm">
@@ -432,117 +544,6 @@ export default function PDV({ onDone }) {
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
-      </div>
-
-      {/* Direita — Checkout */}
-      <div className="w-full lg:w-80 lg:shrink-0 flex flex-col gap-3">
-
-        {/* Pedido — chave aleatória + datas (tudo obrigatório) */}
-        <div className="card p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-700">🔑 Pedido</span>
-            <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 rounded px-2 py-0.5" title="Chave do pedido (gerada automaticamente)">#{orderKey}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Data da operação *</label>
-              <input type="date" className="input w-full text-sm" value={operationDate} onChange={e => setOperationDate(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Data do evento *</label>
-              <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => setEventDate(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Data da saída *</label>
-              <input type="date" className="input w-full text-sm" value={shipDate} onChange={e => setShipDate(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Previsão de entrega *</label>
-              <input type="date" className="input w-full text-sm" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
-            </div>
-          </div>
-        </div>
-
-        {/* Cliente — obrigatório, com código (vínculo) e dados completos */}
-        <div className="card p-4">
-          <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-            <User size={15} /> Cliente *
-          </p>
-          {selectedCustomer ? (
-            <div className="bg-primary-50 rounded-lg px-3 py-2 space-y-2">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    {selectedCustomer.display_id != null && <span className="text-[10px] font-mono bg-white text-primary-700 rounded px-1.5 py-0.5 shrink-0 border border-primary-100">#{selectedCustomer.display_id}</span>}
-                    <p className="text-sm font-semibold text-primary-800 truncate">{selectedCustomer.name}</p>
-                  </div>
-                  <p className="text-xs text-primary-500 mt-0.5">{selectedCustomer.cpf_cnpj || selectedCustomer.phone || ''}</p>
-                </div>
-                <button onClick={() => { setSelectedCustomer(null); setShowCustomerInfo(false); }} className="text-primary-400 hover:text-red-500 shrink-0">
-                  <X size={15} />
-                </button>
-              </div>
-              <button type="button" onClick={() => setShowCustomerInfo(v => !v)} className="text-xs text-primary-600 hover:underline">
-                {showCustomerInfo ? '▲ Ocultar dados' : '▼ Ver todos os dados do cliente'}
-              </button>
-              {showCustomerInfo && (
-                <div className="text-xs text-gray-600 space-y-0.5 border-t border-primary-100 pt-2">
-                  {selectedCustomer.email && <p><b>E-mail:</b> {selectedCustomer.email}</p>}
-                  {selectedCustomer.phone && <p><b>Telefone:</b> {selectedCustomer.phone}</p>}
-                  {selectedCustomer.mobile && <p><b>Celular:</b> {selectedCustomer.mobile}</p>}
-                  {selectedCustomer.cpf_cnpj && <p><b>CPF/CNPJ:</b> {selectedCustomer.cpf_cnpj}</p>}
-                  {selectedCustomer.rg_ie && <p><b>RG/IE:</b> {selectedCustomer.rg_ie}</p>}
-                  {selectedCustomer.instagram && <p><b>Instagram:</b> {selectedCustomer.instagram}</p>}
-                  {(() => {
-                    const a = selectedCustomer.address;
-                    if (!a || (!a.street && !a.city)) return null;
-                    return <p><b>Endereço:</b> {a.street}{a.number ? `, ${a.number}` : ''}{a.neighborhood ? ` - ${a.neighborhood}` : ''}{a.city ? ` - ${a.city}/${a.state || ''}` : ''}{a.zip ? ` (${a.zip})` : ''}</p>;
-                  })()}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Nome, ID ou telefone..."
-                  value={customerSearch}
-                  onChange={e => setCustomerSearch(e.target.value)}
-                  onFocus={() => setCustFocus(true)}
-                  onBlur={() => setTimeout(() => setCustFocus(false), 150)}
-                  className="input text-sm pl-8"
-                />
-              </div>
-              {(() => {
-                const searching = customerSearch.trim().length >= 1;
-                const list = searching ? (customerResults?.data || []) : (custFocus ? (recentCustomers?.data || []) : []);
-                if (list.length === 0 && searching) {
-                  return <p className="text-xs text-gray-400 text-center py-1">Nenhum cliente encontrado.</p>;
-                }
-                if (list.length === 0) return null;
-                return (
-                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-72 overflow-y-auto">
-                    {!searching && <p className="text-[11px] text-gray-400 px-3 py-1.5 bg-gray-50 sticky top-0">Últimos clientes cadastrados</p>}
-                    {list.map(c => (
-                      <button key={c.id} type="button"
-                        onMouseDown={() => { setSelectedCustomer(c); setCustomerSearch(''); setCustFocus(false); }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
-                        {c.display_id != null && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 shrink-0">#{c.display_id}</span>}
-                        <span className="min-w-0">
-                          <span className="font-medium block truncate">{c.name}</span>
-                          <span className="text-xs text-gray-400">{c.cpf_cnpj || c.phone}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                );
-              })()}
-              <p className="text-xs text-amber-600 text-center">O cliente é obrigatório.</p>
-            </div>
           )}
         </div>
 
@@ -711,6 +712,12 @@ export default function PDV({ onDone }) {
             : <><Check size={18} /> Finalizar — {fmt(total)}</>
           }
         </button>
+        </div>
+
+        {/* Direita — busca de produtos (painel fixo) */}
+        <div className="w-full lg:w-96 lg:shrink-0 order-1 lg:order-2 lg:sticky lg:top-0 lg:max-h-[calc(100vh-9rem)]">
+          {ProductPanel}
+        </div>
       </div>
     </div>
   );

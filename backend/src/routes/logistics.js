@@ -14,7 +14,11 @@ router.get('/', async (req, res) => {
       .eq('tenant_id', req.tenantId)
       .order('name');
 
-    if (search)     query = query.or(`name.ilike.%${search}%,cnpj.ilike.%${search}%,trade_name.ilike.%${search}%`);
+    if (search) {
+      // remove caracteres de sintaxe do filtro PostgREST (injeção via busca)
+      const s = String(search).replace(/[%,()]/g, ' ').trim();
+      if (s) query = query.or(`name.ilike.%${s}%,cnpj.ilike.%${s}%,trade_name.ilike.%${s}%`);
+    }
     if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
     query = query.range(offset, offset + Number(limit) - 1);
 

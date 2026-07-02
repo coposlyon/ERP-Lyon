@@ -1,5 +1,6 @@
 const express  = require('express');
 const router   = express.Router();
+const rateLimit = require('express-rate-limit');
 const supabase = require('../config/supabase');
 const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
 const { uploadDataUrl } = require('../lib/storage');
@@ -9,6 +10,27 @@ const { cotar, ufFromCep, getFreteConfig } = require('../lib/shipping');
 // Loja pública: serve UM tenant (a empresa dona da loja).
 // Sem autenticação — montada antes do authMiddleware.
 const STORE_TENANT = process.env.STORE_TENANT_ID || 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+
+// Erros internos não expõem detalhes do banco em rotas públicas
+function fail(res, err, where) {
+  console.error(`[public-store${where ? ':' + where : ''}]`, err.message || err);
+  res.status(500).json({ error: 'Erro interno. Tente novamente em instantes.' });
+}
+
+// Limites por IP: rotas de identidade (CPF), cadastros e IA são alvo de
+// enumeração/spam/abuso de custo — o limite global de 500/15min é frouxo demais.
+const identityLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 30,
+  message: { error: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.' },
+});
+const cadastroLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, max: 20,
+  message: { error: 'Muitos cadastros em sequência. Aguarde um pouco e tente de novo.' },
+});
+const aiLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, max: 10,
+  message: { error: 'Limite de sugestões de IA atingido. Tente novamente mais tarde.' },
+});
 
 // preço "a partir de": menor entre sale_price e as faixas
 function fromPrice(p) {
@@ -46,7 +68,7 @@ router.get('/store', async (req, res) => {
       // Textos/opções editáveis do site (Configurações → Site)
       site: s.site || {},
     });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Categorias com contagem ───────────────────────────────
@@ -56,7 +78,7 @@ router.get('/categories', async (req, res) => {
       .from('CATEGORIAS').select('id, name')
       .eq('tenant_id', STORE_TENANT).order('name');
     res.json(data || []);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Catálogo ──────────────────────────────────────────────
@@ -116,7 +138,7 @@ router.get('/products', async (req, res) => {
     }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 
     res.json(cards);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Detalhe do produto ────────────────────────────────────
@@ -191,7 +213,7 @@ router.get('/products/:id', async (req, res) => {
       print_methods: PRINT_METHODS,
       variants: variants || [],
     });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Enviar pedido de orçamento ────────────────────────────
@@ -327,7 +349,7 @@ router.post('/quote', async (req, res) => {
     await supabase.from('VENDA_ITENS').insert(saleItems);
 
     res.status(201).json({ success: true, number: sale.number, items: orderItems.length });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Validação de CPF/CNPJ (dígitos verificadores) ─────────
@@ -348,7 +370,7 @@ function validaCNPJ(v) {
 }
 
 // ── Autocadastro de cliente (link público) ────────────────
-router.post('/cadastro', async (req, res) => {
+router.post('/cadastro', cadastroLimiter, async (req, res) => {
   const { type, name, cpf_cnpj, email, phone, mobile, instagram, rg_ie, ie_isento, can_publish, address, birth_date, update } = req.body;
   const nm = String(name || '').trim();
   const ph = String(phone || '').trim();
@@ -424,11 +446,11 @@ router.post('/cadastro', async (req, res) => {
     }
     if (error) throw error;
     res.status(201).json({ success: true, customer: created });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Autocadastro de FORNECEDORA (link público) ────────────
-router.post('/cadastro-fornecedor', async (req, res) => {
+router.post('/cadastro-fornecedor', cadastroLimiter, async (req, res) => {
   const { name, nome_fantasia, cnpj, ie, ie_isento, email, phone, mobile, contact_name, instagram, address } = req.body;
   const nm = String(name || '').trim();
   const em = String(email || '').trim();
@@ -471,11 +493,11 @@ router.post('/cadastro-fornecedor', async (req, res) => {
     }
     if (error) throw error;
     res.status(201).json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Autocadastro de TRANSPORTADORA (link público) ─────────
-router.post('/cadastro-transportadora', async (req, res) => {
+router.post('/cadastro-transportadora', cadastroLimiter, async (req, res) => {
   const { name, trade_name, cnpj, ie, ie_isento, email, phone, whatsapp, contact_name, address } = req.body;
   const nm = String(name || '').trim();
   const em = String(email || '').trim();
@@ -508,11 +530,11 @@ router.post('/cadastro-transportadora', async (req, res) => {
     const { error } = await supabase.from('TRANSPORTADORAS').insert(payload);
     if (error) throw error;
     res.status(201).json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Só verifica se o CPF/CNPJ já existe (sem expor os dados) ──
-router.post('/check-doc', async (req, res) => {
+router.post('/check-doc', identityLimiter, async (req, res) => {
   const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);
   if (!docDigits) return res.json({ exists: false });
   try {
@@ -528,14 +550,15 @@ router.post('/check-doc', async (req, res) => {
     }
     if (!data) return res.json({ exists: false });
     res.json({ exists: true, first_name: (data.name || '').trim().split(/\s+/)[0], type: data.type, has_birth: !!data.birth_date });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Comprova identidade pela data de nascimento e devolve o cliente ──
-router.post('/verify-birth', async (req, res) => {
+router.post('/verify-birth', identityLimiter, async (req, res) => {
   const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);
   const birth = String(req.body.birth_date || '').trim(); // ISO AAAA-MM-DD
   if (!docDigits) return res.status(400).json({ error: 'Informe o CPF' });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birth)) return res.status(400).json({ error: 'Informe a data de nascimento' });
   const full = 'id, name, type, cpf_cnpj, rg_ie, email, phone, mobile, instagram, address, admission_data, birth_date';
   const basic = 'id, name, type, cpf_cnpj, rg_ie, email, phone, mobile, instagram, address, admission_data';
   try {
@@ -554,18 +577,17 @@ router.post('/verify-birth', async (req, res) => {
     if (!cli) return res.status(404).json({ error: 'CPF não encontrado.' });
 
     // Cliente sem nascimento no cadastro → aceita e já salva o informado
+    // (a data é obrigatória na entrada, então nunca libera sem verificação)
     if (!cli.birth_date) {
-      if (birth) {
-        await supabase.from('CLIENTES').update({ birth_date: birth }).eq('id', cli.id).eq('tenant_id', STORE_TENANT);
-        cli.birth_date = birth;
-      }
+      await supabase.from('CLIENTES').update({ birth_date: birth }).eq('id', cli.id).eq('tenant_id', STORE_TENANT);
+      cli.birth_date = birth;
       return res.json({ success: true, customer: cli });
     }
     if (String(cli.birth_date).slice(0, 10) !== birth) {
       return res.status(403).json({ error: 'Data de nascimento não confere. Tente novamente.' });
     }
     res.json({ success: true, customer: cli });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Perfil do cliente (loja): consulta ────────────────────
@@ -583,7 +605,7 @@ router.get('/profile', async (req, res) => {
     }
     if (!data) return res.status(404).json({ error: 'Cliente não encontrado' });
     res.json({ customer: data });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Perfil do cliente (loja): atualizar dados + foto, com histórico ──
@@ -642,11 +664,11 @@ router.post('/profile', async (req, res) => {
     }
     if (error) throw error;
     res.json({ success: true, customer: upd });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Login da loja / consulta por CPF (também usado p/ pré-preencher edição) ──
-router.post('/login', async (req, res) => {
+router.post('/login', identityLimiter, async (req, res) => {
   const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);
   if (!docDigits) return res.status(400).json({ error: 'Informe o CPF' });
   const full = 'id, name, type, cpf_cnpj, rg_ie, email, phone, mobile, instagram, address, admission_data, birth_date';
@@ -668,7 +690,7 @@ router.post('/login', async (req, res) => {
     }
     if (!cli) return res.status(404).json({ error: 'CPF não encontrado. Faça seu cadastro primeiro.' });
     res.json({ success: true, customer: cli });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Status da VENDA traduzido para o cliente ──────────────
@@ -726,7 +748,7 @@ router.get('/my-orders', async (req, res) => {
       })),
     }));
     res.json({ orders });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // ── Frete por CEP (Melhor Envio) ──────────────────────────
@@ -781,11 +803,11 @@ router.post('/frete', async (req, res) => {
     if (markup) options = options.map(o => ({ ...o, price: Math.round((Number(o.price) || 0) * (1 + markup / 100) * 100) / 100 }));
 
     res.json({ options });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 // Sugestão de design com IA (cliente descreve a marca)
-router.post('/ai-design', async (req, res) => {
+router.post('/ai-design', aiLimiter, async (req, res) => {
   const brief = String(req.body.brief || '').trim();
   if (!brief) return res.status(400).json({ error: 'Descreva sua marca ou evento' });
   try {
@@ -793,7 +815,7 @@ router.post('/ai-design', async (req, res) => {
     const out = await designSuggestion(brief);
     if (out.error) return res.status(400).json({ error: out.error });
     res.json(out);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { fail(res, err); }
 });
 
 module.exports = router;

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 
-export function Table({ columns, data, loading, emptyMessage = 'Nenhum registro encontrado.', onRowClick }) {
+export function Table({ columns, data, loading, emptyMessage = 'Nenhum registro encontrado.', onRowClick, rowClassName }) {
   // Ordenação por cabeçalho (apenas nas colunas marcadas com `sortable`)
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
 
@@ -77,7 +77,7 @@ export function Table({ columns, data, loading, emptyMessage = 'Nenhum registro 
         <tbody>
           {sortedData.map((row, i) => (
             <tr key={row.id || i}
-              className={onRowClick ? 'cursor-pointer hover:bg-gray-50 transition-colors' : 'cursor-pointer'}
+              className={`${onRowClick ? 'cursor-pointer hover:bg-gray-50 transition-colors' : 'cursor-pointer'} ${rowClassName ? rowClassName(row) : ''}`}
               onClick={onRowClick ? () => onRowClick(row) : undefined}>
               {columns.map(col => (
                 <td key={col.key}>

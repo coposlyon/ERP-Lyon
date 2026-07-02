@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Globe, Loader2, ChevronRight, ChevronLeft, Truck, Save, MapPin } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Globe, Loader2, ChevronRight, ChevronLeft, Truck, Save, MapPin, Package, Printer, Ban, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -234,8 +234,8 @@ export default function Sales() {
       {/* Painel master-detail (abas) */}
       <SaleDetail saleId={selectedId} onChanged={() => qc.invalidateQueries(['sales'])} />
 
-      {/* Novo pedido (PDV) */}
-      <Modal isOpen={newSaleOpen} onClose={() => setNewSaleOpen(false)} title="Novo Pedido de Venda" size="full">
+      {/* Novo pedido (PDV) — tela cheia */}
+      <Modal isOpen={newSaleOpen} onClose={() => setNewSaleOpen(false)} title="Novo Pedido de Venda" size="screen">
         <PDV onDone={() => { setNewSaleOpen(false); qc.invalidateQueries(['sales']); }} />
       </Modal>
 
@@ -437,6 +437,149 @@ function SaleDetail({ saleId, onChanged }) {
   );
 }
 
+// ── J&T Express: gerar envio / etiqueta / cancelar direto da venda ──
+function JTShipPanel({ sale, tracking, setTracking, onChanged }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(null); // preenchido pelo prefill
+  const [busy, setBusy] = useState(false);
+
+  const { data: cfg } = useQuery({ queryKey: ['shipping-config'], queryFn: () => api.get('/shipping/config') });
+  const { data: pre } = useQuery({
+    queryKey: ['jt-prefill', sale.id],
+    queryFn: () => api.get(`/shipping/jt/prefill/${sale.id}`),
+    enabled: !!cfg?.has_jt && open,
+  });
+
+  useEffect(() => {
+    if (pre && !form) {
+      setForm({ weight_kg: pre.weight_kg, ...pre.invoice });
+    }
+  }, [pre]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!cfg?.has_jt) return null;
+
+  const hasShipment = !!(sale.jt_tx_id || pre?.jt_tx_id);
+  const bill = tracking || sale.tracking_code;
+
+  async function createShipment() {
+    setBusy(true);
+    try {
+      const r = await api.post('/shipping/jt/order', {
+        sale_id: sale.id,
+        weight_kg: parseFloat(form?.weight_kg) || undefined,
+        invoice: {
+          number: form?.number, serial: form?.serial, money: form?.money,
+          access_key: form?.access_key, tax_code: form?.tax_code,
+        },
+      });
+      toast.success(`✅ Envio criado! Rastreio: ${r.bill_code}`, { duration: 6000 });
+      setTracking(r.bill_code);
+      setOpen(false);
+      qc.invalidateQueries({ queryKey: ['jt-prefill', sale.id] });
+      onChanged?.();
+    } catch (e) { toast.error(e.error || 'Erro ao criar envio na J&T'); }
+    finally { setBusy(false); }
+  }
+
+  async function printLabel() {
+    setBusy(true);
+    try {
+      const r = await api.get(`/shipping/jt/label/${encodeURIComponent(bill)}`);
+      const bytes = Uint8Array.from(atob(r.pdf_base64), c => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+    } catch (e) { toast.error(e.error || 'Erro ao buscar a etiqueta'); }
+    finally { setBusy(false); }
+  }
+
+  async function cancelShipment() {
+    if (!window.confirm(`Cancelar o envio J&T da venda #${sale.number}? O código de rastreio será removido.`)) return;
+    setBusy(true);
+    try {
+      await api.post('/shipping/jt/cancel', { sale_id: sale.id, reason: 'Cancelado pelo ERP' });
+      toast.success('Envio J&T cancelado');
+      setTracking('');
+      qc.invalidateQueries({ queryKey: ['jt-prefill', sale.id] });
+      onChanged?.();
+    } catch (e) { toast.error(e.error || 'Erro ao cancelar envio'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="border border-red-100 bg-red-50/40 rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+          <Package size={15} className="text-red-500" /> J&T Express
+          {cfg?.jt_homolog && <span className="badge badge-yellow">Homologação</span>}
+        </p>
+        <div className="flex gap-2">
+          {bill && (
+            <button onClick={printLabel} disabled={busy} className="btn-secondary btn-sm">
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />} Etiqueta (PDF)
+            </button>
+          )}
+          {hasShipment && bill && (
+            <button onClick={cancelShipment} disabled={busy} className="btn-secondary btn-sm text-red-600">
+              <Ban size={13} /> Cancelar envio
+            </button>
+          )}
+          {!bill && !open && (
+            <button onClick={() => setOpen(true)} className="btn-primary btn-sm">
+              <Truck size={13} /> Gerar envio J&T
+            </button>
+          )}
+        </div>
+      </div>
+
+      {open && !bill && (
+        <div className="space-y-3">
+          {(pre?.problems || []).length > 0 && (
+            <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 flex gap-2">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <span>Complete o cadastro antes de enviar: {pre.problems.join(' · ')}</span>
+            </div>
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="label">Peso (kg)</label>
+              <input type="number" step="0.01" min="0.05" className="input text-sm" value={form?.weight_kg ?? ''}
+                onChange={e => setForm(p => ({ ...p, weight_kg: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">NF-e nº {pre?.has_nf && <span className="text-green-600">✓</span>}</label>
+              <input className="input text-sm font-mono" value={form?.number ?? ''}
+                onChange={e => setForm(p => ({ ...p, number: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Série</label>
+              <input className="input text-sm font-mono" value={form?.serial ?? ''}
+                onChange={e => setForm(p => ({ ...p, serial: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Valor da NF (R$)</label>
+              <input type="number" step="0.01" className="input text-sm" value={form?.money ?? ''}
+                onChange={e => setForm(p => ({ ...p, money: e.target.value }))} />
+            </div>
+          </div>
+          <div>
+            <label className="label">Chave de acesso da NF-e (44 dígitos)</label>
+            <input className="input text-sm font-mono" maxLength={54} value={form?.access_key ?? ''}
+              onChange={e => setForm(p => ({ ...p, access_key: e.target.value }))}
+              placeholder={pre?.has_nf ? '' : 'emita a NF-e no módulo Fiscal ou cole a chave aqui'} />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setOpen(false)} className="btn-secondary btn-sm">Fechar</button>
+            <button onClick={createShipment} disabled={busy || (pre?.problems || []).length > 0} className="btn-primary btn-sm">
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <Truck size={13} />} Confirmar envio
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Aba Transportadores: define a transportadora + código de rastreio e consulta o rastreio (J&T)
 function TransportTab({ sale, onChanged }) {
   const qc = useQueryClient();
@@ -466,6 +609,8 @@ function TransportTab({ sale, onChanged }) {
         <div><span className="text-gray-400 text-xs block">Previsão de Entrega</span><b>{d(sale.delivery_date || sale.max_delivery_date) || '—'}</b></div>
         <div><span className="text-gray-400 text-xs block">Data do Evento</span><b>{d(sale.event_date) || '—'}</b></div>
       </div>
+
+      <JTShipPanel sale={sale} tracking={tracking} setTracking={setTracking} onChanged={onChanged} />
 
       <div className="grid sm:grid-cols-2 gap-3 items-end border-t border-gray-100 pt-3">
         <div>

@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const multer  = require('multer');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 
@@ -389,7 +389,48 @@ router.post('/replenishment-orders', async (req, res) => {
       console.error('[replenishment-orders] Erro ao inserir movimentos:', movErr.message, movErr.details);
     }
 
-    res.status(201).json(order);
+    // Gera a conta a pagar automática com o custo da reposição.
+    // Custo vem do cadastro do produto (não confia no payload do cliente).
+    let payable = null;
+    try {
+      const ids = products.map(p => p.id).filter(Boolean);
+      const { data: prods } = await supabase
+        .from('PRODUTOS').select('id, cost_price')
+        .eq('tenant_id', req.tenantId).in('id', ids);
+      const costMap = Object.fromEntries((prods || []).map(p => [p.id, Number(p.cost_price) || 0]));
+
+      const total = products.reduce((s, p) => {
+        const qty = Math.abs(Number(p.qty_to_replenish ?? p.current_stock_at_request ?? 0));
+        return s + qty * (costMap[p.id] || 0);
+      }, 0);
+
+      if (total > 0) {
+        const due = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+        const { data: lanc, error: lancErr } = await supabase.from('LANCAMENTOS').insert({
+          tenant_id: req.tenantId,
+          user_id: req.user.id,
+          description: `Reposição de estoque — ${supplier_name || 'Sem Fornecedor'} (Controle ${proto})`,
+          type: 'payable',
+          amount: Math.round(total * 100) / 100,
+          paid_amount: 0,
+          due_date: due,
+          status: 'pending',
+          supplier_id: supplier_id || null,
+          reference_type: 'replenishment',
+          reference_id: order.id,
+        }).select('id, amount, due_date').single();
+        if (lancErr) throw lancErr;
+        payable = lanc;
+        audit(req, 'create', 'financial', lanc.id, {
+          origem: 'reposicao', pedido: order.id, protocolo: proto, amount: lanc.amount,
+        });
+      }
+    } catch (e) {
+      // Conta a pagar é acessória — não derruba o pedido de reposição
+      console.error('[replenishment-orders] Erro ao gerar conta a pagar:', e.message);
+    }
+
+    res.status(201).json({ ...order, payable });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

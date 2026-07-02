@@ -23,10 +23,19 @@ router.post('/mercadopago', async (req, res) => {
     const { data: lanc } = await query.maybeSingle();
     if (!lanc || lanc.status === 'paid') return;
 
+    // Baixa pelo valor realmente pago no gateway — pagamento menor que o
+    // lançamento vira 'partial' em vez de quitar a dívida inteira.
+    const paidAmount = Number(payment.transaction_amount) > 0
+      ? Number(payment.transaction_amount)
+      : Number(lanc.amount) || 0;
+    const fullyPaid = paidAmount >= (Number(lanc.amount) || 0);
+    if (!fullyPaid) {
+      console.warn(`[webhook mercadopago] pagamento ${paymentId} (R$ ${paidAmount}) menor que o lançamento ${lanc.id} (R$ ${lanc.amount})`);
+    }
     await supabase.from('LANCAMENTOS').update({
-      paid_amount: lanc.amount,
+      paid_amount: paidAmount,
       paid_date: new Date().toISOString().split('T')[0],
-      status: 'paid',
+      status: fullyPaid ? 'paid' : 'partial',
       payment_method: 'pix',
       gateway_payment_id: String(paymentId),
     }).eq('id', lanc.id);

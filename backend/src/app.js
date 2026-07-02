@@ -20,10 +20,10 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc:  ["'self'"],
-      scriptSrc:   ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc:    ["'self'", "'unsafe-inline'"],
+      scriptSrc:   ["'self'"],
+      styleSrc:    ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       imgSrc:      ["'self'", "data:", "blob:", "https:"],
-      fontSrc:     ["'self'", "data:"],
+      fontSrc:     ["'self'", "data:", "https://fonts.gstatic.com"],
       connectSrc:  ["'self'"],
       objectSrc:   ["'none'"],
       frameSrc:    ["'none'"],
@@ -43,11 +43,29 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
+// Login/refresh: limite apertado contra força bruta de senha
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { error: 'Muitas tentativas de login. Aguarde alguns minutos.' },
+});
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/refresh', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  message: { error: 'Muitas requisições. Aguarde alguns minutos.' },
+}));
+
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/api', routes);
+
+// Rota /api desconhecida → 404 JSON (antes caía no fallback do SPA e devolvia HTML com 200)
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Rota não encontrada' });
+});
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -73,9 +91,13 @@ if (fs.existsSync(frontendDist)) {
 
 app.use((err, req, res, next) => {
   captureError(err, { path: req.originalUrl, method: req.method, tenant: req.tenantId, user: req.user?.id });
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+  const status = err.status || 500;
+  // Erros 5xx em produção não expõem detalhes internos (mensagem do banco, stack etc.)
+  const isDev = process.env.NODE_ENV === 'development';
+  const message = (status < 500 || isDev) ? (err.message || 'Internal server error') : 'Erro interno do servidor';
+  res.status(status).json({
+    error: message,
+    ...(isDev && { stack: err.stack }),
   });
 });
 

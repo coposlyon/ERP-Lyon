@@ -134,6 +134,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
   const [docLoading, setDocLoading] = useState(false);
   const [docStatus,  setDocStatus]  = useState(null); // null | 'ok' | 'error' | 'invalid'
   const lookupInProgress = useRef(false);          // ref para evitar stale closure na guard
+  const lastLookup = useRef('');                   // último CNPJ consultado (evita repetir no blur)
 
   useEffect(() => {
     if (customer) {
@@ -159,7 +160,10 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
         block_reason: customer.block_reason || '',
       });
     }
-  }, [customer]);
+    // Reinicializa APENAS quando muda o cliente em si (id). Antes dependia do
+    // objeto inteiro: qualquer refetch da tela-mãe criava um objeto novo e
+    // apagava o que estava sendo digitado (endereço sumia "do nada").
+  }, [customer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set(f, v)       { setForm(p => ({ ...p, [f]: v })); }
   function setUp(f, v)     { setForm(p => ({ ...p, [f]: String(v).toUpperCase() })); }
@@ -169,6 +173,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
   // ── Lookup CNPJ (PJ) ────────────────────────────────────────────────────────
   async function lookupCnpj(digits) {
     if (digits.length !== 14 || lookupInProgress.current) return;
+    if (lastLookup.current === digits) return; // já consultado — o blur não repete
     lookupInProgress.current = true;
     setDocLoading(true);
     setDocStatus(null);
@@ -176,23 +181,27 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
       const res = await fetch(`/api/cnpj/${digits}`);
       if (!res.ok) throw new Error('not found');
       const d = await res.json();
+      lastLookup.current = digits;
       const zip = d.zip ? d.zip.replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
+      // Só PREENCHE campos vazios — nunca apaga o que já foi digitado.
+      // (a consulta demora alguns segundos; sobrescrever apagava o endereço
+      // que a pessoa tinha acabado de preencher pelo CEP)
       setForm(p => ({
         ...p,
-        name:         (d.name       || p.name).toUpperCase(),
-        nome_fantasia:(d.trade_name || p.nome_fantasia).toUpperCase(),
-        rg_ie:        d.ie          || p.rg_ie,
-        email:        d.email       || p.email,
-        phone:        d.phone ? formatPhoneDisplay(d.phone) : p.phone,
+        name:         p.name          || (d.name       || '').toUpperCase(),
+        nome_fantasia:p.nome_fantasia || (d.trade_name || '').toUpperCase(),
+        rg_ie:        p.rg_ie  || d.ie    || '',
+        email:        p.email  || d.email || '',
+        phone:        p.phone  || (d.phone ? formatPhoneDisplay(d.phone) : ''),
         address: {
           ...p.address,
-          street:       (d.street       || '').toUpperCase(),
-          number:       (d.number       || '').toUpperCase(),
-          complement:   (d.complement   || '').toUpperCase(),
-          neighborhood: (d.neighborhood || '').toUpperCase(),
-          city:         (d.city         || '').toUpperCase(),
-          state:        (d.state        || '').toUpperCase(),
-          zip,
+          street:       p.address.street       || (d.street       || '').toUpperCase(),
+          number:       p.address.number       || (d.number       || '').toUpperCase(),
+          complement:   p.address.complement   || (d.complement   || '').toUpperCase(),
+          neighborhood: p.address.neighborhood || (d.neighborhood || '').toUpperCase(),
+          city:         p.address.city         || (d.city         || '').toUpperCase(),
+          state:        p.address.state        || (d.state        || '').toUpperCase(),
+          zip:          p.address.zip          || zip,
         },
       }));
       setDocStatus('ok');

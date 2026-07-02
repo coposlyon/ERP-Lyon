@@ -95,8 +95,8 @@ router.post('/login', async (req, res) => {
 router.post('/logout', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (token) {
-    const clientSupabase = makeClient(supabaseUrl, supabaseAnonKey);
-    await clientSupabase.auth.signOut();
+    // revoga a sessão de verdade no Supabase (signOut() num client novo era no-op)
+    try { await supabase.auth.admin.signOut(token); } catch { /* token já inválido */ }
   }
   res.json({ message: 'Logout realizado com sucesso' });
 });

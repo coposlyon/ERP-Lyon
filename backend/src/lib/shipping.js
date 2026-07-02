@@ -30,10 +30,13 @@ async function getFreteConfig(tenantId) {
   } catch { s = {}; }
   return {
     enabled:          !!s.enabled,                              // J&T (API) ligado
-    jt_base_url:      s.jt_base_url || 'https://openapi.jtjms-br.com',
-    jt_api_account:   s.jt_api_account || '',
-    jt_private_key:   s.jt_private_key || '',
-    jt_customer_code: s.jt_customer_code || '',
+    // Credenciais: valor salvo em Configurações → Transportadora, com
+    // fallback nas variáveis de ambiente (JT_*) do servidor.
+    jt_base_url:      s.jt_base_url || process.env.JT_BASE_URL || 'https://openapi.jtjms-br.com',
+    jt_api_account:   s.jt_api_account || process.env.JT_API_ACCOUNT || '',
+    jt_private_key:   s.jt_private_key || process.env.JT_PRIVATE_KEY || '',
+    jt_customer_code: s.jt_customer_code || process.env.JT_CUSTOMER_CODE || '',
+    jt_password:      s.jt_password || process.env.JT_PASSWORD || '',
     origin_cep:       String(s.origin_cep || '').replace(/\D/g, ''),
     weight_per_unit_g: Number(s.weight_per_unit_g) || 200,     // peso por copo (g) p/ estimar
     free_above:       Number(s.free_above) || 0,               // frete grátis acima de R$
@@ -61,11 +64,31 @@ function estimateByTable(cfg, { uf, weightKg, subtotal }) {
   };
 }
 
-// ── J&T Open Platform (best-effort) ──────────────────────────────────
-// Assinatura padrão da plataforma: digest = Base64(MD5(bizContent + privateKey)).
-// Precisa de conta de cliente J&T (apiAccount, customerCode, privateKey).
+// ── J&T Open Platform (JMS Brasil) ────────────────────────────────────
+// Autenticação (validada no ambiente de homologação):
+//  - header digest  = Base64(MD5(bizContent + privateKey))
+//  - digest de negócio (dentro do bizContent) =
+//      Base64(MD5(customerCode + MD5HEX_MAIÚSCULO(senha + 'jadada236t2') + privateKey))
+// Endpoints: /webopenplatformapi/api/{order/addOrder, order/cancelOrder,
+//            order/printOrder, logistics/trace, ...}
 function jtDigest(bizContent, privateKey) {
   return crypto.createHash('md5').update(bizContent + privateKey, 'utf8').digest('base64');
+}
+
+function jtBizDigest(cfg) {
+  const cipher = crypto.createHash('md5')
+    .update(cfg.jt_password + 'jadada236t2', 'utf8').digest('hex').toUpperCase();
+  return crypto.createHash('md5')
+    .update(cfg.jt_customer_code + cipher + cfg.jt_private_key, 'utf8').digest('base64');
+}
+
+function jtReady(cfg) {
+  return !!(cfg.jt_api_account && cfg.jt_private_key && cfg.jt_customer_code && cfg.jt_password);
+}
+
+function jtNotConfigured() {
+  const err = new Error('J&T não configurada. Vá em Configurações → Transportadora e preencha conta da API, código de cliente, senha e chave privada.');
+  err.status = 400; return err;
 }
 
 async function jtRequest(cfg, path, bizObj) {
@@ -86,25 +109,74 @@ async function jtRequest(cfg, path, bizObj) {
   return raw;
 }
 
+// Chama a API e valida o código de negócio ("1" = sucesso)
+async function jtCall(cfg, path, biz) {
+  const raw = await jtRequest(cfg, path, {
+    customerCode: cfg.jt_customer_code,
+    digest: jtBizDigest(cfg),
+    ...biz,
+  });
+  if (String(raw?.code) !== '1') {
+    const err = new Error(`J&T: ${raw?.msg || 'erro desconhecido'} (código ${raw?.code || '?'})`);
+    err.status = 400; err.jtCode = raw?.code; throw err;
+  }
+  return raw;
+}
+
 // Rastreio de uma encomenda pelo código (billCode/waybill).
 async function rastrear(tenantId, code) {
   const cfg = await getFreteConfig(tenantId);
-  if (!cfg.jt_api_account || !cfg.jt_private_key) {
-    const err = new Error('J&T não configurado. Vá em Configurações → Transportadora e informe a conta da API.');
-    err.status = 400; throw err;
-  }
-  const raw = await jtRequest(cfg, '/webopenplatformapi/api/logistics/trace', {
-    customerCode: cfg.jt_customer_code, billCode: code,
+  if (!jtReady(cfg)) throw jtNotConfigured();
+  const raw = await jtCall(cfg, '/webopenplatformapi/api/logistics/trace', {
+    billCodes: String(code).trim(),
   });
-  // normaliza o histórico (ajustável conforme o retorno real do contrato)
-  const details = raw?.data?.details || raw?.details || raw?.data || [];
+  const first = Array.isArray(raw?.data) ? raw.data[0] : raw?.data;
+  const details = first?.details || [];
   const events = (Array.isArray(details) ? details : []).map(d => ({
     time: d.scanTime || d.acceptTime || d.time || null,
-    status: d.scanType || d.status || d.desc || null,
-    where: d.scanNetworkName || d.city || d.location || null,
-    desc: d.desc || d.scanTypeName || d.remark || null,
+    status: d.scanTypeName || d.scanType || d.status || null,
+    where: d.scanNetworkName || d.scanNetworkCity || d.city || null,
+    desc: d.desc || d.remark || null,
   }));
-  return { code, events, raw };
+  return { code, events };
+}
+
+// Cria o pedido logístico (waybill). `order` já vem montado pela rota.
+async function jtCriarPedido(tenantId, order) {
+  const cfg = await getFreteConfig(tenantId);
+  if (!jtReady(cfg)) throw jtNotConfigured();
+  const raw = await jtCall(cfg, '/webopenplatformapi/api/order/addOrder', order);
+  const first = raw?.data?.orderList?.[0] || {};
+  return {
+    billCode: first.billCode || raw?.data?.billCode || null,
+    txlogisticId: first.txlogisticId || order.txlogisticId,
+    createOrderTime: raw?.data?.createOrderTime || null,
+  };
+}
+
+// Cancela um pedido logístico pelo txlogisticId (id do nosso lado).
+async function jtCancelarPedido(tenantId, { txlogisticId, reason }) {
+  const cfg = await getFreteConfig(tenantId);
+  if (!jtReady(cfg)) throw jtNotConfigured();
+  const raw = await jtCall(cfg, '/webopenplatformapi/api/order/cancelOrder', {
+    txlogisticId, orderType: '1', reason: reason || 'Cancelado pelo ERP',
+  });
+  return raw?.data || { txlogisticId };
+}
+
+// Etiqueta em PDF (base64) de um billCode.
+async function jtEtiqueta(tenantId, billCode) {
+  const cfg = await getFreteConfig(tenantId);
+  if (!jtReady(cfg)) throw jtNotConfigured();
+  const raw = await jtCall(cfg, '/webopenplatformapi/api/order/printOrder', {
+    billCode: String(billCode).trim(), printSize: '1', showCustomerOrderId: '1',
+  });
+  const b64 = raw?.data?.base64EncodeContent || null;
+  if (!b64) {
+    const err = new Error('J&T não devolveu a etiqueta para este código.');
+    err.status = 502; throw err;
+  }
+  return b64;
 }
 
 // Cotação: tenta J&T (se ligado); senão usa a tabela regional.
@@ -116,4 +188,7 @@ async function cotar(tenantId, { uf, cep, qty, weightKg, subtotal }) {
   return { ...est, weightKg: Math.round(w * 1000) / 1000, uf: String(uf || '').toUpperCase() };
 }
 
-module.exports = { getFreteConfig, estimateByTable, cotar, rastrear, ufFromCep };
+module.exports = {
+  getFreteConfig, estimateByTable, cotar, rastrear, ufFromCep,
+  jtReady, jtCriarPedido, jtCancelarPedido, jtEtiqueta,
+};

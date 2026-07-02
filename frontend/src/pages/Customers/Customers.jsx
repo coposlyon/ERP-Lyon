@@ -58,6 +58,7 @@ export default function Customers() {
   const [deleting, setDeleting] = useState(false);
   const [exportingContacts, setExportingContacts] = useState(false);
   const [scoreCustomer, setScoreCustomer] = useState(null); // cliente do modal de score
+  const [selectedId, setSelectedId] = useState(null); // linha marcada ao clicar no cliente
 
   const scoreMut = useMutation({
     mutationFn: (cid) => api.post(`/customers/${cid}/credit-check`),
@@ -349,7 +350,11 @@ export default function Customers() {
           </form>
         </div>
 
-        <Table columns={columns} data={data?.data} loading={isLoading} />
+        <Table columns={columns} data={data?.data} loading={isLoading}
+          onRowClick={row => setSelectedId(prev => prev === row.id ? null : row.id)}
+          rowClassName={row => row.id === selectedId
+            ? '!bg-primary-50 shadow-[inset_3px_0_0_0_theme(colors.primary.600)]'
+            : ''} />
         <Pagination page={page} total={data?.total || 0} limit={20} onPageChange={setPage} />
       </div>
 

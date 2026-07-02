@@ -761,12 +761,14 @@ export default function Stock() {
 
       window.open(`https://wa.me/${full}?text=${encodeURIComponent(msg)}`, '_blank');
 
+      let payable = null;
       if (!existingOrder && group.id) {
         const resp = await api.post('/stock/replenishment-orders', {
           supplier_id: group.id, supplier_name: group.name,
           protocol_number: protocol, products: buildOrderProducts(group),
         }).catch(e => { if (e?.response?.status === 409) return null; throw e; });
         if (resp === null) qc.invalidateQueries({ queryKey: ['replenishment-orders-pending'] });
+        payable = resp?.payable || null;
       } else if (existingOrder?.id) {
         await api.post(`/stock/replenishment-orders/${existingOrder.id}/log-resend`)
           .catch(e => console.warn('log-resend:', e.message));
@@ -777,7 +779,12 @@ export default function Stock() {
       setReplenishModal(false);
       setTab('movements');
       setPage(1);
-      toast.success(`✅ Solicitação enviada! Controle: ${protocol} — veja em Movimentações.`);
+      if (payable) {
+        qc.invalidateQueries({ queryKey: ['contas-month'] });
+        toast.success(`✅ Solicitação enviada! Controle: ${protocol} — conta a pagar de ${fmt(payable.amount)} criada na Central de Contas.`, { duration: 6000 });
+      } else {
+        toast.success(`✅ Solicitação enviada! Controle: ${protocol} — veja em Movimentações.`);
+      }
     } catch (err) {
       toast.error(`❌ ${err?.response?.data?.error || err?.message || 'Erro ao criar pedido'}`);
     } finally {

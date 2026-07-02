@@ -26,6 +26,8 @@ const Forecast           = lazy(() => import('@/pages/Forecast/Forecast'));
 const Stock              = lazy(() => import('@/pages/Stock/Stock'));
 const Financial          = lazy(() => import('@/pages/Financial/Financial'));
 const FinancialConfig    = lazy(() => import('@/pages/Financial/FinancialConfig'));
+const Contas             = lazy(() => import('@/pages/Financial/Contas'));
+const Pricing            = lazy(() => import('@/pages/Pricing/Pricing'));
 const Fiscal             = lazy(() => import('@/pages/Fiscal/Fiscal'));
 const Reports            = lazy(() => import('@/pages/Reports/Reports'));
 const Settings           = lazy(() => import('@/pages/Settings/Settings'));
@@ -123,6 +125,8 @@ function AppRoutes() {
         {/* Financeiro */}
         <Route path="financial" element={<Mod m="financial"><Financial /></Mod>} />
         <Route path="financial-config" element={<Mod m="financial"><FinancialConfig /></Mod>} />
+        <Route path="contas" element={<Mod m="financial"><Contas /></Mod>} />
+        <Route path="pricing" element={<Mod m={['financial','products','settings']}><Pricing /></Mod>} />
         {/* Fiscal */}
         <Route path="fiscal" element={<Mod m="fiscal"><Fiscal /></Mod>} />
         {/* Relatórios */}

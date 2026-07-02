@@ -8,6 +8,7 @@ import {
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory,
+  Calculator,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -64,6 +65,8 @@ const menuItems = [
     label: 'Financeiro',
     icon: Wallet,
     children: [
+      { label: 'Central de Contas', path: '/contas', icon: CalendarDays, module: 'financial' },
+      { label: 'Precificação', path: '/pricing', icon: Calculator, module: 'financial' },
       { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet, module: 'financial' },
       { label: 'Config. Financeira', path: '/financial-config', icon: Building2, module: 'financial' },
     ],

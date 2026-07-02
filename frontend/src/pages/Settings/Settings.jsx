@@ -482,8 +482,8 @@ export default function Settings() {
               <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${form.settings?.frete?.enabled ? 'border-primary-300 bg-primary-50' : 'border-gray-200'}`}>
                 <input type="checkbox" className="mt-1 rounded" checked={!!form.settings?.frete?.enabled} onChange={e => setFrete('enabled', e.target.checked)} disabled={!isAdmin} />
                 <span>
-                  <span className="block text-sm font-semibold text-gray-800">Integração J&T Express (rastreio pela API)</span>
-                  <span className="block text-xs text-gray-500 mt-0.5">Para rastrear encomendas pela J&T você precisa de uma <b>conta de cliente da API J&T</b> (apiAccount, customerCode e privateKey). Solicite à J&T e cole abaixo.</span>
+                  <span className="block text-sm font-semibold text-gray-800">Integração J&T Express (envios, etiqueta e rastreio pela API)</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">Preencha com a <b>conta de cliente da API J&T</b> (apiAccount, customerCode, senha e privateKey). Com isso o sistema gera o envio direto da venda, imprime a etiqueta e rastreia. Se os campos ficarem vazios, o servidor usa as credenciais das variáveis de ambiente (JT_*).</span>
                 </span>
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
@@ -495,13 +495,18 @@ export default function Settings() {
                   <label className="label">customerCode</label>
                   <input className="input font-mono" value={form.settings?.frete?.jt_customer_code || ''} onChange={e => setFrete('jt_customer_code', e.target.value)} disabled={!isAdmin} />
                 </div>
-                <div className="sm:col-span-2">
+                <div>
+                  <label className="label">Senha (API)</label>
+                  <input type="password" className="input font-mono" value={form.settings?.frete?.jt_password || ''} onChange={e => setFrete('jt_password', e.target.value)} placeholder="senha do cliente J&T" disabled={!isAdmin} />
+                </div>
+                <div>
                   <label className="label">privateKey</label>
                   <input className="input font-mono" value={form.settings?.frete?.jt_private_key || ''} onChange={e => setFrete('jt_private_key', e.target.value)} placeholder="cole a chave privada da J&T" disabled={!isAdmin} />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="label">URL base da API (opcional)</label>
+                  <label className="label">URL base da API</label>
                   <input className="input font-mono" value={form.settings?.frete?.jt_base_url || ''} onChange={e => setFrete('jt_base_url', e.target.value)} placeholder="https://openapi.jtjms-br.com" disabled={!isAdmin} />
+                  <p className="text-xs text-gray-400 mt-1">Homologação: <code>https://demoopenapi.jtjms-br.com</code> · Produção: <code>https://openapi.jtjms-br.com</code></p>
                 </div>
               </div>
             </div>
