@@ -359,8 +359,8 @@ export default function PDV({ onDone }) {
         )}
       </div>
 
-      {/* ~10 itens visíveis; o resto rola dentro do card */}
-      <div className="flex-1 overflow-y-auto min-h-[200px] max-h-[600px]">
+      {/* lista alta (acompanha a tela); o resto rola dentro do card */}
+      <div className="flex-1 overflow-y-auto min-h-[300px] max-h-[calc(100vh-16rem)]">
         {drill ? (
           <>
             <button type="button" onClick={backToModels}
@@ -375,7 +375,7 @@ export default function PDV({ onDone }) {
                 className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{v.code}</span>
-                  <span className="text-sm text-gray-800 truncate">{v.name}</span>
+                  <span className="text-sm text-gray-800 leading-snug">{v.name}</span>
                 </span>
                 <span className="font-semibold text-primary-600 shrink-0">{fmt(drill.sale_price)}</span>
               </button>
@@ -393,7 +393,7 @@ export default function PDV({ onDone }) {
                 <button key={p.id} type="button" onClick={() => pickProduct(p)}
                   className={`w-full flex items-center justify-between px-4 py-3 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
                   <div className="min-w-0">
-                    <p className="font-medium text-gray-900 text-sm truncate">{p.name}</p>
+                    <p className="font-medium text-gray-900 text-sm leading-snug">{p.name}</p>
                     <p className="text-xs text-gray-400">
                       Estoque: {p.current_stock}
                       {nv > 1 && <span className="ml-2 text-indigo-500 font-medium">{nv} variações</span>}
@@ -414,8 +414,10 @@ export default function PDV({ onDone }) {
   );
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* TOPO — Cliente (largura total) */}
+    <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
+      {/* ESQUERDA — cliente + pedido + carrinho + checkout */}
+      <div className="flex-1 flex flex-col gap-3 min-w-0 order-2 lg:order-1">
+      {/* Cliente */}
       <div className="card p-4">
         {/* Data da operação — acima do cliente */}
         <div className="mb-3 pb-3 border-b border-gray-100">
@@ -549,11 +551,6 @@ export default function PDV({ onDone }) {
           </div>
         )}
       </div>
-
-      {/* CORPO — carrinho/checkout (esquerda) + produtos (direita) */}
-      <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
-        {/* Esquerda/centro — Pedido + carrinho + checkout */}
-        <div className="flex-1 flex flex-col gap-3 min-w-0 order-2 lg:order-1">
 
         {/* Pedido — chave aleatória + datas (tudo obrigatório) */}
         <div className="card p-4 space-y-3">
@@ -813,12 +810,11 @@ export default function PDV({ onDone }) {
             : <><Check size={18} /> Finalizar — {fmt(total)}</>
           }
         </button>
-        </div>
+      </div>
 
-        {/* Direita — busca de produtos (painel fixo) */}
-        <div className="w-full lg:w-96 lg:shrink-0 order-1 lg:order-2 lg:sticky lg:top-0 lg:max-h-[calc(100vh-9rem)]">
-          {ProductPanel}
-        </div>
+      {/* DIREITA — produtos: painel maior, colado no topo */}
+      <div className="w-full lg:w-[440px] xl:w-[520px] lg:shrink-0 order-1 lg:order-2 lg:sticky lg:top-0">
+        {ProductPanel}
       </div>
     </div>
   );
