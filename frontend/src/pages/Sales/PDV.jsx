@@ -25,6 +25,7 @@ export default function PDV({ onDone }) {
   const inModal = typeof onDone === 'function';
   const [items, setItems] = useState([]);
   const [productSearch, setProductSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState(''); // filtro por tipo (categoria) do produto
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [discount, setDiscount] = useState('');
@@ -59,15 +60,17 @@ export default function PDV({ onDone }) {
   });
 
   const productList = useMemo(() => {
-    const arr = [...(allProducts?.data || [])].sort((a, b) =>
+    let arr = [...(allProducts?.data || [])].sort((a, b) =>
       (a.name || '').localeCompare(b.name || '', 'pt-BR'));
+    // filtro por tipo (categoria): COM BORDA, DEGRADÊ, TRADICIONAL etc.
+    if (typeFilter) arr = arr.filter(p => (p.CATEGORIAS?.name || '').trim().toUpperCase() === typeFilter);
     const term = productSearch.trim().toLowerCase();
     if (!term) return arr;
     return arr.filter(p =>
       (p.name || '').toLowerCase().includes(term) ||
       String(p.code || '').toLowerCase().includes(term)
     );
-  }, [allProducts, productSearch]);
+  }, [allProducts, productSearch, typeFilter]);
 
   const { data: customerResults } = useQuery({
     queryKey: ['pdv-customers', customerSearch],
@@ -87,6 +90,12 @@ export default function PDV({ onDone }) {
     queryKey: ['carriers'],
     queryFn: () => api.get('/shipping/carriers'),
     enabled: !!selectedCustomer,
+  });
+
+  // Tipos (categorias) de produto — para o filtro do painel de produtos
+  const { data: productTypes = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => api.get('/products/categories/list'),
   });
 
   // Condições de pagamento (desconto/juros) configuradas em Configurações → Pagamento
@@ -224,10 +233,9 @@ export default function PDV({ onDone }) {
     setTimeout(() => searchRef.current?.focus(), 30);
   }
 
+  // Enter NÃO adiciona mais nada automaticamente — o operador escolhe clicando no produto
   function handleProductKeyDown(e) {
-    if (e.key !== 'Enter') return;
-    if (drill) { if (variantList.length >= 1) addVariant(variantList[0]); }
-    else if (productList.length >= 1) pickProduct(productList[0]);
+    if (e.key === 'Enter') e.preventDefault();
   }
 
   function setQty(idx, val) {
@@ -328,6 +336,17 @@ export default function PDV({ onDone }) {
             autoFocus
           />
         </div>
+        {/* Filtro por tipo: COM BORDA / DEGRADÊ / TRADICIONAL etc. */}
+        {!drill && (
+          <select className="input text-sm w-full mt-2" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
+            <option value="">Todos os tipos</option>
+            {productTypes.map(t => (
+              <option key={t.id} value={String(t.name || '').trim().toUpperCase()}>
+                {t.name}{t.product_count ? ` (${t.product_count})` : ''}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* ~10 itens visíveis; o resto rola dentro do card */}
