@@ -6,7 +6,6 @@ import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
-import PDV from './PDV';
 import { id4 } from '@/lib/ids';
 import { SALE_STATUSES, SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
 import { format, parseISO } from 'date-fns';
@@ -50,7 +49,6 @@ export default function Sales() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [newSaleOpen, setNewSaleOpen] = useState(false);
   const [delTarget, setDelTarget] = useState(null);
   const [delPassword, setDelPassword] = useState('');
   const [selectedId, setSelectedId] = useState(null);
@@ -92,8 +90,8 @@ export default function Sales() {
   // Atalhos estilo Delphi (F2 incluir, F3 alterar, F4 excluir, F5 atualizar, F6 importar, Ctrl+F pesquisar, ESC fechar)
   useEffect(() => {
     const onKey = (e) => {
-      if (newSaleOpen || delTarget) return; // deixa o modal tratar
-      if (e.key === 'F2') { e.preventDefault(); setNewSaleOpen(true); }
+      if (delTarget) return; // deixa o modal tratar
+      if (e.key === 'F2') { e.preventDefault(); navigate('/sales/new'); }
       else if (e.key === 'F3') { if (selectedId) { e.preventDefault(); alterar(); } }
       else if (e.key === 'F4') { if (selectedId && isAdmin) { e.preventDefault(); openDelete(); } }
       else if (e.key === 'F5') { e.preventDefault(); qc.invalidateQueries(['sales']); }
@@ -103,7 +101,7 @@ export default function Sales() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId, isAdmin, newSaleOpen, delTarget]); // eslint-disable-line
+  }, [selectedId, isAdmin, delTarget]); // eslint-disable-line
 
   function cellValue(col, row) {
     switch (col.key) {
@@ -135,7 +133,7 @@ export default function Sales() {
 
       {/* Barra de ferramentas (estilo Delphi) */}
       <div className="card flex items-center gap-1 px-2 py-1.5 flex-wrap">
-        <TBtn icon={Plus}      label="Incluir"   sub="F2" onClick={() => setNewSaleOpen(true)} />
+        <TBtn icon={Plus}      label="Incluir"   sub="F2" onClick={() => navigate('/sales/new')} />
         <TBtn icon={Pencil}    label="Alterar"   sub="F3" onClick={alterar} disabled={!selectedId} />
         <TBtn icon={Trash2}    label="Excluir"   sub="F4" onClick={openDelete} disabled={!selectedId || !isAdmin} danger />
         <TBtn icon={RefreshCw} label="Atualizar" sub="F5" onClick={() => qc.invalidateQueries(['sales'])} />
@@ -233,11 +231,6 @@ export default function Sales() {
 
       {/* Painel master-detail (abas) */}
       <SaleDetail saleId={selectedId} onChanged={() => qc.invalidateQueries(['sales'])} />
-
-      {/* Novo pedido (PDV) — tela cheia */}
-      <Modal isOpen={newSaleOpen} onClose={() => setNewSaleOpen(false)} title="Novo Pedido de Venda" size="screen">
-        <PDV onDone={() => { setNewSaleOpen(false); qc.invalidateQueries(['sales']); }} />
-      </Modal>
 
       {/* Excluir pedido (admin + senha) */}
       <Modal isOpen={!!delTarget} onClose={() => !deleteSale.isPending && setDelTarget(null)} title="Excluir pedido de venda" size="sm">

@@ -20,6 +20,7 @@ const CustomerDetail     = lazy(() => import('@/pages/Customers/CustomerDetail')
 const Suppliers          = lazy(() => import('@/pages/Suppliers/Suppliers'));
 const Sales              = lazy(() => import('@/pages/Sales/Sales'));
 const SaleForm           = lazy(() => import('@/pages/Sales/SaleForm'));
+const NewSale            = lazy(() => import('@/pages/Sales/NewSale'));
 const Purchases          = lazy(() => import('@/pages/Purchases/Purchases'));
 const PurchaseForm       = lazy(() => import('@/pages/Purchases/PurchaseForm'));
 const Forecast           = lazy(() => import('@/pages/Forecast/Forecast'));
@@ -92,6 +93,8 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       {/* App de marcação de ponto — tela cheia, todo colaborador acessa */}
       <Route path="/marcacao" element={<PrivateRoute><MarcacaoPonto /></PrivateRoute>} />
+      {/* Novo pedido de venda — tela cheia (fora do layout com sidebar) */}
+      <Route path="/sales/new" element={<PrivateRoute><Mod m="sales"><NewSale /></Mod></PrivateRoute>} />
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
         <Route index element={<Dashboard />} />
         {/* Produtos / Clientes / Fornecedores */}
@@ -105,7 +108,6 @@ function AppRoutes() {
         <Route path="coupons" element={<Mod m={['price-tables','sales','pdv']}><Coupons /></Mod>} />
         {/* Vendas */}
         <Route path="sales" element={<Mod m="sales"><Sales /></Mod>} />
-        <Route path="sales/new" element={<Mod m="sales"><SaleForm /></Mod>} />
         <Route path="sales/:id" element={<Mod m="sales"><SaleForm /></Mod>} />
         {/* Orçamentos */}
         <Route path="quotes" element={<Mod m="quotes"><Quotes /></Mod>} />
