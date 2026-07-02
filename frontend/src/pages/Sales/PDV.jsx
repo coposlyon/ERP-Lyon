@@ -1,7 +1,8 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star } from 'lucide-react';
+import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star, Plus, MoreHorizontal } from 'lucide-react';
 import api from '@/lib/api';
+import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
 import { expandVariants, expandVariantsWithCode } from '@/pages/Products/ProductVariantsModal';
 
@@ -207,6 +208,19 @@ export default function PDV({ onDone }) {
   // Modelo cujas variações estão sendo exibidas (drill-down). null = lista de modelos.
   const [drill, setDrill] = useState(null);
 
+  // Card grande de produtos (abre pelo botão ADICIONAR PRODUTOS)
+  const [productsOpen, setProductsOpen] = useState(false);
+  // Horários de coleta da transportadora (abrem pelo ⋯)
+  const [showSched, setShowSched] = useState(false);
+
+  // ESC fecha primeiro o card de produtos (antes de fechar a tela toda)
+  useEffect(() => {
+    if (!productsOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setProductsOpen(false); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [productsOpen]);
+
   // Variações reais do modelo em drill (com código), filtradas pela busca
   const variantList = useMemo(() => {
     if (!drill) return [];
@@ -258,6 +272,7 @@ export default function PDV({ onDone }) {
   function addProduct(product) {
     setProductSearch('');
     pushItem(product, null);
+    toast.success(`${product.name} adicionado`, { duration: 1200 });
     setTimeout(() => searchRef.current?.focus(), 50);
   }
 
@@ -265,6 +280,7 @@ export default function PDV({ onDone }) {
   function addVariant(variant) {
     if (!drill) return;
     pushItem(drill, variant.name, variant.code);
+    toast.success(`${variant.name} adicionado`, { duration: 1200 });
     setProductSearch('');
     setTimeout(() => searchRef.current?.focus(), 30);
   }
@@ -379,13 +395,10 @@ export default function PDV({ onDone }) {
     });
   }
 
-  // ── Painel de busca/lista de produtos (fica na direita) ──
+  // ── Painel de busca/lista de produtos (dentro do card ADICIONAR PRODUTOS) ──
   const ProductPanel = (
-    <div className="card flex flex-col overflow-hidden h-full">
+    <div className="flex flex-col overflow-hidden h-full border border-gray-100 rounded-xl">
       <div className="p-3 border-b border-gray-100">
-        <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-          <Search size={15} /> Produtos
-        </p>
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -412,8 +425,8 @@ export default function PDV({ onDone }) {
         )}
       </div>
 
-      {/* lista alta (acompanha a tela); o resto rola dentro do card */}
-      <div className="flex-1 overflow-y-auto min-h-[300px] max-h-[calc(100vh-16rem)]">
+      {/* a lista rola dentro do card */}
+      <div className="flex-1 overflow-y-auto min-h-[200px]">
         {drill ? (
           <>
             <button type="button" onClick={backToModels}
@@ -467,139 +480,142 @@ export default function PDV({ onDone }) {
   );
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
-      {/* ESQUERDA — cliente + pedido + carrinho + checkout */}
-      <div className="flex-1 flex flex-col gap-3 min-w-0 order-2 lg:order-1">
-      {/* Cliente */}
+    <div className="flex flex-col gap-3">
+      {/* Linha compacta — data da operação, cliente, transportadora e frete */}
       <div className="card p-4">
-        {/* Data da operação — acima do cliente */}
-        <div className="mb-3 pb-3 border-b border-gray-100">
-          <label className="text-xs font-medium text-gray-500 block mb-1">Data da operação *</label>
-          <input type="date" className="input text-sm w-44" value={operationDate} onChange={e => changeOperationDate(e.target.value)} />
-        </div>
-        <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-          <User size={15} /> Cliente *
-        </p>
-        {selectedCustomer ? (
-          <>
-          <div className="bg-primary-50 rounded-lg px-3 py-2.5">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[180px_minmax(0,1.4fr)_minmax(0,1fr)_150px] gap-3 items-start">
+          {/* Data da operação */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 block mb-1">Data da operação *</label>
+            <input type="date" className="input text-sm w-full" value={operationDate} onChange={e => changeOperationDate(e.target.value)} />
+          </div>
+
+          {/* Cliente */}
+          <div className="relative min-w-0">
+            <label className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><User size={12} /> Cliente *</label>
+            {selectedCustomer ? (
+              <div className="bg-primary-50 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                   {selectedCustomer.display_id != null && <span className="text-[10px] font-mono bg-white text-primary-700 rounded px-1.5 py-0.5 shrink-0 border border-primary-100">#{selectedCustomer.display_id}</span>}
-                  <p className="text-sm font-semibold text-primary-800">{selectedCustomer.name}</p>
-                  {/* Estrelas do cliente — somente leitura (edição só no cadastro de clientes) */}
+                  <p className="text-sm font-semibold text-primary-800 truncate">{selectedCustomer.name}</p>
                   <span className="flex items-center gap-0.5" title="Estrelas do cliente — para alterar, edite no cadastro de clientes">
                     {[1, 2, 3, 4, 5].map(n => (
-                      <Star key={n} size={14} className={(selectedCustomer.rating || 0) >= n ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'} />
+                      <Star key={n} size={13} className={(selectedCustomer.rating || 0) >= n ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'} />
                     ))}
                   </span>
-                  <span className="text-xs text-primary-500">{selectedCustomer.cpf_cnpj || selectedCustomer.phone || ''}</span>
                 </div>
-                <button type="button" onClick={() => setShowCustomerInfo(v => !v)} className="text-xs text-primary-600 hover:underline mt-1">
-                  {showCustomerInfo ? '▲ Ocultar dados' : '▼ Ver todos os dados do cliente'}
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button type="button" onClick={() => setShowCustomerInfo(v => !v)} title="Ver todos os dados do cliente"
+                    className="text-primary-500 hover:text-primary-700"><MoreHorizontal size={16} /></button>
+                  <button onClick={() => { setSelectedCustomer(null); setShowCustomerInfo(false); }} className="text-primary-400 hover:text-red-500">
+                    <X size={15} />
+                  </button>
+                </div>
               </div>
-              <button onClick={() => { setSelectedCustomer(null); setShowCustomerInfo(false); }} className="text-primary-400 hover:text-red-500 shrink-0">
-                <X size={16} />
-              </button>
-            </div>
-            {showCustomerInfo && (
-              <div className="text-xs text-gray-600 grid sm:grid-cols-2 gap-x-6 gap-y-0.5 border-t border-primary-100 pt-2 mt-2">
-                {selectedCustomer.email && <p><b>E-mail:</b> {selectedCustomer.email}</p>}
-                {selectedCustomer.phone && <p><b>Telefone:</b> {selectedCustomer.phone}</p>}
-                {selectedCustomer.mobile && <p><b>Celular:</b> {selectedCustomer.mobile}</p>}
-                {selectedCustomer.cpf_cnpj && <p><b>CPF/CNPJ:</b> {selectedCustomer.cpf_cnpj}</p>}
-                {selectedCustomer.rg_ie && <p><b>RG/IE:</b> {selectedCustomer.rg_ie}</p>}
-                {selectedCustomer.instagram && <p><b>Instagram:</b> {selectedCustomer.instagram}</p>}
+            ) : (
+              <>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Nome, ID ou telefone..."
+                    value={customerSearch}
+                    onChange={e => setCustomerSearch(e.target.value)}
+                    onFocus={() => setCustFocus(true)}
+                    onBlur={() => setTimeout(() => setCustFocus(false), 150)}
+                    className="input text-sm pl-8 w-full"
+                  />
+                </div>
                 {(() => {
-                  const a = selectedCustomer.address;
-                  if (!a || (!a.street && !a.city)) return null;
-                  return <p className="sm:col-span-2"><b>Endereço:</b> {a.street}{a.number ? `, ${a.number}` : ''}{a.neighborhood ? ` - ${a.neighborhood}` : ''}{a.city ? ` - ${a.city}/${a.state || ''}` : ''}{a.zip ? ` (${a.zip})` : ''}</p>;
+                  const searching = customerSearch.trim().length >= 1;
+                  const list = searching ? (customerResults?.data || []) : (custFocus ? (recentCustomers?.data || []) : []);
+                  if (list.length === 0 && searching) return <p className="text-xs text-gray-400 mt-1">Nenhum cliente encontrado.</p>;
+                  if (list.length === 0) return null;
+                  return (
+                    <div className="absolute left-0 right-0 z-20 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                      {!searching && <p className="text-[11px] text-gray-400 px-3 py-1.5 bg-gray-50 sticky top-0">Últimos clientes cadastrados</p>}
+                      {list.map(c => (
+                        <button key={c.id} type="button"
+                          onMouseDown={() => { setSelectedCustomer(c); setCustomerSearch(''); setCustFocus(false); }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
+                          {c.display_id != null && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 shrink-0">#{c.display_id}</span>}
+                          <span className="min-w-0">
+                            <span className="font-medium block truncate">{c.name}</span>
+                            <span className="text-xs text-gray-400">{c.cpf_cnpj || c.phone}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  );
                 })()}
-              </div>
+              </>
             )}
           </div>
 
-          {/* Transportadora + valor do frete desta venda */}
-          <div className="grid sm:grid-cols-2 gap-3 mt-3">
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><Truck size={13} /> Transportadora</label>
-              <select className="input text-sm w-full" value={carrierId} onChange={e => setCarrierId(e.target.value)}>
-                <option value="">— selecione a transportadora —</option>
-                {(carriers?.data || []).map(c => <option key={c.id} value={c.id}>{c.trade_name || c.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Valor do frete (R$)</label>
-              <input type="text" inputMode="decimal" className="input text-sm w-full" value={freightInput}
-                onChange={e => setFreightInput(e.target.value.replace(/[^\d.,]/g, ''))}
-                onBlur={() => { if (freightInput.trim() !== '') setFreightInput(maskMoney(parseMoney(freightInput))); }}
-                placeholder="0,00" />
-            </div>
+          {/* Transportadora */}
+          <div className="min-w-0">
+            <label className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><Truck size={12} /> Transportadora</label>
+            <select className="input text-sm w-full" value={carrierId} onChange={e => { setCarrierId(e.target.value); setShowSched(false); }}>
+              <option value="">— selecione —</option>
+              {(carriers?.data || []).map(c => <option key={c.id} value={c.id}>{c.trade_name || c.name}</option>)}
+            </select>
+            {carrierId && (
+              <button type="button" onClick={() => setShowSched(v => !v)} title="Horários de coleta"
+                className="mt-1 text-gray-400 hover:text-primary-600 flex items-center gap-1 text-xs">
+                <MoreHorizontal size={16} /> {showSched ? 'ocultar horários' : 'horários de coleta'}
+              </button>
+            )}
           </div>
 
-          {/* Horários de coleta da transportadora selecionada */}
-          {carrierId && (() => {
-            const c = (carriers?.data || []).find(x => x.id === carrierId);
-            const sched = Array.isArray(c?.pickup_schedule) ? c.pickup_schedule : [];
-            const DAY_LABELS = { seg: 'Seg', ter: 'Ter', qua: 'Qua', qui: 'Qui', sex: 'Sex', sab: 'Sáb', dom: 'Dom' };
-            return (
-              <div className="mt-2 text-xs bg-blue-50/60 border border-blue-100 rounded-lg px-3 py-2">
-                <p className="font-semibold text-gray-700 mb-1">🕒 Horários de coleta — {c?.trade_name || c?.name || 'transportadora'}</p>
-                {sched.length === 0 ? (
-                  <p className="text-gray-400">Nenhum horário de coleta cadastrado (cadastre em Logística → Transportadoras).</p>
-                ) : (
-                  <ul className="space-y-0.5">
-                    {sched.map((slot, i) => (
-                      <li key={i} className="text-gray-600">
-                        <b>{(slot.days || []).map(d => DAY_LABELS[d] || d).join(', ') || 'Todos os dias'}</b>
-                        {slot.time && <span className="text-gray-500"> às {slot.time}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })()}
-          </>
-        ) : (
-          <div className="space-y-2 max-w-xl">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar cliente por nome, ID ou telefone..."
-                value={customerSearch}
-                onChange={e => setCustomerSearch(e.target.value)}
-                onFocus={() => setCustFocus(true)}
-                onBlur={() => setTimeout(() => setCustFocus(false), 150)}
-                className="input text-sm pl-8"
-              />
-            </div>
-            {(() => {
-              const searching = customerSearch.trim().length >= 1;
-              const list = searching ? (customerResults?.data || []) : (custFocus ? (recentCustomers?.data || []) : []);
-              if (list.length === 0 && searching) {
-                return <p className="text-xs text-gray-400 py-1">Nenhum cliente encontrado.</p>;
-              }
-              if (list.length === 0) return <p className="text-xs text-amber-600">O cliente é obrigatório para o pedido.</p>;
-              return (
-                <div className="border border-gray-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
-                  {!searching && <p className="text-[11px] text-gray-400 px-3 py-1.5 bg-gray-50 sticky top-0">Últimos clientes cadastrados</p>}
-                  {list.map(c => (
-                    <button key={c.id} type="button"
-                      onMouseDown={() => { setSelectedCustomer(c); setCustomerSearch(''); setCustFocus(false); }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
-                      {c.display_id != null && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 shrink-0">#{c.display_id}</span>}
-                      <span className="min-w-0">
-                        <span className="font-medium block truncate">{c.name}</span>
-                        <span className="text-xs text-gray-400">{c.cpf_cnpj || c.phone}</span>
-                      </span>
-                    </button>
+          {/* Valor do frete */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 block mb-1">Valor do frete (R$)</label>
+            <input type="text" inputMode="decimal" className="input text-sm w-full" value={freightInput}
+              onChange={e => setFreightInput(e.target.value.replace(/[^\d.,]/g, ''))}
+              onBlur={() => { if (freightInput.trim() !== '') setFreightInput(maskMoney(parseMoney(freightInput))); }}
+              placeholder="0,00" />
+          </div>
+        </div>
+
+        {!selectedCustomer && <p className="text-xs text-amber-600 mt-2">O cliente é obrigatório para o pedido.</p>}
+
+        {/* Horários de coleta (abrem pelo ⋯ abaixo da transportadora) */}
+        {carrierId && showSched && (() => {
+          const c = (carriers?.data || []).find(x => x.id === carrierId);
+          const sched = Array.isArray(c?.pickup_schedule) ? c.pickup_schedule : [];
+          const DAY_LABELS = { seg: 'Seg', ter: 'Ter', qua: 'Qua', qui: 'Qui', sex: 'Sex', sab: 'Sáb', dom: 'Dom' };
+          return (
+            <div className="mt-2 text-xs bg-blue-50/60 border border-blue-100 rounded-lg px-3 py-2">
+              <p className="font-semibold text-gray-700 mb-1">🕒 Horários de coleta — {c?.trade_name || c?.name || 'transportadora'}</p>
+              {sched.length === 0 ? (
+                <p className="text-gray-400">Nenhum horário de coleta cadastrado (cadastre em Logística → Transportadoras).</p>
+              ) : (
+                <ul className="space-y-0.5">
+                  {sched.map((slot, i) => (
+                    <li key={i} className="text-gray-600">
+                      <b>{(slot.days || []).map(d => DAY_LABELS[d] || d).join(', ') || 'Todos os dias'}</b>
+                      {slot.time && <span className="text-gray-500"> às {slot.time}</span>}
+                    </li>
                   ))}
-                </div>
-              );
+                </ul>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Dados completos do cliente (abrem pelo ⋯ ao lado do nome) */}
+        {selectedCustomer && showCustomerInfo && (
+          <div className="text-xs text-gray-600 grid sm:grid-cols-3 gap-x-6 gap-y-0.5 border-t border-gray-100 pt-2 mt-3">
+            {selectedCustomer.email && <p><b>E-mail:</b> {selectedCustomer.email}</p>}
+            {selectedCustomer.phone && <p><b>Telefone:</b> {selectedCustomer.phone}</p>}
+            {selectedCustomer.mobile && <p><b>Celular:</b> {selectedCustomer.mobile}</p>}
+            {selectedCustomer.cpf_cnpj && <p><b>CPF/CNPJ:</b> {selectedCustomer.cpf_cnpj}</p>}
+            {selectedCustomer.rg_ie && <p><b>RG/IE:</b> {selectedCustomer.rg_ie}</p>}
+            {selectedCustomer.instagram && <p><b>Instagram:</b> {selectedCustomer.instagram}</p>}
+            {(() => {
+              const a = selectedCustomer.address;
+              if (!a || (!a.street && !a.city)) return null;
+              return <p className="sm:col-span-3"><b>Endereço:</b> {a.street}{a.number ? `, ${a.number}` : ''}{a.neighborhood ? ` - ${a.neighborhood}` : ''}{a.city ? ` - ${a.city}/${a.state || ''}` : ''}{a.zip ? ` (${a.zip})` : ''}</p>;
             })()}
           </div>
         )}
@@ -627,13 +643,23 @@ export default function PDV({ onDone }) {
           </div>
         </div>
 
-        {/* Lista de itens */}
-        <div className="card max-h-[42vh] overflow-y-auto">
+        {/* Itens do pedido + botão ADICIONAR PRODUTOS */}
+        <div className="card">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
+            <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+              <ShoppingCart size={15} /> Itens do pedido{items.length > 0 ? ` (${items.length})` : ''}
+            </p>
+            <button type="button" onClick={() => setProductsOpen(true)} className="btn-primary text-sm">
+              <Plus size={15} /> ADICIONAR PRODUTOS
+            </button>
+          </div>
+          <div className="max-h-[42vh] overflow-y-auto">
           {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-gray-400">
-              <ShoppingCart size={32} className="mb-2 opacity-30" />
-              <p className="text-sm">Nenhum item adicionado — busque produtos à direita</p>
-            </div>
+            <button type="button" onClick={() => setProductsOpen(true)}
+              className="w-full flex flex-col items-center justify-center h-36 text-gray-400 hover:text-primary-600 transition-colors">
+              <ShoppingCart size={30} className="mb-2 opacity-30" />
+              <p className="text-sm">Nenhum item — clique em ADICIONAR PRODUTOS</p>
+            </button>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -699,8 +725,11 @@ export default function PDV({ onDone }) {
               </tbody>
             </table>
           )}
+          </div>
         </div>
 
+        {/* Pagamento + Totais lado a lado (menos rolagem) */}
+        <div className="grid lg:grid-cols-2 gap-3 items-start">
         {/* Forma de pagamento */}
         <div className="card p-4">
           <p className="text-sm font-semibold text-gray-700 mb-2">Pagamento</p>
@@ -864,6 +893,7 @@ export default function PDV({ onDone }) {
             <span className="text-primary-600">{fmt(total)}</span>
           </div>
         </div>
+        </div>
 
         {/* Finalizar */}
         <button
@@ -876,12 +906,18 @@ export default function PDV({ onDone }) {
             : <><Check size={18} /> Finalizar — {fmt(total)}</>
           }
         </button>
-      </div>
 
-      {/* DIREITA — produtos: painel maior, colado no topo */}
-      <div className="w-full lg:w-[440px] xl:w-[520px] lg:shrink-0 order-1 lg:order-2 lg:sticky lg:top-0">
-        {ProductPanel}
-      </div>
+      {/* Card grande para escolher os produtos do pedido */}
+      <Modal isOpen={productsOpen} onClose={() => setProductsOpen(false)} title="Adicionar produtos" size="full"
+        footer={
+          <button type="button" onClick={() => setProductsOpen(false)} className="btn-primary">
+            <Check size={15} /> Concluir{items.length > 0 ? ` — ${items.length} ite${items.length > 1 ? 'ns' : 'm'} no pedido` : ''}
+          </button>
+        }>
+        <div className="h-[65vh] flex flex-col">
+          {ProductPanel}
+        </div>
+      </Modal>
     </div>
   );
 }
