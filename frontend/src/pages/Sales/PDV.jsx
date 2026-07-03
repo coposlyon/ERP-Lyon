@@ -63,6 +63,7 @@ export default function PDV({ onDone }) {
   const [frete, setFrete] = useState(null); // { price, days, weightKg, uf }
   const [carrierId, setCarrierId] = useState(''); // transportadora desta venda
   const [freightInput, setFreightInput] = useState(''); // valor do frete (R$) — editável
+  const [quoteNumber, setQuoteNumber] = useState(''); // nº da cotação do frete na transportadora
   const [payTerm, setPayTerm] = useState(null); // condição de pagamento { label, percent }
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [receivedAmount, setReceivedAmount] = useState('');
@@ -165,7 +166,7 @@ export default function PDV({ onDone }) {
       setDiscount('');
       setCoupon(null); setCouponInput('');
       setFrete(null);
-      setCarrierId(''); setFreightInput('');
+      setCarrierId(''); setFreightInput(''); setQuoteNumber('');
       setPayTerm(null);
       setReceivedAmount('');
       setEventDate(todayISO()); setShipDate(todayISO()); setDeliveryDate(todayISO());
@@ -389,7 +390,12 @@ export default function PDV({ onDone }) {
       freight: freteValue,
       carrier_id: carrierId || null,
       payment_adjustment: paymentAdj,
-      ...(payTerm ? { notes: `Pagamento: ${payTerm.label}${payPercent ? ` (${payPercent > 0 ? '+' : ''}${payPercent}%)` : ''}` } : {}),
+      ...(() => {
+        const noteParts = [];
+        if (payTerm) noteParts.push(`Pagamento: ${payTerm.label}${payPercent ? ` (${payPercent > 0 ? '+' : ''}${payPercent}%)` : ''}`);
+        if (quoteNumber.trim()) noteParts.push(`Cotação do frete: ${quoteNumber.trim()}`);
+        return noteParts.length ? { notes: noteParts.join(' · ') } : {};
+      })(),
       payment_method: paymentMethod,
       ...(paymentMethod === 'a_prazo' ? { installments, first_due_date: firstDueDate } : {}),
     });
@@ -483,7 +489,7 @@ export default function PDV({ onDone }) {
     <div className="flex flex-col gap-3">
       {/* Linha compacta — data da operação, cliente, transportadora e frete */}
       <div className="card p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[180px_minmax(0,1.4fr)_minmax(0,1fr)_150px] gap-3 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[170px_minmax(0,1.1fr)_minmax(0,0.8fr)_130px_minmax(0,0.7fr)] gap-3 items-start">
           {/* Data da operação */}
           <div>
             <label className="text-xs font-medium text-gray-500 block mb-1">Data da operação *</label>
@@ -574,6 +580,13 @@ export default function PDV({ onDone }) {
               onChange={e => setFreightInput(e.target.value.replace(/[^\d.,]/g, ''))}
               onBlur={() => { if (freightInput.trim() !== '') setFreightInput(maskMoney(parseMoney(freightInput))); }}
               placeholder="0,00" />
+          </div>
+
+          {/* Nº da cotação do frete */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 block mb-1">Número da Cotação</label>
+            <input type="text" className="input text-sm w-full" value={quoteNumber}
+              onChange={e => setQuoteNumber(e.target.value)} placeholder="ex.: 12345" />
           </div>
         </div>
 
