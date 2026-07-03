@@ -83,6 +83,16 @@ export default function PDV({ onDone }) {
   const [shipDate, setShipDate] = useState(todayISO);
   const [deliveryDate, setDeliveryDate] = useState(todayISO);
 
+  // Data retroativa em relação à operação pula para o próximo ano:
+  // operação 02/07/2026 + saída 01/07 → 01/07/2027
+  function forwardDate(v) {
+    if (!v || !operationDate || v >= operationDate) return v;
+    const y = parseInt(v.slice(0, 4), 10);
+    if (!Number.isFinite(y)) return v;
+    const bumped = `${y + 1}${v.slice(4)}`;
+    return bumped >= operationDate ? bumped : v;
+  }
+
   // Mudou a data da operação → replica o ano dela nas outras datas
   function changeOperationDate(v) {
     setOperationDate(v);
@@ -377,13 +387,18 @@ export default function PDV({ onDone }) {
       toast.error(`Valor insuficiente! Faltam ${fmt(total - received)}`);
       return;
     }
+    // garante a regra do ano: data retroativa à operação vira o ano seguinte
+    const evD = forwardDate(eventDate), shD = forwardDate(shipDate), dlD = forwardDate(deliveryDate);
+    if (evD !== eventDate) setEventDate(evD);
+    if (shD !== shipDate) setShipDate(shD);
+    if (dlD !== deliveryDate) setDeliveryDate(dlD);
     saleMutation.mutate({
       customer_id: selectedCustomer.id,
       type: 'sale',
       operation_date: operationDate || null,
-      event_date: eventDate || null,
-      ship_date: shipDate || null,
-      delivery_date: deliveryDate || null,
+      event_date: evD || null,
+      ship_date: shD || null,
+      delivery_date: dlD || null,
       order_key: orderKey,
       items: items.map(i => ({
         product_id: i.product_id,
@@ -667,15 +682,18 @@ export default function PDV({ onDone }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Data do evento *</label>
-              <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => setEventDate(e.target.value)} />
+              <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => setEventDate(e.target.value)}
+                onBlur={() => setEventDate(d => forwardDate(d))} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Data da saída *</label>
-              <input type="date" className="input w-full text-sm" value={shipDate} onChange={e => setShipDate(e.target.value)} />
+              <input type="date" className="input w-full text-sm" value={shipDate} onChange={e => setShipDate(e.target.value)}
+                onBlur={() => setShipDate(d => forwardDate(d))} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Previsão de entrega *</label>
-              <input type="date" className="input w-full text-sm" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
+              <input type="date" className="input w-full text-sm" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)}
+                onBlur={() => setDeliveryDate(d => forwardDate(d))} />
             </div>
           </div>
         </div>
