@@ -37,6 +37,7 @@ const Audit              = lazy(() => import('@/pages/Settings/Audit'));
 const Feriados           = lazy(() => import('@/pages/Settings/Feriados'));
 const Quotes             = lazy(() => import('@/pages/Quotes/Quotes'));
 const QuoteForm          = lazy(() => import('@/pages/Quotes/QuoteForm'));
+const NewQuote           = lazy(() => import('@/pages/Quotes/NewQuote'));
 const Customizations     = lazy(() => import('@/pages/Customizations/Customizations'));
 const CustomizationDetail = lazy(() => import('@/pages/Customizations/CustomizationDetail'));
 const CustomizationStudio = lazy(() => import('@/pages/Studio/CustomizationStudio'));
@@ -95,6 +96,8 @@ function AppRoutes() {
       <Route path="/marcacao" element={<PrivateRoute><MarcacaoPonto /></PrivateRoute>} />
       {/* Novo pedido de venda — tela cheia (fora do layout com sidebar) */}
       <Route path="/sales/new" element={<PrivateRoute><Mod m="sales"><NewSale /></Mod></PrivateRoute>} />
+      {/* Novo orçamento — tela cheia, salva histórico + gera foto PNG */}
+      <Route path="/quotes/new" element={<PrivateRoute><Mod m="quotes"><NewQuote /></Mod></PrivateRoute>} />
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
         <Route index element={<Dashboard />} />
         {/* Produtos / Clientes / Fornecedores */}
@@ -111,7 +114,6 @@ function AppRoutes() {
         <Route path="sales/:id" element={<Mod m="sales"><SaleForm /></Mod>} />
         {/* Orçamentos */}
         <Route path="quotes" element={<Mod m="quotes"><Quotes /></Mod>} />
-        <Route path="quotes/new" element={<Mod m="quotes"><QuoteForm /></Mod>} />
         <Route path="quotes/:id" element={<Mod m="quotes"><QuoteForm /></Mod>} />
         {/* Personalização */}
         <Route path="customizations" element={<Mod m="customizations"><Customizations /></Mod>} />

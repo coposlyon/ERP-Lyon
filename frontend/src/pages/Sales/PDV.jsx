@@ -1,8 +1,9 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star, Plus, MoreHorizontal, MessageCircle } from 'lucide-react';
+import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star, Plus, MoreHorizontal, MessageCircle, Download } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
+import { generateQuotePng, buildQuoteNotes, downloadPng } from '@/lib/quotePng';
 import toast from 'react-hot-toast';
 import { expandVariants, expandVariantsWithCode } from '@/pages/Products/ProductVariantsModal';
 
@@ -58,8 +59,10 @@ function tierPrice(tiers, salePrice, qty) {
   return price;
 }
 
-export default function PDV({ onDone }) {
+// mode: 'sale' (pedido de venda) | 'quote' (orçamento — salva e gera a foto PNG)
+export default function PDV({ onDone, mode = 'sale' }) {
   const inModal = typeof onDone === 'function';
+  const isQuote = mode === 'quote';
   const [items, setItems] = useState([]);
   const [productSearch, setProductSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState(''); // filtro por tipo (categoria) do produto
@@ -72,6 +75,15 @@ export default function PDV({ onDone }) {
   const [carrierId, setCarrierId] = useState(''); // transportadora desta venda
   const [freightInput, setFreightInput] = useState(''); // valor do frete (R$) — editável
   const [quoteNumber, setQuoteNumber] = useState(''); // nº da cotação do frete na transportadora
+
+  // Campos específicos do ORÇAMENTO (mode='quote')
+  const [quoteDate, setQuoteDate] = useState(todayISO); // data da cotação do frete
+  const [quoteValidityDays, setQuoteValidityDays] = useState('7'); // validade da cotação (dias corridos)
+  const [deliveryDays, setDeliveryDays] = useState(''); // prazo de entrega (dias úteis)
+  const [productionTime, setProductionTime] = useState('3 a 7 dias úteis'); // prazo de produção
+  const [pixPriceInput, setPixPriceInput] = useState(''); // valor com desconto PIX/dinheiro
+  const [validityDays, setValidityDays] = useState('3'); // validade do orçamento (dias corridos)
+  const [png, setPng] = useState(null); // { dataUrl, number } — foto gerada
   const [payTerm, setPayTerm] = useState(null); // condição de pagamento { label, percent }
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [receivedAmount, setReceivedAmount] = useState('');
@@ -151,8 +163,9 @@ export default function PDV({ onDone }) {
   const { data: carriers } = useQuery({
     queryKey: ['carriers'],
     queryFn: () => api.get('/shipping/carriers'),
-    enabled: !!selectedCustomer,
+    enabled: isQuote || !!selectedCustomer,
   });
+  const carrierSel = (carriers?.data || []).find(c => c.id === carrierId) || null;
 
   // Tipos (categorias) de produto — para o filtro do painel de produtos
   const { data: productTypes = [] } = useQuery({
@@ -193,6 +206,32 @@ export default function PDV({ onDone }) {
       setTimeout(() => searchRef.current?.focus(), 100);
     },
     onError: (err) => toast.error(err.error || 'Erro ao finalizar venda'),
+  });
+
+  // Salva o ORÇAMENTO e gera a foto PNG padronizada
+  const quoteMutation = useMutation({
+    mutationFn: (data) => api.post('/quotes', data),
+    onSuccess: (quote, sent) => {
+      const dataUrl = generateQuotePng({
+        number: quote.number,
+        createdAt: todayISO(),
+        customerName: selectedCustomer?.name || '',
+        items: items.map(i => ({ name: i.name, quantity: i.quantity, unit_price: i.unit_price })),
+        discount: sent.discount,
+        freight: parseMoney(freightInput),
+        carrierName: carrierSel ? (carrierSel.trade_name || carrierSel.name) : '',
+        quoteNumber: quoteNumber.trim(),
+        quoteDate,
+        quoteValidityDays: parseInt(quoteValidityDays, 10) || 0,
+        deliveryDays: parseInt(deliveryDays, 10) || 0,
+        productionTime: productionTime.trim(),
+        pixPrice: parseMoney(pixPriceInput),
+        validityDays: parseInt(validityDays, 10) || 3,
+      });
+      setPng({ dataUrl, number: quote.number });
+      toast.success(`Orçamento #${String(quote.number).padStart(4, '0')} salvo no histórico!`);
+    },
+    onError: (err) => toast.error(err.error || 'Erro ao salvar o orçamento'),
   });
 
   // Calcular frete + prazo pelo estado/CEP do cliente
@@ -424,6 +463,37 @@ export default function PDV({ onDone }) {
     });
   }
 
+  // Orçamento: salva no histórico e gera a foto PNG
+  function finalizeQuote() {
+    if (items.length === 0) { toast.error('Adicione ao menos um produto'); return; }
+    const vDays = parseInt(validityDays, 10) || 3;
+    const until = new Date(); until.setDate(until.getDate() + vDays);
+    quoteMutation.mutate({
+      customer_id: selectedCustomer?.id || null,
+      items: items.map(i => ({
+        product_id: i.product_id,
+        product_name: i.name,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        ...(i.variant ? { customization: { ...(i.variant_code ? { 'Código': i.variant_code } : {}), 'Variação': i.variant } } : {}),
+      })),
+      discount: discountValue,
+      delivery_days: parseInt(deliveryDays, 10) || 10,
+      valid_until: until.toISOString().split('T')[0],
+      notes: buildQuoteNotes({
+        freight: freteValue,
+        carrierName: carrierSel ? (carrierSel.trade_name || carrierSel.name) : '',
+        quoteNumber: quoteNumber.trim(),
+        quoteDate,
+        quoteValidityDays: parseInt(quoteValidityDays, 10) || 0,
+        deliveryDays: parseInt(deliveryDays, 10) || 0,
+        productionTime: productionTime.trim(),
+        pixPrice: parseMoney(pixPriceInput),
+        validityDays: vDays,
+      }),
+    });
+  }
+
   // ── Painel de busca/lista de produtos (dentro do card ADICIONAR PRODUTOS) ──
   const ProductPanel = (
     <div className="flex flex-col overflow-hidden h-full border border-gray-100 rounded-xl">
@@ -513,9 +583,9 @@ export default function PDV({ onDone }) {
       {/* Linha compacta — data da operação, cliente, transportadora e frete */}
       <div className="card p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[170px_minmax(0,1.1fr)_minmax(0,0.8fr)_130px_minmax(0,0.7fr)] gap-3 items-start">
-          {/* Data da operação */}
+          {/* Data da operação / do orçamento */}
           <div>
-            <label className="text-xs font-medium text-gray-500 block mb-1">Data da operação *</label>
+            <label className="text-xs font-medium text-gray-500 block mb-1">{isQuote ? 'Data do orçamento *' : 'Data da operação *'}</label>
             <input type="date" className="input text-sm w-full" value={operationDate} onChange={e => changeOperationDate(e.target.value)} />
           </div>
 
@@ -674,6 +744,7 @@ export default function PDV({ onDone }) {
       </div>
 
         {/* Pedido — chave aleatória + datas (tudo obrigatório) */}
+        {!isQuote && (
         <div className="card p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-700">🔑 Pedido</span>
@@ -697,6 +768,43 @@ export default function PDV({ onDone }) {
             </div>
           </div>
         </div>
+        )}
+
+        {/* Dados do ORÇAMENTO (prazos e validades que saem na foto) */}
+        {isQuote && (
+        <div className="card p-4 space-y-3">
+          <span className="text-sm font-semibold text-gray-700">📋 Dados do orçamento</span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Data da cotação</label>
+              <input type="date" className="input w-full text-sm" value={quoteDate} onChange={e => setQuoteDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Validade da cotação (dias)</label>
+              <input type="number" min="0" className="input w-full text-sm" value={quoteValidityDays} onChange={e => setQuoteValidityDays(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Prazo de entrega (dias úteis)</label>
+              <input type="number" min="0" className="input w-full text-sm" value={deliveryDays} onChange={e => setDeliveryDays(e.target.value)} placeholder="ex.: 4" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Prazo de produção</label>
+              <input type="text" className="input w-full text-sm" value={productionTime} onChange={e => setProductionTime(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Valor PIX/dinheiro (R$)</label>
+              <input type="text" inputMode="decimal" className="input w-full text-sm" value={pixPriceInput}
+                onChange={e => setPixPriceInput(e.target.value.replace(/[^\d.,]/g, ''))}
+                onBlur={() => { if (pixPriceInput.trim() !== '') setPixPriceInput(maskMoney(parseMoney(pixPriceInput))); }}
+                placeholder="0,00" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Validade do orçamento (dias)</label>
+              <input type="number" min="1" className="input w-full text-sm" value={validityDays} onChange={e => setValidityDays(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        )}
 
         {/* Itens do pedido + botão ADICIONAR PRODUTOS */}
         <div className="card">
@@ -784,8 +892,9 @@ export default function PDV({ onDone }) {
         </div>
 
         {/* Pagamento + Totais lado a lado (menos rolagem) */}
-        <div className="grid lg:grid-cols-2 gap-3 items-start">
-        {/* Forma de pagamento */}
+        <div className={`grid ${isQuote ? '' : 'lg:grid-cols-2'} gap-3 items-start`}>
+        {/* Forma de pagamento (só no pedido de venda) */}
+        {!isQuote && (
         <div className="card p-4">
           <p className="text-sm font-semibold text-gray-700 mb-2">Pagamento</p>
           <div className="grid grid-cols-2 gap-2">
@@ -853,6 +962,7 @@ export default function PDV({ onDone }) {
             </div>
           )}
         </div>
+        )}
 
         {/* Totais */}
         <div className="card p-4 space-y-2">
@@ -868,8 +978,8 @@ export default function PDV({ onDone }) {
               className="input text-right w-28 text-sm" placeholder="0,00" />
           </div>
 
-          {/* Cupom de desconto */}
-          {coupon ? (
+          {/* Cupom de desconto (só no pedido de venda) */}
+          {!isQuote && (coupon ? (
             <div className="flex items-center justify-between gap-3 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
               <span className="text-sm text-green-700 font-medium">
                 🎟️ {coupon.code} — {coupon.discount_type === 'percent' ? `${coupon.discount_value}%` : fmt(coupon.discount_value)}
@@ -890,10 +1000,10 @@ export default function PDV({ onDone }) {
                 {couponMut.isPending ? <Loader2 size={14} className="animate-spin" /> : 'Aplicar'}
               </button>
             </div>
-          )}
+          ))}
 
           {/* Condição de pagamento (desconto / juros) */}
-          {payTerms.length > 0 && (
+          {!isQuote && payTerms.length > 0 && (
             <div className="border-t border-gray-100 pt-2 space-y-1.5">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-gray-600">Condição de pagamento</span>
@@ -952,13 +1062,15 @@ export default function PDV({ onDone }) {
 
         {/* Finalizar */}
         <button
-          onClick={finalizeSale}
-          disabled={items.length === 0 || saleMutation.isPending}
+          onClick={isQuote ? finalizeQuote : finalizeSale}
+          disabled={items.length === 0 || saleMutation.isPending || quoteMutation.isPending}
           className="btn-primary w-full py-4 text-base"
         >
-          {saleMutation.isPending
+          {(saleMutation.isPending || quoteMutation.isPending)
             ? <><Loader2 size={18} className="animate-spin" /> Processando...</>
-            : <><Check size={18} /> Finalizar — {fmt(total)}</>
+            : isQuote
+              ? <><Download size={18} /> Salvar e Gerar Foto do Orçamento — {fmt(total)}</>
+              : <><Check size={18} /> Finalizar — {fmt(total)}</>
           }
         </button>
 
@@ -972,6 +1084,21 @@ export default function PDV({ onDone }) {
         <div className="h-[65vh] flex flex-col">
           {ProductPanel}
         </div>
+      </Modal>
+
+      {/* Foto do orçamento gerada — visualizar e baixar */}
+      <Modal isOpen={!!png} onClose={() => { setPng(null); onDone?.(); }}
+        title={`Orçamento #${String(png?.number ?? '').padStart(4, '0')} — foto gerada`} size="lg"
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => { setPng(null); onDone?.(); }}>Fechar</button>
+            <button type="button" className="btn-primary"
+              onClick={() => downloadPng(png.dataUrl, `orcamento-${String(png.number).padStart(4, '0')}.png`)}>
+              <Download size={15} /> Baixar PNG
+            </button>
+          </>
+        }>
+        <img src={png?.dataUrl} alt="Foto do orçamento" className="w-full rounded-lg border border-gray-200" />
       </Modal>
     </div>
   );

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Eye, ArrowRightCircle, FileText, Mail, MessageCircle } from 'lucide-react';
+import { Plus, Search, Eye, ArrowRightCircle, FileText, Mail, MessageCircle, Image } from 'lucide-react';
 import api from '@/lib/api';
+import { generateQuotePng, parseQuoteNotes, downloadPng } from '@/lib/quotePng';
 import { Table, Pagination } from '@/components/UI/Table';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -49,6 +50,37 @@ export default function Quotes() {
     } catch (err) { toast.error(err.error || 'Erro'); }
   }
 
+  // Regenera a foto PNG padronizada do orçamento a partir do histórico
+  async function handlePng(id) {
+    const t = toast.loading('Gerando a foto do orçamento...');
+    try {
+      const q = await api.get(`/quotes/${id}`);
+      const extras = parseQuoteNotes(q.notes);
+      const dataUrl = generateQuotePng({
+        number: q.number,
+        createdAt: q.created_at,
+        customerName: q.CLIENTES?.name || '',
+        items: (q.ORCAMENTO_ITENS || []).map(i => ({
+          name: i.product_name || i.PRODUTOS?.name || 'Produto',
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+        })),
+        discount: q.discount,
+        freight: extras.freight,
+        carrierName: extras.carrierName,
+        quoteNumber: extras.quoteNumber,
+        quoteDate: extras.quoteDate,
+        quoteValidityDays: extras.quoteValidityDays,
+        deliveryDays: extras.deliveryDays || q.delivery_days,
+        productionTime: extras.productionTime,
+        pixPrice: extras.pixPrice,
+        validityDays: extras.validityDays || 3,
+      });
+      downloadPng(dataUrl, `orcamento-${String(q.number).padStart(4, '0')}.png`);
+      toast.success('Foto do orçamento baixada!', { id: t });
+    } catch (err) { toast.error(err.error || 'Erro ao gerar a foto', { id: t }); }
+  }
+
   async function handleSend(id, channel) {
     const t = toast.loading(`Enviando por ${channel === 'whatsapp' ? 'WhatsApp' : 'e-mail'}...`);
     try {
@@ -75,6 +107,9 @@ export default function Quotes() {
           <Link to={`/quotes/${id}`} className="btn-ghost p-1.5 tooltip" title="Ver">
             <Eye size={14} />
           </Link>
+          <button onClick={() => handlePng(id)} className="btn-ghost p-1.5 text-purple-600" title="Baixar foto (PNG) do orçamento">
+            <Image size={14} />
+          </button>
           <button onClick={() => handleSend(id, 'whatsapp')} className="btn-ghost p-1.5 text-green-600" title="Enviar por WhatsApp">
             <MessageCircle size={14} />
           </button>
@@ -86,8 +121,8 @@ export default function Quotes() {
               <FileText size={14} />
             </button>
           )}
-          {(row.status === 'approved') && (
-            <button onClick={() => handleConvert(id)} className="btn-ghost p-1.5 text-green-600" title="Converter em Venda">
+          {row.status !== 'converted' && (
+            <button onClick={() => handleConvert(id)} className="btn-ghost p-1.5 text-green-600" title="Transferir para Pedido de Venda">
               <ArrowRightCircle size={14} />
             </button>
           )}
