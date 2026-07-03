@@ -502,7 +502,7 @@ export default function PDV({ onDone }) {
             {selectedCustomer ? (
               <div className="bg-primary-50 rounded-lg px-2.5 py-1.5 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                  {selectedCustomer.display_id != null && <span className="text-[10px] font-mono bg-white text-primary-700 rounded px-1.5 py-0.5 shrink-0 border border-primary-100">#{selectedCustomer.display_id}</span>}
+                  {selectedCustomer.display_id != null && <span className="text-base font-mono font-bold bg-white text-primary-700 rounded-md px-2 py-0.5 shrink-0 border border-primary-200" title="ID do cliente">{selectedCustomer.display_id}</span>}
                   <p className="text-sm font-semibold text-primary-800 truncate">{selectedCustomer.name}</p>
                   <span className="flex items-center gap-0.5" title="Estrelas do cliente — para alterar, edite no cadastro de clientes">
                     {[1, 2, 3, 4, 5].map(n => (
@@ -544,7 +544,7 @@ export default function PDV({ onDone }) {
                         <button key={c.id} type="button"
                           onMouseDown={() => { setSelectedCustomer(c); setCustomerSearch(''); setCustFocus(false); }}
                           className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-50 last:border-0 flex items-center gap-2">
-                          {c.display_id != null && <span className="text-[10px] font-mono bg-gray-100 text-gray-500 rounded px-1.5 py-0.5 shrink-0">#{c.display_id}</span>}
+                          {c.display_id != null && <span className="text-sm font-mono font-bold bg-gray-100 text-gray-600 rounded px-1.5 py-0.5 shrink-0" title="ID do cliente">{c.display_id}</span>}
                           <span className="min-w-0">
                             <span className="font-medium block truncate">{c.name}</span>
                             <span className="text-xs text-gray-400">{c.cpf_cnpj || c.phone}</span>
