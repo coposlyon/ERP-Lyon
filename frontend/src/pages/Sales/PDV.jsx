@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star, Plus, MoreHorizontal } from 'lucide-react';
+import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star, Plus, MoreHorizontal, MessageCircle } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
@@ -21,6 +21,14 @@ function maskMoney(n) {
 }
 
 const todayISO = () => new Date().toISOString().split('T')[0];
+
+// Link para chamar o cliente no WhatsApp (DDI 55 automático)
+function waLink(phone, name) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return null;
+  const full = (digits.startsWith('55') ? '' : '55') + digits;
+  return `https://wa.me/${full}?text=${encodeURIComponent(`Olá ${name || ''}, tudo bem?`)}`;
+}
 
 // Botão que aplica o passo no clique e, segurando, repete bem rápido
 function HoldBtn({ onStep, title, children, className }) {
@@ -620,8 +628,24 @@ export default function PDV({ onDone }) {
         {selectedCustomer && showCustomerInfo && (
           <div className="text-xs text-gray-600 grid sm:grid-cols-3 gap-x-6 gap-y-0.5 border-t border-gray-100 pt-2 mt-3">
             {selectedCustomer.email && <p><b>E-mail:</b> {selectedCustomer.email}</p>}
-            {selectedCustomer.phone && <p><b>Telefone:</b> {selectedCustomer.phone}</p>}
-            {selectedCustomer.mobile && <p><b>Celular:</b> {selectedCustomer.mobile}</p>}
+            {selectedCustomer.phone && (
+              <p className="flex items-center gap-1.5">
+                <b>Telefone:</b> {selectedCustomer.phone}
+                <a href={waLink(selectedCustomer.phone, selectedCustomer.name)} target="_blank" rel="noreferrer"
+                  title="Chamar no WhatsApp" className="text-green-500 hover:text-green-600">
+                  <MessageCircle size={15} />
+                </a>
+              </p>
+            )}
+            {selectedCustomer.mobile && (
+              <p className="flex items-center gap-1.5">
+                <b>Celular:</b> {selectedCustomer.mobile}
+                <a href={waLink(selectedCustomer.mobile, selectedCustomer.name)} target="_blank" rel="noreferrer"
+                  title="Chamar no WhatsApp" className="text-green-500 hover:text-green-600">
+                  <MessageCircle size={15} />
+                </a>
+              </p>
+            )}
             {selectedCustomer.cpf_cnpj && <p><b>CPF/CNPJ:</b> {selectedCustomer.cpf_cnpj}</p>}
             {selectedCustomer.rg_ie && <p><b>RG/IE:</b> {selectedCustomer.rg_ie}</p>}
             {selectedCustomer.instagram && <p><b>Instagram:</b> {selectedCustomer.instagram}</p>}
