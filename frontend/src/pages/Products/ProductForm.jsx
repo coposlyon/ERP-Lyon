@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Loader2, Plus, Trash2, Image as ImageIcon, Upload, FolderPlus, Check, X } from 'lucide-react';
+import { Loader2, Plus, Trash2, Image as ImageIcon, Upload, FolderPlus, Check, X, ClipboardPaste } from 'lucide-react';
 import PrintPricingEditor, { cleanPrintPricing } from './PrintPricingEditor';
 
 function fileToDataUrl(file) {
@@ -152,16 +152,39 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     createTipo.mutate(n);
   }
 
-  // Cola imagem do clipboard (Ctrl+V) como foto do produto
-  function handlePaste(e) {
-    const items = e.clipboardData?.items || [];
-    for (const item of items) {
-      if (item.type?.startsWith('image/')) {
-        e.preventDefault();
-        pickImage(item.getAsFile(), setMainImage);
-        toast.success('Imagem colada como foto do produto!');
-        return;
+  // Ctrl+V em QUALQUER lugar com o formulário aberto → vira a foto do produto
+  useEffect(() => {
+    function onPaste(e) {
+      const items = e.clipboardData?.items || [];
+      for (const item of items) {
+        if (item.type?.startsWith('image/')) {
+          e.preventDefault();
+          pickImage(item.getAsFile(), setMainImage);
+          toast.success('Imagem colada como foto do produto!');
+          return;
+        }
       }
+    }
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
+
+  // Botão "Colar": lê a imagem copiada direto da área de transferência
+  async function pasteFromClipboard() {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const it of items) {
+        const type = it.types.find(t => t.startsWith('image/'));
+        if (type) {
+          const blob = await it.getType(type);
+          await pickImage(new File([blob], 'foto-colada.png', { type }), setMainImage);
+          toast.success('Imagem colada como foto do produto!');
+          return;
+        }
+      }
+      toast.error('Nenhuma imagem copiada. Copie uma imagem (Ctrl+C) e tente de novo.');
+    } catch {
+      toast.error('Não consegui ler a área de transferência — aperte Ctrl+V com o formulário aberto.');
     }
   }
 
@@ -226,7 +249,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} onPaste={handlePaste} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {/* Identificação */}
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
@@ -453,9 +476,12 @@ export default function ProductForm({ product, onSaved, onCancel }) {
             <Upload size={15} /> {mainImage ? 'Trocar foto' : 'Enviar foto'}
             <input type="file" accept="image/*" className="hidden" onChange={e => { pickImage(e.target.files?.[0], setMainImage); e.target.value = ''; }} />
           </label>
+          <button type="button" onClick={pasteFromClipboard} className="btn-secondary" title="Colar imagem copiada">
+            <ClipboardPaste size={15} /> Colar
+          </button>
           {mainImage && <button type="button" onClick={() => setMainImage('')} className="text-xs text-red-500 hover:text-red-600">Remover</button>}
         </div>
-        <p className="text-xs text-gray-400 mt-1">Dica: copie uma imagem e cole aqui com <b>Ctrl+V</b>.</p>
+        <p className="text-xs text-gray-400 mt-1">Dica: copie uma imagem e aperte <b>Ctrl+V</b> em qualquer lugar desta janela — não precisa clicar em nada antes.</p>
       </div>
 
       {/* Status */}

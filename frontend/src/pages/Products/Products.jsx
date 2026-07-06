@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Download, Trash2, Loader2, AlertTriangle, FolderTree, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Download, Trash2, Loader2, AlertTriangle, FolderTree, Image as ImageIcon, Eye, EyeOff, ClipboardPaste } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
@@ -29,6 +29,7 @@ export default function Products() {
   const [categoryId, setCategoryId] = useState('');
   const [sort, setSort] = useState('name');
   const [lightbox, setLightbox] = useState(null);      // url da foto ampliada
+  const [photoTarget, setPhotoTarget] = useState(null); // produto do modal "adicionar foto" (colar/arquivo)
   const uploadTargetId = useRef(null);                 // produto que vai receber a foto
   const fileInputRef = useRef(null);
   const qc = useQueryClient();
@@ -85,14 +86,7 @@ export default function Products() {
     onError: (e) => toast.error(e.error || 'Erro ao enviar foto'),
   });
 
-  function pickImageFor(id) {
-    uploadTargetId.current = id;
-    fileInputRef.current?.click();
-  }
-  function onFileChosen(e) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    const id = uploadTargetId.current;
+  function applyImageFile(id, file) {
     if (!file || !id) return;
     if (!file.type.startsWith('image/')) { toast.error('Selecione uma imagem'); return; }
     if (file.size > 8 * 1024 * 1024) { toast.error('Imagem muito grande (máx. 8MB)'); return; }
@@ -100,6 +94,54 @@ export default function Products() {
     reader.onload = () => imageMutation.mutate({ id, image: reader.result });
     reader.onerror = () => toast.error('Erro ao ler a imagem');
     reader.readAsDataURL(file);
+  }
+
+  function pickImageFor(id) {
+    uploadTargetId.current = id;
+    fileInputRef.current?.click();
+  }
+  function onFileChosen(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    applyImageFile(uploadTargetId.current, file);
+    setPhotoTarget(null);
+  }
+
+  // Ctrl+V com o modal "Adicionar foto" aberto → cola direto no produto
+  useEffect(() => {
+    if (!photoTarget) return;
+    function onPaste(e) {
+      const items = e.clipboardData?.items || [];
+      for (const item of items) {
+        if (item.type?.startsWith('image/')) {
+          e.preventDefault();
+          applyImageFile(photoTarget.id, item.getAsFile());
+          setPhotoTarget(null);
+          return;
+        }
+      }
+    }
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [photoTarget]);
+
+  // Botão "Colar imagem copiada": lê a área de transferência direto
+  async function pasteClipboardTo(id) {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const it of items) {
+        const type = it.types.find(t => t.startsWith('image/'));
+        if (type) {
+          const blob = await it.getType(type);
+          applyImageFile(id, new File([blob], 'foto-colada.png', { type }));
+          setPhotoTarget(null);
+          return;
+        }
+      }
+      toast.error('Nenhuma imagem copiada. Copie uma imagem (Ctrl+C) e tente de novo.');
+    } catch {
+      toast.error('Não consegui ler a área de transferência — aperte Ctrl+V com esta janela aberta.');
+    }
   }
 
   const deleteMutation = useMutation({
@@ -143,9 +185,9 @@ export default function Products() {
               title="Ver foto ampliada" />
           ) : (
             <button type="button"
-              onClick={e => { e.stopPropagation(); pickImageFor(row.id); }}
+              onClick={e => { e.stopPropagation(); setPhotoTarget(row); }}
               className="w-9 h-9 rounded-md border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center shrink-0 cursor-pointer hover:border-violet-400 hover:bg-violet-50 transition"
-              title="Adicionar foto">
+              title="Adicionar foto (arquivo ou Ctrl+V)">
               <ImageIcon size={14} className="text-gray-300" />
             </button>
           )}
@@ -284,6 +326,29 @@ export default function Products() {
 
       {/* input escondido para anexar foto ao clicar no card vazio */}
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChosen} />
+
+      {/* Adicionar foto: colar (Ctrl+V) ou escolher arquivo */}
+      <Modal isOpen={!!photoTarget} onClose={() => setPhotoTarget(null)} title="Adicionar foto" size="sm">
+        {photoTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 truncate"><b>{photoTarget.name}</b></p>
+            <button type="button" onClick={() => pasteClipboardTo(photoTarget.id)}
+              disabled={imageMutation.isPending}
+              className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg px-4 py-3 text-sm font-semibold transition-colors disabled:opacity-50">
+              {imageMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <ClipboardPaste size={16} />}
+              Colar imagem copiada (Ctrl+V)
+            </button>
+            <button type="button" onClick={() => pickImageFor(photoTarget.id)}
+              disabled={imageMutation.isPending}
+              className="w-full flex items-center justify-center gap-2 btn-secondary py-3 disabled:opacity-50">
+              <Upload size={16} /> Escolher arquivo...
+            </button>
+            <p className="text-xs text-gray-400 text-center">
+              Você também pode simplesmente apertar <b>Ctrl+V</b> agora com uma imagem copiada.
+            </p>
+          </div>
+        )}
+      </Modal>
 
       {/* Lightbox: foto ampliada */}
       {lightbox && (
