@@ -19,7 +19,7 @@ const emptyTier = () => ({ min_qty: '', max_qty: '', price: '' });
 export default function ProductForm({ product, onSaved, onCancel }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
-    name: '', code: '', ean: '', category_id: '',
+    name: '', code: '', ean: '', category_id: '', tipo_id: '',
     cost_price: '', sale_price: '', min_stock: '', min_order_qty: '',
     ncm: '', cst: '', cfop: '', is_active: true, show_in_store: true,
     supplier_id: '',
@@ -37,9 +37,18 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   const [newType, setNewType] = useState('');
   const [confirmDelType, setConfirmDelType] = useState(false);
 
+  // criação de novo tipo de produto do SITE (COPOS, CANECAS...) na hora
+  const [creatingTipo, setCreatingTipo] = useState(false);
+  const [newTipo, setNewTipo] = useState('');
+
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
     queryFn: () => api.get('/products/categories/list'),
+  });
+
+  const { data: tipos = [] } = useQuery({
+    queryKey: ['product-types'],
+    queryFn: () => api.get('/products/types/list'),
   });
 
   const { data: suppliersData } = useQuery({
@@ -57,6 +66,17 @@ export default function ProductForm({ product, onSaved, onCancel }) {
       toast.success('Tipo criado!');
     },
     onError: (e) => toast.error(e.error || 'Erro ao criar tipo'),
+  });
+
+  const createTipo = useMutation({
+    mutationFn: (name) => api.post('/products/types', { name }),
+    onSuccess: async (tipo) => {
+      await qc.invalidateQueries(['product-types']);
+      set('tipo_id', tipo.id);
+      setCreatingTipo(false); setNewTipo('');
+      toast.success('Tipo de produto criado!');
+    },
+    onError: (e) => toast.error(e.error || 'Erro ao criar tipo de produto'),
   });
 
   const delType = useMutation({
@@ -82,6 +102,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         code: product.code || '',
         ean: product.ean || '',
         category_id: product.category_id || '',
+        tipo_id: product.tipo_id || '',
         cost_price: product.cost_price || '',
         sale_price: product.sale_price || '',
         min_stock: product.min_stock || '',
@@ -123,6 +144,27 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     createType.mutate(n);
   }
 
+  function confirmNewTipo() {
+    const n = newTipo.trim().toUpperCase();
+    if (!n) return;
+    const existing = tipos.find(t => t.name?.toUpperCase() === n);
+    if (existing) { set('tipo_id', existing.id); setCreatingTipo(false); setNewTipo(''); return; }
+    createTipo.mutate(n);
+  }
+
+  // Cola imagem do clipboard (Ctrl+V) como foto do produto
+  function handlePaste(e) {
+    const items = e.clipboardData?.items || [];
+    for (const item of items) {
+      if (item.type?.startsWith('image/')) {
+        e.preventDefault();
+        pickImage(item.getAsFile(), setMainImage);
+        toast.success('Imagem colada como foto do produto!');
+        return;
+      }
+    }
+  }
+
   async function pickImage(file, cb) {
     if (!file) return;
     if (!file.type.startsWith('image/')) { toast.error('Selecione uma imagem'); return; }
@@ -150,6 +192,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         sale_price: parseFloat(form.sale_price) || 0,
         min_stock: parseFloat(form.min_stock) || 0,
         category_id: form.category_id || null,
+        tipo_id: form.tipo_id || null,
         supplier_id: form.supplier_id || null,
         height: parseFloat(form.height) || null,
         weight: parseFloat(form.weight) || null,
@@ -183,7 +226,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} onPaste={handlePaste} className="space-y-5">
       {/* Identificação */}
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
@@ -290,6 +333,37 @@ export default function ProductForm({ product, onSaved, onCancel }) {
             value={form.min_order_qty} onChange={e => set('min_order_qty', e.target.value)} placeholder="1" />
           <p className="text-xs text-gray-400 mt-1">Mínimo que o cliente pode pedir na loja.</p>
         </div>
+        <div className="col-span-2">
+          <label className="label">Tipo de produto (menu do site)</label>
+          {creatingTipo ? (
+            <div className="flex gap-2">
+              <input className="input uppercase" autoFocus value={newTipo}
+                onChange={e => setNewTipo(e.target.value.toUpperCase())}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirmNewTipo(); } if (e.key === 'Escape') { setCreatingTipo(false); setNewTipo(''); } }}
+                placeholder="EX: COPOS" />
+              <button type="button" onClick={confirmNewTipo} disabled={createTipo.isPending}
+                className="btn-primary px-3" title="Salvar tipo de produto">
+                {createTipo.isPending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+              </button>
+              <button type="button" onClick={() => { setCreatingTipo(false); setNewTipo(''); }}
+                className="btn-secondary px-3" title="Cancelar"><X size={15} /></button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <select className="input flex-1" value={form.tipo_id} onChange={e => set('tipo_id', e.target.value)}>
+                <option value="">Sem tipo</option>
+                {tipos.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button type="button" onClick={() => setCreatingTipo(true)}
+                className="btn-secondary px-3 whitespace-nowrap" title="Adicionar novo tipo de produto">
+                <FolderPlus size={15} /> Novo tipo
+              </button>
+            </div>
+          )}
+          <p className="text-xs text-gray-400 mt-1">
+            Grupo que aparece no menu do site (ex.: COPOS). Dentro dele o cliente vê as categorias (ex.: LONG DRINK TRADICIONAL).
+          </p>
+        </div>
       </div>
 
       {/* Faixas de preço por quantidade */}
@@ -381,6 +455,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           </label>
           {mainImage && <button type="button" onClick={() => setMainImage('')} className="text-xs text-red-500 hover:text-red-600">Remover</button>}
         </div>
+        <p className="text-xs text-gray-400 mt-1">Dica: copie uma imagem e cole aqui com <b>Ctrl+V</b>.</p>
       </div>
 
       {/* Status */}

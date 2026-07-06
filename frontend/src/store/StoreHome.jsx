@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Search, Palette, ShieldCheck, Sparkles, ArrowRight, ChevronDown,
-  Droplet, Printer, Wand2, Star,
+  Droplet, Printer, Wand2, Star, CreditCard, QrCode, Truck, X,
 } from 'lucide-react';
 import storeApi from './storeApi';
 import Bottle from './Bottle';
@@ -32,17 +32,44 @@ const PILLARS = [
 
 export default function StoreHome() {
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
+  // tipo (COPOS, CANECAS...) e categoria vêm da URL — o menu do topo navega para cá
+  const [params, setParams] = useSearchParams();
+  const tipo = params.get('tipo') || '';
+  const category = params.get('cat') || '';
+
+  function setFilters({ tipo: t = tipo, cat = category } = {}) {
+    const p = new URLSearchParams(params);
+    if (t) p.set('tipo', t); else p.delete('tipo');
+    if (cat) p.set('cat', cat); else p.delete('cat');
+    setParams(p);
+  }
+  const setCategory = (id) => setFilters({ cat: id });
 
   const { data: store } = useQuery({ queryKey: ['store-info'], queryFn: () => storeApi.get('/store') });
   const S = { ...SITE_DEFAULTS, ...(store?.site || {}) }; // textos do site (config + padrão)
   const show3d = S.show_3d !== false;
 
   const { data: categories = [] } = useQuery({ queryKey: ['store-cats'], queryFn: () => storeApi.get('/categories') });
+  const { data: types = [] } = useQuery({ queryKey: ['store-types'], queryFn: () => storeApi.get('/types') });
+  const activeTipo = types.find(t => t.id === tipo);
+  // com um tipo selecionado, os chips mostram só as categorias daquele tipo
+  const chipCats = activeTipo ? activeTipo.categories : categories;
+
   const { data: products = [], isLoading } = useQuery({
-    queryKey: ['store-products', search, category],
-    queryFn: () => storeApi.get(`/products?${new URLSearchParams({ ...(search ? { search } : {}), ...(category ? { category } : {}) })}`),
+    queryKey: ['store-products', search, category, tipo],
+    queryFn: () => storeApi.get(`/products?${new URLSearchParams({
+      ...(search ? { search } : {}),
+      ...(category ? { category } : {}),
+      ...(tipo ? { type: tipo } : {}),
+    })}`),
   });
+
+  // chegou pelo menu (tipo/categoria na URL) → desce direto para o catálogo
+  useEffect(() => {
+    if (tipo || category) {
+      document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [tipo, category]);
 
   return (
     <div className="overflow-x-hidden">
@@ -107,6 +134,27 @@ export default function StoreHome() {
           ))}
         </div>
       </div>
+
+      {/* ══ BENEFÍCIOS (parcelamento / PIX / envio) ══ */}
+      <section className="bg-white border-b border-gray-100">
+        <div className="max-w-6xl mx-auto px-4 py-8 grid sm:grid-cols-3 gap-6">
+          {[
+            { icon: CreditCard, t: S.benefit_1_title, d: S.benefit_1_text },
+            { icon: QrCode,     t: S.benefit_2_title, d: S.benefit_2_text },
+            { icon: Truck,      t: S.benefit_3_title, d: S.benefit_3_text },
+          ].map((b, i) => (
+            <Reveal key={i} delay={i * 90} className="flex items-center gap-3 justify-center sm:justify-start">
+              <span className="w-11 h-11 rounded-xl bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
+                <b.icon size={22} />
+              </span>
+              <span>
+                <p className="font-extrabold text-gray-900 leading-tight">{b.t}</p>
+                <p className="text-sm text-gray-500">{b.d}</p>
+              </span>
+            </Reveal>
+          ))}
+        </div>
+      </section>
 
       {/* ══ STATS ══ */}
       <section className="max-w-6xl mx-auto px-4 py-16 grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">
@@ -192,11 +240,13 @@ export default function StoreHome() {
       )}
 
       {/* ══ CATÁLOGO ══ */}
-      <section id="catalogo" className="max-w-6xl mx-auto px-4 py-16">
+      <section id="catalogo" className="max-w-6xl mx-auto px-4 py-16 scroll-mt-32">
         <div className="flex items-end justify-between gap-4 flex-wrap mb-8">
           <div>
             <Reveal as="span" className="text-orange-500 font-bold text-sm tracking-wide">{S.catalog_badge}</Reveal>
-            <Reveal as="h2" delay={60} className="text-3xl sm:text-4xl font-black">{S.catalog_title}</Reveal>
+            <Reveal as="h2" delay={60} className="text-3xl sm:text-4xl font-black">
+              {activeTipo ? activeTipo.name : S.catalog_title}
+            </Reveal>
           </div>
           <div className="relative w-full sm:w-72">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -205,13 +255,20 @@ export default function StoreHome() {
           </div>
         </div>
 
-        {categories.length > 0 && (
+        {(chipCats.length > 0 || activeTipo) && (
           <div className="flex gap-2 flex-wrap mb-8">
+            {activeTipo && (
+              <button onClick={() => setFilters({ tipo: '', cat: '' })}
+                className="px-4 py-2 rounded-full text-sm font-bold bg-orange-500 text-white flex items-center gap-1.5 hover:bg-orange-600 transition-all"
+                title="Limpar filtro de tipo">
+                {activeTipo.name} <X size={14} />
+              </button>
+            )}
             <button onClick={() => setCategory('')}
               className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${!category ? 'bg-gray-900 text-white scale-105' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}>
               Todos
             </button>
-            {categories.map(c => (
+            {chipCats.map(c => (
               <button key={c.id} onClick={() => setCategory(c.id)}
                 className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${category === c.id ? 'bg-gray-900 text-white scale-105' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                 {c.name}

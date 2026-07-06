@@ -20,6 +20,9 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [newCategoryId, setNewCategoryId] = useState(''); // '' = não alterar | '__none__' = limpar | id = define
   const [creatingType, setCreatingType] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
+  const [newTipoId, setNewTipoId] = useState(''); // tipo do SITE: '' = não alterar | '__none__' = limpar | id = define
+  const [creatingTipo, setCreatingTipo] = useState(false);
+  const [newTipoName, setNewTipoName] = useState('');
   const [costPrice, setCostPrice] = useState('');
   const [salePrice, setSalePrice] = useState('');
   const [minOrder, setMinOrder] = useState('');
@@ -34,6 +37,12 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const { data: cats } = useQuery({
     queryKey: ['categories-list'],
     queryFn: () => api.get('/products/categories/list'),
+    enabled: isOpen,
+  });
+
+  const { data: tipos } = useQuery({
+    queryKey: ['product-types'],
+    queryFn: () => api.get('/products/types/list'),
     enabled: isOpen,
   });
 
@@ -68,6 +77,23 @@ export default function BulkEditModal({ isOpen, onClose }) {
     createType.mutate(n);
   }
 
+  const createTipo = useMutation({
+    mutationFn: (name) => api.post('/products/types', { name }),
+    onSuccess: async (tipo) => {
+      await qc.invalidateQueries(['product-types']);
+      setNewTipoId(tipo.id); setCreatingTipo(false); setNewTipoName('');
+      toast.success('Tipo de produto criado!');
+    },
+    onError: (e) => toast.error(e.error || 'Erro ao criar tipo de produto'),
+  });
+  function confirmNewTipo() {
+    const n = newTipoName.trim().toUpperCase();
+    if (!n) return;
+    const existing = (tipos || []).find(t => t.name?.toUpperCase() === n);
+    if (existing) { setNewTipoId(existing.id); setCreatingTipo(false); setNewTipoName(''); return; }
+    createTipo.mutate(n);
+  }
+
   function toggle(id) { setSelected(s => ({ ...s, [id]: !s[id] })); }
   function toggleAll() {
     const n = { ...selected };
@@ -80,6 +106,8 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const fields = {};
   if (newCategoryId === '__none__') fields.category_id = null;
   else if (newCategoryId) fields.category_id = newCategoryId;
+  if (newTipoId === '__none__') fields.tipo_id = null;
+  else if (newTipoId) fields.tipo_id = newTipoId;
   if (costPrice !== '') fields.cost_price = costPrice;
   if (salePrice !== '') fields.sale_price = salePrice;
   if (minOrder !== '') fields.min_order_qty = minOrder;
@@ -127,14 +155,14 @@ export default function BulkEditModal({ isOpen, onClose }) {
   function buildSummary() {
     const targets = applyAll ? (products || []) : (products || []).filter(p => selected[p.id]);
     const labels = {
-      category_id: 'Tipo', show_in_store: 'Exibição na loja',
+      category_id: 'Tipo', tipo_id: 'Tipo de produto (site)', show_in_store: 'Exibição na loja',
       cost_price: 'Custo', sale_price: 'Venda', min_order_qty: 'Qtd. mínima',
       ncm: 'NCM', cst: 'CST', cfop: 'CFOP',
       price_tiers: 'Faixas de preço', print_pricing: 'Tabelas de impressão',
     };
     const norm = (key, val) => {
       if (val == null) return '';
-      if (key === 'category_id') return String(val || '');
+      if (key === 'category_id' || key === 'tipo_id') return String(val || '');
       if (key === 'show_in_store') return val === false ? 'nao' : 'sim';
       if (['cost_price', 'sale_price', 'min_order_qty'].includes(key)) return val === '' ? '' : String(Number(val));
       if (['ncm', 'cst', 'cfop'].includes(key)) return String(val).trim();
@@ -143,6 +171,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
     };
     const display = (key) => {
       if (key === 'category_id') return fields.category_id ? catName(fields.category_id) : 'Sem tipo';
+      if (key === 'tipo_id') return fields.tipo_id ? ((tipos || []).find(t => t.id === fields.tipo_id)?.name || '—') : 'Sem tipo';
       if (key === 'show_in_store') return fields.show_in_store ? 'Mostrar na loja' : 'Ocultar da loja';
       if (['cost_price', 'sale_price'].includes(key)) return `R$ ${Number(fields[key]).toFixed(2)}`;
       if (key === 'min_order_qty') return String(fields[key]);
@@ -279,6 +308,39 @@ export default function BulkEditModal({ isOpen, onClose }) {
           )}
           {newCategoryId && newCategoryId !== '__none__' && (
             <p className="text-xs text-violet-600 mt-1">Os produtos selecionados passam a ser do tipo <b>{(cats || []).find(c => c.id === newCategoryId)?.name}</b>.</p>
+          )}
+        </div>
+
+        {/* Alterar o TIPO DE PRODUTO do site (menu: COPOS, CANECAS...) em massa */}
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Tipo de produto (menu do site)</p>
+          {creatingTipo ? (
+            <div className="flex gap-2">
+              <input className="input flex-1 uppercase" autoFocus value={newTipoName}
+                onChange={e => setNewTipoName(e.target.value.toUpperCase())}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirmNewTipo(); } if (e.key === 'Escape') { setCreatingTipo(false); setNewTipoName(''); } }}
+                placeholder="NOME DO NOVO TIPO (ex.: COPOS)" />
+              <button type="button" onClick={confirmNewTipo} disabled={createTipo.isPending} className="btn-primary px-3" title="Salvar tipo de produto">
+                {createTipo.isPending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+              </button>
+              <button type="button" onClick={() => { setCreatingTipo(false); setNewTipoName(''); }} className="btn-secondary px-3"><X size={15} /></button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <select className="input flex-1" value={newTipoId} onChange={e => setNewTipoId(e.target.value)}>
+                <option value="">— não alterar —</option>
+                <option value="__none__">Limpar (sem tipo)</option>
+                {(tipos || []).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button type="button" onClick={() => setCreatingTipo(true)} className="btn-secondary px-3 whitespace-nowrap" title="Adicionar novo tipo de produto">
+                <FolderPlus size={15} /> Novo tipo
+              </button>
+            </div>
+          )}
+          {newTipoId && newTipoId !== '__none__' && (
+            <p className="text-xs text-violet-600 mt-1">
+              Os produtos selecionados vão aparecer no menu <b>{(tipos || []).find(t => t.id === newTipoId)?.name}</b> do site.
+            </p>
           )}
         </div>
 

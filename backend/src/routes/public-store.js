@@ -81,9 +81,45 @@ router.get('/categories', async (req, res) => {
   } catch (err) { fail(res, err); }
 });
 
+// ── Tipos de produto (menu do site) com suas categorias ──
+// Cada tipo (COPOS, CANECAS...) traz as categorias dos produtos visíveis
+// que pertencem a ele — vira o menu superior com dropdown na loja.
+router.get('/types', async (req, res) => {
+  try {
+    const { data: tipos, error: tErr } = await supabase
+      .from('TIPOS_PRODUTO').select('id, name')
+      .eq('tenant_id', STORE_TENANT).order('name');
+    if (tErr) return res.json([]); // tabela ainda não existe → menu some, loja segue
+
+    const { data: prods, error: pErr } = await supabase
+      .from('PRODUTOS')
+      .select('tipo_id, category_id, show_in_store, CATEGORIAS(id, name)')
+      .eq('tenant_id', STORE_TENANT).eq('is_active', true)
+      .not('tipo_id', 'is', null);
+    if (pErr) return res.json((tipos || []).map(t => ({ ...t, categories: [] })));
+
+    const catsByTipo = new Map();
+    for (const p of (prods || [])) {
+      if (p.show_in_store === false || !p.tipo_id) continue;
+      if (!catsByTipo.has(p.tipo_id)) catsByTipo.set(p.tipo_id, new Map());
+      if (p.CATEGORIAS?.id) catsByTipo.get(p.tipo_id).set(p.CATEGORIAS.id, p.CATEGORIAS.name);
+    }
+    const result = (tipos || []).map(t => ({
+      id: t.id, name: t.name,
+      categories: [...(catsByTipo.get(t.id) || new Map()).entries()]
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    })).filter(t => catsByTipo.has(t.id)); // só tipos com produto visível
+    res.json(result);
+  } catch (err) {
+    console.error('[public-store:types]', err.message || err);
+    res.json([]);
+  }
+});
+
 // ── Catálogo ──────────────────────────────────────────────
 router.get('/products', async (req, res) => {
-  const { search, category } = req.query;
+  const { search, category, type } = req.query;
   // full=false é o fallback caso colunas novas ainda não existam (migrations 016/021)
   const build = (full) => {
     let q = supabase
@@ -93,6 +129,9 @@ router.get('/products', async (req, res) => {
       .eq('is_active', true)
       .order('name');
     if (category) q = q.eq('category_id', category);
+    // filtro por tipo só no modo "full" — se a coluna tipo_id ainda não existe,
+    // o fallback ignora o filtro em vez de quebrar a loja
+    if (type && full) q = q.eq('tipo_id', type);
     if (search) {
       const s = String(search).replace(/[,()]/g, ' ').trim();
       q = q.or(`name.ilike.%${s}%,code.ilike.%${s}%`);

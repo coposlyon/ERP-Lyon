@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingCart, Phone, Instagram, Mail, User, LogOut, Package } from 'lucide-react';
+import { ShoppingCart, Phone, Instagram, Mail, User, LogOut, Package, ChevronDown, LayoutGrid } from 'lucide-react';
 import storeApi from './storeApi';
 import { useCart } from './CartContext';
 import { useStoreAuth } from './StoreAuthContext';
@@ -14,6 +14,8 @@ export default function StoreLayout({ children }) {
   const { pathname } = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const { data: store } = useQuery({ queryKey: ['store-info'], queryFn: () => storeApi.get('/store') });
+  // Tipos de produto (COPOS, CANECAS...) para o menu superior, com as categorias no dropdown
+  const { data: navTypes = [] } = useQuery({ queryKey: ['store-types'], queryFn: () => storeApi.get('/types') });
 
   const isHome = pathname === '/loja' || pathname === '/loja/';
 
@@ -77,10 +79,45 @@ export default function StoreLayout({ children }) {
             </button>
           </div>
         </div>
+
+        {/* Menu de tipos de produto (COPOS, CANECAS...) com dropdown de categorias */}
+        {navTypes.length > 0 && (
+          <nav className="bg-gray-900 text-white">
+            <div className="max-w-6xl mx-auto px-4 h-11 flex items-center gap-1 overflow-x-auto md:overflow-visible">
+              {navTypes.map(t => (
+                <div key={t.id} className="relative group h-full flex items-center shrink-0">
+                  <button onClick={() => navigate(`/loja?tipo=${t.id}#catalogo`)}
+                    className="px-3 h-full flex items-center gap-1 text-xs sm:text-sm font-bold uppercase tracking-wide whitespace-nowrap hover:bg-white/10 hover:text-orange-300 transition-colors">
+                    {t.name}
+                    {t.categories.length > 0 && <ChevronDown size={13} className="opacity-60" />}
+                  </button>
+                  {t.categories.length > 0 && (
+                    <div className="hidden md:group-hover:block absolute top-full left-0 bg-white text-gray-800 rounded-b-2xl shadow-2xl border border-gray-100 min-w-[240px] py-2 z-50">
+                      {t.categories.map(c => (
+                        <button key={c.id} onClick={() => navigate(`/loja?tipo=${t.id}&cat=${c.id}#catalogo`)}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-orange-50 hover:text-orange-600 transition-colors">
+                          {c.name}
+                        </button>
+                      ))}
+                      <button onClick={() => navigate(`/loja?tipo=${t.id}#catalogo`)}
+                        className="block w-full text-left px-4 py-2 text-sm font-bold text-orange-500 hover:bg-orange-50 border-t border-gray-100 mt-1">
+                        Ver tudo de {t.name}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <button onClick={() => navigate('/loja#catalogo')}
+                className="px-3 h-full flex items-center gap-1.5 text-xs sm:text-sm font-bold uppercase tracking-wide whitespace-nowrap hover:bg-white/10 hover:text-orange-300 transition-colors shrink-0 ml-auto">
+                <LayoutGrid size={14} /> Todas categorias
+              </button>
+            </div>
+          </nav>
+        )}
       </header>
 
       {/* espaçador quando a navbar é sólida fora da home */}
-      {!isHome && <div className="h-20" />}
+      {!isHome && <div className={navTypes.length > 0 ? 'h-[7.75rem]' : 'h-20'} />}
 
       <main className="flex-1">{children}</main>
 

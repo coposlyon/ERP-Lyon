@@ -94,6 +94,8 @@ router.patch('/bulk', async (req, res) => {
   const patch = {};
   // Tipo (categoria): '' / null = limpa (Sem tipo); id = define
   if (fields.category_id !== undefined) patch.category_id = fields.category_id || null;
+  // Tipo de produto do site (COPOS, CANECAS...): '' / null = limpa; id = define
+  if (fields.tipo_id !== undefined) patch.tipo_id = fields.tipo_id || null;
   // Visibilidade na loja (true/false). '' / undefined = não altera.
   if (fields.show_in_store !== undefined && fields.show_in_store !== '') {
     patch.show_in_store = fields.show_in_store === true || fields.show_in_store === 'true';
@@ -417,6 +419,72 @@ router.delete('/categories/:catId', async (req, res) => {
   }
 });
 
+// ── Tipos de produto (menu do site: COPOS, CANECAS, TAÇAS...) ──
+router.get('/types/list', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('TIPOS_PRODUTO')
+      .select('*, PRODUTOS(id)')
+      .eq('tenant_id', req.tenantId)
+      .order('name');
+    if (error) {
+      // tabela ainda não existe (migration 044) → lista vazia, sem quebrar a tela
+      if (/TIPOS_PRODUTO|does not exist|42P01/i.test(error.message || '')) return res.json([]);
+      throw error;
+    }
+    const result = (data || []).map(t => ({
+      id: t.id, name: t.name,
+      product_count: Array.isArray(t.PRODUTOS) ? t.PRODUTOS.length : 0,
+    })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/types', async (req, res) => {
+  const name = String(req.body.name || '').trim().toUpperCase();
+  if (!name) return res.status(400).json({ error: 'Nome do tipo é obrigatório' });
+  try {
+    // reusa se já existir com o mesmo nome
+    const { data: existing } = await supabase.from('TIPOS_PRODUTO').select('id, name')
+      .eq('tenant_id', req.tenantId).ilike('name', name).maybeSingle();
+    if (existing) return res.json(existing);
+
+    const { data, error } = await supabase
+      .from('TIPOS_PRODUTO')
+      .insert({ tenant_id: req.tenantId, name })
+      .select()
+      .single();
+    if (error) throw error;
+    audit(req, 'create', 'product_type', data.id, { name });
+    res.status(201).json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/types/:typeId', async (req, res) => {
+  try {
+    const { data: tipo } = await supabase.from('TIPOS_PRODUTO').select('name')
+      .eq('id', req.params.typeId).eq('tenant_id', req.tenantId).maybeSingle();
+
+    // desvincula os produtos (ficam "Sem tipo") e informa quantos eram
+    const { count } = await supabase.from('PRODUTOS').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', req.tenantId).eq('tipo_id', req.params.typeId);
+    await supabase.from('PRODUTOS').update({ tipo_id: null })
+      .eq('tenant_id', req.tenantId).eq('tipo_id', req.params.typeId);
+
+    const { error } = await supabase.from('TIPOS_PRODUTO').delete()
+      .eq('tenant_id', req.tenantId).eq('id', req.params.typeId);
+    if (error) throw error;
+    audit(req, 'delete', 'product_type', req.params.typeId, { name: tipo?.name, products_unlinked: count || 0 });
+    res.json({ message: 'Tipo excluído', products_unlinked: count || 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Exporta CSV agrupado por MODELO: o nome do modelo é um cabeçalho e logo abaixo
 // vêm todas as variações (cor × borda) já com o nome completo descritivo.
 router.get('/export', async (req, res) => {
@@ -510,7 +578,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', validate(productSchema), async (req, res) => {
   const {
-    name, code, ean, description, category_id, cost_price, sale_price,
+    name, code, ean, description, category_id, tipo_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
     price_tiers, min_order_qty, print_pricing, variations, image, variation_images, show_in_store
@@ -525,6 +593,7 @@ router.post('/', validate(productSchema), async (req, res) => {
       tenant_id: req.tenantId,
       name: name.toUpperCase(),
       code, ean, description, category_id,
+      ...(tipo_id !== undefined ? { tipo_id: tipo_id || null } : {}),
       cost_price: cost_price || 0,
       sale_price: sale_price || 0,
       min_stock: min_stock || 0,
@@ -545,11 +614,12 @@ router.post('/', validate(productSchema), async (req, res) => {
     };
     const ins = () => supabase.from('PRODUTOS').insert(payload).select().single();
     let { data, error } = await ins();
-    while (error && /(variations|image_url|variation_images|show_in_store)/i.test(error.message || '')) {
+    while (error && /(variations|image_url|variation_images|show_in_store|tipo_id)/i.test(error.message || '')) {
       if (/variation_images/i.test(error.message)) delete payload.variation_images;
       else if (/image_url/i.test(error.message)) delete payload.image_url;
       else if (/variations/i.test(error.message)) delete payload.variations;
       else if (/show_in_store/i.test(error.message)) delete payload.show_in_store;
+      else if (/tipo_id/i.test(error.message)) delete payload.tipo_id;
       ({ data, error } = await ins());
     }
 
@@ -563,7 +633,7 @@ router.post('/', validate(productSchema), async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   const {
-    name, code, ean, description, category_id, cost_price, sale_price,
+    name, code, ean, description, category_id, tipo_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
     price_tiers, min_order_qty, print_pricing, variations, image, variation_images, show_in_store
@@ -590,6 +660,7 @@ router.put('/:id', async (req, res) => {
     if (ean !== undefined) payload.ean = ean;
     if (description !== undefined) payload.description = description;
     if (category_id !== undefined) payload.category_id = category_id || null;
+    if (tipo_id !== undefined) payload.tipo_id = tipo_id || null;
     if (cost_price !== undefined) payload.cost_price = cost_price;
     if (sale_price !== undefined) payload.sale_price = sale_price;
     if (min_stock !== undefined) payload.min_stock = min_stock;
@@ -616,11 +687,12 @@ router.put('/:id', async (req, res) => {
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     let { data, error } = await upd();
     // remove colunas novas que ainda não existem no banco e tenta de novo
-    while (error && /(variations|image_url|variation_images|show_in_store)/i.test(error.message || '')) {
+    while (error && /(variations|image_url|variation_images|show_in_store|tipo_id)/i.test(error.message || '')) {
       if (/variation_images/i.test(error.message)) delete payload.variation_images;
       else if (/image_url/i.test(error.message)) delete payload.image_url;
       else if (/variations/i.test(error.message)) delete payload.variations;
       else if (/show_in_store/i.test(error.message)) delete payload.show_in_store;
+      else if (/tipo_id/i.test(error.message)) delete payload.tipo_id;
       ({ data, error } = await upd());
     }
     if (error) throw error;
