@@ -12,6 +12,7 @@ import {
   fmtBRL, fmtBRL4, fmtQty, numInput, TAX_REGIMES, PRINT_TYPES, CALC_REFERENCES,
 } from '@/lib/pricingCalc';
 import { buildSheetReportHtml, openPrintWindow } from '@/utils/pricingReportHtml';
+import { expandVariants } from '@/pages/Products/ProductVariantsModal';
 import { iconFor } from './fixedCostIcons';
 
 // ─── Blocos de custo (Matéria-prima, Personalização...) ────
@@ -67,10 +68,34 @@ export default function PriceFormation() {
     queryFn: () => api.get('/products?limit=1000'),
   });
   const products = productsRes?.data || [];
+
+  // Categorias REAIS do cadastro de produtos (mesma fonte da tela Produtos) —
+  // nada de lista fixa: o que existir lá é o que aparece aqui.
+  const { data: categoriesRes } = useQuery({
+    queryKey: ['product-categories'],
+    queryFn: () => api.get('/products/categories/list'),
+  });
   const categories = useMemo(
-    () => [...new Set(products.map(p => p.CATEGORIAS?.name).filter(Boolean))],
-    [products],
+    () => (Array.isArray(categoriesRes) ? categoriesRes.map(c => c.name) : []),
+    [categoriesRes],
   );
+
+  // Capacidades derivadas dos nomes reais dos produtos (300ml, 1L...) —
+  // acompanha o cadastro automaticamente, sem valores inventados.
+  const capacities = useMemo(() => {
+    const set = new Set();
+    for (const p of products) {
+      const m = String(p.name || '').match(/\d+(?:[.,]\d+)?\s?(?:ml|l(?:itros?)?)\b/gi) || [];
+      for (const cap of m) set.add(cap.replace(/\s+/g, '').toLowerCase());
+    }
+    return [...set].sort((a, b) => parseFloat(a.replace(',', '.')) - parseFloat(b.replace(',', '.')));
+  }, [products]);
+
+  // Variações (cores/modelos) cadastradas no produto vinculado
+  const selectedVariants = useMemo(() => {
+    const p = products.find(x => x.id === sheet?.product_id);
+    return p ? expandVariants(p) : [];
+  }, [products, sheet?.product_id]);
 
   // Inicializa a ficha em branco quando os custos fixos chegarem
   useEffect(() => {
@@ -292,24 +317,31 @@ export default function PriceFormation() {
                 </datalist>
               </Field>
               <Field label="Categoria">
-                <input list="pf-categories" className="input text-sm" value={sheet.category || ''}
-                  placeholder="Twister" onChange={e => set({ category: e.target.value })} />
-                <datalist id="pf-categories">
-                  {categories.map(c => <option key={c} value={c} />)}
-                  {['Twister', 'Caldereta', 'Long Drink', 'Caneca', 'Taça Gin', 'Taça Champanhe', 'Balde de Gelo']
-                    .map(c => <option key={`fx-${c}`} value={c} />)}
-                </datalist>
+                <select className="input text-sm" value={sheet.category || ''}
+                  onChange={e => set({ category: e.target.value })}>
+                  <option value="">— Sem categoria —</option>
+                  {/* Somente as categorias reais do cadastro de produtos */}
+                  {sheet.category && !categories.includes(sheet.category) && (
+                    <option value={sheet.category}>{sheet.category} (antiga)</option>
+                  )}
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
               </Field>
               <Field label="Capacidade">
                 <input list="pf-capacity" className="input text-sm" value={sheet.capacity || ''}
                   placeholder="500ml" onChange={e => set({ capacity: e.target.value })} />
                 <datalist id="pf-capacity">
-                  {['300ml', '330ml', '350ml', '400ml', '450ml', '500ml', '550ml', '750ml', '1L', '5L'].map(c => <option key={c} value={c} />)}
+                  {/* Capacidades extraídas dos produtos cadastrados */}
+                  {capacities.map(c => <option key={c} value={c} />)}
                 </datalist>
               </Field>
               <Field label="Cor / Modelo">
-                <input className="input text-sm" value={sheet.color_model || ''}
+                <input list="pf-variants" className="input text-sm" value={sheet.color_model || ''}
                   placeholder="Azul Degradê" onChange={e => set({ color_model: e.target.value })} />
+                <datalist id="pf-variants">
+                  {/* Variações cadastradas do produto selecionado */}
+                  {selectedVariants.map(v => <option key={v} value={v} />)}
+                </datalist>
               </Field>
               <Field label="Tipo de Impressão">
                 <select className="input text-sm" value={sheet.print_type}
