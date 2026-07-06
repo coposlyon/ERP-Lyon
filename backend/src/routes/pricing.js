@@ -10,46 +10,16 @@ const { audit } = require('../lib/audit');
 // Fórmula (markup divisor):
 //   preço = custo_total / (1 - (impostos% + cartão% + comissão% + frete% + margem%) / 100)
 
-const DEFAULTS = {
-  margin_pct: 30,      // margem de lucro desejada
-  tax_pct: 0,          // impostos sobre a venda (Simples etc.)
-  card_fee_pct: 0,     // taxa média de cartão/gateway
-  commission_pct: 0,   // comissão de vendedor
-  freight_pct: 0,      // frete embutido no preço
-  monthly_units: null, // unidades vendidas/mês p/ rateio (null = automático)
-  tax_regime: 'simples', // regime tributário padrão das fichas
-};
-
-async function getConfig(tenantId) {
-  const { data } = await supabase.from('EMPRESAS').select('settings').eq('id', tenantId).maybeSingle();
-  return { ...DEFAULTS, ...(data?.settings?.pricing || {}) };
-}
+// Config, rateio e cálculo ficam em lib/rateioLib (compartilhado com /rateio)
+const {
+  getConfig, saveConfig, autoMonthlyUnits, fixedExpenses,
+  fixedOverview, computeSheet,
+} = require('../lib/rateioLib');
 
 // Total mensal das despesas fixas ativas (0 se a migração 040 não rodou)
 async function fixedMonthlyTotal(tenantId) {
-  try {
-    const { data, error } = await supabase.from('DESPESAS_FIXAS')
-      .select('amount').eq('tenant_id', tenantId).eq('is_active', true);
-    if (error) throw error;
-    return (data || []).reduce((s, f) => s + (Number(f.amount) || 0), 0);
-  } catch { return 0; }
-}
-
-// Média de unidades vendidas/mês (últimos 90 dias) — usada como sugestão
-async function autoMonthlyUnits(tenantId) {
-  try {
-    const since = new Date(Date.now() - 90 * 86400000).toISOString();
-    const { data, error } = await supabase
-      .from('VENDA_ITENS')
-      .select('quantity, VENDAS!inner(tenant_id, status, created_at)')
-      .eq('VENDAS.tenant_id', tenantId)
-      .neq('VENDAS.status', 'cancelled')
-      .gte('VENDAS.created_at', since)
-      .limit(20000);
-    if (error) throw error;
-    const total = (data || []).reduce((s, i) => s + (Number(i.quantity) || 0), 0);
-    return Math.round(total / 3);
-  } catch { return 0; }
+  const items = await fixedExpenses(tenantId);
+  return items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
 }
 
 function computePrice(product, cfg, overheadUnit) {
@@ -115,6 +85,9 @@ router.put('/config', async (req, res) => {
       const r = String(req.body.tax_regime || 'simples').slice(0, 40);
       clean.tax_regime = r;
     }
+    if (req.body.rateio_method !== undefined) {
+      clean.rateio_method = req.body.rateio_method === 'vendas' ? 'vendas' : 'producao';
+    }
     // soma dos percentuais precisa deixar espaço no divisor
     const cur = await getConfig(req.tenantId);
     const merged = { ...cur, ...clean };
@@ -122,12 +95,9 @@ router.put('/config', async (req, res) => {
       .reduce((s, k) => s + (Number(merged[k]) || 0), 0);
     if (soma >= 100) return res.status(400).json({ error: 'A soma de margem + percentuais precisa ser menor que 100%' });
 
-    const { data: emp } = await supabase.from('EMPRESAS').select('settings').eq('id', req.tenantId).maybeSingle();
-    const settings = { ...(emp?.settings || {}), pricing: merged };
-    const { error } = await supabase.from('EMPRESAS').update({ settings }).eq('id', req.tenantId);
-    if (error) throw error;
+    const saved = await saveConfig(req.tenantId, clean);
     audit(req, 'update', 'pricing_config', req.tenantId, clean);
-    res.json(merged);
+    res.json(saved);
   } catch (err) {
     console.error('[pricing/config]', err.message);
     res.status(500).json({ error: 'Erro ao salvar configuração' });
@@ -221,69 +191,11 @@ const err042 = res => res.status(400).json({
   error: 'Rode a migração 042_precificacao.sql no Supabase (SQL Editor) para usar a Formação de Preço.',
 });
 
-// Mesmo cálculo da tela (fonte da verdade no servidor: gravado na ficha
-// para os relatórios saírem consistentes mesmo se a tela mudar).
-function computeSheet(sheet) {
-  const qty = Math.max(1, Number(sheet.calc_quantity) || 1);
-  const b = sheet.blocks || {};
-
-  const mp   = b.materia_prima || {};
-  const pers = b.personalizacao || {};
-  const emb  = b.embalagem || {};
-  const fr   = b.frete || {};
-  const tintas = Array.isArray(b.tintas) ? b.tintas : [];
-
-  const matUnit   = Number(mp.unit_cost) || 0;
-  const persUnit  = (Number(pers.screen_cost) || 0) / Math.max(1, Number(pers.screen_uses) || qty);
-  const tintaUnit = tintas.reduce((s, t) => s + (Number(t.amount) || 0), 0) / qty;
-  const embUnit   = (Number(emb.units_per_box) > 0) ? (Number(emb.box_price) || 0) / Number(emb.units_per_box) : 0;
-  const freteUnit = (Number(fr.freight_value) || 0) / Math.max(1, Number(fr.quantity_bought) || qty);
-  const overhead  = Number(sheet.overhead_unit) || 0;
-
-  const subtotal  = matUnit + persUnit + tintaUnit + embUnit + freteUnit + overhead;
-  const taxPct    = Number(sheet.tax_pct) || 0;
-  const taxUnit   = subtotal * taxPct / 100;
-  const custoUnit = subtotal + taxUnit;
-
-  const price = m => { const d = 1 - (Number(m) || 0) / 100; return d > 0 ? custoUnit / d : 0; };
-  const r2 = v => Math.round(v * 100) / 100;
-  const r4 = v => Math.round(v * 10000) / 10000;
-
-  return {
-    cost_direct: r4(matUnit),
-    cost_subtotal: r4(subtotal),
-    cost_unit: r4(custoUnit),
-    price_min: r2(price(sheet.margin_min_pct ?? 20)),
-    price_ideal: r2(price(sheet.margin_ideal_pct ?? 40)),
-    price_premium: r2(price(sheet.margin_premium_pct ?? 50)),
-  };
-}
-
-// Total das despesas fixas + produção mensal → rateio por unidade
-async function fixedOverview(tenantId) {
-  const cfg = await getConfig(tenantId);
-  let items = [];
-  try {
-    const { data, error } = await supabase.from('DESPESAS_FIXAS')
-      .select('id, name, amount, is_active').eq('tenant_id', tenantId).eq('is_active', true)
-      .order('amount', { ascending: false });
-    if (error) throw error;
-    items = data || [];
-  } catch { /* migração 040 pendente → lista vazia */ }
-  const total = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
-  const autoUnits = await autoMonthlyUnits(tenantId);
-  const units = cfg.monthly_units != null && cfg.monthly_units > 0 ? cfg.monthly_units : autoUnits;
-  const overheadUnit = units > 0 ? total / units : 0;
-  return {
-    items, total,
-    monthly_units: units,
-    monthly_units_source: cfg.monthly_units != null && cfg.monthly_units > 0 ? 'manual' : 'auto',
-    auto_monthly_units: autoUnits,
-    overhead_unit: Math.round(overheadUnit * 10000) / 10000,
-    tax_regime: cfg.tax_regime || 'simples',
-    tax_pct_default: Number(cfg.tax_pct) || 0,
-  };
-}
+// Somente as colunas calculadas que existem na tabela PRECIFICACOES
+const computedCols = c => ({
+  cost_direct: c.cost_direct, cost_subtotal: c.cost_subtotal, cost_unit: c.cost_unit,
+  price_min: c.price_min, price_ideal: c.price_ideal, price_premium: c.price_premium,
+});
 
 // Resumo dos custos fixos p/ a faixa "CUSTOS FIXOS MENSAIS" e o Rateio
 router.get('/fixed-summary', async (req, res) => {
@@ -428,7 +340,7 @@ router.post('/sheets', async (req, res) => {
   try {
     const fixed = await fixedOverview(req.tenantId);
     const sheet = { ...body, overhead_unit: fixed.overhead_unit };
-    const computed = computeSheet(sheet);
+    const computed = computedCols(computeSheet(sheet));
     const { data, error } = await supabase.from('PRECIFICACOES').insert({
       ...sheet, ...computed,
       tenant_id: req.tenantId, user_id: req.userId || req.user?.id || null,
@@ -454,7 +366,7 @@ router.put('/sheets/:id', async (req, res) => {
 
     const fixed = await fixedOverview(req.tenantId);
     const merged = { ...cur, ...body, overhead_unit: fixed.overhead_unit };
-    const computed = computeSheet(merged);
+    const computed = computedCols(computeSheet(merged));
     const { data, error } = await supabase.from('PRECIFICACOES')
       .update({ ...body, overhead_unit: fixed.overhead_unit, ...computed, updated_at: new Date().toISOString() })
       .eq('id', req.params.id).eq('tenant_id', req.tenantId)

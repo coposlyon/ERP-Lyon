@@ -63,6 +63,7 @@ router.use('/stock',     requireModules('stock','purchases'), stockRoutes);
 router.use('/financial', requireModules('financial'), financialRoutes);
 router.use('/contas',    requireModules('financial'), require('./contas'));
 router.use('/pricing',   requireModules('financial','products','settings'), require('./pricing'));
+router.use('/rateio',    requireModules('financial','products','settings'), require('./rateio'));
 router.use('/fiscal',    requireModules('fiscal'), fiscalRoutes);
 router.use('/reports',   requireModules('reports'), reportsRoutes);
 router.use('/settings',  requireModules('settings'), settingsRoutes);

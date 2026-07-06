@@ -1,7 +1,7 @@
 // Ícone por nome da despesa fixa (Aluguel → casa, Energia → raio...)
 import {
   Home, Zap, Droplets, Wifi, Phone, FileSpreadsheet, Megaphone,
-  Monitor, UserRound, Users, Receipt,
+  Monitor, UserRound, Users, Receipt, Fuel, Wrench,
 } from 'lucide-react';
 
 const MAP = [
@@ -15,6 +15,8 @@ const MAP = [
   [/sistema|software|erp|licen/i, Monitor],
   [/pr[óo][ -]?labore/i, UserRound],
   [/funcion[áa]rio|sal[áa]rio|folha|colaborador/i, Users],
+  [/combust[íi]vel|gasolina|diesel/i, Fuel],
+  [/manuten[çc]/i, Wrench],
 ];
 
 export function iconFor(name) {

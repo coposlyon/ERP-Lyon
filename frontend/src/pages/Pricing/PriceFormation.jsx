@@ -493,14 +493,14 @@ export default function PriceFormation() {
               <h2 className="font-semibold text-gray-900 flex items-center gap-2">
                 <Landmark size={17} className="text-primary-600" /> CUSTOS FIXOS MENSAIS (RATEIO)
               </h2>
-              <Link to="/pricing/rateio" className="text-xs text-primary-600 hover:underline">
+              <Link to="/rateio/despesas-fixas" className="text-xs text-primary-600 hover:underline">
                 Gerenciar despesas →
               </Link>
             </div>
 
             {(fixed?.items || []).length === 0 ? (
               <p className="text-sm text-gray-400">
-                Nenhuma despesa fixa cadastrada. <Link to="/pricing/rateio" className="text-primary-600 hover:underline">Cadastre em Rateio de Custos</Link> para o rateio entrar no cálculo.
+                Nenhuma despesa fixa cadastrada. <Link to="/rateio/despesas-fixas" className="text-primary-600 hover:underline">Cadastre em Rateio de Custos</Link> para o rateio entrar no cálculo.
               </p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">

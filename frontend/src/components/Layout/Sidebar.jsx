@@ -8,7 +8,7 @@ import {
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory,
-  Calculator, PieChart, SlidersHorizontal, Trophy,
+  Calculator, PieChart, SlidersHorizontal, Trophy, Home,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -75,10 +75,22 @@ const menuItems = [
     icon: Calculator,
     children: [
       { label: 'Formação de Preço', path: '/pricing/formacao', icon: Calculator, module: 'financial' },
-      { label: 'Rateio de Custos', path: '/pricing/rateio', icon: PieChart, module: 'financial' },
+      { label: 'Rateio de Custos', path: '/rateio/despesas-fixas', icon: PieChart, module: 'financial' },
       { label: 'Simulador de Preço', path: '/pricing/simulador', icon: SlidersHorizontal, module: 'financial' },
       { label: 'Relatórios de Preço', path: '/pricing/relatorios', icon: Trophy, module: 'financial' },
       { label: 'Análise de Produtos', path: '/pricing', icon: LineChart, module: 'financial', exact: true },
+    ],
+  },
+  {
+    label: 'Rateio de Custos',
+    icon: PieChart,
+    children: [
+      { label: 'Despesas Fixas', path: '/rateio/despesas-fixas', icon: Home, module: 'financial' },
+      { label: 'Despesas Variáveis', path: '/rateio/despesas-variaveis', icon: Percent, module: 'financial' },
+      { label: 'Rateio por Produto', path: '/rateio/produto', icon: Package, module: 'financial' },
+      { label: 'Rateio por Pedido', path: '/rateio/pedido', icon: ShoppingCart, module: 'financial' },
+      { label: 'Simulador de Metas', path: '/rateio/metas', icon: Target, module: 'financial' },
+      { label: 'Histórico de Rateios', path: '/rateio/historico', icon: ScrollText, module: 'financial' },
     ],
   },
   {
