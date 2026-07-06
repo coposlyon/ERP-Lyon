@@ -135,6 +135,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
   const [docStatus,  setDocStatus]  = useState(null); // null | 'ok' | 'error' | 'invalid'
   const lookupInProgress = useRef(false);          // ref para evitar stale closure na guard
   const lastLookup = useRef('');                   // último CNPJ consultado (evita repetir no blur)
+  const lastCepLookup = useRef('');                // último CEP consultado (blur sem mudança não refaz)
 
   useEffect(() => {
     if (customer) {
@@ -159,6 +160,9 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
         blocked:      !!customer.blocked,
         block_reason: customer.block_reason || '',
       });
+      // CEP já salvo conta como "consultado": abrir o cadastro e passar pelo
+      // campo não dispara a busca de novo (era isso que apagava rua/bairro).
+      lastCepLookup.current = String(customer.address?.zip || '').replace(/\D/g, '');
     }
     // Reinicializa APENAS quando muda o cliente em si (id). Antes dependia do
     // objeto inteiro: qualquer refetch da tela-mãe criava um objeto novo e
@@ -248,19 +252,25 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
   async function handleCepBlur(e) {
     const cep = e.target.value.replace(/\D/g, '');
     if (cep.length !== 8) return;
+    // Só consulta se o CEP realmente mudou — sair do campo sem alterar
+    // não pode mexer no endereço já preenchido.
+    if (cep === lastCepLookup.current) return;
     setCepLoading(true);
     try {
       const res  = await fetch(`/api/cep/${cep}`);
       const data = await res.json();
       if (!res.ok) { toast.error(data.error || 'CEP não encontrado'); return; }
+      lastCepLookup.current = cep;
+      // CEP genérico de cidade vem sem rua/bairro — nunca apaga o que já
+      // está preenchido com resposta vazia.
       setForm(p => ({
         ...p,
         address: {
           ...p.address,
-          street:       (data.street       || '').toUpperCase(),
-          neighborhood: (data.neighborhood || '').toUpperCase(),
-          city:         (data.city         || '').toUpperCase(),
-          state:        (data.state        || '').toUpperCase(),
+          street:       data.street       ? data.street.toUpperCase()       : p.address.street,
+          neighborhood: data.neighborhood ? data.neighborhood.toUpperCase() : p.address.neighborhood,
+          city:         data.city         ? data.city.toUpperCase()         : p.address.city,
+          state:        data.state        ? data.state.toUpperCase()        : p.address.state,
           zip:          e.target.value,
         },
       }));

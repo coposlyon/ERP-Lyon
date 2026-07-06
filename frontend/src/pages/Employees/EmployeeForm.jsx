@@ -196,9 +196,10 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
       const res  = await fetch(`/api/cep/${cep}`);
       const data = await res.json();
       if (!res.ok) { toast.error(data.error || 'CEP não encontrado'); return; }
+      // CEP genérico de cidade vem sem rua/bairro — não apaga o que já está preenchido
       setForm(p => ({
         ...p,
-        address: { ...p.address, street: up(data.street)||'', neighborhood: up(data.neighborhood)||'', city: up(data.city)||'', state: up(data.state)||'', zip: raw },
+        address: { ...p.address, street: up(data.street)||p.address.street, neighborhood: up(data.neighborhood)||p.address.neighborhood, city: up(data.city)||p.address.city, state: up(data.state)||p.address.state, zip: raw },
       }));
     } catch { toast.error('Erro ao buscar CEP'); }
     finally   { setCepLoading(false); }
