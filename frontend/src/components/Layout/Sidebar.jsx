@@ -8,7 +8,7 @@ import {
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory,
-  Calculator, PieChart, SlidersHorizontal, Trophy, Home,
+  Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -136,6 +136,12 @@ const menuItems = [
     icon: Receipt,
     path: '/fiscal',
     module: 'fiscal',
+  },
+  {
+    label: 'Contábil / Fiscal',
+    icon: Landmark,
+    path: '/contabil',
+    module: 'financial',
   },
   {
     label: 'Devoluções',

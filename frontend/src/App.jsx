@@ -39,6 +39,7 @@ const RateioPedido       = lazy(() => import('@/pages/Rateio/RateioPedido'));
 const SimuladorMetas     = lazy(() => import('@/pages/Rateio/SimuladorMetas'));
 const HistoricoRateios   = lazy(() => import('@/pages/Rateio/HistoricoRateios'));
 const Fiscal             = lazy(() => import('@/pages/Fiscal/Fiscal'));
+const Contabil           = lazy(() => import('@/pages/Contabil/Contabil'));
 const Reports            = lazy(() => import('@/pages/Reports/Reports'));
 const Settings           = lazy(() => import('@/pages/Settings/Settings'));
 const Users              = lazy(() => import('@/pages/Settings/Users'));
@@ -155,6 +156,8 @@ function AppRoutes() {
         <Route path="rateio/historico" element={<Mod m={['financial','products','settings']}><HistoricoRateios /></Mod>} />
         {/* Fiscal */}
         <Route path="fiscal" element={<Mod m="fiscal"><Fiscal /></Mod>} />
+        {/* Contábil / Fiscal */}
+        <Route path="contabil" element={<Mod m={['financial','fiscal','settings']}><Contabil /></Mod>} />
         {/* Relatórios */}
         <Route path="reports" element={<Mod m="reports"><Reports /></Mod>} />
         {/* Config */}

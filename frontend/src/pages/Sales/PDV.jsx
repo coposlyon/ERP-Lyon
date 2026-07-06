@@ -86,6 +86,9 @@ export default function PDV({ onDone, mode = 'sale' }) {
   const [png, setPng] = useState(null); // { dataUrl, number } — foto gerada
   const [payTerm, setPayTerm] = useState(null); // condição de pagamento { label, percent }
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  // Contábil: empresa faturadora + conta de destino (migração 043)
+  const [billingCompanyId, setBillingCompanyId] = useState('');
+  const [receivingAccountId, setReceivingAccountId] = useState('');
   const [receivedAmount, setReceivedAmount] = useState('');
   const [installments, setInstallments] = useState(1);
   const [operationDate, setOperationDate] = useState(todayISO);
@@ -233,6 +236,31 @@ export default function PDV({ onDone, mode = 'sale' }) {
     },
     onError: (err) => toast.error(err.error || 'Erro ao salvar o orçamento'),
   });
+
+  // Contábil: empresas faturadoras + contas bancárias (opcional — some se o módulo não estiver ativo)
+  const { data: billingCompanies } = useQuery({
+    queryKey: ['contabil-companies'],
+    queryFn: () => api.get('/contabil/companies').catch(() => []),
+    enabled: !isQuote,
+    staleTime: 60000,
+  });
+  const { data: bankAccounts } = useQuery({
+    queryKey: ['contabil-accounts'],
+    queryFn: () => api.get('/contabil/accounts').catch(() => []),
+    enabled: !isQuote,
+    staleTime: 60000,
+  });
+  const companiesOk = Array.isArray(billingCompanies) ? billingCompanies : [];
+  // Empresa padrão pré-selecionada
+  useEffect(() => {
+    if (!billingCompanyId && companiesOk.length) {
+      const def = companiesOk.find(c => c.is_default) || companiesOk[0];
+      setBillingCompanyId(def.id);
+    }
+  }, [companiesOk.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Contas da empresa selecionada (contas sem vínculo aparecem para todas)
+  const companyAccounts = (Array.isArray(bankAccounts) ? bankAccounts : [])
+    .filter(a => a.is_active !== false && (!a.company_id || a.company_id === billingCompanyId));
 
   // Calcular frete + prazo pelo estado/CEP do cliente
   const freteMut = useMutation({
@@ -415,7 +443,7 @@ export default function PDV({ onDone, mode = 'sale' }) {
   const received = parseMoney(receivedAmount);
   const change = paymentMethod === 'cash' && received > 0 ? received - total : 0;
 
-  function finalizeSale() {
+  async function finalizeSale() {
     if (items.length === 0) { toast.error('Adicione ao menos um produto'); return; }
     if (!selectedCustomer) { toast.error('Selecione o cliente (obrigatório)'); return; }
     if (!operationDate) { toast.error('Informe a Data da operação'); return; }
@@ -425,6 +453,26 @@ export default function PDV({ onDone, mode = 'sale' }) {
     if (paymentMethod === 'cash' && received > 0 && received < total) {
       toast.error(`Valor insuficiente! Faltam ${fmt(total - received)}`);
       return;
+    }
+    // Simulador de faturamento (Contábil): informa o impacto no limite da
+    // empresa faturadora ANTES de concluir — a decisão é do usuário.
+    if (billingCompanyId) {
+      try {
+        const sim = await api.get(`/contabil/simulate?company_id=${billingCompanyId}&amount=${total}`);
+        if (sim?.exceeds) {
+          const ok = confirm(
+            `⚠️ ATENÇÃO: esta operação ultrapassará o limite configurado!\n\n` +
+            `Empresa selecionada: ${sim.company.razao_social}\n` +
+            `Faturamento atual: ${fmt(sim.faturado_atual)}\n` +
+            `Após esta venda: ${fmt(sim.apos_venda)}\n` +
+            `Limite anual: ${fmt(sim.limite)}\n\n` +
+            `Deseja continuar mesmo assim?`,
+          );
+          if (!ok) return;
+        } else if (sim?.warning) {
+          toast(`${sim.company.razao_social}: ${String(sim.pct_apos).replace('.', ',')}% do limite anual após esta venda`, { icon: '⚠️' });
+        }
+      } catch { /* módulo contábil indisponível → não trava a venda */ }
     }
     // garante a regra do ano: data retroativa à operação vira o ano seguinte
     const evD = forwardDate(eventDate), shD = forwardDate(shipDate), dlD = forwardDate(deliveryDate);
@@ -460,6 +508,8 @@ export default function PDV({ onDone, mode = 'sale' }) {
       })(),
       payment_method: paymentMethod,
       ...(paymentMethod === 'a_prazo' ? { installments, first_due_date: firstDueDate } : {}),
+      ...(billingCompanyId ? { billing_company_id: billingCompanyId } : {}),
+      ...(receivingAccountId ? { receiving_account_id: receivingAccountId } : {}),
     });
   }
 
@@ -917,6 +967,31 @@ export default function PDV({ onDone, mode = 'sale' }) {
               </button>
             ))}
           </div>
+
+          {/* Empresa Faturadora + Conta de Destino (módulo Contábil/Fiscal) */}
+          {companiesOk.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">Empresa Faturadora</label>
+                <select className="input text-sm w-full" value={billingCompanyId}
+                  onChange={e => { setBillingCompanyId(e.target.value); setReceivingAccountId(''); }}>
+                  {companiesOk.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome_fantasia || c.razao_social}{Number(c.pct) > 0 ? ` · ${Number(c.pct).toFixed(0)}% do limite` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">Conta de Destino</label>
+                <select className="input text-sm w-full" value={receivingAccountId}
+                  onChange={e => setReceivingAccountId(e.target.value)}>
+                  <option value="">— Selecionar —</option>
+                  {companyAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
 
           {paymentMethod === 'cash' && (
             <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">

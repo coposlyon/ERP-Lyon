@@ -118,6 +118,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
     customer_id, type, items, notes, discount, delivery_date,
     artwork_url, artwork_notes, payment_method, installments, first_due_date,
     operation_date, event_date, ship_date, max_delivery_date, order_key, freight, payment_adjustment, carrier_id,
+    billing_company_id, receiving_account_id, // Contábil: empresa faturadora + conta de destino (migração 043)
   } = req.body;
 
   if (!items || items.length === 0) {
@@ -168,6 +169,8 @@ router.post('/', validate(saleSchema), async (req, res) => {
       if (max_delivery_date) patch.max_delivery_date = max_delivery_date;
       if (order_key) patch.order_key = order_key;
       if (carrier_id) patch.carrier_id = carrier_id;
+      if (billing_company_id) patch.billing_company_id = billing_company_id;
+      if (receiving_account_id) patch.receiving_account_id = receiving_account_id;
       // Frete + ajuste por condição de pagamento (juros/desconto): somam no total da venda
       const freightVal = Number(freight) || 0;
       const payAdj = Number(payment_adjustment) || 0;
@@ -239,6 +242,14 @@ async function legacyCreateSale(req, res) {
       .single();
 
     if (saleError) throw saleError;
+
+    // Contábil: empresa faturadora + conta de destino (migração 043; ignora se as colunas faltarem)
+    if (req.body.billing_company_id || req.body.receiving_account_id) {
+      const bill = {};
+      if (req.body.billing_company_id) bill.billing_company_id = req.body.billing_company_id;
+      if (req.body.receiving_account_id) bill.receiving_account_id = req.body.receiving_account_id;
+      await supabase.from('VENDAS').update(bill).eq('id', sale.id).eq('tenant_id', req.tenantId);
+    }
 
     const saleItems = items.map(item => ({
       sale_id: sale.id,
