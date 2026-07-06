@@ -51,8 +51,18 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// Grava o frete da compra (coluna da migração 042; ignora se não existir)
+async function setPurchaseFreight(purchaseId, tenantId, freight) {
+  const v = Number(freight);
+  if (!(v > 0) || !purchaseId) return;
+  try {
+    await supabase.from('COMPRAS').update({ freight: v })
+      .eq('id', purchaseId).eq('tenant_id', tenantId);
+  } catch { /* migração 042 pendente */ }
+}
+
 router.post('/', async (req, res) => {
-  const { supplier_id, items, notes, discount } = req.body;
+  const { supplier_id, items, notes, discount, freight } = req.body;
 
   if (!items || items.length === 0) {
     return res.status(400).json({ error: 'A compra deve ter ao menos um item' });
@@ -73,6 +83,7 @@ router.post('/', async (req, res) => {
       }
       return res.status(400).json({ error: error.message.replace(/^.*?:\s*/, '') });
     }
+    await setPurchaseFreight(data?.id, req.tenantId, freight);
     audit(req, 'create', 'purchase', data?.id, { number: data?.number, total: data?.total, items: items.length });
     res.status(201).json(data);
   } catch (err) {
@@ -80,10 +91,30 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Atualizar o frete de uma compra existente (usado pela Precificação)
+router.patch('/:id/freight', async (req, res) => {
+  const v = Number(req.body.freight);
+  if (!Number.isFinite(v) || v < 0) return res.status(400).json({ error: 'Valor de frete inválido' });
+  try {
+    const { data, error } = await supabase.from('COMPRAS')
+      .update({ freight: v })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId)
+      .select('id, number, freight').single();
+    if (error) throw error;
+    audit(req, 'update', 'purchase_freight', data.id, { number: data.number, freight: v });
+    res.json(data);
+  } catch (err) {
+    if (/freight|42703|schema cache/i.test(err.message || '')) {
+      return res.status(400).json({ error: 'Rode a migração 042_precificacao.sql para habilitar o frete nas compras.' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Caminho legado (não transacional) — usado só enquanto a função
 // criar_compra não existir no banco (migração 010 pendente).
 async function legacyCreatePurchase(req, res) {
-  const { supplier_id, items, notes, discount } = req.body;
+  const { supplier_id, items, notes, discount, freight } = req.body;
   try {
     const { data: nextNumber } = await supabase
       .rpc('proximo_numero_compra', { p_tenant_id: req.tenantId });
@@ -109,6 +140,7 @@ async function legacyCreatePurchase(req, res) {
       .single();
 
     if (purchaseError) throw purchaseError;
+    await setPurchaseFreight(purchase.id, req.tenantId, freight);
 
     const purchaseItems = items.map(item => ({
       purchase_id: purchase.id,
@@ -243,6 +275,7 @@ router.post('/import-nfe', async (req, res) => {
       _notes: `Importado da NF-e ${nfe.number || ''}`.trim(),
     });
     if (pErr) return res.status(400).json({ error: 'Rode a migração 010 (criar_compra) antes de importar NF-e. ' + pErr.message });
+    await setPurchaseFreight(purchase?.id, req.tenantId, nfe.freight);
 
     audit(req, 'import', 'purchase', purchase?.id, { nfe: nfe.number, items: items.length, created_products: createdProducts, created_supplier: createdSupplier });
     res.status(201).json({ purchase, created_products: createdProducts, created_supplier: createdSupplier, items: items.length });

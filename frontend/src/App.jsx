@@ -29,6 +29,10 @@ const Financial          = lazy(() => import('@/pages/Financial/Financial'));
 const FinancialConfig    = lazy(() => import('@/pages/Financial/FinancialConfig'));
 const Contas             = lazy(() => import('@/pages/Financial/Contas'));
 const Pricing            = lazy(() => import('@/pages/Pricing/Pricing'));
+const PriceFormation     = lazy(() => import('@/pages/Pricing/PriceFormation'));
+const RateioCustos       = lazy(() => import('@/pages/Pricing/RateioCustos'));
+const PriceSimulator     = lazy(() => import('@/pages/Pricing/PriceSimulator'));
+const PricingReports     = lazy(() => import('@/pages/Pricing/PricingReports'));
 const Fiscal             = lazy(() => import('@/pages/Fiscal/Fiscal'));
 const Reports            = lazy(() => import('@/pages/Reports/Reports'));
 const Settings           = lazy(() => import('@/pages/Settings/Settings'));
@@ -131,6 +135,11 @@ function AppRoutes() {
         <Route path="financial-config" element={<Mod m="financial"><FinancialConfig /></Mod>} />
         <Route path="contas" element={<Mod m="financial"><Contas /></Mod>} />
         <Route path="pricing" element={<Mod m={['financial','products','settings']}><Pricing /></Mod>} />
+        {/* Precificação (Formação de Preço / Rateio / Simulador / Relatórios) */}
+        <Route path="pricing/formacao" element={<Mod m={['financial','products','settings']}><PriceFormation /></Mod>} />
+        <Route path="pricing/rateio" element={<Mod m={['financial','products','settings']}><RateioCustos /></Mod>} />
+        <Route path="pricing/simulador" element={<Mod m={['financial','products','settings']}><PriceSimulator /></Mod>} />
+        <Route path="pricing/relatorios" element={<Mod m={['financial','products','settings']}><PricingReports /></Mod>} />
         {/* Fiscal */}
         <Route path="fiscal" element={<Mod m="fiscal"><Fiscal /></Mod>} />
         {/* Relatórios */}

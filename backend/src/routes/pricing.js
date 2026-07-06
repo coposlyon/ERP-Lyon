@@ -17,6 +17,7 @@ const DEFAULTS = {
   commission_pct: 0,   // comissão de vendedor
   freight_pct: 0,      // frete embutido no preço
   monthly_units: null, // unidades vendidas/mês p/ rateio (null = automático)
+  tax_regime: 'simples', // regime tributário padrão das fichas
 };
 
 async function getConfig(tenantId) {
@@ -109,6 +110,10 @@ router.put('/config', async (req, res) => {
       const u = req.body.monthly_units === null || req.body.monthly_units === ''
         ? null : Math.max(0, parseInt(req.body.monthly_units) || 0);
       clean.monthly_units = u;
+    }
+    if (req.body.tax_regime !== undefined) {
+      const r = String(req.body.tax_regime || 'simples').slice(0, 40);
+      clean.tax_regime = r;
     }
     // soma dos percentuais precisa deixar espaço no divisor
     const cur = await getConfig(req.tenantId);
@@ -204,6 +209,314 @@ router.put('/products/:id', async (req, res) => {
   } catch (err) {
     console.error('[pricing/apply]', err.message);
     res.status(500).json({ error: 'Erro ao aplicar preço' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FORMAÇÃO DE PREÇO (fichas de precificação) — migração 042
+// ════════════════════════════════════════════════════════════
+
+const missing042 = err => /PRECIFICACOES|does not exist|42P01|42703|schema cache/i.test(err?.message || '');
+const err042 = res => res.status(400).json({
+  error: 'Rode a migração 042_precificacao.sql no Supabase (SQL Editor) para usar a Formação de Preço.',
+});
+
+// Mesmo cálculo da tela (fonte da verdade no servidor: gravado na ficha
+// para os relatórios saírem consistentes mesmo se a tela mudar).
+function computeSheet(sheet) {
+  const qty = Math.max(1, Number(sheet.calc_quantity) || 1);
+  const b = sheet.blocks || {};
+
+  const mp   = b.materia_prima || {};
+  const pers = b.personalizacao || {};
+  const emb  = b.embalagem || {};
+  const fr   = b.frete || {};
+  const tintas = Array.isArray(b.tintas) ? b.tintas : [];
+
+  const matUnit   = Number(mp.unit_cost) || 0;
+  const persUnit  = (Number(pers.screen_cost) || 0) / Math.max(1, Number(pers.screen_uses) || qty);
+  const tintaUnit = tintas.reduce((s, t) => s + (Number(t.amount) || 0), 0) / qty;
+  const embUnit   = (Number(emb.units_per_box) > 0) ? (Number(emb.box_price) || 0) / Number(emb.units_per_box) : 0;
+  const freteUnit = (Number(fr.freight_value) || 0) / Math.max(1, Number(fr.quantity_bought) || qty);
+  const overhead  = Number(sheet.overhead_unit) || 0;
+
+  const subtotal  = matUnit + persUnit + tintaUnit + embUnit + freteUnit + overhead;
+  const taxPct    = Number(sheet.tax_pct) || 0;
+  const taxUnit   = subtotal * taxPct / 100;
+  const custoUnit = subtotal + taxUnit;
+
+  const price = m => { const d = 1 - (Number(m) || 0) / 100; return d > 0 ? custoUnit / d : 0; };
+  const r2 = v => Math.round(v * 100) / 100;
+  const r4 = v => Math.round(v * 10000) / 10000;
+
+  return {
+    cost_direct: r4(matUnit),
+    cost_subtotal: r4(subtotal),
+    cost_unit: r4(custoUnit),
+    price_min: r2(price(sheet.margin_min_pct ?? 20)),
+    price_ideal: r2(price(sheet.margin_ideal_pct ?? 40)),
+    price_premium: r2(price(sheet.margin_premium_pct ?? 50)),
+  };
+}
+
+// Total das despesas fixas + produção mensal → rateio por unidade
+async function fixedOverview(tenantId) {
+  const cfg = await getConfig(tenantId);
+  let items = [];
+  try {
+    const { data, error } = await supabase.from('DESPESAS_FIXAS')
+      .select('id, name, amount, is_active').eq('tenant_id', tenantId).eq('is_active', true)
+      .order('amount', { ascending: false });
+    if (error) throw error;
+    items = data || [];
+  } catch { /* migração 040 pendente → lista vazia */ }
+  const total = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+  const autoUnits = await autoMonthlyUnits(tenantId);
+  const units = cfg.monthly_units != null && cfg.monthly_units > 0 ? cfg.monthly_units : autoUnits;
+  const overheadUnit = units > 0 ? total / units : 0;
+  return {
+    items, total,
+    monthly_units: units,
+    monthly_units_source: cfg.monthly_units != null && cfg.monthly_units > 0 ? 'manual' : 'auto',
+    auto_monthly_units: autoUnits,
+    overhead_unit: Math.round(overheadUnit * 10000) / 10000,
+    tax_regime: cfg.tax_regime || 'simples',
+    tax_pct_default: Number(cfg.tax_pct) || 0,
+  };
+}
+
+// Resumo dos custos fixos p/ a faixa "CUSTOS FIXOS MENSAIS" e o Rateio
+router.get('/fixed-summary', async (req, res) => {
+  try {
+    res.json(await fixedOverview(req.tenantId));
+  } catch (err) {
+    console.error('[pricing/fixed-summary]', err.message);
+    res.status(500).json({ error: 'Erro ao carregar os custos fixos' });
+  }
+});
+
+// Integração com COMPRAS: última compra do produto → matéria-prima e frete
+router.get('/purchase-info/:productId', async (req, res) => {
+  try {
+    const { data: item, error } = await supabase
+      .from('COMPRA_ITENS')
+      .select('quantity, unit_price, created_at, COMPRAS!inner(id, number, created_at, status, tenant_id, freight, subtotal, FORNECEDORES(name))')
+      .eq('product_id', req.params.productId)
+      .eq('COMPRAS.tenant_id', req.tenantId)
+      .neq('COMPRAS.status', 'cancelled')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    if (!item) return res.json({ found: false });
+
+    const compra = item.COMPRAS || {};
+    // Quantidade total da compra (para ratear o frete entre todos os itens)
+    let totalQty = Number(item.quantity) || 0;
+    try {
+      const { data: allItems } = await supabase.from('COMPRA_ITENS')
+        .select('quantity').eq('purchase_id', compra.id);
+      totalQty = (allItems || []).reduce((s, i) => s + (Number(i.quantity) || 0), 0) || totalQty;
+    } catch { /* mantém a qty do item */ }
+
+    res.json({
+      found: true,
+      unit_price: Number(item.unit_price) || 0,
+      quantity: Number(item.quantity) || 0,
+      purchase_number: compra.number,
+      purchase_date: compra.created_at,
+      supplier_name: compra.FORNECEDORES?.name || '',
+      freight: Number(compra.freight) || 0,
+      purchase_total_qty: totalQty,
+    });
+  } catch (err) {
+    // coluna freight pode não existir (migração 042 pendente) → tenta sem ela
+    if (/freight/i.test(err.message || '')) {
+      try {
+        const { data: item } = await supabase
+          .from('COMPRA_ITENS')
+          .select('quantity, unit_price, created_at, COMPRAS!inner(id, number, created_at, status, tenant_id, FORNECEDORES(name))')
+          .eq('product_id', req.params.productId)
+          .eq('COMPRAS.tenant_id', req.tenantId)
+          .neq('COMPRAS.status', 'cancelled')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!item) return res.json({ found: false });
+        return res.json({
+          found: true,
+          unit_price: Number(item.unit_price) || 0,
+          quantity: Number(item.quantity) || 0,
+          purchase_number: item.COMPRAS?.number,
+          purchase_date: item.COMPRAS?.created_at,
+          supplier_name: item.COMPRAS?.FORNECEDORES?.name || '',
+          freight: 0,
+          purchase_total_qty: Number(item.quantity) || 0,
+        });
+      } catch (e2) { console.error('[pricing/purchase-info]', e2.message); }
+    }
+    console.error('[pricing/purchase-info]', err.message);
+    res.status(500).json({ error: 'Erro ao buscar a última compra do produto' });
+  }
+});
+
+// ── Fichas: CRUD ──────────────────────────────────────────
+const SHEET_FIELDS = [
+  'product_id', 'name', 'category', 'capacity', 'color_model', 'print_type',
+  'print_colors', 'calc_quantity', 'calc_reference', 'description', 'blocks',
+  'tax_regime', 'tax_pct', 'tax_notes',
+  'margin_min_pct', 'margin_ideal_pct', 'margin_premium_pct',
+];
+
+function pickSheetBody(body) {
+  const out = {};
+  for (const k of SHEET_FIELDS) if (body[k] !== undefined) out[k] = body[k];
+  if (out.name !== undefined) out.name = String(out.name || '').trim();
+  if (out.calc_quantity !== undefined) out.calc_quantity = Math.max(1, parseInt(out.calc_quantity) || 1);
+  if (out.print_colors !== undefined) out.print_colors = Math.min(Math.max(parseInt(out.print_colors) || 1, 0), 8);
+  for (const k of ['tax_pct', 'margin_min_pct', 'margin_ideal_pct', 'margin_premium_pct']) {
+    if (out[k] !== undefined) {
+      const v = Number(out[k]);
+      out[k] = Number.isFinite(v) ? Math.min(Math.max(v, 0), 95) : 0;
+    }
+  }
+  if (out.product_id === '') out.product_id = null;
+  return out;
+}
+
+router.get('/sheets', async (req, res) => {
+  const { search, include_inactive } = req.query;
+  try {
+    let q = supabase.from('PRECIFICACOES')
+      .select('*, PRODUTOS(id, name, sale_price)')
+      .eq('tenant_id', req.tenantId)
+      .order('updated_at', { ascending: false })
+      .limit(500);
+    if (include_inactive !== '1') q = q.eq('is_active', true);
+    if (search) {
+      const s = String(search).replace(/[%,()]/g, ' ').trim();
+      if (s) q = q.or(`name.ilike.%${s}%,category.ilike.%${s}%`);
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    if (missing042(err)) return err042(res);
+    console.error('[pricing/sheets]', err.message);
+    res.status(500).json({ error: 'Erro ao listar as fichas de precificação' });
+  }
+});
+
+router.get('/sheets/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('PRECIFICACOES')
+      .select('*, PRODUTOS(id, name, sale_price)')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Ficha não encontrada' });
+    res.json(data);
+  } catch (err) {
+    if (missing042(err)) return err042(res);
+    console.error('[pricing/sheets/:id]', err.message);
+    res.status(500).json({ error: 'Erro ao carregar a ficha' });
+  }
+});
+
+router.post('/sheets', async (req, res) => {
+  const body = pickSheetBody(req.body);
+  if (!body.name) return res.status(400).json({ error: 'Informe o nome do produto' });
+  try {
+    const fixed = await fixedOverview(req.tenantId);
+    const sheet = { ...body, overhead_unit: fixed.overhead_unit };
+    const computed = computeSheet(sheet);
+    const { data, error } = await supabase.from('PRECIFICACOES').insert({
+      ...sheet, ...computed,
+      tenant_id: req.tenantId, user_id: req.userId || req.user?.id || null,
+    }).select().single();
+    if (error) throw error;
+    audit(req, 'create', 'pricing_sheet', data.id, { name: data.name, cost_unit: data.cost_unit, price_ideal: data.price_ideal });
+    res.status(201).json(data);
+  } catch (err) {
+    if (missing042(err)) return err042(res);
+    console.error('[pricing/sheets POST]', err.message);
+    res.status(500).json({ error: 'Erro ao salvar a ficha de precificação' });
+  }
+});
+
+router.put('/sheets/:id', async (req, res) => {
+  const body = pickSheetBody(req.body);
+  if (body.name !== undefined && !body.name) return res.status(400).json({ error: 'Informe o nome do produto' });
+  try {
+    const { data: cur, error: e1 } = await supabase.from('PRECIFICACOES')
+      .select('*').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (e1) throw e1;
+    if (!cur) return res.status(404).json({ error: 'Ficha não encontrada' });
+
+    const fixed = await fixedOverview(req.tenantId);
+    const merged = { ...cur, ...body, overhead_unit: fixed.overhead_unit };
+    const computed = computeSheet(merged);
+    const { data, error } = await supabase.from('PRECIFICACOES')
+      .update({ ...body, overhead_unit: fixed.overhead_unit, ...computed, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId)
+      .select().single();
+    if (error) throw error;
+    audit(req, 'update', 'pricing_sheet', data.id, { name: data.name, cost_unit: data.cost_unit, price_ideal: data.price_ideal });
+    res.json(data);
+  } catch (err) {
+    if (missing042(err)) return err042(res);
+    console.error('[pricing/sheets PUT]', err.message);
+    res.status(500).json({ error: 'Erro ao atualizar a ficha' });
+  }
+});
+
+router.delete('/sheets/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('PRECIFICACOES')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId)
+      .select('id, name').single();
+    if (error) throw error;
+    audit(req, 'delete', 'pricing_sheet', data.id, { name: data.name });
+    res.json({ success: true });
+  } catch (err) {
+    if (missing042(err)) return err042(res);
+    console.error('[pricing/sheets DELETE]', err.message);
+    res.status(500).json({ error: 'Erro ao excluir a ficha' });
+  }
+});
+
+// ── Relatório: custo/lucro/margem por ficha (ranking) ─────
+router.get('/report', async (req, res) => {
+  try {
+    const [{ data, error }, fixed] = await Promise.all([
+      supabase.from('PRECIFICACOES')
+        .select('id, name, category, capacity, print_type, calc_quantity, tax_pct, margin_ideal_pct, cost_direct, cost_subtotal, cost_unit, overhead_unit, price_min, price_ideal, price_premium, updated_at, PRODUTOS(id, name, sale_price)')
+        .eq('tenant_id', req.tenantId).eq('is_active', true)
+        .order('updated_at', { ascending: false }).limit(1000),
+      fixedOverview(req.tenantId),
+    ]);
+    if (error) throw error;
+
+    const rows = (data || []).map(s => {
+      const salePrice = Number(s.PRODUTOS?.sale_price) || 0;
+      const priceUsed = salePrice > 0 ? salePrice : Number(s.price_ideal) || 0;
+      const lucroUnit = priceUsed - (Number(s.cost_unit) || 0);
+      const margem = priceUsed > 0 ? (lucroUnit / priceUsed) * 100 : 0;
+      return {
+        ...s,
+        product_name: s.PRODUTOS?.name || null,
+        sale_price: salePrice || null,
+        price_used: Math.round(priceUsed * 100) / 100,
+        price_source: salePrice > 0 ? 'cadastro' : 'ideal',
+        lucro_unit: Math.round(lucroUnit * 100) / 100,
+        margem_pct: Math.round(margem * 10) / 10,
+      };
+    });
+    res.json({ fixed, sheets: rows });
+  } catch (err) {
+    if (missing042(err)) return err042(res);
+    console.error('[pricing/report]', err.message);
+    res.status(500).json({ error: 'Erro ao gerar o relatório de precificação' });
   }
 });
 

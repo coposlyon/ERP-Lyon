@@ -56,6 +56,7 @@ function parseNFe(xml) {
     items,
     total: Number(tot.vNF) || items.reduce((s, it) => s + it.total, 0),
     discount: Number(tot.vDesc) || 0,
+    freight: Number(tot.vFrete) || 0,
   };
 }
 

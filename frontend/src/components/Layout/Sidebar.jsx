@@ -8,7 +8,7 @@ import {
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory,
-  Calculator,
+  Calculator, PieChart, SlidersHorizontal, Trophy,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -66,9 +66,19 @@ const menuItems = [
     icon: Wallet,
     children: [
       { label: 'Central de Contas', path: '/contas', icon: CalendarDays, module: 'financial' },
-      { label: 'Precificação', path: '/pricing', icon: Calculator, module: 'financial' },
       { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet, module: 'financial' },
       { label: 'Config. Financeira', path: '/financial-config', icon: Building2, module: 'financial' },
+    ],
+  },
+  {
+    label: 'Precificação',
+    icon: Calculator,
+    children: [
+      { label: 'Formação de Preço', path: '/pricing/formacao', icon: Calculator, module: 'financial' },
+      { label: 'Rateio de Custos', path: '/pricing/rateio', icon: PieChart, module: 'financial' },
+      { label: 'Simulador de Preço', path: '/pricing/simulador', icon: SlidersHorizontal, module: 'financial' },
+      { label: 'Relatórios de Preço', path: '/pricing/relatorios', icon: Trophy, module: 'financial' },
+      { label: 'Análise de Produtos', path: '/pricing', icon: LineChart, module: 'financial', exact: true },
     ],
   },
   {
@@ -192,6 +202,7 @@ function SidebarGroup({ item, collapsed, onMobileClose }) {
             <NavLink
               key={child.path}
               to={child.path}
+              end={child.exact}
               onClick={onMobileClose}
               className={({ isActive }) =>
                 `sidebar-item text-xs ${isActive ? 'active' : ''}`
