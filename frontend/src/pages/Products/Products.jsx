@@ -563,7 +563,7 @@ export default function Products() {
               {sampleBusy ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />} Ver amostra
             </button>
           </div>
-          <p className="text-xs text-gray-400 -mt-2">Ou copie uma imagem e aperte <b>Ctrl+V</b> aqui. <span className="text-gray-300">· motor v5</span></p>
+          <p className="text-xs text-gray-400 -mt-2">Ou copie uma imagem e aperte <b>Ctrl+V</b> aqui. <span className="text-gray-300">· motor v6</span></p>
 
           {(effectiveSearch || categoryId) && (
             <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
