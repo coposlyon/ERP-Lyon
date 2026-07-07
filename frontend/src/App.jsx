@@ -17,6 +17,7 @@ const Dashboard          = lazy(() => import('@/pages/Dashboard/Dashboard'));
 const Products           = lazy(() => import('@/pages/Products/Products'));
 const Customers          = lazy(() => import('@/pages/Customers/Customers'));
 const CustomerDetail     = lazy(() => import('@/pages/Customers/CustomerDetail'));
+const LyonPrime          = lazy(() => import('@/pages/LyonPrime/LyonPrime'));
 const Suppliers          = lazy(() => import('@/pages/Suppliers/Suppliers'));
 const Sales              = lazy(() => import('@/pages/Sales/Sales'));
 const SaleForm           = lazy(() => import('@/pages/Sales/SaleForm'));
@@ -114,6 +115,7 @@ function AppRoutes() {
         <Route path="products" element={<Mod m="products"><Products /></Mod>} />
         <Route path="customers" element={<Mod m="customers"><Customers /></Mod>} />
         <Route path="customers/:id" element={<Mod m="customers"><CustomerDetail /></Mod>} />
+        <Route path="lyon-prime" element={<Mod m="customers"><LyonPrime /></Mod>} />
         <Route path="suppliers" element={<Mod m="suppliers"><Suppliers /></Mod>} />
         <Route path="employees" element={<Mod m="employees"><Employees /></Mod>} />
         <Route path="logistics" element={<Mod m="logistics"><Logistics /></Mod>} />

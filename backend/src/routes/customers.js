@@ -6,6 +6,7 @@ const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { getEmailConfig, makeTransport } = require('../lib/mailer');
 const { recomputeRating, recomputeAll } = require('../lib/customerRating');
+const { computePrime, TIERS } = require('../lib/lyonPrime');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -235,6 +236,47 @@ router.get('/:id/credit-checks', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Programa Lyon Prime ────────────────────────────────────────────
+// Ranking geral (página Lyon Prime): estrelas, faturamento 12m e selo.
+router.get('/prime/ranking', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('CLIENTES')
+      .select('id, display_id, name, nome_fantasia, type, rating, total_12m, credit_limit, blocked, is_active, selo_confianca, vendedor')
+      .eq('tenant_id', req.tenantId)
+      .in('type', ['PF', 'PJ'])
+      .order('total_12m', { ascending: false, nullsFirst: false })
+      .limit(300);
+    if (error) {
+      // colunas 045 podem não existir ainda → versão reduzida
+      const { data: basic, error: e2 } = await supabase
+        .from('CLIENTES')
+        .select('id, display_id, name, nome_fantasia, type, rating, total_12m, credit_limit, blocked, is_active')
+        .eq('tenant_id', req.tenantId)
+        .in('type', ['PF', 'PJ'])
+        .order('total_12m', { ascending: false, nullsFirst: false })
+        .limit(300);
+      if (e2) throw e2;
+      return res.json({ data: basic || [], tiers: TIERS });
+    }
+    res.json({ data: data || [], tiers: TIERS });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Painel Lyon Prime de UM cliente: estrelas, progresso, benefícios,
+// selo de confiança, situação financeira e histórico de evolução.
+router.get('/:id/prime', async (req, res) => {
+  try {
+    const prime = await computePrime(req.tenantId, req.params.id);
+    if (!prime) return res.status(404).json({ error: 'Cliente não encontrado' });
+    res.json(prime);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -255,7 +297,7 @@ router.post('/', async (req, res) => {
   const {
     type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
     credit_limit, instagram, nome_fantasia, rating, admission_data, is_active, birth_date, notes,
-    blocked, block_reason
+    blocked, block_reason, vendedor, boleto_days
   } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome do cliente é obrigatório' });
 
@@ -295,10 +337,20 @@ router.post('/', async (req, res) => {
       blocked: !!blocked,
       block_reason: block_reason || null,
     };
-    const payload = { ...base, birth_date: birth_date || null };
-    let { data, error } = await supabase.from('CLIENTES').insert(payload).select().single();
-    if (error && /birth_date/i.test(error.message || '')) { // coluna birth_date ainda não existe (migration 023)
-      ({ data, error } = await supabase.from('CLIENTES').insert(base).select().single());
+    const payload = {
+      ...base,
+      birth_date: birth_date || null,
+      vendedor: vendedor || null,
+      boleto_days: (boleto_days === '' || boleto_days == null) ? null : parseInt(boleto_days),
+    };
+    const ins = () => supabase.from('CLIENTES').insert(payload).select().single();
+    let { data, error } = await ins();
+    // remove colunas que ainda não existem no banco e tenta de novo
+    while (error && /(birth_date|vendedor|boleto_days)/i.test(error.message || '')) {
+      if (/birth_date/i.test(error.message)) delete payload.birth_date;
+      else if (/vendedor/i.test(error.message)) delete payload.vendedor;
+      else if (/boleto_days/i.test(error.message)) delete payload.boleto_days;
+      ({ data, error } = await ins());
     }
     if (error) throw error;
     res.status(201).json(data);
@@ -311,7 +363,7 @@ router.put('/:id', async (req, res) => {
   const {
     type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
     credit_limit, is_active, instagram, nome_fantasia, rating, admission_data, birth_date, notes,
-    blocked, block_reason
+    blocked, block_reason, vendedor, boleto_days
   } = req.body;
 
   try {
@@ -339,13 +391,23 @@ router.put('/:id', async (req, res) => {
         attachments: existingAttachments, // sempre preserva os documentos do banco
       },
     };
-    // birth_date (migration 023) e updated_at (migration 025) podem não existir → fallback
-    const payload = { ...base, birth_date: birth_date || null, updated_at: new Date().toISOString() };
-    let { data, error } = await supabase.from('CLIENTES')
-      .update(payload).eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
-    if (error && /(birth_date|updated_at)/i.test(error.message || '')) {
-      ({ data, error } = await supabase.from('CLIENTES')
-        .update(base).eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single());
+    // birth_date (023), updated_at (025), vendedor/boleto_days (045) podem não existir → fallback
+    const payload = {
+      ...base,
+      birth_date: birth_date || null,
+      updated_at: new Date().toISOString(),
+      ...(vendedor !== undefined ? { vendedor: vendedor || null } : {}),
+      ...(boleto_days !== undefined ? { boleto_days: (boleto_days === '' || boleto_days == null) ? null : parseInt(boleto_days) } : {}),
+    };
+    const upd = (p) => supabase.from('CLIENTES')
+      .update(p).eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
+    let { data, error } = await upd(payload);
+    while (error && /(birth_date|updated_at|vendedor|boleto_days)/i.test(error.message || '')) {
+      if (/birth_date/i.test(error.message)) delete payload.birth_date;
+      else if (/updated_at/i.test(error.message)) delete payload.updated_at;
+      else if (/vendedor/i.test(error.message)) delete payload.vendedor;
+      else if (/boleto_days/i.test(error.message)) delete payload.boleto_days;
+      ({ data, error } = await upd(payload));
     }
     if (error) throw error;
     res.json(data);

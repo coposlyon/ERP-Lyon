@@ -127,6 +127,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
     credit_limit: '', instagram: '', nome_fantasia: '',
     rating: null, is_active: true, notes: '',
     blocked: false, block_reason: '',
+    vendedor: '', boleto_days: '',
   });
   const [loading, setLoading]       = useState(false);
   const [cepLoading, setCepLoading] = useState(false);
@@ -159,6 +160,8 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
         notes:        customer.notes || '',
         blocked:      !!customer.blocked,
         block_reason: customer.block_reason || '',
+        vendedor:     customer.vendedor || '',
+        boleto_days:  customer.boleto_days != null ? String(customer.boleto_days) : '',
       });
       // CEP já salvo conta como "consultado": abrir o cadastro e passar pelo
       // campo não dispara a busca de novo (era isso que apagava rua/bairro).
@@ -452,6 +455,31 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
             onChange={e => set('credit_limit', formatCreditLimit(e.target.value))}
             placeholder="0"
           />
+        </div>
+
+        <div>
+          <label className="label">Vendedor responsável</label>
+          <input
+            type="text"
+            className="input"
+            value={form.vendedor}
+            onChange={e => set('vendedor', e.target.value)}
+            placeholder="Nome do vendedor"
+          />
+        </div>
+
+        <div>
+          <label className="label">Prazo de boleto (dias)</label>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            className="input"
+            value={form.boleto_days}
+            onChange={e => set('boleto_days', e.target.value)}
+            placeholder="Ex.: 30"
+          />
+          <p className="text-xs text-gray-400 mt-1">Vazio = usa o prazo do nível Lyon Prime.</p>
         </div>
       </div>
 

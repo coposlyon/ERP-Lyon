@@ -8,7 +8,7 @@ import {
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory,
-  Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark,
+  Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark, Star,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -154,6 +154,12 @@ const menuItems = [
     icon: FlaskConical,
     path: '/quality',
     module: 'quality',
+  },
+  {
+    label: 'Lyon Prime',
+    icon: Star,
+    path: '/lyon-prime',
+    module: 'customers',
   },
   {
     label: 'CRM',
