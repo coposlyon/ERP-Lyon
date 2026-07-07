@@ -1,6 +1,7 @@
 // Recolore uma FOTO REAL de copo para a cor de cada produto, preservando
-// brilho, sombras e reflexos do plástico. É o motor do "Gerar Fotos":
-// uma única foto modelo vira a foto de centenas de produtos.
+// brilho, sombras e reflexos. Funciona com modelo BRANCO (multiplica a luz
+// pela cor — técnica de mockup) e com modelo COLORIDO (troca o matiz).
+// O fundo da foto é detectado a partir das bordas e nunca é pintado.
 
 export function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -13,8 +14,7 @@ export function loadImage(src) {
 
 function hexToHsl(hex) {
   const h6 = hex.replace('#', '');
-  const r = parseInt(h6.slice(0, 2), 16) / 255, g = parseInt(h6.slice(2, 4), 16) / 255, b = parseInt(h6.slice(4, 6), 16) / 255;
-  return rgbToHsl(r * 255, g * 255, b * 255);
+  return rgbToHsl(parseInt(h6.slice(0, 2), 16), parseInt(h6.slice(2, 4), 16), parseInt(h6.slice(4, 6), 16));
 }
 
 function rgbToHsl(r, g, b) {
@@ -42,16 +42,8 @@ function hslToRgb(h, s, l) {
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-// pixel faz parte do COPO? (ignora fundo branco, reflexos estourados e alpha 0)
-function isCup(s, l, a) {
-  if (a < 30) return false;
-  if (s < 0.10 && l > 0.85) return false; // fundo branco / brilho estourado
-  if (l < 0.03) return false;             // preto absoluto (contorno/fundo)
-  return true;
-}
-
 // img: foto modelo carregada · spec: { colors: [hex...], fx: {...} }
-// devolve dataURL (webp ou png) da foto recolorida
+// devolve dataURL (webp ou png) da foto recolorida — ou null se falhar
 export function recolorCup(img, spec) {
   const colors = (spec.colors || []).map(hexToHsl);
   if (!colors.length) return null;
@@ -67,31 +59,69 @@ export function recolorCup(img, spec) {
   ctx.drawImage(img, 0, 0, w, h);
   const im = ctx.getImageData(0, 0, w, h);
   const d = im.data;
+  const px = w * h;
 
-  // passo 1: limites do copo + cor média do modelo
-  let minY = h, maxY = 0, sumS = 0, sumL = 0, n = 0;
+  // ── 1. fundo: flood fill a partir das bordas (cor parecida com a borda) ──
+  const bg = new Uint8Array(px); // 1 = fundo (não pintar)
+  let rr = 0, rg = 0, rb = 0, rn = 0;
+  const borderIdx = [];
+  for (let x = 0; x < w; x++) { borderIdx.push(x, (h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { borderIdx.push(y * w, y * w + (w - 1)); }
+  for (const idx of borderIdx) {
+    const i = idx * 4;
+    if (d[i + 3] < 30) continue;
+    rr += d[i]; rg += d[i + 1]; rb += d[i + 2]; rn++;
+  }
+  const ref = rn ? [rr / rn, rg / rn, rb / rn] : [255, 255, 255];
+  const TOL2 = 26 * 26;
+  const queue = [];
+  const tryBg = (idx) => {
+    if (bg[idx]) return;
+    const i = idx * 4;
+    if (d[i + 3] >= 30) {
+      const dr = d[i] - ref[0], dg = d[i + 1] - ref[1], db = d[i + 2] - ref[2];
+      if (dr * dr + dg * dg + db * db > TOL2) return;
+    }
+    bg[idx] = 1; queue.push(idx);
+  };
+  for (const idx of borderIdx) tryBg(idx);
+  while (queue.length) {
+    const idx = queue.pop();
+    const x = idx % w, y = (idx / w) | 0;
+    if (x > 0) tryBg(idx - 1);
+    if (x < w - 1) tryBg(idx + 1);
+    if (y > 0) tryBg(idx - w);
+    if (y < h - 1) tryBg(idx + w);
+  }
+
+  // ── 2. estatísticas do copo (o que não é fundo) ──
+  let minY = h, maxY = 0, nCup = 0, nCor = 0, sumL = 0, sumLc = 0, sumSc = 0;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
+      const idx = y * w + x, i = idx * 4;
+      if (bg[idx] || d[i + 3] < 30) continue;
       const [, s, l] = rgbToHsl(d[i], d[i + 1], d[i + 2]);
-      if (!isCup(s, l, d[i + 3])) continue;
+      nCup++; sumL += l;
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
-      sumS += s; sumL += l; n++;
+      if (s >= 0.15) { nCor++; sumLc += l; sumSc += s; }
     }
   }
-  if (!n || maxY <= minY) return null;
-  const baseS = Math.max(0.15, sumS / n);
-  const baseL = Math.min(0.85, Math.max(0.15, sumL / n));
+  if (!nCup || maxY <= minY) return null;
+  const modeloColorido = nCor / nCup > 0.35;
+  const baseS = modeloColorido ? Math.max(0.2, sumSc / nCor) : 0.2;
+  const baseL = modeloColorido
+    ? Math.min(0.85, Math.max(0.15, sumLc / nCor))
+    : Math.min(0.95, Math.max(0.4, sumL / nCup));
   const span = maxY - minY;
 
-  // passo 2: recolore preservando a luz de cada pixel
+  // ── 3. recolore preservando a luz de cada pixel ──
   for (let y = 0; y < h; y++) {
     const rel = clamp01((y - minY) / span); // 0 = topo do copo, 1 = base
     for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
+      const idx = y * w + x, i = idx * 4;
+      if (bg[idx] || d[i + 3] < 30) continue;
       const [, s, l] = rgbToHsl(d[i], d[i + 1], d[i + 2]);
-      if (!isCup(s, l, d[i + 3])) continue;
 
       // qual cor-alvo vale neste pixel
       let t = colors[0];
@@ -108,13 +138,24 @@ export function recolorCup(img, spec) {
         if (rel <= 0.08) t = colors[1]; // borda = 2ª cor
       }
 
-      let H = t[0];
-      let S = t[1] < 0.05 ? s * 0.08 : clamp01(t[1] * (s / baseS)); // branco/preto/cinza quase sem saturação
-      let L = clamp01(l + (t[2] - baseL) * 0.65);
+      let H = t[0], S, L;
+      if (modeloColorido) {
+        if (s < 0.12 && l > 0.85) continue; // brilho branco: mantém
+        if (s < 0.08 && l < 0.25) continue; // contorno escuro: mantém
+        S = t[1] < 0.05 ? s * 0.08 : clamp01(t[1] * (s / baseS));
+        L = clamp01(l + (t[2] - baseL) * 0.7);
+      } else {
+        // modelo branco/claro: multiplica a luz do pixel pela cor alvo
+        const gloss = clamp01((l - 0.94) / 0.05); // brilho estourado continua branco
+        S = (t[1] < 0.05 ? 0.04 : t[1]) * (1 - gloss);
+        L = clamp01(t[2] * Math.min(1.35, l / baseL));
+        L = L + gloss * (0.97 - L);
+      }
 
-      if (fx.borda && !colors[1]) {
+      if (fx.borda && !colors[1] && rel > 0.08) {
         // só uma cor + BORDA = copo "vidro" com borda colorida
-        if (rel > 0.08) { S = s * 0.12; L = clamp01(l * 0.35 + 0.62); }
+        S = s * 0.12;
+        L = clamp01(l * 0.35 + 0.62);
       }
       if (fx.degrade) {
         // cor forte no topo esvaindo até quase transparente na base

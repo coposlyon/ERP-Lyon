@@ -486,6 +486,23 @@ router.post('/images/bulk', async (req, res) => {
   }
 });
 
+// Remove TODAS as fotos geradas pelo sistema (produtos-auto/produtos-render).
+// Fotos anexadas manualmente não são tocadas.
+router.post('/images/clear-generated', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('PRODUTOS')
+      .update({ image_url: null, updated_at: new Date().toISOString() })
+      .eq('tenant_id', req.tenantId)
+      .or('image_url.like.%/produtos-auto/%,image_url.like.%/produtos-render/%')
+      .select('id');
+    if (error) throw error;
+    audit(req, 'update', 'products_clear_generated_images', null, { cleared: data?.length || 0 });
+    res.json({ ok: true, cleared: data?.length || 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Tipos de produto (menu do site: COPOS, CANECAS, TAÇAS...) ──
 router.get('/types/list', async (req, res) => {
   try {

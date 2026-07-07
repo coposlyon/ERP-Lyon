@@ -37,6 +37,10 @@ export default function Products() {
   const [genTotal, setGenTotal] = useState(0);
   const [template, setTemplate] = useState(null);       // foto modelo (dataURL)
   const [useFilter, setUseFilter] = useState(false);    // aplicar só ao filtro atual
+  const [sample, setSample] = useState(null);           // amostra { img, name }
+  const [sampleBusy, setSampleBusy] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false); // confirma remover fotos geradas
+  const [clearBusy, setClearBusy] = useState(false);
   const uploadTargetId = useRef(null);                 // produto que vai receber a foto
   const fileInputRef = useRef(null);
   const qc = useQueryClient();
@@ -174,8 +178,43 @@ export default function Products() {
     if (!file) return;
     if (!file.type.startsWith('image/')) { toast.error('Selecione uma imagem'); return; }
     const reader = new FileReader();
-    reader.onload = () => setTemplate(reader.result);
+    reader.onload = () => { setTemplate(reader.result); setSample(null); };
     reader.readAsDataURL(file);
+  }
+
+  // Gera UMA amostra para conferir a qualidade antes de rodar em todos
+  async function previewSample() {
+    if (!template) { toast.error('Envie (ou cole) a foto modelo primeiro'); return; }
+    setSampleBusy(true);
+    try {
+      const img = await loadImage(template);
+      const body = useFilter ? { search, category_id: categoryId } : {};
+      const pending = await api.post('/products/images/pending', body);
+      const p = pending.find(x => x.colors?.length);
+      if (!p) { toast.error('Nenhum produto pendente com cor no nome'); return; }
+      const out = recolorCup(img, p);
+      if (out) setSample({ img: out, name: p.name });
+      else toast.error('Não consegui gerar a amostra com essa foto');
+    } catch (e) {
+      toast.error(e.error || 'Erro ao gerar amostra');
+    } finally {
+      setSampleBusy(false);
+    }
+  }
+
+  // Remove todas as fotos GERADAS (as anexadas manualmente ficam)
+  async function clearGenerated() {
+    setClearBusy(true);
+    try {
+      const r = await api.post('/products/images/clear-generated');
+      qc.invalidateQueries(['products']);
+      toast.success(`${r.cleared || 0} foto(s) gerada(s) removida(s) — as manuais ficaram`);
+      setClearConfirm(false);
+    } catch (e) {
+      toast.error(e.error || 'Erro ao remover fotos geradas');
+    } finally {
+      setClearBusy(false);
+    }
   }
 
   // Ctrl+V com o modal "Gerar Fotos" aberto → cola a foto modelo
@@ -442,23 +481,34 @@ export default function Products() {
       <Modal isOpen={genOpen} onClose={() => !genBusy && setGenOpen(false)} title="Gerar fotos a partir de uma foto modelo" size="sm">
         <div className="space-y-4">
           <div className="text-sm text-gray-700 space-y-2">
-            <p>Escolha <b>uma foto real</b> de um copo (de preferência liso, sem estampa). Eu pinto essa mesma foto na <b>cor exata do nome</b> de cada produto, mantendo o brilho e os reflexos — fica com cara de foto real.</p>
-            <p className="text-gray-500">Só preenche produtos <b>sem foto</b> ou com foto gerada pelo sistema. Fotos reais que você subiu <b>nunca são alteradas</b>. Entende degradê, bicolor, jateado, borda e neon.</p>
+            <p>Escolha <b>uma foto real</b> de um copo liso — <b>copo branco funciona melhor ainda</b>. Eu pinto essa mesma foto na <b>cor exata do nome</b> de cada produto, mantendo brilho, sombras e reflexos.</p>
+            <p className="text-gray-500">Só preenche produtos <b>sem foto</b> ou com foto gerada pelo sistema — foto que você anexou manualmente <b>nunca é alterada</b>. Use <b>Ver amostra</b> para conferir a qualidade antes de rodar em todos.</p>
           </div>
 
-          {/* foto modelo */}
+          {/* foto modelo → amostra */}
           <div className="flex items-center gap-3">
             <div className="w-24 h-24 rounded-xl bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center shrink-0">
-              {template ? <img src={template} alt="" className="w-full h-full object-contain" /> : <ImageIcon size={24} className="text-gray-300" />}
+              {template ? <img src={template} alt="modelo" className="w-full h-full object-contain" /> : <ImageIcon size={24} className="text-gray-300" />}
             </div>
-            <div className="space-y-2">
-              <label className="btn-secondary cursor-pointer inline-flex">
-                <Upload size={15} /> {template ? 'Trocar foto modelo' : 'Escolher foto modelo'}
-                <input type="file" accept="image/*" className="hidden" onChange={e => { pickTemplate(e.target.files?.[0]); e.target.value = ''; }} />
-              </label>
-              <p className="text-xs text-gray-400">Ou copie uma imagem e aperte <b>Ctrl+V</b> aqui.</p>
+            <span className="text-gray-300 font-black">→</span>
+            <div className="w-24 h-24 rounded-xl bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center shrink-0" title={sample?.name || 'Amostra'}>
+              {sampleBusy ? <Loader2 size={20} className="animate-spin text-gray-400" />
+                : sample ? <img src={sample.img} alt="amostra" className="w-full h-full object-contain" />
+                : <span className="text-[10px] text-gray-400 text-center px-1">amostra aparece aqui</span>}
             </div>
           </div>
+          {sample && <p className="text-xs text-gray-500 -mt-2 truncate">Amostra: {sample.name}</p>}
+
+          <div className="flex flex-wrap gap-2">
+            <label className="btn-secondary cursor-pointer">
+              <Upload size={15} /> {template ? 'Trocar foto modelo' : 'Escolher foto modelo'}
+              <input type="file" accept="image/*" className="hidden" onChange={e => { pickTemplate(e.target.files?.[0]); e.target.value = ''; }} />
+            </label>
+            <button type="button" onClick={previewSample} disabled={!template || sampleBusy} className="btn-secondary disabled:opacity-50">
+              {sampleBusy ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />} Ver amostra
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 -mt-2">Ou copie uma imagem e aperte <b>Ctrl+V</b> aqui.</p>
 
           {(search || categoryId) && (
             <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
@@ -473,6 +523,27 @@ export default function Products() {
               className="flex-1 flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50">
               {genBusy ? <><Loader2 size={15} className="animate-spin" /> {genCount}/{genTotal}</> : <><Palette size={15} /> Gerar agora</>}
             </button>
+          </div>
+
+          {/* remover fotos geradas (as manuais ficam) */}
+          <div className="border-t border-gray-100 pt-3">
+            {clearConfirm ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm space-y-2">
+                <p className="text-gray-800">Remover <b>todas as fotos geradas pelo sistema</b>? As fotos que você anexou manualmente <b>não</b> serão tocadas.</p>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setClearConfirm(false)} disabled={clearBusy} className="btn-secondary text-xs">Cancelar</button>
+                  <button onClick={clearGenerated} disabled={clearBusy}
+                    className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50">
+                    {clearBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Remover fotos geradas
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setClearConfirm(true)} disabled={genBusy}
+                className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1.5 disabled:opacity-50">
+                <Trash2 size={13} /> Remover todas as fotos geradas (mantém as anexadas manualmente)
+              </button>
+            )}
           </div>
         </div>
       </Modal>
