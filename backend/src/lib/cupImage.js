@@ -1,7 +1,6 @@
-// Gera uma ilustração SVG do produto (copo/taça/caneca/garrafa) na cor que o
-// próprio NOME indica. Usada pelo "Gerar Fotos" para preencher em massa os
-// produtos sem foto. Entende: TRADICIONAL, DEGRADÊ, BICOLOR (duas cores),
-// JATEADO, BORDA e NEON/FLUOR.
+// Lê o NOME do produto e extrai as cores e efeitos (degradê, bicolor,
+// jateado, borda, neon). O navegador usa isso para recolorir uma foto real
+// de copo na cor certa ("Gerar Fotos" da tela de Produtos).
 
 // nomes de cor (sem acento, minúsculo) → hex
 const COLOR_MAP = {
@@ -90,13 +89,6 @@ function brighten(hex) { // efeito neon/fluor
   return hslToHex(h, Math.min(1, s * 1.35 + 0.1), Math.min(0.62, Math.max(0.5, l)));
 }
 
-// luminância alta → precisa de contorno para aparecer em fundo claro
-function needsBorder(hex) {
-  const h6 = hex.replace('#', '');
-  const r = parseInt(h6.slice(0, 2), 16), g = parseInt(h6.slice(2, 4), 16), b = parseInt(h6.slice(4, 6), 16);
-  return (r * 0.299 + g * 0.587 + b * 0.114) > 222;
-}
-
 // acha as cores citadas no nome, na ordem em que aparecem
 function findColors(name) {
   const n = ` ${normalize(name)} `;
@@ -119,29 +111,9 @@ function findColors(name) {
   return found.map(f => f.hex);
 }
 
-function shapeOf(n) {
-  if (/\btaca\b/.test(n)) return 'taca';
-  if (/\b(caneca|caneka|xicara)\b/.test(n)) return 'caneca';
-  if (/\b(garrafa|squeeze|growler)\b/.test(n)) return 'garrafa';
-  if (/\bshot\b/.test(n)) return 'shot';
-  return 'copo'; // long drink e afins
-}
-
-// corpo (path) + área da borda superior de cada formato, num viewBox 0 0 200 300
-const SHAPES = {
-  copo:    { body: 'M48 34 L152 34 L136 260 Q134 276 116 276 L84 276 Q66 276 64 260 Z', rimY: 34, rimH: 20 },
-  shot:    { body: 'M58 96 L142 96 L128 252 Q126 264 112 264 L88 264 Q74 264 72 252 Z', rimY: 96, rimH: 18 },
-  taca:    { body: 'M42 32 H158 Q154 120 104 128 L104 210 H128 Q136 210 136 218 L136 224 H64 L64 218 Q64 210 72 210 H96 L96 128 Q46 120 42 32 Z', rimY: 32, rimH: 18 },
-  caneca:  { body: 'M50 56 H140 Q148 56 148 66 L148 236 Q148 248 136 248 H62 Q50 248 50 236 Z', rimY: 56, rimH: 18, extra: '<path d="M148 100 q42 0 42 42 q0 42 -42 42" fill="none" stroke="__COLOR__" stroke-width="14" stroke-linecap="round"/>' },
-  garrafa: { body: 'M62 84 Q60 70 74 68 L126 68 Q140 70 138 84 L138 250 Q138 268 118 268 L82 268 Q62 268 62 250 Z', rimY: 68, rimH: 0, extra: '<rect x="80" y="42" width="40" height="24" rx="5" fill="__COLOR__"/><rect x="88" y="22" width="24" height="18" rx="4" fill="__COLOR__"/>' },
-};
-
-// monta o SVG de acordo com as cores e efeitos do nome
-function buildSvg(name) {
+// nome → { colors: [hex...], fx: { bicolor, degrade, jateado, borda, neon } }
+function parseName(name) {
   const n = normalize(name);
-  const colors = findColors(name);
-  if (!colors.length) return null;
-
   const fx = {
     bicolor: /\bbicolor\b/.test(n),
     degrade: /\bdegrade\b/.test(n),
@@ -149,58 +121,9 @@ function buildSvg(name) {
     borda: /\bborda\b/.test(n),
     neon: /\b(neon|fluor)\b/.test(n),
   };
-  const cores = fx.neon ? colors.map(brighten) : colors;
-  const shape = SHAPES[shapeOf(n)];
-
-  // corpo: cor sólida, degradê ou bicolor (base = 1ª cor embaixo, 2ª em cima)
-  let mainColor = cores[0];
-  let rimColor = null;
-  if (fx.borda) {
-    if (cores.length >= 2) { mainColor = cores[0]; rimColor = cores[1]; }
-    else { rimColor = cores[0]; mainColor = fx.jateado ? '#E5EAEE' : '#DCE4EA'; } // copo "vidro" com borda colorida
-  }
-
-  let defs = '', bodyFill = mainColor;
-  if (fx.bicolor && cores.length >= 2) {
-    const [base, topo] = [cores[0], cores[1]];
-    defs = `<linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${topo}"/><stop offset="52%" stop-color="${topo}"/>
-      <stop offset="52%" stop-color="${base}"/><stop offset="100%" stop-color="${base}"/>
-    </linearGradient>`;
-    bodyFill = 'url(#g)';
-  } else if (fx.degrade) {
-    defs = `<linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${mainColor}"/>
-      <stop offset="55%" stop-color="${mainColor}" stop-opacity="0.55"/>
-      <stop offset="100%" stop-color="${mainColor}" stop-opacity="0.12"/>
-    </linearGradient>`;
-    bodyFill = 'url(#g)';
-  }
-
-  const translucido = fx.jateado || (fx.borda && cores.length < 2) || /transparente|cristal|incolor|natural/.test(n);
-  const bodyOpacity = translucido ? '0.85' : '1';
-  const border = needsBorder(mainColor) || translucido ? '#C9D2DA' : 'none';
-  const extra = (shape.extra || '').replace(/__COLOR__/g, mainColor.startsWith('url') ? cores[0] : mainColor);
-
-  const rim = rimColor && shape.rimH
-    ? `<g clip-path="url(#c)"><rect x="0" y="${shape.rimY}" width="200" height="${shape.rimH}" fill="${rimColor}"/></g>`
-    : '';
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300">
-  <defs>${defs}<clipPath id="c"><path d="${shape.body}"/></clipPath></defs>
-  <ellipse cx="100" cy="285" rx="58" ry="8" fill="#000" opacity="0.07"/>
-  ${extra}
-  <path d="${shape.body}" fill="${bodyFill}" opacity="${bodyOpacity}"${border !== 'none' ? ` stroke="${border}" stroke-width="2"` : ''}/>
-  ${rim}
-  <g clip-path="url(#c)"><path d="M64 46 L78 46 L72 250 L60 246 Z" fill="#fff" opacity="${translucido ? '0.3' : '0.18'}"/></g>
-</svg>`;
+  const base = findColors(name);
+  const colors = fx.neon ? base.map(brighten) : base;
+  return { colors, fx };
 }
 
-// SVG → data URL (para subir pelo uploadDataUrl). null se não achou cor no nome.
-function cupDataUrl(name) {
-  const svg = buildSvg(name);
-  if (!svg) return null;
-  return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
-}
-
-module.exports = { cupDataUrl, findColors };
+module.exports = { parseName, findColors };

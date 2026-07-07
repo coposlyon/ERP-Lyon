@@ -5,7 +5,7 @@ const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
 const { uploadDataUrl } = require('../lib/storage');
-const { cupDataUrl } = require('../lib/cupImage');
+const { parseName } = require('../lib/cupImage');
 const { PRINT_METHODS } = require('../lib/calc');
 
 // Sobe data-URLs (fotos) para o Storage; mantém URLs já existentes.
@@ -420,45 +420,67 @@ router.delete('/categories/:catId', async (req, res) => {
   }
 });
 
-// Gera foto ilustrativa (desenho do copo na cor do nome) para os produtos SEM
-// foto. Processa em lotes — o front chama em loop até remaining chegar a 0.
-router.post('/images/auto-generate', async (req, res) => {
-  const limit = Math.min(parseInt(req.body?.limit) || 60, 150);
+// Produtos elegíveis para foto automática: SEM foto, ou com foto gerada pelo
+// sistema antes (pastas produtos-auto/produtos-render). Foto real nunca entra.
+// Devolve as cores/efeitos do nome — o navegador recolore a foto modelo.
+router.post('/images/pending', async (req, res) => {
+  const { search, category_id } = req.body || {};
   try {
-    const { data: prods, error } = await supabase
+    const { data, error } = await supabase
       .from('PRODUTOS')
-      .select('id, name, image_url')
+      .select('id, name, image_url, category_id')
       .eq('tenant_id', req.tenantId)
+      .eq('is_active', true)
       .order('name')
       .limit(3000);
     if (error) throw error;
 
-    const parsable = [], noColor = [];
-    for (const p of (prods || [])) {
-      if (p.image_url) continue; // nunca mexe em quem já tem foto
-      const dataUrl = cupDataUrl(p.name);
-      if (dataUrl) parsable.push({ id: p.id, dataUrl });
-      else noColor.push(p.id);
-    }
-
-    const batch = parsable.slice(0, limit);
-    let generated = 0;
-    // pool de 6 uploads em paralelo
-    let i = 0;
-    await Promise.all(Array.from({ length: Math.min(6, batch.length) }, async () => {
-      while (i < batch.length) {
-        const p = batch[i++];
-        const url = await uploadDataUrl(p.dataUrl, 'produtos-auto');
-        if (!url) continue;
-        const { error: upErr } = await supabase.from('PRODUTOS')
-          .update({ image_url: url, updated_at: new Date().toISOString() })
-          .eq('id', p.id).eq('tenant_id', req.tenantId);
-        if (!upErr) generated++;
+    const terms = String(search || '').trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 10);
+    const list = [];
+    for (const p of (data || [])) {
+      const substituivel = !p.image_url || /\/(produtos-auto|produtos-render)\//.test(p.image_url);
+      if (!substituivel) continue;
+      if (category_id && p.category_id !== category_id) continue;
+      if (terms.length) {
+        const nm = String(p.name || '').toLowerCase();
+        let ok = true;
+        for (const t of terms) {
+          if (t.startsWith('-') && t.length > 1) { if (nm.includes(t.slice(1))) { ok = false; break; } }
+          else if (!nm.includes(t)) { ok = false; break; }
+        }
+        if (!ok) continue;
       }
-    }));
+      const spec = parseName(p.name);
+      list.push({ id: p.id, name: p.name, colors: spec.colors, fx: spec.fx });
+    }
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    audit(req, 'update', 'products_auto_images', null, { generated, no_color: noColor.length });
-    res.json({ ok: true, generated, remaining: parsable.length - batch.length, no_color: noColor.length });
+// Recebe as fotos recoloridas prontas (do navegador) e aplica em lote.
+// Segurança: só grava em produto sem foto ou com foto gerada pelo sistema.
+router.post('/images/bulk', async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 25) : [];
+  if (!items.length) return res.status(400).json({ error: 'Nada para aplicar' });
+  try {
+    let updated = 0;
+    for (const it of items) {
+      if (!it?.id || !/^data:image\//.test(it.image || '')) continue;
+      const { data: cur } = await supabase.from('PRODUTOS').select('image_url')
+        .eq('id', it.id).eq('tenant_id', req.tenantId).maybeSingle();
+      if (!cur) continue;
+      if (cur.image_url && !/\/(produtos-auto|produtos-render)\//.test(cur.image_url)) continue;
+      const url = await uploadDataUrl(it.image, 'produtos-render');
+      if (!url) continue;
+      const { error } = await supabase.from('PRODUTOS')
+        .update({ image_url: url, updated_at: new Date().toISOString() })
+        .eq('id', it.id).eq('tenant_id', req.tenantId);
+      if (!error) updated++;
+    }
+    audit(req, 'update', 'products_bulk_images', null, { updated });
+    res.json({ ok: true, updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
