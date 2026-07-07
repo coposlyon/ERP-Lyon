@@ -5,6 +5,47 @@
 // O fundo é detectado pelas bordas e o copo é reconstruído linha a linha
 // (resolve copo branco em fundo branco). Validado em laboratório (motor v6).
 
+// Copo long drink PADRÃO desenhado pelo sistema (mesma matemática validada
+// no laboratório): brilho de softbox, sombreamento lateral, boca e sombra no
+// chão. Elimina o problema de segmentar copo branco em fundo branco — o
+// usuário não precisa de foto nenhuma.
+export function makeCupTemplate() {
+  const W = 620, H = 1500;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const im = ctx.createImageData(W, H);
+  const d = im.data;
+  const y0 = 60, y1 = 1440, cx = W / 2, halfTop = 262, halfBot = 195;
+  const ss = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  for (let y = 0; y < H; y++) {
+    const frac = Math.max(0, Math.min(1, (y - y0) / (y1 - y0)));
+    const half = halfTop + (halfBot - halfTop) * frac;
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      let tone = 255;
+      if (y >= y0 && y <= y1 && Math.abs(x - cx) <= half) {
+        const u = (x - (cx - half)) / (2 * half);
+        tone = 240
+          + 15 * Math.exp(-(((u - 0.30) / 0.17) ** 2))  // brilho largo (softbox)
+          - 22 * ss(0.62, 0.98, u)                       // sombra à direita
+          - 30 * ss(0.985, 1.0, u)                       // borda direita
+          - 30 * (1 - ss(0, 0.02, u))                    // borda esquerda
+          + 4 * (1 - frac);                              // topo mais claro
+        if (y <= y0 + 26) tone -= 12;                    // boca do copo
+      }
+      // sombra suave no chão
+      const dist = ((x - cx) / 230) ** 2 + ((y - 1462) / 26) ** 2;
+      tone -= Math.max(0, 1 - dist) * 26;
+      tone += (Math.random() - 0.5) * 2.4;               // textura de foto
+      const v = Math.max(0, Math.min(255, tone));
+      d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(im, 0, 0);
+  return cv.toDataURL('image/png');
+}
+
 export function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();

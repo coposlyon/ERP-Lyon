@@ -9,7 +9,7 @@ import ProductForm from './ProductForm';
 import BulkEditModal from './BulkEditModal';
 import ImportStockModal from './ImportStockModal';
 import ImportProductsModal from './ImportProductsModal';
-import { loadImage, recolorCup } from './recolorCup';
+import { loadImage, recolorCup, makeCupTemplate } from './recolorCup';
 import toast from 'react-hot-toast';
 
 function fmt(v) {
@@ -39,7 +39,9 @@ export default function Products() {
   const [genBusy, setGenBusy] = useState(false);
   const [genCount, setGenCount] = useState(0);
   const [genTotal, setGenTotal] = useState(0);
-  const [template, setTemplate] = useState(null);       // foto modelo (dataURL)
+  const [template, setTemplate] = useState(null);       // foto modelo do usuário (dataURL)
+  const [templateMode, setTemplateMode] = useState('padrao'); // 'padrao' (copo do sistema) | 'foto'
+  const [builtin, setBuiltin] = useState(null);          // copo padrão gerado (dataURL)
   const [useFilter, setUseFilter] = useState(false);    // aplicar só ao filtro atual
   const [sample, setSample] = useState(null);           // amostra { img, name }
   const [sampleBusy, setSampleBusy] = useState(false);
@@ -194,16 +196,16 @@ export default function Products() {
     if (!file) return;
     if (!file.type.startsWith('image/')) { toast.error('Selecione uma imagem'); return; }
     const reader = new FileReader();
-    reader.onload = () => { setTemplate(reader.result); setSample(null); };
+    reader.onload = () => { setTemplate(reader.result); setTemplateMode('foto'); setSample(null); };
     reader.readAsDataURL(file);
   }
 
   // Gera UMA amostra para conferir a qualidade antes de rodar em todos
   async function previewSample() {
-    if (!template) { toast.error('Envie (ou cole) a foto modelo primeiro'); return; }
+    if (!activeTemplate) { toast.error('Envie (ou cole) a foto modelo primeiro'); return; }
     setSampleBusy(true);
     try {
-      const img = await loadImage(template);
+      const img = await loadImage(activeTemplate);
       const body = useFilter ? { search: effectiveSearch, category_id: categoryId } : {};
       const pending = await api.post('/products/images/pending', body);
       const p = pending.find(x => x.colors?.length);
@@ -233,6 +235,14 @@ export default function Products() {
     }
   }
 
+  // gera o copo padrão do sistema na 1ª abertura do modal
+  useEffect(() => {
+    if (genOpen && !builtin) setBuiltin(makeCupTemplate());
+  }, [genOpen, builtin]);
+
+  // foto modelo em uso (padrão do sistema ou foto do usuário)
+  const activeTemplate = templateMode === 'padrao' ? builtin : template;
+
   // Ctrl+V com o modal "Gerar Fotos" aberto → cola a foto modelo
   useEffect(() => {
     if (!genOpen) return;
@@ -249,10 +259,10 @@ export default function Products() {
   // Recolore a FOTO MODELO na cor de cada produto (preserva brilho/sombras)
   // e sobe em lotes. Só preenche produto sem foto ou com foto gerada antes.
   async function generatePhotos() {
-    if (!template) { toast.error('Envie (ou cole) a foto modelo primeiro'); return; }
+    if (!activeTemplate) { toast.error('Envie (ou cole) a foto modelo primeiro'); return; }
     setGenBusy(true); setGenCount(0); setGenTotal(0);
     try {
-      const img = await loadImage(template);
+      const img = await loadImage(activeTemplate);
       const body = useFilter ? { search: effectiveSearch, category_id: categoryId } : {};
       const pending = await api.post('/products/images/pending', body);
       const todo = pending.filter(p => p.colors?.length);
@@ -536,14 +546,26 @@ export default function Products() {
       <Modal isOpen={genOpen} onClose={() => !genBusy && setGenOpen(false)} title="Gerar fotos a partir de uma foto modelo" size="sm">
         <div className="space-y-4">
           <div className="text-sm text-gray-700 space-y-2">
-            <p>Escolha <b>uma foto real</b> de um copo liso. Eu pinto essa mesma foto na <b>cor exata do nome</b> de cada produto, mantendo brilho, sombras e reflexos.</p>
-            <p className="text-gray-500">Foto modelo ideal: <b>nítida (alta resolução)</b>, copo <b>branco ou claro</b>, fundo branco <b>limpo e sem sombra forte no chão</b> (foto de catálogo do fornecedor é perfeita). Use <b>Ver amostra</b> antes de rodar em todos — fotos anexadas manualmente nunca são alteradas.</p>
+            <p>Eu gero a foto de cada produto na <b>cor exata do nome</b>, com brilho, sombras e reflexos de plástico de verdade.</p>
+            <p className="text-gray-500">O <b>copo padrão do sistema</b> tem qualidade garantida. Se preferir sua própria foto, ela precisa ter o fundo <b>bem diferente do copo</b> (ideal: PNG com fundo recortado). Use <b>Ver amostra</b> antes de rodar em todos. <span className="text-gray-300">· motor v6.1</span></p>
+          </div>
+
+          {/* origem da foto modelo */}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { setTemplateMode('padrao'); setSample(null); }}
+              className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${templateMode === 'padrao' ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+              🥤 Copo padrão do sistema
+            </button>
+            <label className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold text-center cursor-pointer transition-colors ${templateMode === 'foto' ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+              <Upload size={14} className="inline mr-1" /> {template ? 'Minha foto (trocar)' : 'Usar minha foto...'}
+              <input type="file" accept="image/*" className="hidden" onChange={e => { pickTemplate(e.target.files?.[0]); e.target.value = ''; }} />
+            </label>
           </div>
 
           {/* foto modelo → amostra */}
           <div className="flex items-center gap-3">
             <div className="w-24 h-24 rounded-xl bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center shrink-0">
-              {template ? <img src={template} alt="modelo" className="w-full h-full object-contain" /> : <ImageIcon size={24} className="text-gray-300" />}
+              {activeTemplate ? <img src={activeTemplate} alt="modelo" className="w-full h-full object-contain" /> : <ImageIcon size={24} className="text-gray-300" />}
             </div>
             <span className="text-gray-300 font-black">→</span>
             <div className="w-24 h-24 rounded-xl bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center shrink-0" title={sample?.name || 'Amostra'}>
@@ -551,19 +573,14 @@ export default function Products() {
                 : sample ? <img src={sample.img} alt="amostra" className="w-full h-full object-contain" />
                 : <span className="text-[10px] text-gray-400 text-center px-1">amostra aparece aqui</span>}
             </div>
-          </div>
-          {sample && <p className="text-xs text-gray-500 -mt-2 truncate">Amostra: {sample.name}</p>}
-
-          <div className="flex flex-wrap gap-2">
-            <label className="btn-secondary cursor-pointer">
-              <Upload size={15} /> {template ? 'Trocar foto modelo' : 'Escolher foto modelo'}
-              <input type="file" accept="image/*" className="hidden" onChange={e => { pickTemplate(e.target.files?.[0]); e.target.value = ''; }} />
-            </label>
-            <button type="button" onClick={previewSample} disabled={!template || sampleBusy} className="btn-secondary disabled:opacity-50">
+            <button type="button" onClick={previewSample} disabled={!activeTemplate || sampleBusy} className="btn-secondary disabled:opacity-50 ml-auto">
               {sampleBusy ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />} Ver amostra
             </button>
           </div>
-          <p className="text-xs text-gray-400 -mt-2">Ou copie uma imagem e aperte <b>Ctrl+V</b> aqui. <span className="text-gray-300">· motor v6</span></p>
+          {sample && <p className="text-xs text-gray-500 -mt-2 truncate">Amostra: {sample.name}</p>}
+          {templateMode === 'foto' && (
+            <p className="text-xs text-gray-400 -mt-2">Ou copie uma imagem e aperte <b>Ctrl+V</b> aqui. <span className="text-gray-300">· motor v6.1</span></p>
+          )}
 
           {(effectiveSearch || categoryId) && (
             <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
@@ -574,7 +591,7 @@ export default function Products() {
 
           <div className="flex gap-3">
             <button onClick={() => setGenOpen(false)} disabled={genBusy} className="flex-1 btn-secondary disabled:opacity-50">Cancelar</button>
-            <button onClick={generatePhotos} disabled={genBusy || !template}
+            <button onClick={generatePhotos} disabled={genBusy || !activeTemplate}
               className="flex-1 flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50">
               {genBusy ? <><Loader2 size={15} className="animate-spin" /> {genCount}/{genTotal}</> : <><Palette size={15} /> Gerar agora</>}
             </button>
