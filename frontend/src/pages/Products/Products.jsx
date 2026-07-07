@@ -536,8 +536,8 @@ export default function Products() {
       <Modal isOpen={genOpen} onClose={() => !genBusy && setGenOpen(false)} title="Gerar fotos a partir de uma foto modelo" size="sm">
         <div className="space-y-4">
           <div className="text-sm text-gray-700 space-y-2">
-            <p>Escolha <b>uma foto real</b> de um copo liso — <b>copo branco funciona melhor ainda</b>. Eu pinto essa mesma foto na <b>cor exata do nome</b> de cada produto, mantendo brilho, sombras e reflexos.</p>
-            <p className="text-gray-500">Só preenche produtos <b>sem foto</b> ou com foto gerada pelo sistema — foto que você anexou manualmente <b>nunca é alterada</b>. Use <b>Ver amostra</b> para conferir a qualidade antes de rodar em todos.</p>
+            <p>Escolha <b>uma foto real</b> de um copo liso. Eu pinto essa mesma foto na <b>cor exata do nome</b> de cada produto, mantendo brilho, sombras e reflexos.</p>
+            <p className="text-gray-500">Foto modelo ideal: <b>nítida (alta resolução)</b>, copo <b>branco ou claro</b>, fundo branco <b>limpo e sem sombra forte no chão</b> (foto de catálogo do fornecedor é perfeita). Use <b>Ver amostra</b> antes de rodar em todos — fotos anexadas manualmente nunca são alteradas.</p>
           </div>
 
           {/* foto modelo → amostra */}
