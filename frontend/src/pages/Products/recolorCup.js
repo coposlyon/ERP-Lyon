@@ -61,7 +61,7 @@ export function recolorCup(img, spec) {
     rr += d[i]; rg += d[i + 1]; rb += d[i + 2]; rn++;
   }
   const ref = rn ? [rr / rn, rg / rn, rb / rn] : [255, 255, 255];
-  const TOL2 = 30 * 30;
+  const TOL2 = 26 * 26;
   const queue = [];
   const tryBg = (idx) => {
     if (bg[idx]) return;
@@ -82,21 +82,59 @@ export function recolorCup(img, spec) {
     if (y < h - 1) tryBg(idx + w);
   }
 
-  // ── 2. luz média do copo (referência do sombreamento) e limites ──
-  let minY = h, maxY = 0, nCup = 0, sumLum = 0;
+  // ── 1b. reconstrói o copo por LINHA (silhueta é convexa na horizontal).
+  // Copo branco em fundo branco faz o flood vazar para dentro do corpo;
+  // aqui preenchemos da borda esquerda à direita da silhueta de cada linha,
+  // fechando qualquer vazamento interno.
+  for (let y = 0; y < h; y++) {
+    let left = -1, right = -1;
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      if (bg[idx] || d[idx * 4 + 3] < 30) continue;
+      // exige 2 pixels seguidos para não pegar sujeira isolada
+      if (x + 1 < w && !bg[y * w + x + 1] && d[(y * w + x + 1) * 4 + 3] >= 30) { left = x; break; }
+    }
+    if (left === -1) continue;
+    for (let x = w - 1; x > left; x--) {
+      const idx = y * w + x;
+      if (bg[idx] || d[idx * 4 + 3] < 30) continue;
+      if (x - 1 >= 0 && !bg[y * w + x - 1] && d[(y * w + x - 1) * 4 + 3] >= 30) { right = x; break; }
+    }
+    if (right === -1) right = left;
+    for (let x = left; x <= right; x++) {
+      const idx = y * w + x;
+      if (d[idx * 4 + 3] >= 30) bg[idx] = 0; // dentro da silhueta = copo
+    }
+  }
+
+  // ── 2. faixa REAL de luz do copo (percentis 2%–98%) e limites ──
+  // Normalizar pelo intervalo medido dá volume até em foto branca, onde o
+  // sombreamento é sutil (tudo entre 0.88 e 1.0 de luminância).
+  let minY = h, maxY = 0, nCup = 0;
+  const histo = new Uint32Array(256);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const idx = y * w + x, i = idx * 4;
       if (bg[idx] || d[i + 3] < 30) continue;
-      nCup++; sumLum += lumOf(d[i], d[i + 1], d[i + 2]);
+      nCup++;
+      histo[Math.min(255, Math.round(lumOf(d[i], d[i + 1], d[i + 2]) * 255))]++;
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     }
   }
   if (!nCup || maxY <= minY) return null;
-  const baseLum = Math.min(0.92, Math.max(0.25, sumLum / nCup));
+  let acc = 0, loL = 0, hiL = 1;
+  for (let b = 0; b < 256; b++) {
+    acc += histo[b];
+    if (acc >= nCup * 0.02) { loL = b / 255; break; }
+  }
+  acc = 0;
+  for (let b = 255; b >= 0; b--) {
+    acc += histo[b];
+    if (acc >= nCup * 0.02) { hiL = b / 255; break; }
+  }
+  const lumSpan = Math.max(0.02, hiL - loL);
   const span = maxY - minY;
-  const specDiv = Math.max(0.08, 1 - baseLum); // faixa acima da média = brilho
 
   // ── 3. religação de luz: cor alvo × sombreamento + brilho em branco ──
   for (let y = 0; y < h; y++) {
@@ -125,15 +163,17 @@ export function recolorCup(img, spec) {
         t = mixRgb(t, CLARO, fade * 0.9);
       }
 
-      // sombreamento do pixel original aplicado à cor alvo
-      const shade = Math.min(1.18, lum / baseLum);
+      // luz do pixel normalizada para a faixa real do copo (0 = mais escuro,
+      // 1 = mais claro) e expandida para dar volume à cor alvo
+      const shadeNorm = clamp01((lum - loL) / lumSpan);
+      const shade = 0.52 + shadeNorm * 0.6; // 0.52 (sombra) → 1.12 (luz)
       let r2 = t[0] * shade, g2 = t[1] * shade, b2 = t[2] * shade;
 
-      // brilho especular: o que passa da luz média volta como branco
-      let spec = clamp01((lum - baseLum) / specDiv);
+      // brilho especular: só o topo da faixa de luz volta como branco
+      let spec = clamp01((shadeNorm - 0.86) / 0.14);
       spec *= spec;
-      if (fx.jateado) spec *= 0.45; // fosco difunde o brilho
-      const ss = spec * 0.85;
+      if (fx.jateado) spec *= 0.4; // fosco difunde o brilho
+      const ss = spec * 0.8;
       r2 += (255 - r2) * ss; g2 += (255 - g2) * ss; b2 += (255 - b2) * ss;
 
       if (fx.jateado) { // véu fosco
