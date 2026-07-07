@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Search, Palette, ShieldCheck, Sparkles, ArrowRight, ChevronDown,
+  Search, Palette, ShieldCheck, Sparkles, ArrowRight, ChevronDown, ChevronLeft,
   Droplet, Printer, Wand2, Star, CreditCard, QrCode, Truck, X,
 } from 'lucide-react';
 import storeApi from './storeApi';
@@ -63,6 +63,20 @@ export default function StoreHome() {
       ...(tipo ? { type: tipo } : {}),
     })}`),
   });
+
+  // Sem categoria/busca, a query acima já traz TODOS os produtos do tipo —
+  // agrupa por categoria para montar os cards grandes (sem query extra).
+  const productsByCategory = useMemo(() => {
+    const m = new Map();
+    for (const p of products) {
+      const k = p.category || '';
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(p);
+    }
+    return m;
+  }, [products]);
+  // Mostra os cards grandes de categoria quando nada está filtrado ainda.
+  const showCategoryCards = !category && !search && chipCats.length > 0;
 
   // chegou pelo menu (tipo/categoria na URL) → desce direto para o catálogo
   useEffect(() => {
@@ -255,8 +269,35 @@ export default function StoreHome() {
           </div>
         </div>
 
-        {(chipCats.length > 0 || activeTipo) && (
-          <div className="flex gap-2 flex-wrap mb-8">
+        {/* CATEGORIAS EM CARDS GRANDES — cada card passa as fotos dos produtos da categoria */}
+        {showCategoryCards && (
+          isLoading ? (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-4">
+              {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-80 bg-white rounded-3xl animate-pulse" />)}
+            </div>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-4">
+              {chipCats.map((c, idx) => (
+                <CategoryCard
+                  key={c.id} cat={c} delay={(idx % 3) * 100}
+                  color={CARD_COLORS[idx % CARD_COLORS.length]}
+                  items={productsByCategory.get(c.name) || []}
+                  onClick={() => setCategory(c.id)}
+                />
+              ))}
+            </div>
+          )
+        )}
+
+        {/* Navegação quando já se está dentro de uma categoria (ou buscando) */}
+        {!showCategoryCards && (chipCats.length > 0 || activeTipo) && (
+          <div className="flex gap-2 flex-wrap items-center mb-8">
+            {category && (
+              <button onClick={() => setCategory('')}
+                className="px-4 py-2 rounded-full text-sm font-bold bg-white border border-gray-200 text-gray-700 flex items-center gap-1 hover:border-orange-300 hover:text-orange-600 transition-all">
+                <ChevronLeft size={16} /> Categorias
+              </button>
+            )}
             {activeTipo && (
               <button onClick={() => setFilters({ tipo: '', cat: '' })}
                 className="px-4 py-2 rounded-full text-sm font-bold bg-orange-500 text-white flex items-center gap-1.5 hover:bg-orange-600 transition-all"
@@ -277,7 +318,7 @@ export default function StoreHome() {
           </div>
         )}
 
-        {isLoading ? (
+        {showCategoryCards ? null : isLoading ? (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-72 bg-white rounded-3xl animate-pulse" />)}
           </div>
@@ -286,9 +327,9 @@ export default function StoreHome() {
             Nenhum produto encontrado. {search && 'Tente outra busca.'}
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div key={category || 'all'} className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {products.map((p, idx) => (
-              <Reveal key={p.id} delay={(idx % 3) * 100}>
+              <div key={p.id} className="st-open h-full" style={{ animationDelay: `${(idx % 9) * 60}ms` }}>
                 <Link to={`/loja/produto/${p.id}`}
                   className="st-card group bg-white rounded-3xl border border-gray-100 overflow-hidden flex flex-col h-full">
                   <div className="bg-gradient-to-b from-gray-50 to-white flex items-center justify-center py-8 relative overflow-hidden h-52">
@@ -320,7 +361,7 @@ export default function StoreHome() {
                     </div>
                   </div>
                 </Link>
-              </Reveal>
+              </div>
             ))}
           </div>
         )}
@@ -345,5 +386,65 @@ export default function StoreHome() {
         </Reveal>
       </section>
     </div>
+  );
+}
+
+// Card grande de categoria: passa (crossfade) as fotos dos produtos da categoria
+// e, ao clicar, abre todos os produtos daquela categoria.
+function CategoryCard({ cat, items, color, onClick, delay = 0 }) {
+  // até 6 fotos giram no carrossel; produto sem foto vira uma garrafinha colorida
+  const slides = (items.length ? items : [{ id: cat.id, image_url: null, name: cat.name }]).slice(0, 6);
+  const [i, setI] = useState(0);
+
+  useEffect(() => {
+    if (slides.length <= 1) return;
+    // arranca defasado por card p/ as fotos não trocarem todas ao mesmo tempo
+    const start = setTimeout(() => {
+      setI(v => (v + 1) % slides.length);
+    }, 600 + (delay % 300));
+    const iv = setInterval(() => setI(v => (v + 1) % slides.length), 2600);
+    return () => { clearTimeout(start); clearInterval(iv); };
+  }, [slides.length, delay]);
+
+  return (
+    <Reveal delay={delay}>
+      <button type="button" onClick={onClick}
+        className="st-card group w-full text-left bg-white rounded-3xl border border-gray-100 overflow-hidden flex flex-col h-full">
+        <div className="relative h-64 bg-gradient-to-b from-gray-50 to-white overflow-hidden flex items-center justify-center">
+          <div className="absolute w-52 h-52 rounded-full blur-3xl transition-colors group-hover:scale-110"
+            style={{ background: color + '2e' }} />
+          {slides.map((p, idx) => (
+            <div key={(p.id || idx) + '-' + idx}
+              className={`st-slide absolute inset-0 flex items-center justify-center ${idx === i ? 'st-slide-on' : ''}`}>
+              {p.image_url ? (
+                <img src={p.image_url} alt="" loading="lazy"
+                  className="max-h-52 w-auto object-contain group-hover:scale-105 transition-transform duration-700" />
+              ) : (
+                <Bottle color={color} gradient={/degrad/i.test(p.name || '')} size={150} />
+              )}
+            </div>
+          ))}
+          <span className="absolute top-4 left-4 bg-white/85 backdrop-blur text-gray-700 text-xs font-bold px-3 py-1 rounded-full shadow-sm">
+            {items.length} {items.length === 1 ? 'modelo' : 'modelos'}
+          </span>
+          {slides.length > 1 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
+              {slides.map((_, idx) => (
+                <span key={idx} className={`h-1.5 rounded-full transition-all duration-500 ${idx === i ? 'w-5 bg-orange-500' : 'w-1.5 bg-gray-300'}`} />
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="p-6 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-lg font-black text-gray-900 leading-tight truncate group-hover:text-orange-600 transition-colors">{cat.name}</h3>
+            <p className="text-sm text-gray-400 mt-0.5">Ver todos os modelos</p>
+          </div>
+          <span className="w-11 h-11 rounded-full bg-orange-500 text-white flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:translate-x-0.5 transition-transform">
+            <ArrowRight size={18} />
+          </span>
+        </div>
+      </button>
+    </Reveal>
   );
 }

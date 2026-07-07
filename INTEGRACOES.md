@@ -75,7 +75,30 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
 - **WhatsApp em massa:** usa as mesmas variáveis do item 2. Envios proativos
   (fora da janela de 24h) podem exigir **template aprovado** na Meta.
 
-## 8. Erros em produção (Sentry) — opcional
+## 8. Transportadora BrasPress (cotação + rastreio)
+- **Onde usa:**
+  - **Cotação:** loja (`/loja`) → carrinho → "Calcular frete". A opção **BrasPress**
+    aparece junto das demais (com o mesmo acréscimo % do frete).
+  - **Rastreio:** ERP → Vendas → abrir a venda → aba **Transportadores** →
+    "Rastrear na BrasPress" (informe o **nº da Nota Fiscal**).
+- **Como ligar:** Configurações → **Transportadora** → bloco *BrasPress* → marque a
+  caixa e preencha usuário, senha e CNPJ do contrato. (Alternativa: variáveis de
+  ambiente abaixo — os campos da tela têm prioridade.)
+- **Variáveis (fallback do painel):**
+  - `BRASPRESS_USER` — usuário da API (ex.: `40899894000118_PRD`).
+  - `BRASPRESS_PASSWORD` — senha da API.
+  - `BRASPRESS_CNPJ` — CNPJ do contrato (remetente / pagador do frete).
+  - `BRASPRESS_CNPJ_DEST` — opcional; CNPJ do destinatário usado na cotação da loja
+    quando o cliente é consumidor (sem CNPJ). Se vazio, usa o CNPJ do contrato.
+  - `BRASPRESS_MODAL` — opcional; `R` rodoviário (padrão) ou `A` aéreo.
+  - `BRASPRESS_TIPO_FRETE` — opcional; `1` CIF (padrão) ou `2` FOB.
+  - `BRASPRESS_BASE_URL` — opcional; padrão `https://api.braspress.com`.
+- **Obs.:** a BrasPress exige **CNPJ do destinatário** na cotação; para consumidor
+  final a loja usa o `BRASPRESS_CNPJ_DEST` (ou o CNPJ do contrato). O valor da
+  cotação depende de CEP de origem/destino, peso, volumes e cubagem — não do
+  destinatário em si. Sem as credenciais, a BrasPress simplesmente não aparece — nada quebra.
+
+## 9. Erros em produção (Sentry) — opcional
 - `SENTRY_DSN` — DSN do projeto no sentry.io. Com isso, todo erro de servidor é
   reportado automaticamente.
 

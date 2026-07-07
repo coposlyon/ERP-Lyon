@@ -6,6 +6,7 @@ const {
   cotar, rastrear, getFreteConfig, ufFromCep,
   jtReady, jtCriarPedido, jtCancelarPedido, jtEtiqueta,
 } = require('../lib/shipping');
+const { braspressTracking, bpReady } = require('../lib/braspress');
 
 // Transportadoras ativas (para escolher no pedido) — acessível ao módulo de vendas
 router.get('/carriers', async (req, res) => {
@@ -43,10 +44,21 @@ router.get('/config', async (req, res) => {
     res.json({
       enabled: c.enabled, has_jt: jtReady(c),
       jt_homolog: /demoopenapi/i.test(c.jt_base_url || ''),
+      bp_enabled: c.bp_enabled, has_braspress: bpReady(c),
       origin_cep: c.origin_cep, free_above: c.free_above,
       weight_per_unit_g: c.weight_per_unit_g, table_count: (c.table || []).length,
     });
   } catch (err) { res.status(500).json({ error: 'Erro ao carregar configuração de frete' }); }
+});
+
+// GET /api/shipping/braspress/track/:nf — rastreio BrasPress por Nota Fiscal
+// CNPJ pagador do frete: query ?cnpj=... ou o CNPJ configurado (bp_cnpj).
+router.get('/braspress/track/:nf', async (req, res) => {
+  try {
+    const cfg = await getFreteConfig(req.tenantId);
+    const r = await braspressTracking(cfg, { cnpj: req.query.cnpj, nf: req.params.nf });
+    res.json(r);
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 });
 
 // ── J&T Express: envio a partir de uma venda ──────────────────────────

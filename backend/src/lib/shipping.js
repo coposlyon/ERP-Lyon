@@ -37,6 +37,15 @@ async function getFreteConfig(tenantId) {
     jt_private_key:   s.jt_private_key || process.env.JT_PRIVATE_KEY || '',
     jt_customer_code: s.jt_customer_code || process.env.JT_CUSTOMER_CODE || '',
     jt_password:      s.jt_password || process.env.JT_PASSWORD || '',
+    // BrasPress (cotação + rastreio). Fallback nas env BRASPRESS_*.
+    bp_enabled:       !!s.bp_enabled,
+    bp_base_url:      s.bp_base_url || process.env.BRASPRESS_BASE_URL || 'https://api.braspress.com',
+    bp_user:          s.bp_user || process.env.BRASPRESS_USER || '',
+    bp_password:      s.bp_password || process.env.BRASPRESS_PASSWORD || '',
+    bp_cnpj:          s.bp_cnpj || process.env.BRASPRESS_CNPJ || '',
+    bp_cnpj_dest:     s.bp_cnpj_dest || process.env.BRASPRESS_CNPJ_DEST || '',
+    bp_modal:         s.bp_modal || process.env.BRASPRESS_MODAL || 'R',
+    bp_tipo_frete:    s.bp_tipo_frete || process.env.BRASPRESS_TIPO_FRETE || 1,
     origin_cep:       String(s.origin_cep || '').replace(/\D/g, ''),
     weight_per_unit_g: Number(s.weight_per_unit_g) || 200,     // peso por copo (g) p/ estimar
     free_above:       Number(s.free_above) || 0,               // frete grátis acima de R$

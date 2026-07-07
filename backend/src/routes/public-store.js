@@ -6,6 +6,7 @@ const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
 const { uploadDataUrl } = require('../lib/storage');
 const { calcularFrete, packItem } = require('../lib/frete');
 const { cotar, ufFromCep, getFreteConfig } = require('../lib/shipping');
+const { braspressCotar, bpReady } = require('../lib/braspress');
 
 // Loja pública: serve UM tenant (a empresa dona da loja).
 // Sem autenticação — montada antes do authMiddleware.
@@ -820,7 +821,8 @@ router.post('/frete', async (req, res) => {
       }
     }
 
-    let options = null;
+    const cfg = await getFreteConfig(STORE_TENANT);
+    let options = [];
 
     // 1) Melhor Envio (cotação real multi-transportadora) — se houver token
     if (process.env.MELHORENVIO_TOKEN && products.length) {
@@ -828,8 +830,33 @@ router.post('/frete', async (req, res) => {
       if (out.ok && (out.options || []).length) options = out.options;
     }
 
-    // 2) Fallback: tabela por estado (Configurações → Transportadora)
-    if (!options) {
+    // 2) BrasPress (cotação por CNPJ) — anexa como opção extra, se configurada
+    if (cfg.bp_enabled && bpReady(cfg) && products.length && String(fromCep).replace(/\D/g, '').length === 8) {
+      try {
+        const cubagem = products.map(p => ({
+          comprimento: Math.max((Number(p.length) || 1) / 100, 0.01),
+          largura:     Math.max((Number(p.width)  || 1) / 100, 0.01),
+          altura:      Math.max((Number(p.height) || 1) / 100, 0.01),
+          volumes:     Math.max(1, Number(p.quantity) || 1),
+        }));
+        const pesoTotal    = products.reduce((s, p) => s + (Number(p.weight) || 0) * (Number(p.quantity) || 1), 0);
+        const volumesTotal = products.reduce((s, p) => s + (Number(p.quantity) || 1), 0);
+        const bp = await braspressCotar(cfg, {
+          cepOrigem: fromCep, cepDestino: cep, vlrMercadoria: subtotal,
+          peso: pesoTotal, volumes: volumesTotal, cubagem,
+        });
+        if (bp.price > 0) {
+          options.push({
+            id: 'braspress', company: 'BrasPress',
+            service: cfg.bp_modal === 'A' ? 'Aéreo' : 'Rodoviário',
+            price: bp.price, days: bp.days,
+          });
+        }
+      } catch (e) { console.error('[public-store:frete] BrasPress', e.message); }
+    }
+
+    // 3) Fallback: tabela por estado (Configurações → Transportadora) — só se nada retornou
+    if (!options.length) {
       const uf = ufFromCep(cep);
       if (!uf) return res.status(400).json({ error: 'Não consegui identificar o estado pelo CEP.' });
       const r = await cotar(STORE_TENANT, { uf, cep, qty, subtotal });
@@ -837,7 +864,6 @@ router.post('/frete', async (req, res) => {
     }
 
     // Markup automático sobre o frete (custo de caixa + variação de peso) — padrão 14%
-    const cfg = await getFreteConfig(STORE_TENANT);
     const markup = (cfg.freight_markup != null && cfg.freight_markup !== '') ? Number(cfg.freight_markup) : 14;
     if (markup) options = options.map(o => ({ ...o, price: Math.round((Number(o.price) || 0) * (1 + markup / 100) * 100) / 100 }));
 

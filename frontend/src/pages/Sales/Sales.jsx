@@ -579,6 +579,7 @@ function TransportTab({ sale, onChanged }) {
   const [carrierId, setCarrierId] = useState(sale.carrier_id || '');
   const [tracking, setTracking] = useState(sale.tracking_code || '');
   const [events, setEvents] = useState(null);
+  const [nfBp, setNfBp] = useState('');
 
   const { data: carriers } = useQuery({ queryKey: ['carriers'], queryFn: () => api.get('/shipping/carriers') });
 
@@ -592,6 +593,13 @@ function TransportTab({ sale, onChanged }) {
     mutationFn: () => api.get(`/shipping/track/${encodeURIComponent(tracking.trim())}`),
     onSuccess: (r) => { setEvents(r.events || []); if (!(r.events || []).length) toast('Sem movimentações ainda.'); },
     onError: (e) => { setEvents(null); toast.error(e.error || 'Não foi possível rastrear'); },
+  });
+
+  // Rastreio BrasPress por Nota Fiscal — reaproveita a mesma lista de eventos
+  const trackBpMut = useMutation({
+    mutationFn: () => api.get(`/shipping/braspress/track/${encodeURIComponent(nfBp.trim())}`),
+    onSuccess: (r) => { setEvents(r.events || []); if (!(r.events || []).length) toast('Sem movimentações ainda.'); },
+    onError: (e) => { setEvents(null); toast.error(e.error || 'Não foi possível rastrear na BrasPress'); },
   });
 
   return (
@@ -625,10 +633,18 @@ function TransportTab({ sale, onChanged }) {
       </div>
 
       <div>
-        <button onClick={() => trackMut.mutate()} disabled={trackMut.isPending || !tracking.trim()}
-          className="flex items-center gap-1.5 text-sm font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg px-3 py-1.5 disabled:opacity-40">
-          {trackMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <MapPin size={14} />} Rastrear encomenda
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => trackMut.mutate()} disabled={trackMut.isPending || !tracking.trim()}
+            className="flex items-center gap-1.5 text-sm font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg px-3 py-1.5 disabled:opacity-40">
+            {trackMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <MapPin size={14} />} Rastrear encomenda
+          </button>
+          <span className="text-xs text-gray-300">ou</span>
+          <input className="input text-sm font-mono w-32" value={nfBp} onChange={e => setNfBp(e.target.value)} placeholder="Nº da NF" />
+          <button onClick={() => trackBpMut.mutate()} disabled={trackBpMut.isPending || !nfBp.trim()}
+            className="flex items-center gap-1.5 text-sm font-semibold text-orange-700 bg-orange-50 hover:bg-orange-100 rounded-lg px-3 py-1.5 disabled:opacity-40">
+            {trackBpMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <MapPin size={14} />} Rastrear na BrasPress
+          </button>
+        </div>
         {events && events.length > 0 && (
           <ul className="mt-3 space-y-2">
             {events.map((ev, i) => (

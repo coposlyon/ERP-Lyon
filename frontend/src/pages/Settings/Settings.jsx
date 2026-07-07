@@ -511,6 +511,54 @@ export default function Settings() {
               </div>
             </div>
 
+            {/* BrasPress API — cotação (loja) + rastreio por NF */}
+            <div className="border-t border-gray-100 pt-5">
+              <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${form.settings?.frete?.bp_enabled ? 'border-primary-300 bg-primary-50' : 'border-gray-200'}`}>
+                <input type="checkbox" className="mt-1 rounded" checked={!!form.settings?.frete?.bp_enabled} onChange={e => setFrete('bp_enabled', e.target.checked)} disabled={!isAdmin} />
+                <span>
+                  <span className="block text-sm font-semibold text-gray-800">Integração BrasPress (cotação na loja + rastreio por Nota Fiscal)</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">Com as credenciais da <b>API BrasPress</b> (usuário, senha e CNPJ), a loja passa a mostrar o frete da BrasPress no carrinho e você rastreia a encomenda pela NF na venda (aba Transportadores). Se os campos ficarem vazios, o servidor usa as variáveis de ambiente (BRASPRESS_*).</span>
+                </span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                <div>
+                  <label className="label">Usuário (API)</label>
+                  <input className="input font-mono" value={form.settings?.frete?.bp_user || ''} onChange={e => setFrete('bp_user', e.target.value)} placeholder="00000000000000_PRD" disabled={!isAdmin} />
+                </div>
+                <div>
+                  <label className="label">Senha (API)</label>
+                  <input type="password" className="input font-mono" value={form.settings?.frete?.bp_password || ''} onChange={e => setFrete('bp_password', e.target.value)} placeholder="senha da API BrasPress" disabled={!isAdmin} />
+                </div>
+                <div>
+                  <label className="label">CNPJ do contrato (remetente / pagador do frete)</label>
+                  <input className="input font-mono" value={form.settings?.frete?.bp_cnpj || ''} onChange={e => setFrete('bp_cnpj', e.target.value)} placeholder="somente números" disabled={!isAdmin} />
+                </div>
+                <div>
+                  <label className="label">CNPJ destinatário padrão (cotação sem CNPJ)</label>
+                  <input className="input font-mono" value={form.settings?.frete?.bp_cnpj_dest || ''} onChange={e => setFrete('bp_cnpj_dest', e.target.value)} placeholder="opcional — usa o do contrato se vazio" disabled={!isAdmin} />
+                  <p className="text-xs text-gray-400 mt-1">A BrasPress exige CNPJ do destinatário na cotação. Na loja, quando o cliente é consumidor, usa-se este CNPJ (a cotação depende de CEP/peso/volume, não do destinatário).</p>
+                </div>
+                <div>
+                  <label className="label">Modal</label>
+                  <select className="input" value={form.settings?.frete?.bp_modal || 'R'} onChange={e => setFrete('bp_modal', e.target.value)} disabled={!isAdmin}>
+                    <option value="R">Rodoviário</option>
+                    <option value="A">Aéreo</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Tipo de frete</label>
+                  <select className="input" value={String(form.settings?.frete?.bp_tipo_frete || 1)} onChange={e => setFrete('bp_tipo_frete', e.target.value)} disabled={!isAdmin}>
+                    <option value="1">CIF (pago pelo remetente)</option>
+                    <option value="2">FOB (pago pelo destinatário)</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label">URL base da API</label>
+                  <input className="input font-mono" value={form.settings?.frete?.bp_base_url || ''} onChange={e => setFrete('bp_base_url', e.target.value)} placeholder="https://api.braspress.com" disabled={!isAdmin} />
+                </div>
+              </div>
+            </div>
+
             {isAdmin && (
               <div className="flex justify-end">
                 <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
