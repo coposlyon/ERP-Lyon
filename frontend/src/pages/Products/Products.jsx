@@ -28,6 +28,10 @@ export default function Products() {
   const [delTarget, setDelTarget] = useState(null); // produto a apagar (confirmação)
   const [exporting, setExporting] = useState(false);
   const [categoryId, setCategoryId] = useState('');
+  const [linha, setLinha] = useState('');   // '' | tradicional | degrad | bicolor | jateado
+  const [cor, setCor] = useState('');       // nome da cor (ex.: AMARELO LIMÃO)
+  const [borda, setBorda] = useState('');   // '' | 'borda' (com) | '-borda' (sem)
+  const [volume, setVolume] = useState(''); // '' | '350' | '500'...
   const [sort, setSort] = useState('name');
   const [lightbox, setLightbox] = useState(null);      // url da foto ampliada
   const [photoTarget, setPhotoTarget] = useState(null); // produto do modal "adicionar foto" (colar/arquivo)
@@ -50,6 +54,18 @@ export default function Products() {
     queryFn: () => api.get('/products/categories/list'),
   });
 
+  // Opções dos filtros (cores e tamanhos que existem no catálogo)
+  const { data: filterOpts } = useQuery({
+    queryKey: ['product-filters'],
+    queryFn: () => api.get('/products/filters'),
+  });
+  const colorOptions = filterOpts?.colors || [];
+  const volumeOptions = filterOpts?.volumes || [];
+
+  // Os filtros viram termos de busca (o backend exige TODOS os termos;
+  // prefixo "-" exclui — ex.: "-borda" = sem borda)
+  const effectiveSearch = [search, linha, cor, borda, volume].filter(Boolean).join(' ').trim();
+
   async function exportCSV() {
     setExporting(true);
     try {
@@ -68,12 +84,12 @@ export default function Products() {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', page, search, categoryId, sort],
+    queryKey: ['products', page, effectiveSearch, categoryId, sort],
     queryFn: () => {
       let url = `/products?page=${page}&limit=50`;
-      if (search)     url += `&search=${encodeURIComponent(search)}`;
-      if (categoryId) url += `&category_id=${categoryId}`;
-      if (sort)       url += `&sort=${sort}`;
+      if (effectiveSearch) url += `&search=${encodeURIComponent(effectiveSearch)}`;
+      if (categoryId)      url += `&category_id=${categoryId}`;
+      if (sort)            url += `&sort=${sort}`;
       return api.get(url);
     },
   });
@@ -188,7 +204,7 @@ export default function Products() {
     setSampleBusy(true);
     try {
       const img = await loadImage(template);
-      const body = useFilter ? { search, category_id: categoryId } : {};
+      const body = useFilter ? { search: effectiveSearch, category_id: categoryId } : {};
       const pending = await api.post('/products/images/pending', body);
       const p = pending.find(x => x.colors?.length);
       if (!p) { toast.error('Nenhum produto pendente com cor no nome'); return; }
@@ -237,7 +253,7 @@ export default function Products() {
     setGenBusy(true); setGenCount(0); setGenTotal(0);
     try {
       const img = await loadImage(template);
-      const body = useFilter ? { search, category_id: categoryId } : {};
+      const body = useFilter ? { search: effectiveSearch, category_id: categoryId } : {};
       const pending = await api.post('/products/images/pending', body);
       const todo = pending.filter(p => p.colors?.length);
       const semCor = pending.length - todo.length;
@@ -382,7 +398,7 @@ export default function Products() {
           <button onClick={() => dedupeMutation.mutate()} disabled={dedupeMutation.isPending} className="btn-secondary disabled:opacity-50" title="Junta duplicadas e categoriza produtos sem categoria">
             {dedupeMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <FolderTree size={16} />} Organizar Categorias
           </button>
-          <button onClick={() => { setGenOpen(true); setUseFilter(!!(search || categoryId)); }} disabled={genBusy}
+          <button onClick={() => { setGenOpen(true); setUseFilter(!!(effectiveSearch || categoryId)); }} disabled={genBusy}
             className="btn-secondary disabled:opacity-50" title="Recolore uma foto modelo na cor do nome de cada produto sem foto">
             {genBusy ? <Loader2 size={16} className="animate-spin" /> : <Palette size={16} />} {genBusy ? `Gerando... ${genCount}/${genTotal}` : 'Gerar Fotos'}
           </button>
@@ -393,32 +409,71 @@ export default function Products() {
       </div>
 
       <div className="card">
-        {/* Filtros */}
-        <div className="card-header flex flex-wrap items-center gap-3">
-          <form onSubmit={handleSearch} className="flex gap-2 flex-1 min-w-[240px] max-w-md">
-            <div className="relative flex-1">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar: nome, cor, tamanho, código… (ex.: long drink amarelo 350)"
-                value={searchInput}
-                onChange={e => setSearchInput(e.target.value)}
-                className="input pl-9"
-              />
-            </div>
-            <button type="submit" className="btn-secondary">Buscar</button>
-            {search && (
-              <button type="button" onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }}
-                className="btn-ghost">Limpar</button>
-            )}
-          </form>
-
+        {/* Filtros: Tipo → Linha → Cor → Borda → Tamanho → busca → ordenação */}
+        <div className="card-header flex flex-wrap items-center gap-2">
           {/* Tipo */}
           <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setPage(1); }}
             className="input w-auto text-sm" title="Filtrar por tipo">
             <option value="">Todos os tipos</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+
+          {/* Linha / acabamento */}
+          <select value={linha} onChange={e => { setLinha(e.target.value); setPage(1); }}
+            className="input w-auto text-sm" title="Filtrar por linha/acabamento">
+            <option value="">Todas as linhas</option>
+            <option value="tradicional">Tradicional</option>
+            <option value="degrad">Degradê</option>
+            <option value="bicolor">Bicolor</option>
+            <option value="jateado">Jateado</option>
+            <option value="metalizado">Metalizado</option>
+          </select>
+
+          {/* Cor (vem do catálogo) */}
+          <select value={cor} onChange={e => { setCor(e.target.value); setPage(1); }}
+            className="input w-auto text-sm max-w-[170px]" title="Filtrar por cor">
+            <option value="">Todas as cores</option>
+            {colorOptions.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+
+          {/* Borda */}
+          <select value={borda} onChange={e => { setBorda(e.target.value); setPage(1); }}
+            className="input w-auto text-sm" title="Filtrar por borda">
+            <option value="">Com/sem borda</option>
+            <option value="borda">Com borda</option>
+            <option value="-borda">Sem borda</option>
+          </select>
+
+          {/* Tamanho (vem do catálogo) */}
+          {volumeOptions.length > 0 && (
+            <select value={volume} onChange={e => { setVolume(e.target.value); setPage(1); }}
+              className="input w-auto text-sm" title="Filtrar por tamanho">
+              <option value="">Todos os tamanhos</option>
+              {volumeOptions.map(v => <option key={v} value={parseInt(v)}>{v}</option>)}
+            </select>
+          )}
+
+          {/* Busca livre */}
+          <form onSubmit={handleSearch} className="flex gap-2 flex-1 min-w-[220px]">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar: nome, código… (ex.: long drink 350)"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                className="input pl-9"
+              />
+            </div>
+            <button type="submit" className="btn-secondary">Buscar</button>
+          </form>
+
+          {(effectiveSearch || categoryId) && (
+            <button type="button" className="btn-ghost text-sm"
+              onClick={() => { setSearch(''); setSearchInput(''); setCategoryId(''); setLinha(''); setCor(''); setBorda(''); setVolume(''); setPage(1); }}>
+              Limpar filtros
+            </button>
+          )}
 
           {/* Ordenar */}
           <select value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}
@@ -510,10 +565,10 @@ export default function Products() {
           </div>
           <p className="text-xs text-gray-400 -mt-2">Ou copie uma imagem e aperte <b>Ctrl+V</b> aqui.</p>
 
-          {(search || categoryId) && (
+          {(effectiveSearch || categoryId) && (
             <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
               <input type="checkbox" checked={useFilter} onChange={e => setUseFilter(e.target.checked)} className="w-4 h-4 text-violet-600 rounded" />
-              Aplicar só aos produtos do filtro atual{search ? <> (busca: <b>{search}</b>)</> : null}
+              Aplicar só aos produtos do filtro atual{effectiveSearch ? <> (<b>{effectiveSearch}</b>)</> : null}
             </label>
           )}
 

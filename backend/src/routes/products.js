@@ -5,7 +5,7 @@ const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
 const { uploadDataUrl } = require('../lib/storage');
-const { parseName } = require('../lib/cupImage');
+const { parseName, extractColorNames, stripAccents } = require('../lib/cupImage');
 const { PRINT_METHODS } = require('../lib/calc');
 
 // Sobe data-URLs (fotos) para o Storage; mantém URLs já existentes.
@@ -498,6 +498,42 @@ router.post('/images/clear-generated', async (req, res) => {
     if (error) throw error;
     audit(req, 'update', 'products_clear_generated_images', null, { cleared: data?.length || 0 });
     res.json({ ok: true, cleared: data?.length || 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Opções de filtro da tela de Produtos, derivadas do próprio catálogo:
+// cores citadas nos nomes (com acento, como estão no banco) e tamanhos (ML).
+router.get('/filters', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('PRODUTOS')
+      .select('name')
+      .eq('tenant_id', req.tenantId)
+      .limit(5000);
+    if (error) throw error;
+
+    // agrupa por forma normalizada e usa a grafia mais comum como rótulo
+    const byNorm = new Map();
+    const volumes = new Set();
+    for (const p of (data || [])) {
+      for (const c of extractColorNames(p.name)) {
+        const k = stripAccents(c.toLowerCase());
+        const e = byNorm.get(k) || new Map();
+        e.set(c, (e.get(c) || 0) + 1);
+        byNorm.set(k, e);
+      }
+      const vm = String(p.name || '').match(/(\d{2,4})\s*ML\b/i);
+      if (vm) volumes.add(parseInt(vm[1]));
+    }
+    const colors = [...byNorm.values()]
+      .map(forms => [...forms.entries()].sort((a, b) => b[1] - a[1])[0][0])
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    res.json({
+      colors,
+      volumes: [...volumes].sort((a, b) => a - b).map(v => `${v} ML`),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

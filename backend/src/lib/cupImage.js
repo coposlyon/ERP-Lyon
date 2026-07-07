@@ -126,4 +126,29 @@ function parseName(name) {
   return { colors, fx };
 }
 
-module.exports = { parseName, findColors };
+// Extrai os NOMES de cor como aparecem no texto original (com acento), para
+// montar o filtro de cores da tela de Produtos. Ex.: "AMARELO LIMÃO".
+function extractColorNames(name) {
+  const raw = String(name || '');
+  const tokens = [];
+  const re = /[A-Za-zÀ-ÿ]+/g;
+  let m;
+  while ((m = re.exec(raw))) tokens.push({ w: m[0], norm: stripAccents(m[0].toLowerCase()) });
+
+  const keys = Object.keys(COLOR_MAP).map(k => k.split(' ')).sort((a, b) => b.length - a.length);
+  const used = new Array(tokens.length).fill(false);
+  const out = [];
+  for (const kw of keys) {
+    for (let i = 0; i + kw.length <= tokens.length; i++) {
+      if (used.slice(i, i + kw.length).some(Boolean)) continue;
+      let ok = true;
+      for (let j = 0; j < kw.length; j++) if (tokens[i + j].norm !== kw[j]) { ok = false; break; }
+      if (!ok) continue;
+      for (let j = 0; j < kw.length; j++) used[i + j] = true;
+      out.push(tokens.slice(i, i + kw.length).map(t => t.w.toUpperCase()).join(' '));
+    }
+  }
+  return out;
+}
+
+module.exports = { parseName, findColors, extractColorNames, stripAccents };
