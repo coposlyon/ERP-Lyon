@@ -5,6 +5,7 @@ const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
 const { uploadDataUrl } = require('../lib/storage');
+const { cupDataUrl } = require('../lib/cupImage');
 const { PRINT_METHODS } = require('../lib/calc');
 
 // Sobe data-URLs (fotos) para o Storage; mantém URLs já existentes.
@@ -414,6 +415,50 @@ router.delete('/categories/:catId', async (req, res) => {
     if (error) throw error;
     audit(req, 'delete', 'category', req.params.catId, { name: cat?.name, products_unlinked: count || 0 });
     res.json({ message: 'Tipo excluído', products_unlinked: count || 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Gera foto ilustrativa (desenho do copo na cor do nome) para os produtos SEM
+// foto. Processa em lotes — o front chama em loop até remaining chegar a 0.
+router.post('/images/auto-generate', async (req, res) => {
+  const limit = Math.min(parseInt(req.body?.limit) || 60, 150);
+  try {
+    const { data: prods, error } = await supabase
+      .from('PRODUTOS')
+      .select('id, name, image_url')
+      .eq('tenant_id', req.tenantId)
+      .order('name')
+      .limit(3000);
+    if (error) throw error;
+
+    const parsable = [], noColor = [];
+    for (const p of (prods || [])) {
+      if (p.image_url) continue; // nunca mexe em quem já tem foto
+      const dataUrl = cupDataUrl(p.name);
+      if (dataUrl) parsable.push({ id: p.id, dataUrl });
+      else noColor.push(p.id);
+    }
+
+    const batch = parsable.slice(0, limit);
+    let generated = 0;
+    // pool de 6 uploads em paralelo
+    let i = 0;
+    await Promise.all(Array.from({ length: Math.min(6, batch.length) }, async () => {
+      while (i < batch.length) {
+        const p = batch[i++];
+        const url = await uploadDataUrl(p.dataUrl, 'produtos-auto');
+        if (!url) continue;
+        const { error: upErr } = await supabase.from('PRODUTOS')
+          .update({ image_url: url, updated_at: new Date().toISOString() })
+          .eq('id', p.id).eq('tenant_id', req.tenantId);
+        if (!upErr) generated++;
+      }
+    }));
+
+    audit(req, 'update', 'products_auto_images', null, { generated, no_color: noColor.length });
+    res.json({ ok: true, generated, remaining: parsable.length - batch.length, no_color: noColor.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -17,7 +17,7 @@ async function uploadDataUrl(dataUrl, folder = 'previews') {
   try {
     const mime = m[1];
     const buf = Buffer.from(m[2], 'base64');
-    const ext = mime.includes('png') ? 'png' : mime.includes('jpeg') ? 'jpg' : mime.includes('webp') ? 'webp' : 'bin';
+    const ext = mime.includes('png') ? 'png' : mime.includes('jpeg') ? 'jpg' : mime.includes('webp') ? 'webp' : mime.includes('svg') ? 'svg' : 'bin';
     const path = `${folder}/${randomUUID()}.${ext}`;
     const { error } = await supabase.storage.from(BUCKET).upload(path, buf, { contentType: mime, upsert: false });
     if (error) { console.error('[storage]', error.message); return null; }

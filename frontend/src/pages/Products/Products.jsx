@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Download, Trash2, Loader2, AlertTriangle, FolderTree, Image as ImageIcon, Eye, EyeOff, ClipboardPaste } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Download, Trash2, Loader2, AlertTriangle, FolderTree, Image as ImageIcon, Eye, EyeOff, ClipboardPaste, Palette } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
@@ -30,6 +30,9 @@ export default function Products() {
   const [sort, setSort] = useState('name');
   const [lightbox, setLightbox] = useState(null);      // url da foto ampliada
   const [photoTarget, setPhotoTarget] = useState(null); // produto do modal "adicionar foto" (colar/arquivo)
+  const [genOpen, setGenOpen] = useState(false);        // confirmação do "Gerar Fotos"
+  const [genBusy, setGenBusy] = useState(false);
+  const [genCount, setGenCount] = useState(0);
   const uploadTargetId = useRef(null);                 // produto que vai receber a foto
   const fileInputRef = useRef(null);
   const qc = useQueryClient();
@@ -162,6 +165,33 @@ export default function Products() {
     onError: (e) => toast.error(e.error || 'Erro ao organizar categorias'),
   });
 
+  // Gera desenho do copo na cor do nome para TODOS os produtos sem foto.
+  // Processa em lotes (o backend devolve remaining) até acabar.
+  async function generatePhotos() {
+    setGenBusy(true); setGenCount(0);
+    try {
+      let total = 0, noColor = 0;
+      for (;;) {
+        const r = await api.post('/products/images/auto-generate', { limit: 60 });
+        total += r.generated || 0;
+        noColor = r.no_color || 0;
+        setGenCount(total);
+        if (!r.remaining || !r.generated) break; // acabou (ou travou — evita loop infinito)
+      }
+      qc.invalidateQueries(['products']);
+      toast.success(
+        total
+          ? `${total} foto(s) gerada(s)!${noColor ? ` ${noColor} produto(s) sem cor no nome — preencha manualmente.` : ''}`
+          : (noColor ? `Nenhuma foto gerada — ${noColor} produto(s) sem cor identificável no nome.` : 'Todos os produtos já têm foto!')
+      );
+      setGenOpen(false);
+    } catch (e) {
+      toast.error(e.error || 'Erro ao gerar fotos');
+    } finally {
+      setGenBusy(false);
+    }
+  }
+
   function handleSearch(e) {
     e.preventDefault();
     setSearch(searchInput);
@@ -271,6 +301,9 @@ export default function Products() {
           <button onClick={() => dedupeMutation.mutate()} disabled={dedupeMutation.isPending} className="btn-secondary disabled:opacity-50" title="Junta duplicadas e categoriza produtos sem categoria">
             {dedupeMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <FolderTree size={16} />} Organizar Categorias
           </button>
+          <button onClick={() => setGenOpen(true)} disabled={genBusy} className="btn-secondary disabled:opacity-50" title="Gera desenho do copo na cor do nome para todos os produtos sem foto">
+            {genBusy ? <Loader2 size={16} className="animate-spin" /> : <Palette size={16} />} {genBusy ? `Gerando... ${genCount}` : 'Gerar Fotos'}
+          </button>
           <button onClick={openNew} className="btn-primary">
             <Plus size={16} /> Novo Produto
           </button>
@@ -361,6 +394,26 @@ export default function Products() {
       <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
       <ImportStockModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
       <ImportProductsModal isOpen={catalogOpen} onClose={() => setCatalogOpen(false)} />
+
+      {/* Gerar fotos automáticas (desenho na cor do nome) */}
+      <Modal isOpen={genOpen} onClose={() => !genBusy && setGenOpen(false)} title="Gerar fotos automáticas" size="sm">
+        <div className="space-y-4">
+          <div className="w-14 h-14 bg-violet-100 rounded-full flex items-center justify-center mx-auto">
+            <Palette size={26} className="text-violet-600" />
+          </div>
+          <div className="text-sm text-gray-700 space-y-2">
+            <p>Vou criar um <b>desenho do copo na cor exata do nome</b> de cada produto que está <b>sem foto</b> (ex.: AMARELO CANÁRIO, AZUL BIC, degradê, bicolor, jateado, borda...).</p>
+            <p className="text-gray-500">Produtos que já têm foto <b>não são alterados</b>. Quem não tiver cor reconhecível no nome fica como está.</p>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setGenOpen(false)} disabled={genBusy} className="flex-1 btn-secondary disabled:opacity-50">Cancelar</button>
+            <button onClick={generatePhotos} disabled={genBusy}
+              className="flex-1 flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50">
+              {genBusy ? <><Loader2 size={15} className="animate-spin" /> Gerando... {genCount}</> : <><Palette size={15} /> Gerar agora</>}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Confirmação de exclusão */}
       <Modal isOpen={!!delTarget} onClose={() => !deleteMutation.isPending && setDelTarget(null)} title="Apagar produto" size="sm">
