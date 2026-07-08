@@ -3,11 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Search, Palette, ShieldCheck, Sparkles, ArrowRight, ChevronDown, ChevronLeft,
-  Droplet, Printer, Wand2, Star, CreditCard, QrCode, Truck, X,
+  Printer, Wand2, Star, CreditCard, QrCode, Truck, X, Instagram,
 } from 'lucide-react';
 import storeApi from './storeApi';
 import Bottle from './Bottle';
 import { Reveal, CountUp } from './Reveal';
+import { RawEmbed, FacebookPage } from './SocialEmbeds';
 import { SITE_DEFAULTS } from './siteDefaults';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -48,6 +49,9 @@ export default function StoreHome() {
   const { data: store } = useQuery({ queryKey: ['store-info'], queryFn: () => storeApi.get('/store') });
   const S = { ...SITE_DEFAULTS, ...(store?.site || {}) }; // textos do site (config + padrão)
   const show3d = S.show_3d !== false;
+
+  const { data: instagram } = useQuery({ queryKey: ['store-instagram'], queryFn: () => storeApi.get('/instagram'), staleTime: 10 * 60 * 1000 });
+  const igPosts = instagram?.ok ? (instagram.posts || []) : [];
 
   const { data: categories = [] } = useQuery({ queryKey: ['store-cats'], queryFn: () => storeApi.get('/categories') });
   const { data: types = [] } = useQuery({ queryKey: ['store-types'], queryFn: () => storeApi.get('/types') });
@@ -138,12 +142,14 @@ export default function StoreHome() {
         </a>
       </section>
 
-      {/* ══ MARQUEE ══ */}
-      <div className="bg-orange-500 text-white py-3 overflow-hidden">
-        <div className="st-marquee-track">
+      {/* ══ FAIXA DE DIFERENCIAIS (marquee elegante) ══ */}
+      <div className="text-white overflow-hidden border-y border-white/10 shadow-sm"
+        style={{ background: 'linear-gradient(100deg,#ff7a18,#ff2d75 48%,#8a2be2 96%)' }}>
+        <div className="st-marquee-track py-2.5">
           {[...MARQUEE, ...MARQUEE, ...MARQUEE, ...MARQUEE].map((t, i) => (
-            <span key={i} className="mx-6 text-lg font-black tracking-widest flex items-center gap-6">
-              {t} <Droplet size={16} className="fill-white" />
+            <span key={i} className="flex items-center text-sm font-bold uppercase tracking-[0.22em] text-white/90">
+              <span className="mx-6">{t}</span>
+              <Sparkles size={12} className="text-white/50" />
             </span>
           ))}
         </div>
@@ -366,6 +372,56 @@ export default function StoreHome() {
           </div>
         )}
       </section>
+
+      {/* ══ REDES SOCIAIS (Instagram widget / API + Facebook plugin) ══ */}
+      {(S.instagram_embed || igPosts.length > 0 || S.facebook_page_url) && (
+        <section className="max-w-6xl mx-auto px-4 pb-4">
+          <div className="flex items-end justify-between gap-4 flex-wrap mb-8">
+            <div>
+              <Reveal as="span" className="inline-flex items-center gap-1.5 text-orange-500 font-bold text-sm tracking-wide">
+                <Instagram size={16} /> REDES SOCIAIS
+              </Reveal>
+              <Reveal as="h2" delay={60} className="text-3xl sm:text-4xl font-black">Siga a gente</Reveal>
+            </div>
+            {instagram?.username && !S.instagram_embed && (
+              <a href={`https://instagram.com/${instagram.username}`} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-gray-900 text-white font-bold px-5 py-3 rounded-2xl hover:scale-105 transition-transform">
+                <Instagram size={18} /> @{instagram.username}
+              </a>
+            )}
+          </div>
+
+          {/* Instagram: widget colado (sem API) tem prioridade; senão, feed via API */}
+          {S.instagram_embed ? (
+            <Reveal><RawEmbed html={S.instagram_embed} className="ig-embed" /></Reveal>
+          ) : igPosts.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+              {igPosts.map((post, idx) => (
+                <Reveal key={post.id} delay={(idx % 4) * 80} scale>
+                  <a href={post.permalink} target="_blank" rel="noopener noreferrer"
+                    className="st-card group relative block aspect-square rounded-2xl overflow-hidden bg-gray-100">
+                    <img src={post.image} alt={post.caption?.slice(0, 80) || 'Post do Instagram'} loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
+                      {post.caption && <p className="text-white text-xs line-clamp-3 leading-snug">{post.caption}</p>}
+                    </div>
+                    <span className="absolute top-2.5 right-2.5 text-white/90 drop-shadow opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Instagram size={18} />
+                    </span>
+                  </a>
+                </Reveal>
+              ))}
+            </div>
+          ) : null}
+
+          {/* Facebook: plugin oficial da Página (sem token) */}
+          {S.facebook_page_url && (
+            <Reveal className={S.instagram_embed || igPosts.length > 0 ? 'mt-10' : ''}>
+              <FacebookPage url={S.facebook_page_url} />
+            </Reveal>
+          )}
+        </section>
+      )}
 
       {/* ══ CTA FINAL ══ */}
       <section className="max-w-6xl mx-auto px-4 pb-20">

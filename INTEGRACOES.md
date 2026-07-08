@@ -74,6 +74,19 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   Supabase Storage (`STORAGE_BUCKET`) precisa ser **público** para a Meta baixar a imagem.
 - **WhatsApp em massa:** usa as mesmas variáveis do item 2. Envios proativos
   (fora da janela de 24h) podem exigir **template aprovado** na Meta.
+- **Redes sociais na loja (SEM token — recomendado):** em Configurações → **Site**
+  → *Redes sociais na loja*:
+  - **Facebook:** cole a **URL da Página** → a loja mostra o feed pelo **plugin
+    oficial** do Facebook (atualiza sozinho, sem token).
+  - **Instagram:** gere um **widget grátis** em snapwidget.com ou lightwidget.com
+    (conecta seu Instagram lá), copie o código e cole no campo → a loja exibe suas
+    fotos. Quem cuida do token é o serviço do widget, não o ERP.
+  Esses campos são salvos em `EMPRESAS.settings.site` (`facebook_page_url`,
+  `instagram_embed`). Se ambos ficarem vazios, cai no feed via API (abaixo) e,
+  sem nada configurado, a seção não aparece.
+- **Feed do Instagram via API (alternativa):** com `IG_USER_ID` + `FB_PAGE_TOKEN`
+  configurados, a loja mostra as **últimas postagens** automaticamente (permissão
+  `instagram_basic`, cache de ~10 min). Só é usado quando o widget acima está vazio.
 
 ## 8. Transportadora BrasPress (cotação + rastreio)
 - **Onde usa:**

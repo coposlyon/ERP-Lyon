@@ -167,21 +167,26 @@ export function composeBodyCanvas(opts, scale = 2) {
 export function bodyMaterial(finish, { map = null, color = '#ffffff' } = {}) {
   // DoubleSide: canecas/copos abertos no topo mostram a parede interna em vez
   // de "vazar" o fundo (some o bug de fundo transparente nos translúcidos).
+  // envMapIntensity: quanto o material reflete o ambiente HDR de estúdio.
   const common = { color: map ? '#ffffff' : color, map, side: THREE.DoubleSide };
-  if (finish === 'metalico')   return new THREE.MeshPhysicalMaterial({ ...common, roughness: 0.26, metalness: 0.9, clearcoat: 0.4, clearcoatRoughness: 0.25 });
-  if (finish === 'brilhante')  return new THREE.MeshPhysicalMaterial({ ...common, roughness: 0.12, metalness: 0.04, clearcoat: 0.9, clearcoatRoughness: 0.08 });
-  if (finish === 'translucido')return new THREE.MeshPhysicalMaterial({ ...common, roughness: 0.14, metalness: 0, transmission: 0.88, thickness: 0.6, transparent: true, opacity: 0.94, ior: 1.34, clearcoat: 0.3 });
-  return new THREE.MeshPhysicalMaterial({ ...common, roughness: 0.5, metalness: 0.04, clearcoat: 0.18, clearcoatRoughness: 0.4 });
+  if (finish === 'metalico')
+    return new THREE.MeshPhysicalMaterial({ ...common, roughness: 0.22, metalness: 0.95, clearcoat: 0.5, clearcoatRoughness: 0.18, envMapIntensity: 1.35 });
+  if (finish === 'brilhante')
+    return new THREE.MeshPhysicalMaterial({ ...common, roughness: 0.07, metalness: 0.0, clearcoat: 1.0, clearcoatRoughness: 0.04, envMapIntensity: 1.35, specularIntensity: 1.0 });
+  if (finish === 'translucido')
+    return new THREE.MeshPhysicalMaterial({ ...common, roughness: 0.09, metalness: 0, transmission: 0.9, thickness: 0.9, transparent: true, opacity: 0.96, ior: 1.46, clearcoat: 0.55, clearcoatRoughness: 0.05, envMapIntensity: 1.35, specularIntensity: 1.0 });
+  // opaco: leve clearcoat + sheen para não ficar "chapado"
+  return new THREE.MeshPhysicalMaterial({ ...common, roughness: 0.42, metalness: 0.02, clearcoat: 0.28, clearcoatRoughness: 0.32, envMapIntensity: 1.15, sheen: 0.25, sheenRoughness: 0.55 });
 }
 
 export function capMaterial(hex) {
-  return new THREE.MeshPhysicalMaterial({ color: hex, roughness: 0.45, metalness: 0.1, clearcoat: 0.3, clearcoatRoughness: 0.3 });
+  return new THREE.MeshPhysicalMaterial({ color: hex, roughness: 0.38, metalness: 0.1, clearcoat: 0.45, clearcoatRoughness: 0.22, envMapIntensity: 1.2 });
 }
 
 export function buildModel(type) {
   const group = new THREE.Group();
   const bodyMeshes = [], capMeshes = [];
-  const seg = 72;
+  const seg = 128; // segmentos radiais: silhueta bem mais lisa
   const mk = (geo, y, list, opts = {}) => {
     const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: '#cccccc' }));
     m.position.y = y;
@@ -193,15 +198,15 @@ export function buildModel(type) {
   };
 
   if (type === 'longdrink') {
-    mk(new THREE.CylinderGeometry(0.82, 0.66, 3.0, seg), 0, bodyMeshes);
-    mk(new THREE.TorusGeometry(0.8, 0.05, 16, seg), 1.5, bodyMeshes, {}).rotation.x = Math.PI / 2;
+    mk(new THREE.CylinderGeometry(0.82, 0.66, 3.0, seg, 24), 0, bodyMeshes);
+    mk(new THREE.TorusGeometry(0.8, 0.05, 24, seg), 1.5, bodyMeshes, {}).rotation.x = Math.PI / 2;
   } else if (type === 'twister') {
     // corpo cônico liso (acrílico) + BORDA colorida no topo (3ª cor / capColor)
-    mk(new THREE.CylinderGeometry(0.78, 0.56, 2.9, seg), 0, bodyMeshes);
-    mk(new THREE.TorusGeometry(0.78, 0.06, 18, seg), 1.45, capMeshes, {}).rotation.x = Math.PI / 2;
+    mk(new THREE.CylinderGeometry(0.78, 0.56, 2.9, seg, 24), 0, bodyMeshes);
+    mk(new THREE.TorusGeometry(0.78, 0.06, 24, seg), 1.45, capMeshes, {}).rotation.x = Math.PI / 2;
   } else if (type === 'slim') {
     // caneca slim: tubo alto ABERTO no topo + fundo sólido + alça
-    mk(new THREE.CylinderGeometry(0.6, 0.64, 3.1, seg, 1, true), 0, bodyMeshes); // openEnded
+    mk(new THREE.CylinderGeometry(0.6, 0.64, 3.1, seg, 24, true), 0, bodyMeshes); // openEnded
     const bottom = mk(new THREE.CircleGeometry(0.64, seg), -1.55, bodyMeshes);
     bottom.rotation.x = -Math.PI / 2;
     // alça: tubo em "D" conectado no corpo (cima e baixo)
@@ -219,7 +224,7 @@ export function buildModel(type) {
     mk(new THREE.CylinderGeometry(0.3, 0.06, 0.12, seg), 0.18, bodyMeshes);  // cone da base
     mk(new THREE.CylinderGeometry(0.52, 0.52, 0.05, seg), 0.07, bodyMeshes); // base
   } else if (type === 'garrafa') {
-    mk(new THREE.CylinderGeometry(0.9, 0.9, 1.8, seg), 0, bodyMeshes);
+    mk(new THREE.CylinderGeometry(0.9, 0.9, 1.8, seg, 16), 0, bodyMeshes);
     mk(new THREE.CylinderGeometry(0.4, 0.9, 0.55, seg), 1.17, bodyMeshes);
     mk(new THREE.CylinderGeometry(0.37, 0.4, 0.5, seg), 1.7, bodyMeshes);
     mk(new THREE.CylinderGeometry(0.43, 0.43, 0.4, seg), 2.05, capMeshes);
@@ -241,7 +246,7 @@ export function buildModel(type) {
     );
     mk(new THREE.TubeGeometry(hCurve, 64, 0.075, 16, false), 0, bodyMeshes);
   } else { // shaker
-    mk(new THREE.CylinderGeometry(0.92, 0.80, 2.4, seg), 0, bodyMeshes);
+    mk(new THREE.CylinderGeometry(0.92, 0.80, 2.4, seg, 20), 0, bodyMeshes);
     mk(new THREE.CylinderGeometry(0.62, 0.92, 0.22, seg), 1.31, bodyMeshes);
     mk(new THREE.CylinderGeometry(0.6, 0.6, 0.14, seg), 1.49, capMeshes);
     mk(new THREE.CylinderGeometry(0.64, 0.6, 0.5, seg), 1.81, capMeshes);

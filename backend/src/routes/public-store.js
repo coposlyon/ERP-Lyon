@@ -7,6 +7,7 @@ const { uploadDataUrl } = require('../lib/storage');
 const { calcularFrete, packItem } = require('../lib/frete');
 const { cotar, ufFromCep, getFreteConfig } = require('../lib/shipping');
 const { braspressCotar, bpReady } = require('../lib/braspress');
+const { fetchInstagramMedia } = require('../lib/social');
 
 // Loja pública: serve UM tenant (a empresa dona da loja).
 // Sem autenticação — montada antes do authMiddleware.
@@ -70,6 +71,24 @@ router.get('/store', async (req, res) => {
       site: s.site || {},
     });
   } catch (err) { fail(res, err); }
+});
+
+// ── Feed do Instagram (cache em memória p/ não bater na Graph API toda visita) ──
+let igCache = { at: 0, data: null };
+const IG_TTL = 10 * 60 * 1000; // 10 min
+router.get('/instagram', async (req, res) => {
+  try {
+    const now = Date.now();
+    if (igCache.data && now - igCache.at < IG_TTL) return res.json(igCache.data);
+    const out = await fetchInstagramMedia(8);
+    const payload = { ok: !!out.ok, username: out.username || null, posts: out.posts || [] };
+    // só guarda em cache quando deu certo (erro/temporário não fica preso 10 min)
+    if (out.ok) igCache = { at: now, data: payload };
+    res.json(payload);
+  } catch (err) {
+    console.error('[public-store:instagram]', err.message || err);
+    res.json({ ok: false, posts: [] });
+  }
 });
 
 // ── Categorias com contagem ───────────────────────────────
@@ -269,6 +288,14 @@ router.post('/quote', async (req, res) => {
   if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Carrinho vazio' });
 
   try {
+    // Login obrigatório: o pedido só é aceito de um cliente cadastrado/logado.
+    if (!customer_id) return res.status(401).json({ error: 'Faça login para finalizar o pedido.', code: 'LOGIN_REQUIRED' });
+    {
+      const { data: cust } = await supabase.from('CLIENTES').select('id')
+        .eq('tenant_id', STORE_TENANT).eq('id', customer_id).limit(1).maybeSingle();
+      if (!cust) return res.status(401).json({ error: 'Sessão inválida. Entre novamente para finalizar o pedido.', code: 'LOGIN_REQUIRED' });
+    }
+
     // Busca produtos do carrinho para recalcular o preço no servidor
     const ids = [...new Set(items.map(i => i.product_id).filter(Boolean))];
     const fetchProds = (full) => supabase

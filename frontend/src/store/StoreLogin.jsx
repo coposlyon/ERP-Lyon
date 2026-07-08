@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { User, ArrowRight, Loader2 } from 'lucide-react';
 import storeApi from './storeApi';
 import { useStoreAuth } from './StoreAuthContext';
@@ -13,6 +13,10 @@ function maskCPF(v) {
 export default function StoreLogin() {
   const { login } = useStoreAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  // volta para onde o cliente estava (ex.: carrinho) — só caminhos internos da loja
+  const next = params.get('next');
+  const dest = next && next.startsWith('/loja') ? next : '/loja';
   const [cpf, setCpf] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -26,7 +30,7 @@ export default function StoreLogin() {
     try {
       const res = await storeApi.post('/login', { cpf: digits });
       login(res.customer);
-      navigate('/loja');
+      navigate(dest);
     } catch (e) {
       setErr(e?.response?.data?.error || 'CPF não encontrado. Faça seu cadastro primeiro.');
     } finally { setLoading(false); }

@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import {
   Box, Rotate3d, Layers, Sparkles, Wand2, Image as ImageIcon, Type, X, ArrowLeftRight, LayoutGrid,
 } from 'lucide-react';
@@ -123,9 +122,28 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
+    // Ambiente HDR de estúdio (softboxes): cria os realces alongados de foto de
+    // produto, sem arquivo externo. Ajuste as intensidades dos painéis abaixo
+    // para reflexos mais fortes/suaves.
     const pmrem = new THREE.PMREMGenerator(renderer);
-    const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const envScene = new THREE.Scene();
+    envScene.background = new THREE.Color(0x3c4047); // reflexo base neutro
+    const softbox = (sw, sh, pos, intensity, color = 0xffffff) => {
+      const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+      mat.color.multiplyScalar(intensity); mat.toneMapped = false;
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), mat);
+      p.position.set(pos[0], pos[1], pos[2]); p.lookAt(0, 0, 0);
+      envScene.add(p);
+    };
+    softbox(14, 14, [0, 12, 2], 2.6);   // teto (luz principal grande)
+    softbox(4, 16, [-9, 2, 5], 3.4);    // softbox lateral esquerda (realce alongado)
+    softbox(4, 16, [9, 2, 5], 2.2);     // softbox lateral direita
+    softbox(16, 8, [0, 1, 11], 1.1);    // preenchimento frontal
+    softbox(12, 12, [0, 3, -11], 1.6);  // contraluz (rim)
+    const envTex = pmrem.fromScene(envScene, 0.02).texture;
     scene.environment = envTex;
+    scene.environmentIntensity = 1.05;
+    envScene.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
 
     const camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
     camera.position.set(0, 0.6, 6.4);

@@ -24,6 +24,11 @@ export const SITE_DEFAULTS = {
   cta_title: 'Pronto pra estampar a sua marca?',
   cta_subtitle: 'Monte o pedido em minutos e receba seu orçamento sem compromisso.',
   cta_button: 'Começar agora',
+  // Redes sociais na loja (sem API):
+  //  - facebook_page_url: endereço da Página → vira o plugin oficial do Facebook.
+  //  - instagram_embed: código do widget do Instagram (SnapWidget/LightWidget/etc.).
+  facebook_page_url: '',
+  instagram_embed: '',
 };
 
 // Campos editáveis na tela de Configurações (label + tipo)

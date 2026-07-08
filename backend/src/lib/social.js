@@ -40,4 +40,40 @@ async function postInstagram({ caption, imageUrl }) {
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
-module.exports = { postFacebook, postInstagram, fbConfigured, igConfigured };
+// Lê as últimas publicações do Instagram Business (para exibir na loja).
+// Usa as mesmas credenciais do posting (IG_USER_ID + FB_PAGE_TOKEN) — precisa
+// da permissão instagram_basic no app da Meta. Retorna [] se não configurado.
+async function fetchInstagramMedia(limit = 8) {
+  const igId = process.env.IG_USER_ID, token = process.env.FB_PAGE_TOKEN;
+  if (!igId || !token) return { ok: false, error: 'Instagram não configurado (IG_USER_ID, FB_PAGE_TOKEN)', posts: [] };
+  const n = Math.min(Math.max(parseInt(limit) || 8, 1), 24);
+  try {
+    // perfil (@usuário) — opcional, só para o link/cabeçalho
+    let username = null;
+    try {
+      const pr = await fetch(`${GRAPH}/${igId}?fields=username&access_token=${encodeURIComponent(token)}`);
+      const pd = await pr.json().catch(() => null);
+      if (pr.ok) username = pd?.username || null;
+    } catch { /* ignora — segue sem @ */ }
+
+    const fields = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp';
+    const r = await fetch(`${GRAPH}/${igId}/media?fields=${fields}&limit=${n}&access_token=${encodeURIComponent(token)}`);
+    const data = await r.json().catch(() => null);
+    if (!r.ok) return { ok: false, error: data?.error?.message || `Instagram HTTP ${r.status}`, posts: [] };
+
+    const posts = (Array.isArray(data?.data) ? data.data : [])
+      .map(m => ({
+        id: m.id,
+        caption: m.caption || '',
+        permalink: m.permalink || null,
+        timestamp: m.timestamp || null,
+        is_video: m.media_type === 'VIDEO',
+        // VIDEO expõe o poster em thumbnail_url; imagem/álbum usam media_url
+        image: (m.media_type === 'VIDEO' ? (m.thumbnail_url || m.media_url) : m.media_url) || null,
+      }))
+      .filter(p => p.image && p.permalink);
+    return { ok: true, username, posts };
+  } catch (e) { return { ok: false, error: e.message, posts: [] }; }
+}
+
+module.exports = { postFacebook, postInstagram, fbConfigured, igConfigured, fetchInstagramMedia };

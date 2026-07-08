@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 import Modal from '@/components/UI/Modal';
 import { SITE_DEFAULTS, SITE_FIELDS } from '@/store/siteDefaults';
+import SocialSettings from './SocialSettings';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -291,6 +292,9 @@ export default function Settings() {
                 </div>
               ))}
             </div>
+
+            {/* Redes sociais na loja — sem API/token (tutorial + pré-visualização) */}
+            <SocialSettings site={form.settings?.site} setSite={setSite} isAdmin={isAdmin} />
 
             {isAdmin && (
               <div className="flex justify-end">
