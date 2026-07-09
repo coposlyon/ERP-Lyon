@@ -1,6 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+const { uploadDataUrl } = require('../lib/storage');
+
+// Sobe as fotos do hero (data URLs) para o Storage e troca por URLs públicas.
+// Mantém garrafas coloridas (sem foto) intactas. Nunca lança.
+async function processSiteImages(settings) {
+  const bottles = settings?.site?.hero_bottles;
+  if (!Array.isArray(bottles)) return settings;
+  const out = [];
+  for (const b of bottles) {
+    if (b && typeof b.image === 'string' && /^data:/.test(b.image)) {
+      const url = await uploadDataUrl(b.image, 'site-hero');
+      out.push(url ? { image_url: url } : { color: b.color || '#F26522', gradient: b.gradient !== false });
+    } else if (b && b.image_url) {
+      out.push({ image_url: b.image_url });
+    } else if (b) {
+      out.push({ color: b.color || '#F26522', gradient: b.gradient !== false });
+    }
+  }
+  settings.site.hero_bottles = out;
+  return settings;
+}
 
 router.get('/', async (req, res) => {
   try {
@@ -25,6 +46,7 @@ router.put('/', async (req, res) => {
   }
 
   try {
+    if (settings?.site) { try { await processSiteImages(settings); } catch (e) { console.error('[settings:hero]', e.message); } }
     const base = { name, app_name, cnpj, logo_url, phone, email, address, updated_at: new Date().toISOString() };
     let { data, error } = await supabase
       .from('EMPRESAS')

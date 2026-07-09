@@ -31,6 +31,65 @@ export const SITE_DEFAULTS = {
   instagram_embed: '',
 };
 
+// ── Conteúdo editável da home (com fallback = comportamento atual) ──
+// Cada garrafa do hero: { image_url } (foto enviada) OU { color, gradient } (SVG).
+export const DEFAULT_HERO_BOTTLES = [
+  { color: '#FFD400', gradient: true },
+  { color: '#EC1C8E', gradient: true },
+  { color: '#1E4FD8', gradient: true },
+  { color: '#2BB7B3', gradient: true },
+  { color: '#F26522', gradient: true },
+];
+
+export const DEFAULT_MARQUEE = ['PERSONALIZADO', '20 CORES', 'DEGRADÊ', 'ALTA DEFINIÇÃO', 'BPA FREE', '500ML', 'SUA MARCA'];
+
+export const DEFAULT_BENEFITS = [
+  { icon: 'card',  title: 'Parcelamento',       text: 'Em até 10X' },
+  { icon: 'pix',   title: 'Pagamento à Vista',  text: '10% de desconto no PIX' },
+  { icon: 'truck', title: 'Enviamos',           text: 'para todo o Brasil' },
+];
+
+export const DEFAULT_PILLARS = [
+  { icon: 'shield', title: 'Qualidade Premium',     text: 'Material resistente, BPA free e tampa rosqueável com bico flip.', color: '#F26522' },
+  { icon: 'print',  title: 'Alta Definição',        text: 'Impressão nítida da sua logo, em cores vibrantes que não desbotam.', color: '#1E4FD8' },
+  { icon: 'wand',   title: 'Personalização Total',  text: 'Você escolhe cor, quantidade e arte. Do seu jeito, com a sua cara.', color: '#EC1C8E' },
+];
+
+export const DEFAULT_STATS = [
+  { value: '40+',   label: 'Cores disponíveis' },
+  { value: '500ml', label: 'Capacidade' },
+  { value: '100%',  label: 'BPA Free' },
+  { value: '48h',   label: 'Resposta rápida' },
+];
+
+// Seções reordenáveis/ocultáveis (o HERO fica fixo no topo, sempre visível).
+export const SECTION_LABELS = {
+  marquee:  'Faixa de diferenciais',
+  benefits: 'Benefícios (parcelamento / PIX / envio)',
+  stats:    'Números (estatísticas)',
+  pillars:  'Pilares (por que comprar)',
+  colors:   'Mural de cores',
+  studio:   'Banner do Estúdio 3D',
+  catalog:  'Catálogo de produtos',
+  social:   'Redes sociais',
+  cta:      'Chamada final (CTA)',
+};
+export const SECTION_ORDER = ['marquee', 'benefits', 'stats', 'pillars', 'colors', 'studio', 'catalog', 'social', 'cta'];
+export const DEFAULT_SECTIONS = SECTION_ORDER.map(key => ({ key, visible: true }));
+
+// Normaliza a config de seções: mantém a ordem salva e garante que toda seção
+// conhecida apareça (novas seções entram no fim), ignorando chaves desconhecidas.
+export function resolveSections(saved) {
+  const known = new Set(SECTION_ORDER);
+  const seen = new Set();
+  const out = [];
+  for (const s of (Array.isArray(saved) ? saved : [])) {
+    if (s && known.has(s.key) && !seen.has(s.key)) { out.push({ key: s.key, visible: s.visible !== false }); seen.add(s.key); }
+  }
+  for (const key of SECTION_ORDER) if (!seen.has(key)) out.push({ key, visible: true });
+  return out;
+}
+
 // Campos editáveis na tela de Configurações (label + tipo)
 export const SITE_FIELDS = [
   ['hero_badge', 'Selo do topo (badge)', 'text'],

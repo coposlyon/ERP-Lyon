@@ -38,7 +38,9 @@ async function getFreteConfig(tenantId) {
     jt_customer_code: s.jt_customer_code || process.env.JT_CUSTOMER_CODE || '',
     jt_password:      s.jt_password || process.env.JT_PASSWORD || '',
     // BrasPress (cotação + rastreio). Fallback nas env BRASPRESS_*.
-    bp_enabled:       !!s.bp_enabled,
+    // Liga pela caixa do painel OU automaticamente quando as credenciais vêm
+    // das variáveis de ambiente (igual o Melhor Envio com o token).
+    bp_enabled:       !!s.bp_enabled || !!(process.env.BRASPRESS_USER && process.env.BRASPRESS_PASSWORD && process.env.BRASPRESS_CNPJ),
     bp_base_url:      s.bp_base_url || process.env.BRASPRESS_BASE_URL || 'https://api.braspress.com',
     bp_user:          s.bp_user || process.env.BRASPRESS_USER || '',
     bp_password:      s.bp_password || process.env.BRASPRESS_PASSWORD || '',
