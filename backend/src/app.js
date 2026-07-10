@@ -16,17 +16,29 @@ const PORT = process.env.PORT || 3001;
 // Discloud (e maioria dos hosts) roda atrás de proxy reverso
 app.set('trust proxy', 1);
 
+// Provedores dos embeds de rede social da loja (Configurações → Site → Redes).
+// Sem estes hosts liberados na CSP, o iframe do Facebook e os widgets de
+// Instagram (SnapWidget/LightWidget) nunca carregam.
+const SOCIAL_FRAME = [
+  'https://www.facebook.com', 'https://web.facebook.com',
+  'https://snapwidget.com', 'https://lightwidget.com', 'https://www.instagram.com',
+];
+const SOCIAL_SCRIPT = [
+  'https://connect.facebook.net', 'https://snapwidget.com',
+  'https://cdn.lightwidget.com', 'https://www.instagram.com',
+];
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc:  ["'self'"],
-      scriptSrc:   ["'self'"],
+      scriptSrc:   ["'self'", ...SOCIAL_SCRIPT],
       styleSrc:    ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       imgSrc:      ["'self'", "data:", "blob:", "https:"],
       fontSrc:     ["'self'", "data:", "https://fonts.gstatic.com"],
-      connectSrc:  ["'self'"],
+      connectSrc:  ["'self'", "https://graph.facebook.com", "https://www.instagram.com"],
       objectSrc:   ["'none'"],
-      frameSrc:    ["'none'"],
+      frameSrc:    ["'self'", ...SOCIAL_FRAME],
     },
   },
 }));
