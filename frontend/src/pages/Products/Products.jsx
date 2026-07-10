@@ -314,7 +314,7 @@ export default function Products() {
   function onSaved() { closeModal(); qc.invalidateQueries(['products']); }
 
   const columns = [
-    { key: 'code', label: 'Código', width: 120, render: v => <span className="font-mono text-xs whitespace-nowrap">{v || '—'}</span> },
+    { key: 'code', label: 'Código', width: 120, sortable: true, render: v => <span className="font-mono text-xs whitespace-nowrap">{v || '—'}</span> },
     { key: 'name', label: 'Produto',
       render: (v, row) => (
         <div className="flex items-center gap-2.5">
