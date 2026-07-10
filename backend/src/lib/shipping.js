@@ -37,6 +37,8 @@ async function getFreteConfig(tenantId) {
     jt_private_key:   s.jt_private_key || process.env.JT_PRIVATE_KEY || '',
     jt_customer_code: s.jt_customer_code || process.env.JT_CUSTOMER_CODE || '',
     jt_password:      s.jt_password || process.env.JT_PASSWORD || '',
+    jt_goods_type:    s.jt_goods_type || process.env.JT_GOODS_TYPE || 'bm000001',   // tipo de mercadoria p/ cotação
+    jt_product_type:  s.jt_product_type || process.env.JT_PRODUCT_TYPE || 'EZ',     // EZ = Economy
     // BrasPress (cotação + rastreio). Fallback nas env BRASPRESS_*.
     // Liga pela caixa do painel OU automaticamente quando as credenciais vêm
     // das variáveis de ambiente (igual o Melhor Envio com o token).
@@ -190,16 +192,54 @@ async function jtEtiqueta(tenantId, billCode) {
   return b64;
 }
 
-// Cotação: tenta J&T (se ligado); senão usa a tabela regional.
+// Cotação de frete + prazo (spmComCost/getComCostAndTime).
+// O CEP de origem sai do contrato do customerCode — só o destino é enviado.
+// Devolve { price, days }; a J&T responde cost em reais e aging em dias.
+async function jtCotar(cfg, { cep, weightKg, subtotal, goodsTypeCode, productTypeCode } = {}) {
+  if (!jtReady(cfg)) throw jtNotConfigured();
+  const zip = String(cep || '').replace(/\D/g, '');
+  if (zip.length !== 8) {
+    const err = new Error('Informe um CEP de destino válido (8 dígitos).');
+    err.status = 400; throw err;
+  }
+  const raw = await jtCall(cfg, '/webopenplatformapi/api/spmComCost/getComCostAndTime', {
+    destinationZipCode: zip,
+    goodsTypeCode:  goodsTypeCode   || cfg.jt_goods_type   || 'bm000001',
+    productTypeCode: productTypeCode || cfg.jt_product_type || 'EZ',
+    insuredAmount: (Math.max(Number(subtotal) || 0, 0)).toFixed(2),
+    weight: String(Math.min(Math.max(Number(weightKg) || 0.1, 0.05), 100)),
+  });
+  const d = raw?.data || {};
+  return {
+    price: Math.round((Number(d.cost) || 0) * 100) / 100,
+    days: Number(d.aging) > 0 ? Number(d.aging) : null,
+  };
+}
+
+// Cotação: tenta a J&T (se ligada e com CEP); senão usa a tabela regional.
 async function cotar(tenantId, { uf, cep, qty, weightKg, subtotal }) {
   const cfg = await getFreteConfig(tenantId);
   const w = Number(weightKg) || ((Number(qty) || 0) * cfg.weight_per_unit_g) / 1000;
-  // (futuro) se a J&T expor cotação no contrato, chama aqui e cai na tabela em caso de erro
+  const base = { weightKg: Math.round(w * 1000) / 1000, uf: String(uf || '').toUpperCase() };
+
+  if (cfg.enabled && jtReady(cfg) && String(cep || '').replace(/\D/g, '').length === 8) {
+    try {
+      const jt = await jtCotar(cfg, { cep, weightKg: w, subtotal });
+      // Homologação devolve cost 0; nesse caso a cotação não vale e caímos na tabela.
+      if (jt.price > 0) {
+        const free = cfg.free_above > 0 && Number(subtotal) >= cfg.free_above;
+        return { ...base, source: 'jt', price: free ? 0 : jt.price, days: jt.days, free };
+      }
+    } catch (e) {
+      console.error('[shipping:cotar] J&T', e.message);
+    }
+  }
+
   const est = estimateByTable(cfg, { uf, weightKg: w, subtotal });
-  return { ...est, weightKg: Math.round(w * 1000) / 1000, uf: String(uf || '').toUpperCase() };
+  return { ...est, ...base };
 }
 
 module.exports = {
   getFreteConfig, estimateByTable, cotar, rastrear, ufFromCep,
-  jtReady, jtCriarPedido, jtCancelarPedido, jtEtiqueta,
+  jtReady, jtCotar, jtCriarPedido, jtCancelarPedido, jtEtiqueta,
 };

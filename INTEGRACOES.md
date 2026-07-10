@@ -111,7 +111,27 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   cotação depende de CEP de origem/destino, peso, volumes e cubagem — não do
   destinatário em si. Sem as credenciais, a BrasPress simplesmente não aparece — nada quebra.
 
-## 9. Erros em produção (Sentry) — opcional
+## 9. Transportadora J&T Express (cotação + envio + rastreio)
+- **Onde usa:**
+  - **Cotação:** loja (`/loja`) → carrinho → "Calcular frete". A opção **J&T Express**
+    aparece junto das demais (com o mesmo acréscimo % do frete). Também é a primeira
+    tentativa do `POST /api/shipping/quote`, que cai na tabela por UF se a J&T falhar.
+  - **Envio/etiqueta/rastreio:** ERP → Vendas → abrir a venda → aba **Transportadores**.
+- **Como ligar:** Configurações → **Transportadora** → marque a caixa da J&T e preencha
+  conta da API, código de cliente, senha e chave privada. (Alternativa: variáveis
+  `JT_*` — os campos da tela têm prioridade.)
+- **Variáveis (fallback do painel):**
+  - `JT_API_ACCOUNT`, `JT_PRIVATE_KEY`, `JT_CUSTOMER_CODE`, `JT_PASSWORD` — credenciais do contrato.
+  - `JT_BASE_URL` — opcional; padrão `https://openapi.jtjms-br.com`
+    (homologação: `https://demoopenapi.jtjms-br.com`).
+  - `JT_GOODS_TYPE` — opcional; tipo de mercadoria na cotação (padrão `bm000001`).
+  - `JT_PRODUCT_TYPE` — opcional; produto na cotação (padrão `EZ`, Economy).
+- **Obs.:** a cotação (`spmComCost/getComCostAndTime`) envia só o **CEP de destino** —
+  a origem vem do contrato do `customerCode`. Em **homologação a API devolve `cost: 0`**;
+  nesse caso a cotação é descartada e o sistema usa a tabela por UF. Sem as credenciais,
+  a J&T simplesmente não aparece — nada quebra.
+
+## 10. Erros em produção (Sentry) — opcional
 - `SENTRY_DSN` — DSN do projeto no sentry.io. Com isso, todo erro de servidor é
   reportado automaticamente.
 

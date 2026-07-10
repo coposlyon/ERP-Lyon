@@ -4,7 +4,7 @@ const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const {
   cotar, rastrear, getFreteConfig, ufFromCep,
-  jtReady, jtCriarPedido, jtCancelarPedido, jtEtiqueta,
+  jtReady, jtCotar, jtCriarPedido, jtCancelarPedido, jtEtiqueta,
 } = require('../lib/shipping');
 const { braspressTracking, bpReady } = require('../lib/braspress');
 
@@ -57,6 +57,19 @@ router.get('/braspress/track/:nf', async (req, res) => {
   try {
     const cfg = await getFreteConfig(req.tenantId);
     const r = await braspressTracking(cfg, { cnpj: req.query.cnpj, nf: req.params.nf });
+    res.json(r);
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+});
+
+// POST /api/shipping/jt/quote — cotação e prazo direto na J&T (sem fallback)
+router.post('/jt/quote', async (req, res) => {
+  try {
+    const cfg = await getFreteConfig(req.tenantId);
+    const { cep, weight_kg, subtotal, goods_type, product_type } = req.body || {};
+    const r = await jtCotar(cfg, {
+      cep, weightKg: weight_kg, subtotal,
+      goodsTypeCode: goods_type, productTypeCode: product_type,
+    });
     res.json(r);
   } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 });

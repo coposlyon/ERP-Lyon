@@ -5,7 +5,7 @@ const supabase = require('../config/supabase');
 const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
 const { uploadDataUrl } = require('../lib/storage');
 const { calcularFrete, packItem } = require('../lib/frete');
-const { cotar, ufFromCep, getFreteConfig } = require('../lib/shipping');
+const { cotar, ufFromCep, getFreteConfig, jtCotar, jtReady } = require('../lib/shipping');
 const { braspressCotar, bpReady } = require('../lib/braspress');
 const { fetchInstagramMedia } = require('../lib/social');
 
@@ -882,7 +882,19 @@ router.post('/frete', async (req, res) => {
       } catch (e) { console.error('[public-store:frete] BrasPress', e.message); }
     }
 
-    // 3) Fallback: tabela por estado (Configurações → Transportadora) — só se nada retornou
+    // 3) J&T Express (cotação + prazo pelo contrato) — anexa como opção extra
+    if (cfg.enabled && jtReady(cfg)) {
+      try {
+        const pesoTotal = products.reduce((s, p) => s + (Number(p.weight) || 0) * (Number(p.quantity) || 1), 0)
+          || (qty * cfg.weight_per_unit_g) / 1000;
+        const jt = await jtCotar(cfg, { cep, weightKg: pesoTotal, subtotal });
+        if (jt.price > 0) {
+          options.push({ id: 'jt', company: 'J&T Express', service: 'Economy', price: jt.price, days: jt.days });
+        }
+      } catch (e) { console.error('[public-store:frete] J&T', e.message); }
+    }
+
+    // 4) Fallback: tabela por estado (Configurações → Transportadora) — só se nada retornou
     if (!options.length) {
       const uf = ufFromCep(cep);
       if (!uf) return res.status(400).json({ error: 'Não consegui identificar o estado pelo CEP.' });
