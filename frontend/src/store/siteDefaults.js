@@ -29,7 +29,25 @@ export const SITE_DEFAULTS = {
   //  - instagram_embed: código do widget do Instagram (SnapWidget/LightWidget/etc.).
   facebook_page_url: '',
   instagram_embed: '',
+  // Rodapé da loja. Vazio = usa o padrão (texto abaixo) ou os dados da empresa
+  // (telefone/e-mail cadastrados em EMPRESAS). Os links viram ícones clicáveis.
+  footer_about: 'Copos e garrafas personalizados. Personalize do seu jeito, com a cara da sua marca.',
+  footer_phone: '',      // vazio → usa o telefone da empresa
+  footer_email: '',      // vazio → usa o e-mail da empresa
+  footer_instagram: '',  // @handle ou URL; vazio → não mostra a linha do Instagram
+  footer_whatsapp: '',   // só dígitos ou com DDI; vira link wa.me
+  footer_facebook: '',   // URL da Página; vazio → usa o facebook_page_url (redes)
 };
+
+// Campos do rodapé editáveis em Configurações → Site → Rodapé
+export const FOOTER_FIELDS = [
+  ['footer_about', 'Texto "sobre" (ao lado do logo)', 'textarea', ''],
+  ['footer_phone', 'Telefone', 'text', 'usa o telefone da empresa'],
+  ['footer_email', 'E-mail', 'text', 'usa o e-mail da empresa'],
+  ['footer_instagram', 'Instagram (@ ou link)', 'text', '@sualoja'],
+  ['footer_whatsapp', 'WhatsApp (com DDD)', 'text', 'ex.: 43 99952-3972'],
+  ['footer_facebook', 'Facebook (link da Página)', 'text', 'usa o Facebook das Redes'],
+];
 
 // ── Conteúdo editável da home (com fallback = comportamento atual) ──
 // Cada garrafa do hero: { image_url } (foto enviada) OU { color, gradient } (SVG).

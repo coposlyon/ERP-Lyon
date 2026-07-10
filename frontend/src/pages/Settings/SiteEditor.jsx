@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import {
   Image as ImageIcon, Trash2, Plus, GripVertical, ArrowUp, ArrowDown, Eye, EyeOff,
-  Layout, Star, ListChecks, Type, Share2, Upload,
+  Layout, Star, ListChecks, Type, Share2, Upload, PanelBottom,
 } from 'lucide-react';
 import { SITE_ICONS, SITE_ICON_KEYS, siteIcon } from '@/store/siteIcons';
 import {
   SITE_DEFAULTS, DEFAULT_HERO_BOTTLES, DEFAULT_MARQUEE, DEFAULT_BENEFITS,
-  DEFAULT_PILLARS, DEFAULT_STATS, SECTION_LABELS, resolveSections,
+  DEFAULT_PILLARS, DEFAULT_STATS, SECTION_LABELS, FOOTER_FIELDS, resolveSections,
 } from '@/store/siteDefaults';
 import SocialSettings from './SocialSettings';
 
@@ -30,6 +30,7 @@ const SUBS = [
   ['sections', 'Seções', GripVertical],
   ['lists', 'Blocos', ListChecks],
   ['texts', 'Textos', Type],
+  ['footer', 'Rodapé', PanelBottom],
   ['social', 'Redes', Share2],
 ];
 
@@ -206,6 +207,26 @@ export default function SiteEditor({ site = {}, setSite, isAdmin }) {
               <input className="input" value={s[k] ?? ''} onChange={e => setSite(k, e.target.value)} placeholder={SITE_DEFAULTS[k]} disabled={!isAdmin} />
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── RODAPÉ ── */}
+      {sub === 'footer' && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Contato e redes que aparecem no rodapé da loja. Deixe em branco para usar o padrão
+            (telefone e e-mail cadastrados da empresa). Os links viram ícones clicáveis.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {FOOTER_FIELDS.map(([k, label, type, ph]) => (
+              <div key={k} className={type === 'textarea' ? 'sm:col-span-2' : ''}>
+                <label className="label">{label}</label>
+                {type === 'textarea'
+                  ? <textarea className="input min-h-[64px] resize-y" value={s[k] ?? ''} onChange={e => setSite(k, e.target.value)} placeholder={ph || SITE_DEFAULTS[k]} disabled={!isAdmin} />
+                  : <input className="input" value={s[k] ?? ''} onChange={e => setSite(k, e.target.value)} placeholder={ph || SITE_DEFAULTS[k]} disabled={!isAdmin} />}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

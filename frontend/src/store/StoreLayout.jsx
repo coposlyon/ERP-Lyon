@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingCart, Phone, Instagram, Mail, User, LogOut, Package, ChevronDown, LayoutGrid } from 'lucide-react';
+import { ShoppingCart, Phone, Instagram, Mail, User, LogOut, Package, ChevronDown, LayoutGrid, Facebook, MessageCircle } from 'lucide-react';
+import { SITE_DEFAULTS } from './siteDefaults';
+
+// @handle limpo a partir de url/@handle/handle (para o link do Instagram)
+const igHandle = v => String(v || '').trim()
+  .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?].*$/, '').replace(/^@/, '');
 import storeApi from './storeApi';
 import { useCart } from './CartContext';
 import { useStoreAuth } from './StoreAuthContext';
@@ -18,6 +23,17 @@ export default function StoreLayout({ children }) {
   const { data: navTypes = [] } = useQuery({ queryKey: ['store-types'], queryFn: () => storeApi.get('/types') });
 
   const isHome = pathname === '/loja' || pathname === '/loja/';
+
+  // Rodapé editável (Configurações → Site → Rodapé); cai no padrão / dados da empresa
+  const site = store?.site || {};
+  const footer = {
+    about: site.footer_about || SITE_DEFAULTS.footer_about,
+    phone: site.footer_phone || store?.phone || '',
+    email: site.footer_email || store?.email || '',
+    ig: igHandle(site.footer_instagram),
+    whats: String(site.footer_whatsapp || '').replace(/\D/g, ''),
+    fb: site.footer_facebook || site.facebook_page_url || '',
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -131,15 +147,32 @@ export default function StoreLayout({ children }) {
               {store?.name || 'Lyon Copos Personalizados'}
             </div>
             <p className="text-sm text-gray-400 mt-3 max-w-xs">
-              Copos e garrafas personalizados. Personalize do seu jeito, com a cara da sua marca.
+              {footer.about}
             </p>
+            {/* Redes sociais — ícones clicáveis (só aparecem os preenchidos) */}
+            {(footer.ig || footer.fb || footer.whats) && (
+              <div className="flex items-center gap-2 mt-4">
+                {footer.ig && (
+                  <a href={`https://instagram.com/${footer.ig}`} target="_blank" rel="noopener noreferrer" aria-label="Instagram"
+                    className="w-9 h-9 rounded-full bg-white/10 hover:bg-orange-500 flex items-center justify-center transition-colors"><Instagram size={16} /></a>
+                )}
+                {footer.fb && (
+                  <a href={footer.fb} target="_blank" rel="noopener noreferrer" aria-label="Facebook"
+                    className="w-9 h-9 rounded-full bg-white/10 hover:bg-orange-500 flex items-center justify-center transition-colors"><Facebook size={16} /></a>
+                )}
+                {footer.whats && (
+                  <a href={`https://wa.me/${footer.whats.length <= 11 ? '55' + footer.whats : footer.whats}`} target="_blank" rel="noopener noreferrer" aria-label="WhatsApp"
+                    className="w-9 h-9 rounded-full bg-white/10 hover:bg-orange-500 flex items-center justify-center transition-colors"><MessageCircle size={16} /></a>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <p className="text-white font-bold mb-3">Contato</p>
             <div className="space-y-2 text-sm">
-              {store?.phone && <p className="flex items-center gap-2"><Phone size={14} className="text-orange-400" /> {store.phone}</p>}
-              {store?.email && <p className="flex items-center gap-2"><Mail size={14} className="text-orange-400" /> {store.email}</p>}
-              <p className="flex items-center gap-2"><Instagram size={14} className="text-orange-400" /> @suamarca</p>
+              {footer.phone && <a href={`tel:${footer.phone.replace(/[^\d+]/g, '')}`} className="flex items-center gap-2 hover:text-orange-400 transition-colors"><Phone size={14} className="text-orange-400" /> {footer.phone}</a>}
+              {footer.email && <a href={`mailto:${footer.email}`} className="flex items-center gap-2 hover:text-orange-400 transition-colors"><Mail size={14} className="text-orange-400" /> {footer.email}</a>}
+              {footer.ig && <a href={`https://instagram.com/${footer.ig}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-orange-400 transition-colors"><Instagram size={14} className="text-orange-400" /> @{footer.ig}</a>}
             </div>
           </div>
           <div>
