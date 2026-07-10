@@ -207,7 +207,10 @@ async function jtCotar(cfg, { cep, weightKg, subtotal, goodsTypeCode, productTyp
     goodsTypeCode:  goodsTypeCode   || cfg.jt_goods_type   || 'bm000001',
     productTypeCode: productTypeCode || cfg.jt_product_type || 'EZ',
     insuredAmount: (Math.max(Number(subtotal) || 0, 0)).toFixed(2),
-    weight: String(Math.min(Math.max(Number(weightKg) || 0.1, 0.05), 100)),
+    // Sem teto: limitar o peso aqui faria a J&T cotar um pedido grande como se
+    // fosse pequeno. Acima do que o contrato aceita ela devolve erro e o
+    // chamador cai na tabela por UF.
+    weight: String(Math.max(Number(weightKg) || 0.1, 0.05)),
   });
   const d = raw?.data || {};
   return {
