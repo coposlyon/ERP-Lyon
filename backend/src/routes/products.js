@@ -39,9 +39,23 @@ const productSchema = Joi.object({
   min_stock:  Joi.number().min(0),
 }).unknown(true);
 
+// A borda mora nas variações (variations.borders, ou embutida em variations.items),
+// não no nome do produto pai. Detecta se um produto tem alguma variação com borda.
+function produtoTemBorda(p) {
+  const v = (p && p.variations) || {};
+  if (Array.isArray(v.borders) && v.borders.some(b => String(b || '').trim())) return true;
+  const hay = [p?.name, ...(Array.isArray(v.items) ? v.items : []), ...(Array.isArray(v.colors) ? v.colors : [])]
+    .join(' ').toLowerCase();
+  return hay.includes('borda');
+}
+
 router.get('/', async (req, res) => {
   const { page = 1, limit = 50, search, category_id, is_active, sort } = req.query;
-  const offset = (page - 1) * limit;
+  const pageN = Number(page) || 1, limitN = Number(limit) || 50;
+  const offset = (pageN - 1) * limitN;
+  // Filtro de borda: 'com' | 'sem'. Como depende das variations (JSONB), filtramos
+  // e paginamos em memória — o PostgREST não faz esse match direto.
+  const borderFilter = req.query.border === 'com' || req.query.border === 'sem' ? req.query.border : '';
 
   const buildQuery = (useCreatedAt) => {
     let query = supabase
@@ -72,7 +86,9 @@ router.get('/', async (req, res) => {
     if (category_id) query = query.eq('category_id', category_id);
     if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
 
-    return query.range(offset, offset + limit - 1);
+    // Sem filtro de borda: pagina no banco (comportamento normal). Com filtro:
+    // traz o conjunto (limitado, igual ao /filters) e pagina depois em memória.
+    return borderFilter ? query.limit(5000) : query.range(offset, offset + limitN - 1);
   };
 
   try {
@@ -82,7 +98,14 @@ router.get('/', async (req, res) => {
       ({ data, error, count } = await buildQuery(false));
     }
     if (error) throw error;
-    res.json({ data, total: count, page: Number(page), limit: Number(limit) });
+
+    if (borderFilter) {
+      const want = borderFilter === 'com';
+      const filtered = (data || []).filter(p => produtoTemBorda(p) === want);
+      const pageRows = filtered.slice(offset, offset + limitN);
+      return res.json({ data: pageRows, total: filtered.length, page: pageN, limit: limitN });
+    }
+    res.json({ data, total: count, page: pageN, limit: limitN });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

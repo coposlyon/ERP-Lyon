@@ -64,9 +64,11 @@ export default function Products() {
   const colorOptions = filterOpts?.colors || [];
   const volumeOptions = filterOpts?.volumes || [];
 
-  // Os filtros viram termos de busca (o backend exige TODOS os termos;
-  // prefixo "-" exclui — ex.: "-borda" = sem borda)
-  const effectiveSearch = [search, linha, cor, borda, volume].filter(Boolean).join(' ').trim();
+  // Os filtros viram termos de busca (o backend exige TODOS os termos).
+  // A borda é a exceção: ela mora nas variações, não no nome, então vai como
+  // parâmetro próprio (border=com|sem) tratado pelo backend.
+  const effectiveSearch = [search, linha, cor, volume].filter(Boolean).join(' ').trim();
+  const borderParam = borda === 'borda' ? 'com' : borda === '-borda' ? 'sem' : '';
 
   async function exportCSV() {
     setExporting(true);
@@ -86,10 +88,11 @@ export default function Products() {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', page, effectiveSearch, categoryId, sort],
+    queryKey: ['products', page, effectiveSearch, borderParam, categoryId, sort],
     queryFn: () => {
       let url = `/products?page=${page}&limit=50`;
       if (effectiveSearch) url += `&search=${encodeURIComponent(effectiveSearch)}`;
+      if (borderParam)     url += `&border=${borderParam}`;
       if (categoryId)      url += `&category_id=${categoryId}`;
       if (sort)            url += `&sort=${sort}`;
       return api.get(url);
