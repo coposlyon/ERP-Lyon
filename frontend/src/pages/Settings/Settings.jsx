@@ -110,6 +110,7 @@ export default function Settings() {
   function setEmailCfg(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, email: { ...(p.settings?.email || {}), [k]: v } } })); }
   function setSite(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, site: { ...(p.settings?.site || {}), [k]: v } } })); }
   function setFrete(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, frete: { ...(p.settings?.frete || {}), [k]: v } } })); }
+  function setPix(k, v) { setForm(p => ({ ...p, settings: { ...p.settings, pix: { ...(p.settings?.pix || {}), [k]: v } } })); }
   function setPaymentTerms(rows) { setForm(p => ({ ...p, settings: { ...p.settings, payment_terms: rows } })); }
   function setFreteTable(rows) { setForm(p => ({ ...p, settings: { ...p.settings, frete: { ...(p.settings?.frete || {}), table: rows } } })); }
   function gmailPreset() { setForm(p => ({ ...p, settings: { ...p.settings, email: { ...(p.settings?.email || {}), smtp_host: 'smtp.gmail.com', smtp_port: 465, smtp_secure: true } } })); }
@@ -372,6 +373,30 @@ export default function Settings() {
                 <button type="button" onClick={() => setPaymentTerms([...(form.settings?.payment_terms || []), { label: '', percent: 0 }])}
                   className="btn-secondary btn-sm mt-1"><Plus size={13} /> Adicionar condição</button>
               )}
+            </div>
+
+            {/* Recebimento por PIX — chave própria (Nubank etc.), sem gateway */}
+            <div className="border-t border-gray-100 pt-5 max-w-lg">
+              <h3 className="font-medium text-gray-900">Recebimento por PIX (chave própria)</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Informe a <b>chave PIX</b> da sua conta (ex.: <b>Nubank</b>) para o sistema gerar o
+                copia-e-cola/QR <b>direto na sua conta</b> — sem gateway, sem retenção. Em branco, usa o Mercado Pago.
+              </p>
+              <div className="grid sm:grid-cols-2 gap-4 mt-3">
+                <div className="sm:col-span-2">
+                  <label className="label">Chave PIX (CNPJ, e-mail, telefone ou aleatória)</label>
+                  <input className="input font-mono" value={form.settings?.pix?.key || ''} onChange={e => setPix('key', e.target.value)} placeholder="ex.: 40899894000118" disabled={!isAdmin} />
+                </div>
+                <div>
+                  <label className="label">Nome do recebedor</label>
+                  <input className="input" value={form.settings?.pix?.name || ''} onChange={e => setPix('name', e.target.value)} placeholder="LYON COPOS" disabled={!isAdmin} />
+                </div>
+                <div>
+                  <label className="label">Cidade</label>
+                  <input className="input" value={form.settings?.pix?.city || ''} onChange={e => setPix('city', e.target.value)} placeholder="ANDIRA" disabled={!isAdmin} />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">A <b>baixa automática</b> desse PIX é feita pela conciliação Open Finance (Pluggy) — configurada à parte.</p>
             </div>
 
             {isAdmin && (
