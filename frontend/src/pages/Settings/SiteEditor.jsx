@@ -10,7 +10,44 @@ import {
 } from '@/store/siteDefaults';
 import SocialSettings from './SocialSettings';
 
-// Reduz a imagem (max 900px) e devolve data URL PNG (mantém transparência dos copos).
+// Remove o fundo branco por flood fill a partir das 4 bordas: só apaga o branco
+// que "encosta" na borda, preservando o branco interno do copo (reflexos, tampa).
+function removeEdgeWhite(data, w, h, tol = 236) {
+  const { data: px } = data;
+  const near = i => px[i] >= tol && px[i + 1] >= tol && px[i + 2] >= tol && px[i + 3] > 0;
+  const seen = new Uint8Array(w * h);
+  const stack = [];
+  const push = (x, y) => { if (x >= 0 && x < w && y >= 0 && y < h && !seen[y * w + x]) stack.push(x, y); };
+  for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); }
+  for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+  while (stack.length) {
+    const y = stack.pop(), x = stack.pop();
+    const p = y * w + x; if (seen[p]) continue; seen[p] = 1;
+    const i = p * 4; if (!near(i)) continue;
+    px[i + 3] = 0;                                    // transparente
+    push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1);
+  }
+}
+
+// Bounding box do que sobrou (pixels com alpha) — pra recortar as margens vazias.
+function contentBox(data, w, h) {
+  const { data: px } = data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (px[(y * w + x) * 4 + 3] > 12) {
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return { x: 0, y: 0, w, h };            // nada sobrou → mantém tudo
+  const pad = 2;
+  x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad);
+  x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+// Processa a foto do copo: reduz (max 900px), tira o fundo branco e recorta as
+// margens vazias — o copo vira um recorte limpo que preenche o quadro no hero.
 function resizeToDataUrl(file, max, cb) {
   const img = new Image();
   const rd = new FileReader();
@@ -19,8 +56,17 @@ function resizeToDataUrl(file, max, cb) {
     const scale = Math.min(1, max / Math.max(img.width, img.height));
     const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
     const c = document.createElement('canvas'); c.width = w; c.height = h;
-    c.getContext('2d').drawImage(img, 0, 0, w, h);
-    cb(c.toDataURL('image/png'));
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    let data;
+    try { data = ctx.getImageData(0, 0, w, h); }
+    catch { cb(c.toDataURL('image/png')); return; }   // canvas "tainted" → devolve como está
+    removeEdgeWhite(data, w, h);
+    ctx.putImageData(data, 0, 0);
+    const box = contentBox(data, w, h);
+    const out = document.createElement('canvas'); out.width = box.w; out.height = box.h;
+    out.getContext('2d').drawImage(c, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
+    cb(out.toDataURL('image/png'));
   };
   rd.readAsDataURL(file);
 }
@@ -97,7 +143,7 @@ export default function SiteEditor({ site = {}, setSite, isAdmin }) {
           {/* 5 fotos dos copos */}
           <div>
             <h4 className="font-semibold text-gray-800 mb-1">Fotos dos copos (topo)</h4>
-            <p className="text-sm text-gray-500 mb-3">Envie até 5 fotos (PNG com fundo transparente fica melhor). Sem foto, usa a garrafinha colorida padrão.</p>
+            <p className="text-sm text-gray-500 mb-3">Envie até 5 fotos do copo. O <b>fundo branco é removido automaticamente</b> e a imagem é recortada no copo — o ideal é uma foto do copo sobre fundo branco/claro. Sem foto, usa a garrafinha colorida padrão.</p>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {Array.from({ length: 5 }).map((_, i) => {
                 const b = bottles[i] || {};

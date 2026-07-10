@@ -387,8 +387,8 @@ export default function StoreHome() {
               const size = i === mid ? 150 : 108;
               return (
                 <div key={i} className="st-float" style={{ animationDelay: `${i * 0.5}s`, transform: `translateY(${Math.abs(i - mid) * 14}px)` }}>
-                  {b.image_url
-                    ? <img src={b.image_url} alt="" style={{ height: size * 1.7, width: 'auto' }} className="object-contain drop-shadow-2xl" />
+                  {(b.image_url || b.image)
+                    ? <img src={b.image_url || b.image} alt="" style={{ height: size * 1.7, width: 'auto' }} className="object-contain drop-shadow-2xl" />
                     : <Bottle color={b.color || '#F26522'} gradient={b.gradient !== false} size={size} />}
                 </div>
               );
