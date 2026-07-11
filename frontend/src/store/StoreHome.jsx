@@ -264,7 +264,10 @@ export default function StoreHome() {
           <div key={category || 'all'} className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {products.map((p, idx) => (
               <div key={p.id} className="st-open h-full" style={{ animationDelay: `${(idx % 9) * 60}ms` }}>
-                <Link to={`/loja/produto/${p.id}`} className="st-card group bg-white rounded-3xl border border-gray-100 overflow-hidden flex flex-col h-full">
+                <Link to={p.kind === 'border'
+                    ? `/loja/borda?type=${encodeURIComponent(p.type)}&border=${encodeURIComponent(p.border)}`
+                    : `/loja/produto/${p.id}`}
+                  className="st-card group bg-white rounded-3xl border border-gray-100 overflow-hidden flex flex-col h-full">
                   <div className="bg-gradient-to-b from-gray-50 to-white flex items-center justify-center py-8 relative overflow-hidden h-52">
                     <div className="absolute w-40 h-40 rounded-full bg-orange-100/40 blur-2xl group-hover:bg-orange-200/50 transition-colors" />
                     {p.image_url ? (
@@ -274,7 +277,7 @@ export default function StoreHome() {
                         <Bottle color={CARD_COLORS[idx % CARD_COLORS.length]} gradient={/degrad/i.test(p.name)} size={130} />
                       </div>
                     )}
-                    {p.colors > 0 && <span className="absolute top-4 right-4 bg-gray-900 text-white text-xs font-bold px-3 py-1 rounded-full">{p.colors} cores</span>}
+                    {p.colors > 0 && <span className="absolute top-4 right-4 bg-gray-900 text-white text-xs font-bold px-3 py-1 rounded-full">{p.colors} {p.colors === 1 ? 'cor' : 'cores'}</span>}
                   </div>
                   <div className="p-5 flex-1 flex flex-col">
                     {p.category && <span className="text-xs text-orange-500 font-bold uppercase tracking-wide">{p.category}</span>}

@@ -41,6 +41,51 @@ function fromPrice(p) {
   return prices.length ? Math.min(...prices) : Number(p.sale_price) || 0;
 }
 
+// 1ª foto disponível de um produto: principal, por cor, ou por variação
+const firstImg = p => p.image_url
+  || (p.variation_images && typeof p.variation_images === 'object' && Object.values(p.variation_images).find(Boolean))
+  || (p.variations?.images && typeof p.variations.images === 'object' && Object.values(p.variations.images).find(Boolean))
+  || null;
+
+// Produtos "com borda" não têm campo estruturado — tipo, cor do copo e cor da
+// borda vivem no NOME. Ex.:
+//  "LONG DRINK TRADICIONAL - AMARELO CANÁRIO - BORDA HOLOGRÁFICA DOURADO - 350 ML"
+//   → { type:'LONG DRINK TRADICIONAL', cup:'AMARELO CANÁRIO',
+//       border:'BORDA HOLOGRÁFICA DOURADO', volume:'350 ML' }
+// Validado nos 364 produtos com borda da loja (0 falhas de parse).
+function parseBorda(rawName) {
+  const name = String(rawName || '').trim();
+  if (!/\bBORDA\b/i.test(name)) return null;
+  const vm = name.match(/(\d{2,4})\s*ML/i);
+  const volume = vm ? `${vm[1]} ML` : null;
+  const n = name.replace(/\s*[-–]?\s*\d{2,4}\s*ML/i, '').trim();
+  const parts = n.split(/\s+-\s+/).map(x => x.trim()).filter(Boolean);
+  const type = parts[0] || n;
+  const bi = parts.findIndex(p => /^BORDA\b/i.test(p));
+  let border, cup;
+  if (bi >= 0) { border = parts.slice(bi).join(' - '); cup = parts.slice(1, bi).join(' - '); }
+  else {
+    const m = n.match(/^(.*?)\bBORDA\b(.*)$/i);
+    border = ('BORDA ' + (m ? m[2] : '')).trim();
+    cup = (m ? m[1] : '').replace(type, '').replace(/^\s*-\s*/, '').trim();
+  }
+  border = border.toUpperCase().replace(/\s+/g, ' ').trim();
+  if (!type || !cup || !border) return null;
+  return { type, cup, border, volume };
+}
+const bordaKey = (type, border) => `${type} :: ${border}`;
+
+// Carrega os produtos visíveis da loja (com fallback p/ colunas novas ausentes)
+async function loadVisibleProducts() {
+  const sel = full => `id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, store_group, store_color, variations, image_url, variation_images, show_in_store' : ''}, category_id, CATEGORIAS(name)`;
+  const build = full => supabase.from('PRODUTOS').select(sel(full))
+    .eq('tenant_id', STORE_TENANT).eq('is_active', true).order('name').limit(500);
+  let { data, error } = await build(true);
+  if (error) ({ data, error } = await build(false));
+  if (error) throw error;
+  return (data || []).filter(p => p.show_in_store !== false);
+}
+
 // ── Informações da loja ───────────────────────────────────
 router.get('/store', async (req, res) => {
   try {
@@ -167,18 +212,18 @@ router.get('/products', async (req, res) => {
     // Se a coluna ainda não existe (fallback), products vem sem o campo → mostra todos.
     products = (products || []).filter(p => p.show_in_store !== false);
 
-    // Agrupa por modelo (store_group). Cada grupo vira 1 card; as cores ficam dentro.
+    // Produtos com borda: colapsam em cards por (tipo + cor da borda), ignorando
+    // a cor do copo — 364 cards viram ~54. Os demais seguem o agrupamento normal.
+    const bordaProds = [], normalProds = [];
+    for (const p of (products || [])) (parseBorda(p.name) ? bordaProds : normalProds).push(p);
+
+    // Agrupa o resto por modelo (store_group). Cada grupo vira 1 card; cores dentro.
     const groups = new Map();
-    for (const p of (products || [])) {
+    for (const p of normalProds) {
       const key = (p.store_group && p.store_group.trim()) || p.name;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(p);
     }
-    // Pega a 1ª foto disponível: principal, ou por cor, ou por variação
-    const firstImg = p => p.image_url
-      || (p.variation_images && typeof p.variation_images === 'object' && Object.values(p.variation_images).find(Boolean))
-      || (p.variations?.images && typeof p.variations.images === 'object' && Object.values(p.variations.images).find(Boolean))
-      || null;
     const cards = [...groups.entries()].map(([key, items]) => {
       const rep = items[0];
       const prices = items.map(fromPrice).filter(v => v > 0);
@@ -194,9 +239,58 @@ router.get('/products', async (req, res) => {
         colors: items.length > 1 ? items.length : varColors,
         min_order_qty: Math.max(...items.map(p => p.min_order_qty || 1)),
       };
-    }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    });
 
+    // Cards de borda: 1 por (tipo + cor da borda). Clicar abre as cores de copo.
+    const bmap = new Map();
+    for (const p of bordaProds) {
+      const info = parseBorda(p.name);
+      const key = bordaKey(info.type, info.border);
+      if (!bmap.has(key)) bmap.set(key, { info, items: [] });
+      bmap.get(key).items.push(p);
+    }
+    for (const { info, items } of bmap.values()) {
+      const prices = items.map(fromPrice).filter(v => v > 0);
+      const cups = new Set(items.map(p => parseBorda(p.name).cup));
+      cards.push({
+        kind: 'border',
+        id: `borda:${bordaKey(info.type, info.border)}`,
+        name: info.border,               // título do card = a cor da borda
+        type: info.type, border: info.border,
+        category: info.type,             // rótulo pequeno = o tipo do copo
+        image_url: items.map(firstImg).find(Boolean) || null,
+        from_price: prices.length ? Math.min(...prices) : 0,
+        has_tiers: items.some(p => Array.isArray(p.price_tiers) && p.price_tiers.length > 0),
+        colors: cups.size,               // nº de cores de copo com essa borda
+        min_order_qty: Math.max(...items.map(p => p.min_order_qty || 1)),
+      });
+    }
+
+    cards.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
     res.json(cards);
+  } catch (err) { fail(res, err); }
+});
+
+// ── Cores de copo de um grupo de borda (tipo + cor da borda) ──────────
+// Precede /products/:id senão o ":id" capturaria "border".
+router.get('/products/border', async (req, res) => {
+  const type = String(req.query.type || '').trim();
+  const border = String(req.query.border || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  if (!type || !border) return res.status(400).json({ error: 'Informe o tipo e a cor da borda.' });
+  try {
+    const products = await loadVisibleProducts();
+    const items = products
+      .map(p => ({ p, info: parseBorda(p.name) }))
+      .filter(({ info }) => info && info.type === type && info.border === border)
+      .map(({ p, info }) => ({
+        id: p.id, name: p.name,
+        cup: info.cup, volume: info.volume,
+        image_url: firstImg(p),
+        from_price: fromPrice(p),
+        has_tiers: Array.isArray(p.price_tiers) && p.price_tiers.length > 0,
+      }))
+      .sort((a, b) => a.cup.localeCompare(b.cup, 'pt-BR'));
+    res.json({ type, border, count: items.length, items });
   } catch (err) { fail(res, err); }
 });
 

@@ -6,6 +6,7 @@ import { StoreAuthProvider } from './StoreAuthContext';
 import StoreLayout from './StoreLayout';
 import StoreHome from './StoreHome';
 import ProductPage from './ProductPage';
+import BorderPage from './BorderPage';
 import CartPage from './CartPage';
 import StoreLogin from './StoreLogin';
 import StoreOrders from './StoreOrders';
@@ -30,6 +31,7 @@ export default function StoreApp() {
           <Routes>
             <Route index element={<StoreHome />} />
             <Route path="produto/:id" element={<ProductPage />} />
+            <Route path="borda" element={<BorderPage />} />
             <Route path="personalizar" element={<Suspense fallback={<StudioFallback />}><StoreStudio /></Suspense>} />
             <Route path="carrinho" element={<CartPage />} />
             <Route path="login" element={<StoreLogin />} />
