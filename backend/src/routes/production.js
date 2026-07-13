@@ -253,10 +253,14 @@ router.post('/:id/stage', async (req, res) => {
     if (!String(actor_user || '').trim()) return res.status(400).json({ error: 'Informe o usuário.' });
     if (!password) return res.status(400).json({ error: 'Digite sua senha para confirmar.' });
     const email = req.user?.email;
-    if (!email) return res.status(401).json({ error: 'Sessão inválida — entre novamente.' });
+    // Não usar 401: o interceptor do front trata 401 como sessão expirada e desloga.
+    if (!email) return res.status(403).json({ error: 'Não consegui confirmar sua sessão. Recarregue a página e tente de novo.' });
     const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
     const { error: authErr } = await client.auth.signInWithPassword({ email, password });
-    if (authErr) return res.status(401).json({ error: 'Senha incorreta.' });
+    if (authErr) {
+      const badPass = authErr.status === 400 || /invalid|credential|password|senha/i.test(authErr.message || '');
+      return res.status(badPass ? 403 : 502).json({ error: badPass ? 'Senha incorreta.' : `Não foi possível confirmar a senha: ${authErr.message}` });
+    }
 
     // Revelação tem campos extras: nº do quadro + conferido
     if (stage === 'revelacao') {

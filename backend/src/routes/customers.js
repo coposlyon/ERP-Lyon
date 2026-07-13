@@ -478,12 +478,18 @@ router.post('/:id/delete', async (req, res) => {
     const password = String(req.body?.password || '');
     const email = req.user?.email;
     if (!password) return res.status(400).json({ error: 'Digite sua senha para confirmar.' });
-    if (!email) return res.status(401).json({ error: 'Sessão inválida — entre novamente.' });
+    // Não usar 401 aqui: o interceptor do front trata QUALQUER 401 como sessão
+    // expirada e desloga. A senha de confirmação é outra coisa — usamos 403/502.
+    if (!email) return res.status(403).json({ error: 'Não consegui confirmar sua sessão. Recarregue a página e tente de novo.' });
 
-    // Reautentica para confirmar a senha
+    // Reautentica para confirmar a senha (sem derrubar a sessão atual — client à parte)
     const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
     const { error: authErr } = await client.auth.signInWithPassword({ email, password });
-    if (authErr) return res.status(401).json({ error: 'Senha incorreta.' });
+    if (authErr) {
+      const badPass = authErr.status === 400 || /invalid|credential|password|senha/i.test(authErr.message || '');
+      return res.status(badPass ? 403 : 502)
+        .json({ error: badPass ? 'Senha incorreta.' : `Não foi possível confirmar a senha: ${authErr.message}` });
+    }
 
     // Exclui (hard delete)
     const { error } = await supabase.from('CLIENTES').delete()
