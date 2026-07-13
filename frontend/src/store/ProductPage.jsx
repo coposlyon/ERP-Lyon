@@ -90,6 +90,7 @@ export default function ProductPage() {
       print_name: methodLabel || null,
       unit_price: unitPrice,
       quantity: qty,
+      min_order_qty: minQty,
     });
     toast.success('Adicionado ao carrinho!');
   }
@@ -160,10 +161,10 @@ export default function ProductPage() {
           <div className="mt-6 flex items-center gap-3">
             <div className="flex flex-col">
               <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
-                <button onClick={() => setQty(q => Math.max(minQty, q - 1))} className="px-3 py-3 hover:bg-gray-50"><Minus size={15} /></button>
-                <input type="number" min={minQty} value={qty} onChange={e => setQty(Math.max(minQty, parseInt(e.target.value) || minQty))}
+                <button onClick={() => setQty(q => Math.max(minQty, q - minQty))} className="px-3 py-3 hover:bg-gray-50"><Minus size={15} /></button>
+                <input type="number" min={minQty} step={minQty} value={qty} onChange={e => setQty(Math.max(minQty, parseInt(e.target.value) || minQty))}
                   className="w-16 text-center font-bold outline-none" />
-                <button onClick={() => setQty(q => q + 1)} className="px-3 py-3 hover:bg-gray-50"><Plus size={15} /></button>
+                <button onClick={() => setQty(q => q + minQty)} className="px-3 py-3 hover:bg-gray-50"><Plus size={15} /></button>
               </div>
               {minQty > 1 && <p className="text-[11px] text-orange-600 mt-1">Pedido mínimo: {minQty} un.</p>}
             </div>

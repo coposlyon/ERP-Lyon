@@ -229,13 +229,18 @@ export default function CartPage() {
                   {i.design && <p className="text-xs text-orange-500 font-medium">Arte personalizada em 3D</p>}
                   <p className="text-sm text-gray-500 mt-0.5">{i.unit_price > 0 ? `${fmt(i.unit_price)} / un` : 'a orçar'}</p>
                 </div>
-                <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-                  <button onClick={() => setQty(k, i.quantity - 1)} className="px-2 py-2 hover:bg-gray-50"><Minus size={13} /></button>
-                  <input type="number" min="1" value={i.quantity}
-                    onChange={e => setQty(k, Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-12 text-center font-bold outline-none text-sm" />
-                  <button onClick={() => setQty(k, i.quantity + 1)} className="px-2 py-2 hover:bg-gray-50"><Plus size={13} /></button>
-                </div>
+                {(() => {
+                  const step = Math.max(1, i.min_order_qty || 1);  // sobe/desce pelo pedido mínimo (ex.: 10)
+                  return (
+                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+                      <button onClick={() => setQty(k, Math.max(step, i.quantity - step))} className="px-2 py-2 hover:bg-gray-50"><Minus size={13} /></button>
+                      <input type="number" min={step} step={step} value={i.quantity}
+                        onChange={e => setQty(k, Math.max(step, parseInt(e.target.value) || step))}
+                        className="w-12 text-center font-bold outline-none text-sm" />
+                      <button onClick={() => setQty(k, i.quantity + step)} className="px-2 py-2 hover:bg-gray-50"><Plus size={13} /></button>
+                    </div>
+                  );
+                })()}
                 <div className="text-right w-24">
                   <p className="font-bold text-gray-900">{i.unit_price > 0 ? fmt(i.unit_price * i.quantity) : '—'}</p>
                 </div>
