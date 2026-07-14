@@ -162,8 +162,10 @@ export default function ProductPage() {
             <div className="flex flex-col">
               <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
                 <button onClick={() => setQty(q => Math.max(minQty, q - minQty))} className="px-3 py-3 hover:bg-gray-50"><Minus size={15} /></button>
-                <input type="number" min={minQty} step={minQty} value={qty} onChange={e => setQty(Math.max(minQty, parseInt(e.target.value) || minQty))}
-                  className="w-16 text-center font-bold outline-none" />
+                <input type="number" min={minQty} step={minQty} value={qty}
+                  onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  onBlur={e => { if ((parseInt(e.target.value) || 0) < minQty) setQty(minQty); }}
+                  className="w-20 text-center font-bold outline-none" />
                 <button onClick={() => setQty(q => q + minQty)} className="px-3 py-3 hover:bg-gray-50"><Plus size={15} /></button>
               </div>
               {minQty > 1 && <p className="text-[11px] text-orange-600 mt-1">Pedido mínimo: {minQty} un.</p>}
