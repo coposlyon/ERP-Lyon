@@ -444,6 +444,15 @@ export default function Settings() {
                 <label className="label">Prazo padrão (dias)</label>
                 <input type="number" className="input" value={form.settings?.frete?.default_days ?? ''} onChange={e => setFrete('default_days', e.target.value)} placeholder="ex.: 7" disabled={!isAdmin} />
               </div>
+              <div>
+                <label className="label">Frete padrão (R$)</label>
+                <input type="number" step="0.01" className="input" value={form.settings?.frete?.default_price ?? ''} onChange={e => setFrete('default_price', e.target.value)} placeholder="ex.: 30" disabled={!isAdmin} />
+                <p className="text-[11px] text-gray-400 mt-1">Usado quando o estado não tem regra própria (e sem cotação por API). Vazio = "A combinar".</p>
+              </div>
+              <div>
+                <label className="label">Frete padrão + por kg (R$)</label>
+                <input type="number" step="0.01" className="input" value={form.settings?.frete?.default_per_kg ?? ''} onChange={e => setFrete('default_per_kg', e.target.value)} placeholder="0" disabled={!isAdmin} />
+              </div>
             </div>
 
             <div>
