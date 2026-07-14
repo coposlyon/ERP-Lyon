@@ -1001,13 +1001,7 @@ router.post('/frete', async (req, res) => {
     const markup = (cfg.freight_markup != null && cfg.freight_markup !== '') ? Number(cfg.freight_markup) : 14;
     if (markup) options = options.map(o => ({ ...o, price: Math.round((Number(o.price) || 0) * (1 + markup / 100) * 100) / 100 }));
 
-    // DEBUG temporário: por que BrasPress/J&T não cotaram
-    const _debug = {
-      from_cep: fromCep, products: products.length,
-      bp_enabled: !!cfg.bp_enabled, bp_ready: bpReady(cfg),
-      jt_enabled: !!cfg.enabled, jt_ready: jtReady(cfg),
-    };
-    res.json({ options, _debug });
+    res.json({ options });
   } catch (err) { fail(res, err); }
 });
 

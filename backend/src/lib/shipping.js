@@ -113,7 +113,10 @@ async function jtRequest(cfg, path, bizObj) {
     timestamp: String(Date.now()),
   };
   const body = 'bizContent=' + encodeURIComponent(bizContent);
-  const resp = await fetch(cfg.jt_base_url.replace(/\/$/, '') + path, { method: 'POST', headers, body });
+  // Garante protocolo (o lojista pode digitar "openapi.jtjms-br.com" sem https://)
+  let base = String(cfg.jt_base_url || '').trim().replace(/\/+$/, '') || 'https://openapi.jtjms-br.com';
+  if (!/^https?:\/\//i.test(base)) base = 'https://' + base;
+  const resp = await fetch(base + path, { method: 'POST', headers, body });
   const raw = await resp.json().catch(() => ({}));
   if (!resp.ok) {
     const err = new Error(raw?.msg || raw?.message || `J&T HTTP ${resp.status}`);

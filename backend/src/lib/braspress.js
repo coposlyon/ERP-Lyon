@@ -8,11 +8,20 @@
 // "não configurada" e nada quebra (mesmo padrão da J&T/Melhor Envio).
 const onlyDigits = s => String(s || '').replace(/\D/g, '');
 
+// Garante protocolo na URL base (o lojista pode digitar "api.braspress.com" sem
+// https:// — o fetch exige URL absoluta, senão a cotação estoura silenciosamente).
+function normalizeBase(url, fallback) {
+  let b = String(url || '').trim().replace(/\/+$/, '');
+  if (!b) return fallback;
+  if (!/^https?:\/\//i.test(b)) b = 'https://' + b;
+  return b;
+}
+
 // Lê os campos bp_* já resolvidos pelo getFreteConfig (shipping.js)
 function bpConfig(cfg) {
   return {
     enabled:   !!cfg.bp_enabled,
-    base:      (cfg.bp_base_url || 'https://api.braspress.com').replace(/\/$/, ''),
+    base:      normalizeBase(cfg.bp_base_url, 'https://api.braspress.com'),
     user:      cfg.bp_user || '',
     password:  cfg.bp_password || '',
     cnpj:      onlyDigits(cfg.bp_cnpj),        // CNPJ remetente / pagador do frete
