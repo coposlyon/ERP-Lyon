@@ -918,12 +918,14 @@ router.post('/frete', async (req, res) => {
   const items = Array.isArray(req.body.items) ? req.body.items : [];
   if (cep.length !== 8) return res.status(400).json({ error: 'CEP inválido' });
   try {
-    // CEP de origem: env STORE_ORIGIN_CEP ou endereço da empresa
-    let fromCep = process.env.STORE_ORIGIN_CEP || '';
+    const cfg = await getFreteConfig(STORE_TENANT);
+    // CEP de origem: 1º o campo de Transportadora (cfg.origin_cep), depois env,
+    // depois o endereço da empresa. Sem ele, BrasPress/Melhor Envio não cotam.
+    let fromCep = String(cfg.origin_cep || '').replace(/\D/g, '') || process.env.STORE_ORIGIN_CEP || '';
     if (!fromCep) {
       const { data: emp } = await supabase.from('EMPRESAS').select('address').eq('id', STORE_TENANT).maybeSingle();
       const addr = emp?.address;
-      if (addr && typeof addr === 'object') fromCep = addr.zip || addr.cep || '';
+      if (addr && typeof addr === 'object') fromCep = String(addr.zip || addr.cep || '').replace(/\D/g, '');
     }
 
     const ids = [...new Set(items.map(i => i.product_id).filter(Boolean))];
@@ -942,7 +944,6 @@ router.post('/frete', async (req, res) => {
       }
     }
 
-    const cfg = await getFreteConfig(STORE_TENANT);
     let options = [];
 
     // 1) Melhor Envio (cotação real multi-transportadora) — se houver token
