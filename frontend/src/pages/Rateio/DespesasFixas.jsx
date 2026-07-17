@@ -32,6 +32,15 @@ const dBR = iso => {
   const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '—';
 };
+// Vencimento no período selecionado: combina o dia de vencimento (1-31)
+// com o mês/ano de referência, limitando ao último dia do mês.
+const dueDate = (day, period) => {
+  const m = String(period || '').match(/^(\d{4})-(\d{2})$/);
+  const d = Number(day);
+  if (!m || !(d >= 1)) return '—';
+  const lastDay = new Date(Number(m[1]), Number(m[2]), 0).getDate();
+  return `${String(Math.min(d, lastDay)).padStart(2, '0')}/${m[2]}/${m[1]}`;
+};
 
 // ─── Modal de adicionar/editar despesa ─────────────────────
 function ExpenseModal({ open, initial, onClose, onSaved }) {
@@ -235,6 +244,7 @@ export default function DespesasFixas() {
                   <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
                     <th className="px-4 py-2">Categoria</th>
                     <th className="px-4 py-2">Descrição</th>
+                    <th className="px-4 py-2">Vencimento</th>
                     <th className="px-4 py-2 text-right">Valor Mensal (R$)</th>
                     <th className="px-4 py-2 text-right">% Rateio</th>
                     <th className="px-4 py-2 text-right" title="Custo desta despesa em cada unidade produzida">Valor Rateado (R$)</th>
@@ -254,6 +264,7 @@ export default function DespesasFixas() {
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-gray-500">{exp.notes || '—'}</td>
+                        <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{dueDate(exp.due_day, period)}</td>
                         <td className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
                           {Number(exp.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </td>
@@ -275,7 +286,7 @@ export default function DespesasFixas() {
                     );
                   })}
                   {items.length === 0 && (
-                    <tr><td colSpan={6} className="text-center py-10 text-sm text-gray-400">
+                    <tr><td colSpan={7} className="text-center py-10 text-sm text-gray-400">
                       Nenhuma despesa fixa cadastrada — clique em ADICIONAR DESPESA.
                     </td></tr>
                   )}
@@ -283,7 +294,7 @@ export default function DespesasFixas() {
                 {items.length > 0 && (
                   <tfoot>
                     <tr className="border-t-2 border-gray-200 bg-gray-50/60">
-                      <td className="px-4 py-3 font-bold text-gray-900 uppercase" colSpan={2}>Total Geral</td>
+                      <td className="px-4 py-3 font-bold text-gray-900 uppercase" colSpan={3}>Total Geral</td>
                       <td className="px-4 py-3 text-right font-bold text-green-600">
                         {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </td>
