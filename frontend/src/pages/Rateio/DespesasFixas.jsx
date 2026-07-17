@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip as ChartTooltip } from 'chart.js';
 import {
-  Plus, Loader2, Pencil, Trash2, Eye, Lightbulb, X, Save,
+  Plus, Loader2, Pencil, Trash2, Eye, Lightbulb, X, Save, Search,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -21,6 +21,12 @@ const CATEGORIES = [
 ];
 
 const DONUT_COLORS = ['#4338ca', '#9333ea', '#f97316', '#3b82f6', '#ef4444', '#22c55e', '#9ca3af'];
+
+// Paleta sugerida para colorir categorias (usuário pode escolher qualquer cor)
+const CATEGORY_COLORS = [
+  '#4338ca', '#9333ea', '#f97316', '#3b82f6', '#ef4444',
+  '#22c55e', '#eab308', '#14b8a6', '#ec4899', '#6b7280',
+];
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -43,7 +49,7 @@ const dueDate = (day, period) => {
 };
 
 // ─── Modal de adicionar/editar despesa ─────────────────────
-function ExpenseModal({ open, initial, onClose, onSaved }) {
+function ExpenseModal({ open, initial, colors = {}, onClose, onSaved }) {
   const isEdit = !!initial?.id;
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -54,8 +60,15 @@ function ExpenseModal({ open, initial, onClose, onSaved }) {
     notes: initial?.notes || '',
     amount: initial?.amount != null ? String(initial.amount).replace('.', ',') : '',
     due_day: initial?.due_day || 5,
+    color: (initial?.name && colors[initial.name]) || '',
   };
   const set = patch => setForm({ ...f, ...patch });
+
+  // Ao trocar de categoria, adota a cor já salva daquela categoria (se houver)
+  function pickCategory(v) {
+    const nm = v === '__outra' ? f.custom.trim() : v;
+    set({ category: v, ...(colors[nm] ? { color: colors[nm] } : {}) });
+  }
 
   async function save() {
     const name = f.category === '__outra' ? f.custom.trim() : f.category;
@@ -67,6 +80,10 @@ function ExpenseModal({ open, initial, onClose, onSaved }) {
       const payload = { name, notes: f.notes, amount, due_day: f.due_day };
       if (isEdit) await api.put(`/contas/fixed-expenses/${initial.id}`, payload);
       else await api.post('/contas/fixed-expenses', payload);
+      // Cor é por categoria: só grava se mudou em relação ao que já está salvo
+      if ((f.color || '') !== (colors[name] || '')) {
+        await api.put('/rateio/category-colors', { category_colors: { [name]: f.color || null } });
+      }
       toast.success(isEdit ? 'Despesa atualizada!' : 'Despesa adicionada!');
       setForm(null);
       onSaved();
@@ -80,7 +97,7 @@ function ExpenseModal({ open, initial, onClose, onSaved }) {
       <div className="space-y-3">
         <div>
           <label className="label">Categoria</label>
-          <select className="input" value={f.category} onChange={e => set({ category: e.target.value })}>
+          <select className="input" value={f.category} onChange={e => pickCategory(e.target.value)}>
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             <option value="__outra">Outra (digitar)...</option>
           </select>
@@ -92,6 +109,25 @@ function ExpenseModal({ open, initial, onClose, onSaved }) {
               onChange={e => set({ custom: e.target.value })} />
           </div>
         )}
+        <div>
+          <label className="label">Cor da categoria</label>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {CATEGORY_COLORS.map(c => (
+              <button key={c} type="button" onClick={() => set({ color: c })}
+                className="w-6 h-6 rounded-full border-2 transition-transform hover:scale-110"
+                style={{ background: c, borderColor: f.color === c ? '#111827' : 'transparent' }}
+                title={c} />
+            ))}
+            <input type="color" value={f.color || '#6b7280'} onChange={e => set({ color: e.target.value })}
+              className="w-8 h-8 rounded cursor-pointer border border-gray-200 bg-transparent p-0"
+              title="Cor personalizada" />
+            {f.color && (
+              <button type="button" onClick={() => set({ color: '' })}
+                className="text-xs text-gray-400 hover:text-gray-600 ml-1">limpar</button>
+            )}
+          </div>
+          <p className="text-[11px] text-gray-400 mt-1">A cor vale para todas as despesas desta categoria.</p>
+        </div>
         <div>
           <label className="label">Descrição</label>
           <input className="input" value={f.notes} placeholder="Ex.: Aluguel do Galpão"
@@ -130,6 +166,8 @@ export default function DespesasFixas() {
   const [period, setPeriod] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
   const [modal, setModal] = useState(null);       // null | {} (novo) | despesa (editar)
   const [histView, setHistView] = useState(null); // snapshot em visualização
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('due');     // due (padrão) | name | amount | amount_asc
 
   const { data: sum, isLoading, refetch } = useQuery({
     queryKey: ['rateio-summary'],
@@ -140,6 +178,22 @@ export default function DespesasFixas() {
   const total = sum?.total || 0;
   const units = sum?.monthly_units || 0;
   const perUnit = sum?.overhead_unit || 0;
+  const catColors = sum?.category_colors || {};
+
+  // Lista exibida: filtro por texto + ordenação (padrão por vencimento).
+  // Os cálculos de % e rateado seguem sobre o total/produção reais (sum),
+  // então o filtro é só uma visão — não altera os números do rateio.
+  const displayItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const list = q
+      ? items.filter(e => (e.name || '').toLowerCase().includes(q) || (e.notes || '').toLowerCase().includes(q))
+      : items.slice();
+    if (sortBy === 'name')       list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
+    else if (sortBy === 'amount')     list.sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0));
+    else if (sortBy === 'amount_asc') list.sort((a, b) => (Number(a.amount) || 0) - (Number(b.amount) || 0));
+    else list.sort((a, b) => ((Number(a.due_day) || 99) - (Number(b.due_day) || 99)) || (a.name || '').localeCompare(b.name || '', 'pt-BR'));
+    return list;
+  }, [items, search, sortBy]);
 
   function invalidate() {
     refetch();
@@ -238,6 +292,23 @@ export default function DespesasFixas() {
                 <Plus size={15} /> ADICIONAR DESPESA
               </button>
             </div>
+            {/* Barra de filtro/ordenação */}
+            <div className="px-4 py-2.5 border-b border-gray-100 flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[180px]">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input className="input pl-8 py-1.5 text-sm" placeholder="Filtrar por nome ou descrição..."
+                  value={search} onChange={e => setSearch(e.target.value)} />
+              </div>
+              <select className="input py-1.5 text-sm w-auto" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                <option value="due">Ordenar por: Vencimento</option>
+                <option value="name">Ordenar por: Nome (A→Z)</option>
+                <option value="amount">Ordenar por: Valor (maior)</option>
+                <option value="amount_asc">Ordenar por: Valor (menor)</option>
+              </select>
+              {search && (
+                <span className="text-xs text-gray-400">{displayItems.length} de {items.length}</span>
+              )}
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -252,7 +323,7 @@ export default function DespesasFixas() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map(exp => {
+                  {displayItems.map(exp => {
                     const Icon = iconFor(exp.name);
                     const pct = total > 0 ? (Number(exp.amount) / total) * 100 : 0;
                     const rateado = units > 0 ? Number(exp.amount) / units : 0;
@@ -260,6 +331,8 @@ export default function DespesasFixas() {
                       <tr key={exp.id} className="border-b border-gray-50 hover:bg-gray-50/60">
                         <td className="px-4 py-2.5">
                           <span className="flex items-center gap-2 font-medium text-gray-900">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ background: catColors[exp.name] || '#d1d5db' }} />
                             <Icon size={15} className="text-gray-400" /> {exp.name}
                           </span>
                         </td>
@@ -285,13 +358,15 @@ export default function DespesasFixas() {
                       </tr>
                     );
                   })}
-                  {items.length === 0 && (
+                  {displayItems.length === 0 && (
                     <tr><td colSpan={7} className="text-center py-10 text-sm text-gray-400">
-                      Nenhuma despesa fixa cadastrada — clique em ADICIONAR DESPESA.
+                      {items.length === 0
+                        ? 'Nenhuma despesa fixa cadastrada — clique em ADICIONAR DESPESA.'
+                        : 'Nenhuma despesa encontrada para esse filtro.'}
                     </td></tr>
                   )}
                 </tbody>
-                {items.length > 0 && (
+                {displayItems.length > 0 && (
                   <tfoot>
                     <tr className="border-t-2 border-gray-200 bg-gray-50/60">
                       <td className="px-4 py-3 font-bold text-gray-900 uppercase" colSpan={3}>Total Geral</td>
@@ -396,7 +471,11 @@ export default function DespesasFixas() {
                   <Doughnut
                     data={{
                       labels: donut.labels,
-                      datasets: [{ data: donut.values, backgroundColor: DONUT_COLORS, borderWidth: 2, borderColor: '#fff' }],
+                      datasets: [{
+                        data: donut.values,
+                        backgroundColor: donut.labels.map((l, i) => catColors[l] || DONUT_COLORS[i % DONUT_COLORS.length]),
+                        borderWidth: 2, borderColor: '#fff',
+                      }],
                     }}
                     options={{ plugins: { legend: { display: false } }, cutout: '55%', maintainAspectRatio: false }}
                   />
@@ -404,7 +483,7 @@ export default function DespesasFixas() {
                 <div className="flex-1 space-y-1 min-w-0">
                   {donut.labels.map((label, i) => (
                     <div key={label} className="flex items-center gap-1.5 text-xs">
-                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: catColors[label] || DONUT_COLORS[i % DONUT_COLORS.length] }} />
                       <span className="text-gray-600 truncate flex-1" title={label}>{label}</span>
                       <span className="font-semibold text-gray-900 whitespace-nowrap">
                         {total > 0 ? ((donut.values[i] / total) * 100).toFixed(2).replace('.', ',') : 0}%
@@ -431,7 +510,7 @@ export default function DespesasFixas() {
       </div>
 
       {/* Modal adicionar/editar despesa */}
-      <ExpenseModal open={!!modal} initial={modal || {}}
+      <ExpenseModal open={!!modal} initial={modal || {}} colors={catColors}
         onClose={() => setModal(null)}
         onSaved={() => { setModal(null); invalidate(); }} />
 

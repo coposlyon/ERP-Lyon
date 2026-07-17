@@ -54,6 +54,32 @@ router.put('/config', async (req, res) => {
   }
 });
 
+// ── Cores por categoria (personalização visual da tabela/gráfico) ──
+// Endpoint leve: mescla no settings.pricing sem registrar snapshot.
+router.put('/category-colors', async (req, res) => {
+  const { category_colors } = req.body;
+  if (!category_colors || typeof category_colors !== 'object' || Array.isArray(category_colors)) {
+    return res.status(400).json({ error: 'category_colors inválido' });
+  }
+  try {
+    const cfg = await getConfig(req.tenantId);
+    const merged = { ...(cfg.category_colors || {}) };
+    for (const [name, color] of Object.entries(category_colors)) {
+      const nm = String(name).trim();
+      if (!nm) continue;
+      // cor vazia/null remove a personalização daquela categoria
+      if (!color) delete merged[nm];
+      else if (/^#[0-9a-fA-F]{6}$/.test(String(color))) merged[nm] = String(color);
+    }
+    const saved = await saveConfig(req.tenantId, { category_colors: merged });
+    audit(req, 'update', 'rateio_category_colors', req.tenantId, { count: Object.keys(merged).length });
+    res.json({ category_colors: saved.category_colors || {} });
+  } catch (err) {
+    console.error('[rateio/category-colors]', err.message);
+    res.status(500).json({ error: 'Erro ao salvar as cores das categorias' });
+  }
+});
+
 // ── Despesas Variáveis: taxas + fretes de compra (integração) ──
 router.get('/variable', async (req, res) => {
   try {

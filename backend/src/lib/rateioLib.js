@@ -15,6 +15,7 @@ const DEFAULTS = {
   avg_margin_unit: null,     // margem média/un informada (null = automática)
   variable_costs: null,      // taxas variáveis (bancárias, marketplace, comissão)
   rateio_history: [],        // snapshots do rateio por período
+  category_colors: {},       // cor por categoria de despesa fixa { nome: '#hex' }
 };
 
 // Taxas variáveis padrão (Despesas Variáveis)
@@ -92,6 +93,7 @@ async function fixedOverview(tenantId) {
     overhead_unit: Math.round(overheadUnit * 10000) / 10000,
     tax_regime: cfg.tax_regime || 'simples',
     tax_pct_default: Number(cfg.tax_pct) || 0,
+    category_colors: cfg.category_colors && typeof cfg.category_colors === 'object' ? cfg.category_colors : {},
   };
 }
 
