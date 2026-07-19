@@ -7,11 +7,13 @@ const { uploadDataUrl } = require('../lib/storage');
 const { makeClient } = require('../config/supabase');
 
 // Etapas e suas colunas de início/fim
+// Fluxo: Revelação → Pintura → Metalização (opcional) → Produção → Embalagem
 const STAGE_FIELDS = {
-  revelacao: { start: 'revelacao_inicio', end: 'revelacao_fim', label: 'Revelação' },
-  producao:  { start: 'producao_inicio',  end: 'producao_fim',  label: 'Produção' },
-  pintura:   { start: 'pintura_inicio',   end: 'pintura_fim',   label: 'Pintura' },
-  embalagem: { start: 'embalagem_inicio', end: 'embalagem_fim', label: 'Embalagem' },
+  revelacao:   { start: 'revelacao_inicio',   end: 'revelacao_fim',   label: 'Revelação' },
+  producao:    { start: 'producao_inicio',    end: 'producao_fim',    label: 'Produção' },
+  pintura:     { start: 'pintura_inicio',     end: 'pintura_fim',     label: 'Pintura' },
+  metalizacao: { start: 'metalizacao_inicio', end: 'metalizacao_fim', label: 'Metalização' },
+  embalagem:   { start: 'embalagem_inicio',   end: 'embalagem_fim',   label: 'Embalagem' },
 };
 
 // ── Board de produção ─────────────────────────────────────

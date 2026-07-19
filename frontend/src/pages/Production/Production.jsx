@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 
 const fmtMoney = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 const fmtDT = s => s ? new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-const STEP_LABEL = { revelacao: 'Revelação', producao: 'Produção', pintura: 'Pintura', embalagem: 'Embalagem', perda: 'Perda', status: 'Status' };
+const STEP_LABEL = { revelacao: 'Revelação', producao: 'Produção', pintura: 'Pintura', metalizacao: 'Metalização', embalagem: 'Embalagem', perda: 'Perda', status: 'Status' };
 const ACT_LABEL = { start: 'iniciou', finish: 'finalizou', registro: 'registrou' };
 
 const STAGES = {
@@ -17,16 +17,20 @@ const STAGES = {
   aguardando_producao: { label: 'Aguardando Produção', cls: 'bg-blue-100 text-blue-700' },
   revelacao:           { label: 'Em processo de gravação', cls: 'bg-yellow-100 text-yellow-700' },
   pintura:             { label: 'Em Pintura',          cls: 'bg-pink-100 text-pink-700' },
+  metalizacao:         { label: 'Em Metalização',      cls: 'bg-slate-200 text-slate-700' },
   producao:            { label: 'Em Produção',         cls: 'bg-orange-100 text-orange-700' },
   embalagem:           { label: 'Em Embalagem',        cls: 'bg-violet-100 text-violet-700' },
   finalizado:          { label: 'Finalizado',          cls: 'bg-green-100 text-green-700' },
 };
-// Fluxo: Revelação → Pintura → Produção → Embalagem
+// Fluxo: Revelação → Pintura → Metalização → Produção → Embalagem
+// A Metalização é OPCIONAL (só pedidos com borda metalizada): a Produção
+// aceita vir tanto da Pintura quanto da Metalização.
 const STEPS = [
-  { stage: 'revelacao', label: 'Revelação' },
-  { stage: 'pintura',   label: 'Pintura' },
-  { stage: 'producao',  label: 'Produção' },
-  { stage: 'embalagem', label: 'Embalagem' },
+  { stage: 'revelacao',   label: 'Revelação' },
+  { stage: 'pintura',     label: 'Pintura' },
+  { stage: 'metalizacao', label: 'Metalização' },
+  { stage: 'producao',    label: 'Produção' },
+  { stage: 'embalagem',   label: 'Embalagem' },
 ];
 const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
 
@@ -34,9 +38,11 @@ function canDo(s, stage, action) {
   if (!s) return false;
   if (action === 'finish') return s.stage === stage;
   if (stage === 'revelacao') return ['aguardando_arte', 'aguardando_producao'].includes(s.stage);
-  if (stage === 'pintura')   return s.stage === 'revelacao';
-  if (stage === 'producao')  return s.stage === 'pintura';
-  if (stage === 'embalagem') return s.stage === 'producao';
+  if (stage === 'pintura')     return s.stage === 'revelacao';
+  if (stage === 'metalizacao') return s.stage === 'pintura';
+  // Metalização é opcional: a Produção libera vindo da Pintura ou dela
+  if (stage === 'producao')    return ['pintura', 'metalizacao'].includes(s.stage);
+  if (stage === 'embalagem')   return s.stage === 'producao';
   return false;
 }
 

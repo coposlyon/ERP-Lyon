@@ -862,7 +862,7 @@ function statusCliente(sale) {
   if (['entregue', 'delivered', 'completed'].includes(s))            return { key: 'done', label: 'Entregue 🎉' };
   if (s === 'em_transito')                                           return { key: 'ready', label: 'A caminho 🚚' };
   if (s === 'aguardando_coleta' || s === 'ready' || st === 'finalizado') return { key: 'ready', label: 'Pronto! 🎉' };
-  if (['aguardando_arte', 'aguardando_vegetal', 'aguardando_revelacao'].includes(s) || ['revelacao', 'producao', 'embalagem'].includes(st) || s === 'in_production')
+  if (['aguardando_arte', 'aguardando_vegetal', 'aguardando_revelacao'].includes(s) || ['revelacao', 'pintura', 'metalizacao', 'producao', 'embalagem'].includes(st) || s === 'in_production')
     return { key: 'producing', label: 'Em produção' };
   if (['aguardando_financeiro', 'aguardando_estoque', 'confirmed'].includes(s)) return { key: 'preparing', label: 'Em preparação' };
   return { key: 'analysis', label: 'Aguardando aprovação' }; // iniciando_pedido / open
