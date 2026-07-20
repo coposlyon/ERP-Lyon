@@ -13,6 +13,36 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
 });
 
+// Colaborador (type CO): o salário vira despesa fixa no Rateio, na
+// categoria "Funcionários" (1 despesa por colaborador, via employee_id).
+// Nunca quebra o salvamento do colaborador — migração 048 pode estar pendente.
+async function syncEmployeeSalary(tenantId, customer) {
+  if (!customer?.id) return;
+  try {
+    const isEmployee = customer.type === 'CO';
+    const salary = Number(customer.admission_data?.salary) || 0;
+    const active = isEmployee && customer.is_active !== false && salary > 0;
+
+    const { data: existing, error: e1 } = await supabase.from('DESPESAS_FIXAS')
+      .select('id').eq('tenant_id', tenantId).eq('employee_id', customer.id).maybeSingle();
+    if (e1) throw e1;
+
+    if (existing) {
+      await supabase.from('DESPESAS_FIXAS').update({
+        amount: salary, notes: customer.name, is_active: active,
+        updated_at: new Date().toISOString(),
+      }).eq('id', existing.id);
+    } else if (active) {
+      await supabase.from('DESPESAS_FIXAS').insert({
+        tenant_id: tenantId, name: 'Funcionários', amount: salary,
+        due_day: 5, notes: customer.name, employee_id: customer.id,
+      });
+    }
+  } catch (err) {
+    console.warn('[customers/syncEmployeeSalary]', err.message);
+  }
+}
+
 // Monta as condições de busca (.or do PostgREST).
 // useDigits=true usa as colunas geradas *_digits (migration 015), que
 // comparam só os dígitos — assim "4399523972" acha o telefone "43 9952-3972".
@@ -353,6 +383,7 @@ router.post('/', async (req, res) => {
       ({ data, error } = await ins());
     }
     if (error) throw error;
+    await syncEmployeeSalary(req.tenantId, data);
     res.status(201).json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -410,6 +441,7 @@ router.put('/:id', async (req, res) => {
       ({ data, error } = await upd(payload));
     }
     if (error) throw error;
+    await syncEmployeeSalary(req.tenantId, data);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
