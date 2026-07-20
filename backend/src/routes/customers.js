@@ -20,7 +20,11 @@ async function syncEmployeeSalary(tenantId, customer) {
   if (!customer?.id) return;
   try {
     const isEmployee = customer.type === 'CO';
-    const salary = Number(customer.admission_data?.salary) || 0;
+    const raw = customer.admission_data?.salary;
+    // aceita número puro (20000) e formato BR ("20.000,00")
+    const salary = (typeof raw === 'string' && raw.includes(','))
+      ? (parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0)
+      : (Number(raw) || 0);
     const active = isEmployee && customer.is_active !== false && salary > 0;
 
     const { data: existing, error: e1 } = await supabase.from('DESPESAS_FIXAS')

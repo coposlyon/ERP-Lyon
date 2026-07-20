@@ -44,14 +44,14 @@ const dBR = iso => {
   const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '—';
 };
-// Vencimento no período selecionado: combina o dia de vencimento (1-31)
-// com o mês/ano de referência, limitando ao último dia do mês.
-const dueDate = (day, period) => {
-  const m = String(period || '').match(/^(\d{4})-(\d{2})$/);
+// Vencimento no mês corrente (dd/mm — despesa fixa repete todo mês,
+// então o ano não aparece), limitando ao último dia do mês.
+const dueDate = (day) => {
   const d = Number(day);
-  if (!m || !(d >= 1)) return '—';
-  const lastDay = new Date(Number(m[1]), Number(m[2]), 0).getDate();
-  return `${String(Math.min(d, lastDay)).padStart(2, '0')}/${m[2]}/${m[1]}`;
+  if (!(d >= 1)) return '—';
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return `${String(Math.min(d, lastDay)).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
 // ─── Modal de adicionar/editar despesa ─────────────────────
@@ -169,7 +169,8 @@ function ExpenseModal({ open, initial, colors = {}, onClose, onSaved }) {
 export default function DespesasFixas() {
   const qc = useQueryClient();
   const today = new Date();
-  const [period, setPeriod] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
+  // Período é sempre o mês corrente (usado só para registrar o histórico)
+  const period = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   const [modal, setModal] = useState(null);       // null | {} (novo) | despesa (editar)
   const [histView, setHistView] = useState(null); // snapshot em visualização
   const [search, setSearch] = useState('');
@@ -259,12 +260,6 @@ export default function DespesasFixas() {
             <h2 className="font-semibold text-gray-900 uppercase text-sm tracking-wide">Configurações do Rateio</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="label">Período de Referência</label>
-                <input type="month" className="input" value={period}
-                  onChange={e => setPeriod(e.target.value)} />
-                <p className="text-[11px] text-gray-400 mt-1">{periodLabel(period)}</p>
-              </div>
-              <div>
                 <label className="label">Produção Mensal Estimada</label>
                 <div className="relative">
                   <input type="number" min="0" className="input pr-20"
@@ -274,20 +269,7 @@ export default function DespesasFixas() {
                     onBlur={e => { const v = e.target.value; if (v !== String(sum?.manual_units ?? '')) saveConfig({ monthly_units: v }); }} />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">unidades</span>
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1">Quantidade total de unidades produzidas no mês</p>
-              </div>
-              <div>
-                <label className="label">Método de Rateio</label>
-                <select className="input" value={sum?.rateio_method || 'producao'}
-                  onChange={e => saveConfig({ rateio_method: e.target.value })}>
-                  <option value="producao">Rateio por Produção</option>
-                  <option value="vendas">Rateio por Vendas (média 90 dias)</option>
-                </select>
-                <p className="text-[11px] text-gray-400 mt-1">
-                  {sum?.rateio_method === 'vendas'
-                    ? 'Os custos serão rateados pela média de vendas dos últimos 90 dias'
-                    : 'Os custos serão rateados conforme a produção mensal'}
-                </p>
+                <p className="text-[11px] text-gray-400 mt-1">Os custos são rateados conforme a produção mensal</p>
               </div>
             </div>
           </div>
@@ -346,7 +328,7 @@ export default function DespesasFixas() {
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-gray-500">{exp.notes || '—'}</td>
-                        <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{dueDate(exp.due_day, period)}</td>
+                        <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{dueDate(exp.due_day)}</td>
                         <td className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
                           {Number(exp.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </td>
@@ -407,7 +389,6 @@ export default function DespesasFixas() {
                     <th className="px-4 py-2 text-right">Produção Estimada</th>
                     <th className="px-4 py-2 text-right">Total de Custos Fixos</th>
                     <th className="px-4 py-2 text-right">Rateio por Unidade</th>
-                    <th className="px-4 py-2">Método</th>
                     <th className="px-4 py-2">Criado por</th>
                     <th className="px-4 py-2">Data</th>
                     <th className="px-4 py-2 text-center">Ações</th>
@@ -420,9 +401,6 @@ export default function DespesasFixas() {
                       <td className="px-4 py-2.5 text-right">{fmtQty(h.production)} un</td>
                       <td className="px-4 py-2.5 text-right">{fmtBRL(h.total)}</td>
                       <td className="px-4 py-2.5 text-right font-semibold">{fmtBRL4(h.per_unit)}</td>
-                      <td className="px-4 py-2.5 text-gray-500">
-                        {h.method === 'vendas' ? 'Rateio por Vendas' : 'Rateio por Produção'}
-                      </td>
                       <td className="px-4 py-2.5 text-gray-500">{h.user_name || '—'}</td>
                       <td className="px-4 py-2.5 text-gray-500">{dBR(h.created_at)}</td>
                       <td className="px-4 py-2.5 text-center">
@@ -433,7 +411,7 @@ export default function DespesasFixas() {
                     </tr>
                   ))}
                   {(sum?.history || []).length === 0 && (
-                    <tr><td colSpan={8} className="text-center py-8 text-sm text-gray-400">
+                    <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-400">
                       Nenhum rateio registrado ainda — ao salvar a produção ou o método, o período é registrado aqui.
                     </td></tr>
                   )}
@@ -533,7 +511,6 @@ export default function DespesasFixas() {
               ['Produção Estimada', `${fmtQty(histView.production)} unidades`],
               ['Total de Custos Fixos', fmtBRL(histView.total)],
               ['Rateio por Unidade', fmtBRL4(histView.per_unit)],
-              ['Método', histView.method === 'vendas' ? 'Rateio por Vendas (média 90 dias)' : 'Rateio por Produção'],
               ['Criado por', histView.user_name || '—'],
               ['Registrado em', dBR(histView.created_at)],
             ].map(([k, v]) => (

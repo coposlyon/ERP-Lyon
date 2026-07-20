@@ -82,13 +82,15 @@ async function fixedOverview(tenantId) {
   const total = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
   const autoUnits = await autoMonthlyUnits(tenantId);
   const manual = cfg.monthly_units != null && cfg.monthly_units > 0;
-  const units = cfg.rateio_method === 'vendas' ? autoUnits : (manual ? cfg.monthly_units : autoUnits);
+  // Método único: rateio por produção (a média de vendas de 90 dias é só
+  // o fallback automático quando a produção não foi informada)
+  const units = manual ? cfg.monthly_units : autoUnits;
   const overheadUnit = units > 0 ? total / units : 0;
   return {
     items, total,
     monthly_units: units,
-    monthly_units_source: cfg.rateio_method === 'vendas' ? 'auto' : (manual ? 'manual' : 'auto'),
-    rateio_method: cfg.rateio_method || 'producao',
+    monthly_units_source: manual ? 'manual' : 'auto',
+    rateio_method: 'producao',
     auto_monthly_units: autoUnits,
     overhead_unit: Math.round(overheadUnit * 10000) / 10000,
     tax_regime: cfg.tax_regime || 'simples',

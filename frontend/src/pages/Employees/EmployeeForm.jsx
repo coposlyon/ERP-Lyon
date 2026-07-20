@@ -40,6 +40,17 @@ const emptyAdmission = {
   has_access: false, access_email:'', access_password:'', work_start:'', work_end:'', allowed_modules:[],
 };
 
+// Máscara de dinheiro: digita só números e o campo pontua sozinho (20.000,00)
+const fmtMoney = v => {
+  const d = String(v ?? '').replace(/\D/g, '');
+  if (!d) return '';
+  return (Number(d) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+};
+const moneyToNumber = s => {
+  const n = parseFloat(String(s ?? '').replace(/\./g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+};
+
 function fileIcon(type) {
   if (type?.includes('pdf'))    return '📄';
   if (type?.includes('image'))  return '🖼️';
@@ -171,7 +182,13 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
         phone:          employee.phone || '',
         instagram:      employee.instagram || '',
         address:        employee.address || { ...emptyAddress },
-        admission_data: { ...emptyAdmission, ...(employee.admission_data || {}), access_password: '' },
+        admission_data: {
+          ...emptyAdmission, ...(employee.admission_data || {}), access_password: '',
+          // salário salvo como número → exibe formatado (20.000,00)
+          salary: employee.admission_data?.salary != null && employee.admission_data.salary !== ''
+            ? Number(String(employee.admission_data.salary).replace(',', '.')).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+            : '',
+        },
         is_active:      employee.is_active !== false,
       });
     }
@@ -222,7 +239,11 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
 
     setLoading(true);
     try {
-      const payload = { ...form, type: 'CO' };
+      // Salário vai como número puro (a máscara "20.000,00" é só visual)
+      const payload = {
+        ...form, type: 'CO',
+        admission_data: { ...form.admission_data, salary: moneyToNumber(form.admission_data.salary) },
+      };
       let savedId = employee?.id;
 
       if (employee?.id) {
@@ -373,8 +394,8 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
           </div>
           <div>
             <label className="label">Salário (R$)</label>
-            <input type="number" step="0.01" min="0" className="input"
-              value={form.admission_data.salary} onChange={e => setAdm('salary', e.target.value)} />
+            <input type="text" inputMode="numeric" className="input" placeholder="0,00"
+              value={form.admission_data.salary} onChange={e => setAdm('salary', fmtMoney(e.target.value))} />
           </div>
           <div>
             <label className="label">Setor *</label>
