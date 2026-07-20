@@ -227,11 +227,14 @@ export default function DespesasFixas() {
 
   // Distribuição por categoria (top 6 + Demais)
   const donut = useMemo(() => {
-    const sorted = [...items].sort((a, b) => (b.amount || 0) - (a.amount || 0));
+    // Soma despesas da mesma categoria (ex.: 2x "Sistema ERP" viram uma fatia)
+    const byCat = new Map();
+    for (const f of items) byCat.set(f.name, (byCat.get(f.name) || 0) + (Number(f.amount) || 0));
+    const sorted = [...byCat.entries()].sort((a, b) => b[1] - a[1]);
     const top = sorted.slice(0, 6);
-    const rest = sorted.slice(6).reduce((s, f) => s + (Number(f.amount) || 0), 0);
-    const labels = [...top.map(f => f.name), ...(rest > 0 ? ['Demais'] : [])];
-    const values = [...top.map(f => Number(f.amount) || 0), ...(rest > 0 ? [rest] : [])];
+    const rest = sorted.slice(6).reduce((s, [, v]) => s + v, 0);
+    const labels = [...top.map(([name]) => name), ...(rest > 0 ? ['Demais'] : [])];
+    const values = [...top.map(([, v]) => v), ...(rest > 0 ? [rest] : [])];
     return { labels, values };
   }, [items]);
 
