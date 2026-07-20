@@ -37,10 +37,15 @@ async function syncEmployeeSalary(tenantId, customer) {
         updated_at: new Date().toISOString(),
       }).eq('id', existing.id);
     } else if (active) {
-      await supabase.from('DESPESAS_FIXAS').insert({
+      const row = {
         tenant_id: tenantId, name: 'Colaboradores', amount: salary,
-        due_day: 5, notes: customer.name, employee_id: customer.id,
-      });
+        due_day: 5, notes: customer.name, employee_id: customer.id, category: 'RH',
+      };
+      let { error } = await supabase.from('DESPESAS_FIXAS').insert(row);
+      if (error && /category/i.test(error.message || '')) {
+        delete row.category; // migração 049 pendente
+        await supabase.from('DESPESAS_FIXAS').insert(row);
+      }
     }
   } catch (err) {
     console.warn('[customers/syncEmployeeSalary]', err.message);

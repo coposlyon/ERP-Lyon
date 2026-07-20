@@ -148,17 +148,47 @@ router.get('/fixed-expenses', async (req, res) => {
   }
 });
 
+// Campos do layout novo (migração 049). Despesa anual: o valor mensal
+// (amount, usado no rateio e nas contas do mês) é o original ÷ 12.
+function layoutFields(body) {
+  const out = {};
+  if (body.category !== undefined) out.category = String(body.category || '').trim() || null;
+  if (body.cost_center !== undefined) out.cost_center = String(body.cost_center || '').trim() || null;
+  if (body.periodicity !== undefined) out.periodicity = body.periodicity === 'anual' ? 'anual' : 'mensal';
+  if (body.due_month !== undefined) {
+    const m = parseInt(body.due_month);
+    out.due_month = (m >= 1 && m <= 12) ? m : null;
+  }
+  return out;
+}
+const monthlyOf = (amt, periodicity) =>
+  periodicity === 'anual' ? Math.round((amt / 12) * 100) / 100 : amt;
+
+// Se as colunas da 049 ainda não existem, tenta de novo sem elas
+async function insertOrUpdateFixa(run, row) {
+  let { data, error } = await run(row);
+  if (error && /category|cost_center|periodicity|original_amount|due_month/i.test(error.message || '')) {
+    const clean = { ...row };
+    delete clean.category; delete clean.cost_center; delete clean.periodicity;
+    delete clean.original_amount; delete clean.due_month;
+    ({ data, error } = await run(clean));
+  }
+  return { data, error };
+}
+
 router.post('/fixed-expenses', async (req, res) => {
-  const { name, amount, due_day, supplier_id, chart_account_id, cost_center_id, notes, start_month, end_month, auto_generate } = req.body;
+  const { name, amount, due_day, supplier_id, chart_account_id, cost_center_id, notes, start_month, end_month, auto_generate, periodicity } = req.body;
   const nm = String(name || '').trim();
   const amt = Number(amount);
   const day = Math.min(Math.max(parseInt(due_day) || 5, 1), 31);
   if (!nm) return res.status(400).json({ error: 'Informe o nome da despesa' });
   if (!(amt >= 0)) return res.status(400).json({ error: 'Informe um valor válido' });
   try {
-    const { data, error } = await supabase.from('DESPESAS_FIXAS').insert({
+    const row = {
       tenant_id: req.tenantId,
-      name: nm, amount: amt, due_day: day,
+      name: nm, due_day: day,
+      amount: monthlyOf(amt, periodicity),
+      original_amount: amt,
       supplier_id: supplier_id || null,
       chart_account_id: chart_account_id || null,
       cost_center_id: cost_center_id || null,
@@ -166,7 +196,10 @@ router.post('/fixed-expenses', async (req, res) => {
       auto_generate: auto_generate !== false,
       start_month: isMonth(start_month) ? `${start_month}-01` : undefined,
       end_month: isMonth(end_month) ? `${end_month}-01` : null,
-    }).select().single();
+      ...layoutFields(req.body),
+    };
+    const { data, error } = await insertOrUpdateFixa(
+      r => supabase.from('DESPESAS_FIXAS').insert(r).select().single(), row);
     if (error) throw error;
     audit(req, 'create', 'fixed_expense', data.id, { name: nm, amount: amt, due_day: day });
     res.status(201).json(data);
@@ -178,14 +211,15 @@ router.post('/fixed-expenses', async (req, res) => {
 });
 
 router.put('/fixed-expenses/:id', async (req, res) => {
-  const { name, amount, due_day, supplier_id, chart_account_id, cost_center_id, notes, end_month, auto_generate, is_active } = req.body;
+  const { name, amount, due_day, supplier_id, chart_account_id, cost_center_id, notes, end_month, auto_generate, is_active, periodicity } = req.body;
   try {
     const upd = { updated_at: new Date().toISOString() };
     if (name !== undefined) upd.name = String(name).trim();
     if (amount !== undefined) {
       const amt = Number(amount);
       if (!(amt >= 0)) return res.status(400).json({ error: 'Valor inválido' });
-      upd.amount = amt;
+      upd.amount = monthlyOf(amt, periodicity);
+      upd.original_amount = amt;
     }
     if (due_day !== undefined) upd.due_day = Math.min(Math.max(parseInt(due_day) || 5, 1), 31);
     if (supplier_id !== undefined) upd.supplier_id = supplier_id || null;
@@ -195,10 +229,12 @@ router.put('/fixed-expenses/:id', async (req, res) => {
     if (end_month !== undefined) upd.end_month = isMonth(end_month) ? `${end_month}-01` : null;
     if (auto_generate !== undefined) upd.auto_generate = !!auto_generate;
     if (is_active !== undefined) upd.is_active = !!is_active;
+    Object.assign(upd, layoutFields(req.body));
 
-    const { data, error } = await supabase.from('DESPESAS_FIXAS')
-      .update(upd).eq('id', req.params.id).eq('tenant_id', req.tenantId)
-      .select().single();
+    const { data, error } = await insertOrUpdateFixa(
+      u => supabase.from('DESPESAS_FIXAS')
+        .update(u).eq('id', req.params.id).eq('tenant_id', req.tenantId)
+        .select().single(), upd);
     if (error) throw error;
     audit(req, 'update', 'fixed_expense', data.id, upd);
     res.json(data);

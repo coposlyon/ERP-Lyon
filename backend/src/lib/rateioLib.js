@@ -63,14 +63,16 @@ async function autoMonthlyUnits(tenantId) {
   } catch { return 0; }
 }
 
-// Despesas fixas ativas (com descrição p/ a tabela do Rateio)
+// Despesas fixas (ativas E inativas — o filtro de status é da tela;
+// os cálculos do rateio usam só as ativas)
 async function fixedExpenses(tenantId) {
   const sel = cols => supabase.from('DESPESAS_FIXAS').select(cols)
-    .eq('tenant_id', tenantId).eq('is_active', true)
+    .eq('tenant_id', tenantId)
     .order('amount', { ascending: false });
   try {
-    // employee_id (048) pode não existir ainda → tenta sem a coluna
-    let { data, error } = await sel('id, name, amount, notes, due_day, is_active, employee_id');
+    // colunas das migrações 048/049 podem não existir ainda → fallbacks
+    let { data, error } = await sel('id, name, amount, notes, due_day, is_active, employee_id, category, cost_center, periodicity, original_amount, due_month');
+    if (error) ({ data, error } = await sel('id, name, amount, notes, due_day, is_active, employee_id'));
     if (error) ({ data, error } = await sel('id, name, amount, notes, due_day, is_active'));
     if (error) throw error;
     return data || [];
@@ -114,10 +116,15 @@ async function syncEmployeesToFixed(tenantId) {
           }).eq('id', cur.id);
         }
       } else if (active) {
-        await supabase.from('DESPESAS_FIXAS').insert({
+        const row = {
           tenant_id: tenantId, name: 'Colaboradores', amount: salary,
-          due_day: 5, notes: emp.name, employee_id: emp.id,
-        });
+          due_day: 5, notes: emp.name, employee_id: emp.id, category: 'RH',
+        };
+        let { error } = await supabase.from('DESPESAS_FIXAS').insert(row);
+        if (error && /category/i.test(error.message || '')) {
+          delete row.category; // migração 049 pendente
+          await supabase.from('DESPESAS_FIXAS').insert(row);
+        }
       }
     }
   } catch (err) {
@@ -129,7 +136,9 @@ async function syncEmployeesToFixed(tenantId) {
 async function fixedOverview(tenantId) {
   const cfg = await getConfig(tenantId);
   const items = await fixedExpenses(tenantId);
-  const total = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+  // Só as ativas entram no total/rateio (inativas aparecem na tela via filtro)
+  const total = items.filter(f => f.is_active !== false)
+    .reduce((s, f) => s + (Number(f.amount) || 0), 0);
   const autoUnits = await autoMonthlyUnits(tenantId);
   const manual = cfg.monthly_units != null && cfg.monthly_units > 0;
   // Método único: rateio por produção (a média de vendas de 90 dias é só
