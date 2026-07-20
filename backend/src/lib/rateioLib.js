@@ -16,6 +16,7 @@ const DEFAULTS = {
   variable_costs: null,      // taxas variáveis (bancárias, marketplace, comissão)
   rateio_history: [],        // snapshots do rateio por período
   category_colors: {},       // cor por categoria de despesa fixa { nome: '#hex' }
+  expense_cards: [],         // cards personalizados de despesas fixas (nomes)
 };
 
 // Taxas variáveis padrão (Despesas Variáveis)

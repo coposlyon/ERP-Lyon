@@ -27,6 +27,7 @@ router.get('/summary', async (req, res) => {
       ...ov,
       manual_units: cfg.monthly_units,
       history: Array.isArray(cfg.rateio_history) ? cfg.rateio_history : [],
+      expense_cards: Array.isArray(cfg.expense_cards) ? cfg.expense_cards : [],
     });
   } catch (err) {
     console.error('[rateio/summary]', err.message);
@@ -54,6 +55,21 @@ router.put('/config', async (req, res) => {
   } catch (err) {
     console.error('[rateio/config]', err.message);
     res.status(500).json({ error: 'Erro ao salvar o rateio' });
+  }
+});
+
+// ── Cards personalizados de despesas fixas (organização visual) ──
+router.put('/expense-cards', async (req, res) => {
+  const { expense_cards } = req.body;
+  if (!Array.isArray(expense_cards)) return res.status(400).json({ error: 'expense_cards inválido' });
+  try {
+    const clean = [...new Set(expense_cards.map(c => String(c).trim()).filter(Boolean))].slice(0, 30);
+    await saveConfig(req.tenantId, { expense_cards: clean });
+    audit(req, 'update', 'rateio_expense_cards', req.tenantId, { count: clean.length });
+    res.json({ expense_cards: clean });
+  } catch (err) {
+    console.error('[rateio/expense-cards]', err.message);
+    res.status(500).json({ error: 'Erro ao salvar os cards' });
   }
 });
 
