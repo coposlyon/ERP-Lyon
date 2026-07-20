@@ -38,7 +38,7 @@ async function syncEmployeeSalary(tenantId, customer) {
       }).eq('id', existing.id);
     } else if (active) {
       await supabase.from('DESPESAS_FIXAS').insert({
-        tenant_id: tenantId, name: 'Funcionários', amount: salary,
+        tenant_id: tenantId, name: 'Colaboradores', amount: salary,
         due_day: 5, notes: customer.name, employee_id: customer.id,
       });
     }

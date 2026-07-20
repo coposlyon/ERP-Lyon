@@ -4,6 +4,7 @@ import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip as ChartTooltip } from 'chart.js';
 import {
   Plus, Loader2, Pencil, Trash2, Eye, Lightbulb, X, Save, Search,
+  ChevronDown, ChevronRight, Users, User,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -16,7 +17,7 @@ ChartJS.register(ArcElement, ChartTooltip);
 // Categorias padrão (especificação) — o nome vira a "Categoria" da despesa
 const CATEGORIES = [
   'Aluguel', 'Energia Elétrica', 'Água', 'Internet', 'Telefone', 'Contador',
-  'Sistema ERP', 'Marketing', 'Pró-labore', 'Funcionários', 'Combustível',
+  'Sistema ERP', 'Marketing', 'Pró-labore', 'Colaboradores', 'Combustível',
   'Manutenção', 'Outros Custos',
 ];
 
@@ -175,6 +176,7 @@ export default function DespesasFixas() {
   const [histView, setHistView] = useState(null); // snapshot em visualização
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('due');     // due (padrão) | name | amount | amount_asc
+  const [showEmps, setShowEmps] = useState(false); // cascata "Colaboradores" aberta?
 
   const { data: sum, isLoading, refetch } = useQuery({
     queryKey: ['rateio-summary'],
@@ -188,13 +190,27 @@ export default function DespesasFixas() {
   const catColors = sum?.category_colors || {};
 
   // Lista exibida: filtro por texto + ordenação (padrão por vencimento).
+  // Salários de colaboradores (employee_id) viram UMA linha "Colaboradores"
+  // em cascata — expande para mostrar cada colaborador.
   // Os cálculos de % e rateado seguem sobre o total/produção reais (sum),
   // então o filtro é só uma visão — não altera os números do rateio.
   const displayItems = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const list = q
-      ? items.filter(e => (e.name || '').toLowerCase().includes(q) || (e.notes || '').toLowerCase().includes(q))
-      : items.slice();
+    const match = e => (e.name || '').toLowerCase().includes(q) || (e.notes || '').toLowerCase().includes(q);
+    const salaries = items.filter(e => e.employee_id);
+    const others = items.filter(e => !e.employee_id);
+
+    const list = q ? others.filter(match) : others.slice();
+    const children = q ? salaries.filter(match) : salaries;
+    if (children.length) {
+      list.push({
+        id: '__emps', __group: true, name: 'Colaboradores', due_day: 5,
+        amount: children.reduce((s, e) => s + (Number(e.amount) || 0), 0),
+        notes: `${children.length} colaborador${children.length > 1 ? 'es' : ''}`,
+        children: [...children].sort((a, b) => (a.notes || '').localeCompare(b.notes || '', 'pt-BR')),
+      });
+    }
+
     if (sortBy === 'name')       list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
     else if (sortBy === 'amount')     list.sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0));
     else if (sortBy === 'amount_asc') list.sort((a, b) => (Number(a.amount) || 0) - (Number(b.amount) || 0));
@@ -315,9 +331,64 @@ export default function DespesasFixas() {
                 </thead>
                 <tbody>
                   {displayItems.map(exp => {
-                    const Icon = iconFor(exp.name);
                     const pct = total > 0 ? (Number(exp.amount) / total) * 100 : 0;
                     const rateado = units > 0 ? Number(exp.amount) / units : 0;
+
+                    // Linha agrupada "Colaboradores" (cascata de salários)
+                    if (exp.__group) {
+                      const color = catColors[exp.name] || autoColor(exp.name);
+                      return [
+                        <tr key={exp.id} className="border-b border-gray-50 hover:bg-gray-50/60 cursor-pointer"
+                          onClick={() => setShowEmps(v => !v)}>
+                          <td className="px-4 py-2.5">
+                            <span className="flex items-center gap-2 font-medium text-gray-900">
+                              {showEmps ? <ChevronDown size={15} className="text-gray-400 shrink-0" /> : <ChevronRight size={15} className="text-gray-400 shrink-0" />}
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+                              <Users size={15} className="text-gray-400" /> {exp.name}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-gray-500">{exp.notes}</td>
+                          <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{dueDate(exp.due_day)}</td>
+                          <td className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
+                            {Number(exp.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-gray-600">{pct.toFixed(2).replace('.', ',')}%</td>
+                          <td className="px-4 py-2.5 text-right text-gray-600 whitespace-nowrap">
+                            {rateado.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                          </td>
+                          <td className="px-4 py-2.5 text-center text-[11px] text-gray-400">RH</td>
+                        </tr>,
+                        ...(showEmps ? exp.children.map(ch => {
+                          const cPct = total > 0 ? (Number(ch.amount) / total) * 100 : 0;
+                          const cRat = units > 0 ? Number(ch.amount) / units : 0;
+                          return (
+                            <tr key={ch.id} className="border-b border-gray-50 bg-gray-50/40">
+                              <td className="px-4 py-2">
+                                <span className="flex items-center gap-2 pl-9 text-gray-700">
+                                  <User size={13} className="text-gray-400 shrink-0" /> {ch.notes || '—'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-gray-400 text-xs">Salário</td>
+                              <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{dueDate(ch.due_day)}</td>
+                              <td className="px-4 py-2 text-right whitespace-nowrap text-gray-700">
+                                {Number(ch.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-4 py-2 text-right text-gray-500">{cPct.toFixed(2).replace('.', ',')}%</td>
+                              <td className="px-4 py-2 text-right text-gray-500 whitespace-nowrap">
+                                {cRat.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                              </td>
+                              <td className="px-4 py-2 text-center">
+                                <span className="text-[11px] text-gray-400" title="O salário vem do cadastro do colaborador — edite lá">
+                                  via cadastro
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        }) : []),
+                      ];
+                    }
+
+                    const Icon = iconFor(exp.name);
                     return (
                       <tr key={exp.id} className="border-b border-gray-50 hover:bg-gray-50/60">
                         <td className="px-4 py-2.5">

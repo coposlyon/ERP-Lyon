@@ -11,6 +11,7 @@ const { audit } = require('../lib/audit');
 const {
   VARIABLE_DEFAULTS, getConfig, saveConfig,
   fixedOverview, snapshotRateio, computeSheet, productCostMap,
+  syncEmployeesToFixed,
 } = require('../lib/rateioLib');
 
 const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -19,6 +20,8 @@ const userName = req => req.user?.name || req.user?.email || null;
 // ── Despesas Fixas: visão geral + histórico ───────────────
 router.get('/summary', async (req, res) => {
   try {
+    // Puxa os salários dos colaboradores para a categoria "Colaboradores"
+    await syncEmployeesToFixed(req.tenantId);
     const [ov, cfg] = await Promise.all([fixedOverview(req.tenantId), getConfig(req.tenantId)]);
     res.json({
       ...ov,

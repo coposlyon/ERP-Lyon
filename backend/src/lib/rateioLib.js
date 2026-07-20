@@ -65,14 +65,64 @@ async function autoMonthlyUnits(tenantId) {
 
 // Despesas fixas ativas (com descrição p/ a tabela do Rateio)
 async function fixedExpenses(tenantId) {
+  const sel = cols => supabase.from('DESPESAS_FIXAS').select(cols)
+    .eq('tenant_id', tenantId).eq('is_active', true)
+    .order('amount', { ascending: false });
   try {
-    const { data, error } = await supabase.from('DESPESAS_FIXAS')
-      .select('id, name, amount, notes, due_day, is_active')
-      .eq('tenant_id', tenantId).eq('is_active', true)
-      .order('amount', { ascending: false });
+    // employee_id (048) pode não existir ainda → tenta sem a coluna
+    let { data, error } = await sel('id, name, amount, notes, due_day, is_active, employee_id');
+    if (error) ({ data, error } = await sel('id, name, amount, notes, due_day, is_active'));
     if (error) throw error;
     return data || [];
   } catch { return []; } // migração 040 pendente
+}
+
+// Salário aceita número puro (20000) e formato BR ("20.000,00")
+function parseSalary(raw) {
+  return (typeof raw === 'string' && raw.includes(','))
+    ? (parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0)
+    : (Number(raw) || 0);
+}
+
+// Garante que cada colaborador (CLIENTES type CO) com salário tem sua
+// despesa fixa na categoria "Colaboradores" — roda ao abrir o Rateio,
+// então colaboradores antigos entram sem precisar re-salvar o cadastro.
+async function syncEmployeesToFixed(tenantId) {
+  try {
+    const { data: emps, error: e1 } = await supabase.from('CLIENTES')
+      .select('id, name, is_active, admission_data')
+      .eq('tenant_id', tenantId).eq('type', 'CO');
+    if (e1) throw e1;
+    if (!emps?.length) return;
+
+    const { data: existing, error: e2 } = await supabase.from('DESPESAS_FIXAS')
+      .select('id, amount, notes, is_active, name, employee_id')
+      .eq('tenant_id', tenantId).not('employee_id', 'is', null);
+    if (e2) throw e2; // migração 048 pendente
+    const byEmp = new Map((existing || []).map(d => [d.employee_id, d]));
+
+    for (const emp of emps) {
+      const salary = parseSalary(emp.admission_data?.salary);
+      const active = emp.is_active !== false && salary > 0;
+      const cur = byEmp.get(emp.id);
+      if (cur) {
+        // também migra o nome antigo "Funcionários" → "Colaboradores"
+        if (Number(cur.amount) !== salary || cur.notes !== emp.name || cur.is_active !== active || cur.name !== 'Colaboradores') {
+          await supabase.from('DESPESAS_FIXAS').update({
+            amount: salary, notes: emp.name, is_active: active,
+            name: 'Colaboradores', updated_at: new Date().toISOString(),
+          }).eq('id', cur.id);
+        }
+      } else if (active) {
+        await supabase.from('DESPESAS_FIXAS').insert({
+          tenant_id: tenantId, name: 'Colaboradores', amount: salary,
+          due_day: 5, notes: emp.name, employee_id: emp.id,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[rateio/syncEmployees]', err.message);
+  }
 }
 
 // Total das fixas + produção mensal → rateio por unidade
@@ -189,6 +239,6 @@ async function productCostMap(tenantId, overheadUnit, taxPctDefault) {
 module.exports = {
   DEFAULTS, VARIABLE_DEFAULTS,
   getConfig, saveConfig, autoMonthlyUnits,
-  fixedExpenses, fixedOverview, snapshotRateio,
+  fixedExpenses, fixedOverview, snapshotRateio, syncEmployeesToFixed,
   computeSheet, productCostMap,
 };
