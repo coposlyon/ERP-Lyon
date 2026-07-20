@@ -16,13 +16,15 @@ function monthRange(month) {
   return { start: `${month}-01`, end: `${month}-${String(last).padStart(2, '0')}`, lastDay: last };
 }
 
-// A migração 040 pode não ter rodado ainda — devolve orientação clara
+// Migração pendente (040/047) — devolve orientação clara.
+// PostgREST reporta coluna faltante como "Could not find the '...' column
+// ... in the schema cache" (PGRST204), sem o "does not exist" do Postgres.
 function missingMigration(err) {
-  return /DESPESAS_FIXAS|fixed_expense_id|competence_month|does not exist|42P01|42703/i.test(err?.message || '');
+  return /DESPESAS_FIXAS|fixed_expense_id|competence_month|does not exist|42P01|42703|PGRST204|schema cache|Could not find/i.test(err?.message || '');
 }
 function migrationError(res) {
   return res.status(400).json({
-    error: 'Recurso ainda não habilitado no banco. Rode a migração 040_contas_precificacao.sql no Supabase.',
+    error: 'Recurso ainda não habilitado no banco. Rode as migrações 040_contas_precificacao.sql e 047_lancamentos_colunas.sql no Supabase.',
     code: 'MIGRATION_040',
   });
 }
@@ -278,7 +280,7 @@ router.post('/fixed-expenses/generate', async (req, res) => {
   } catch (err) {
     if (missingMigration(err)) return migrationError(res);
     console.error('[contas/generate]', err.message);
-    res.status(500).json({ error: 'Erro ao gerar as contas do mês' });
+    res.status(500).json({ error: 'Erro ao gerar as contas do mês', detail: err.message });
   }
 });
 

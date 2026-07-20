@@ -376,7 +376,7 @@ export default function Contas() {
       if (r.created > 0) toast.success(`${r.created} conta(s) do mês gerada(s)!`);
       else toast(`Nada a gerar — ${r.skipped || 0} já existiam.`, { icon: 'ℹ️' });
       refetch();
-    } catch (err) { toast.error(err.error || 'Erro ao gerar contas'); }
+    } catch (err) { toast.error(err.detail ? `${err.error}: ${err.detail}` : (err.error || 'Erro ao gerar contas')); }
     finally { setGenerating(false); }
   }
 
