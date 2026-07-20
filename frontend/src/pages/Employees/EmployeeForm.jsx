@@ -40,11 +40,15 @@ const emptyAdmission = {
   has_access: false, access_email:'', access_password:'', work_start:'', work_end:'', allowed_modules:[],
 };
 
-// Máscara de dinheiro: digita só números e o campo pontua sozinho (20.000,00)
+// Máscara de dinheiro: dígitos são os reais e ganham ponto de milhar
+// sozinhos (20000 → 20.000); a vírgula dos centavos é digitada à mão.
 const fmtMoney = v => {
-  const d = String(v ?? '').replace(/\D/g, '');
-  if (!d) return '';
-  return (Number(d) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  let s = String(v ?? '').replace(/[^\d,]/g, '');
+  const i = s.indexOf(',');
+  if (i !== -1) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/,/g, ''); // só 1 vírgula
+  let [int, dec] = s.split(',');
+  int = int.replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return dec != null ? `${int},${dec.slice(0, 2)}` : int;
 };
 const moneyToNumber = s => {
   const n = parseFloat(String(s ?? '').replace(/\./g, '').replace(',', '.'));
@@ -394,7 +398,7 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
           </div>
           <div>
             <label className="label">Salário (R$)</label>
-            <input type="text" inputMode="numeric" className="input" placeholder="0,00"
+            <input type="text" inputMode="decimal" className="input" placeholder="0,00"
               value={form.admission_data.salary} onChange={e => setAdm('salary', fmtMoney(e.target.value))} />
           </div>
           <div>

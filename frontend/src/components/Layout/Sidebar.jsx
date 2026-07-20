@@ -75,7 +75,6 @@ const menuItems = [
     icon: Calculator,
     children: [
       { label: 'Formação de Preço', path: '/pricing/formacao', icon: Calculator, module: 'financial' },
-      { label: 'Rateio de Custos', path: '/rateio/despesas-fixas', icon: PieChart, module: 'financial' },
       { label: 'Simulador de Preço', path: '/pricing/simulador', icon: SlidersHorizontal, module: 'financial' },
       { label: 'Relatórios de Preço', path: '/pricing/relatorios', icon: Trophy, module: 'financial' },
       { label: 'Análise de Produtos', path: '/pricing', icon: LineChart, module: 'financial', exact: true },

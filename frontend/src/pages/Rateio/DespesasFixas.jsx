@@ -45,14 +45,10 @@ const dBR = iso => {
   const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '—';
 };
-// Vencimento no mês corrente (dd/mm — despesa fixa repete todo mês,
-// então o ano não aparece), limitando ao último dia do mês.
+// Despesa fixa repete todo mês — mostra só o DIA do vencimento
 const dueDate = (day) => {
   const d = Number(day);
-  if (!(d >= 1)) return '—';
-  const now = new Date();
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  return `${String(Math.min(d, lastDay)).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return d >= 1 ? `Dia ${String(Math.min(d, 31)).padStart(2, '0')}` : '—';
 };
 
 // ─── Modal de adicionar/editar despesa ─────────────────────
