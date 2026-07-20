@@ -20,13 +20,19 @@ const CATEGORIES = [
   'Manutenção', 'Outros Custos',
 ];
 
-const DONUT_COLORS = ['#4338ca', '#9333ea', '#f97316', '#3b82f6', '#ef4444', '#22c55e', '#9ca3af'];
-
 // Paleta sugerida para colorir categorias (usuário pode escolher qualquer cor)
 const CATEGORY_COLORS = [
   '#4338ca', '#9333ea', '#f97316', '#3b82f6', '#ef4444',
   '#22c55e', '#eab308', '#14b8a6', '#ec4899', '#6b7280',
 ];
+
+// Categoria sem cor salva ganha uma cor "aleatória" derivada do nome:
+// mesmo nome → mesma cor sempre (não muda a cada render/visita).
+function autoColor(name) {
+  let h = 0;
+  for (const ch of String(name || '')) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return CATEGORY_COLORS[h % CATEGORY_COLORS.length];
+}
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -332,7 +338,7 @@ export default function DespesasFixas() {
                         <td className="px-4 py-2.5">
                           <span className="flex items-center gap-2 font-medium text-gray-900">
                             <span className="w-2.5 h-2.5 rounded-full shrink-0"
-                              style={{ background: catColors[exp.name] || '#d1d5db' }} />
+                              style={{ background: catColors[exp.name] || autoColor(exp.name) }} />
                             <Icon size={15} className="text-gray-400" /> {exp.name}
                           </span>
                         </td>
@@ -473,7 +479,7 @@ export default function DespesasFixas() {
                       labels: donut.labels,
                       datasets: [{
                         data: donut.values,
-                        backgroundColor: donut.labels.map((l, i) => catColors[l] || DONUT_COLORS[i % DONUT_COLORS.length]),
+                        backgroundColor: donut.labels.map(l => catColors[l] || autoColor(l)),
                         borderWidth: 2, borderColor: '#fff',
                       }],
                     }}
@@ -483,7 +489,7 @@ export default function DespesasFixas() {
                 <div className="flex-1 space-y-1 min-w-0">
                   {donut.labels.map((label, i) => (
                     <div key={label} className="flex items-center gap-1.5 text-xs">
-                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: catColors[label] || DONUT_COLORS[i % DONUT_COLORS.length] }} />
+                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: catColors[label] || autoColor(label) }} />
                       <span className="text-gray-600 truncate flex-1" title={label}>{label}</span>
                       <span className="font-semibold text-gray-900 whitespace-nowrap">
                         {total > 0 ? ((donut.values[i] / total) * 100).toFixed(2).replace('.', ',') : 0}%
