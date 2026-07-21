@@ -343,7 +343,9 @@ export default function DespesasFixas() {
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 items-start">
         {/* ═══ COLUNA PRINCIPAL ═══ */}
-        <div className="xl:col-span-3 space-y-4">
+        {/* min-w-0: deixa a coluna encolher — sem isso a tabela larga
+            empurra a sidebar para fora da tela */}
+        <div className="xl:col-span-3 space-y-4 min-w-0">
           {/* Filtros + período + nova despesa */}
           <div className="flex flex-wrap items-center gap-2">
             <select className="input py-1.5 text-sm w-auto" value={fCentro} onChange={e => { setFCentro(e.target.value); setPage(1); }}>
@@ -394,20 +396,20 @@ export default function DespesasFixas() {
           {/* Tabela */}
           <div className="card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-[13px]">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-100">
                     <th className="px-4 py-2.5">Despesa</th>
-                    <th className="px-3 py-2.5">Categoria<br /><span className="normal-case font-normal">Centro de Custo</span></th>
-                    <th className="px-3 py-2.5">Tipo</th>
-                    <th className="px-3 py-2.5">Periodicidade</th>
-                    <th className="px-3 py-2.5 text-right">Valor Original</th>
-                    <th className="px-3 py-2.5 text-right">Valor Mensal<br /><span className="normal-case font-normal">Rateio</span></th>
-                    <th className="px-3 py-2.5 text-right">% Rateio</th>
-                    <th className="px-3 py-2.5 text-right">Custo por Unidade</th>
-                    <th className="px-3 py-2.5">Próx. Vencimento</th>
-                    <th className="px-3 py-2.5">Status</th>
-                    <th className="px-3 py-2.5 text-center">Ação</th>
+                    <th className="px-2 py-2">Categoria<br /><span className="normal-case font-normal">Centro de Custo</span></th>
+                    <th className="px-2 py-2">Tipo</th>
+                    <th className="px-2 py-2">Periodicidade</th>
+                    <th className="px-2 py-2 text-right">Valor Original</th>
+                    <th className="px-2 py-2 text-right">Valor Mensal<br /><span className="normal-case font-normal">Rateio</span></th>
+                    <th className="px-2 py-2 text-right">% Rateio</th>
+                    <th className="px-2 py-2 text-right">Custo por Unidade</th>
+                    <th className="px-2 py-2">Próx. Vencimento</th>
+                    <th className="px-2 py-2">Status</th>
+                    <th className="px-2 py-2 text-center">Ação</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -432,24 +434,24 @@ export default function DespesasFixas() {
                             </span>
                           </div>
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-2 py-2">
                           <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold border whitespace-nowrap"
                             style={{ color: m.text, background: m.bg, borderColor: m.border }}>
                             {cat}
                           </span>
                           <span className="block text-xs text-gray-400 mt-0.5">{exp.cost_center || '—'}</span>
                         </td>
-                        <td className="px-3 py-2.5"><TipoPill /></td>
-                        <td className="px-3 py-2.5 text-gray-600">{exp.periodicity === 'anual' ? 'Anual' : 'Mensal'}</td>
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap">{fmtBRL(original)}</td>
-                        <td className="px-3 py-2.5 text-right font-medium whitespace-nowrap">{fmtBRL(monthly)}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-600">{pctBR(active && total > 0 ? (monthly / total) * 100 : 0)}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmtBRL4(active && units > 0 ? monthly / units : 0)}</td>
-                        <td className={`px-3 py-2.5 whitespace-nowrap ${isSoon(due) && active ? 'text-red-500 font-medium' : 'text-gray-600'}`}>
+                        <td className="px-2 py-2"><TipoPill /></td>
+                        <td className="px-2 py-2 text-gray-600">{exp.periodicity === 'anual' ? 'Anual' : 'Mensal'}</td>
+                        <td className="px-2 py-2 text-right whitespace-nowrap">{fmtBRL(original)}</td>
+                        <td className="px-2 py-2 text-right font-medium whitespace-nowrap">{fmtBRL(monthly)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600">{pctBR(active && total > 0 ? (monthly / total) * 100 : 0)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600 whitespace-nowrap">{fmtBRL4(active && units > 0 ? monthly / units : 0)}</td>
+                        <td className={`px-2 py-2 whitespace-nowrap ${isSoon(due) && active ? 'text-red-500 font-medium' : 'text-gray-600'}`}>
                           {fmtDate(due)}
                         </td>
-                        <td className="px-3 py-2.5"><StatusPill active={active} /></td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-2 py-2"><StatusPill active={active} /></td>
+                        <td className="px-2 py-2">
                           <div className="flex items-center justify-center gap-1">
                             <button className="btn-ghost p-1.5 text-blue-600" title="Editar" onClick={() => setModal(exp)}>
                               <Pencil size={14} />
@@ -479,10 +481,10 @@ export default function DespesasFixas() {
                           {rows.length} registro{rows.length === 1 ? '' : 's'} encontrado{rows.length === 1 ? '' : 's'}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-right font-bold text-gray-900 whitespace-nowrap">{fmtBRL(totals.original)}</td>
-                      <td className="px-3 py-3 text-right font-bold text-green-600 whitespace-nowrap">{fmtBRL(totals.monthly)}</td>
-                      <td className="px-3 py-3 text-right font-bold text-gray-900">100,00%</td>
-                      <td className="px-3 py-3 text-right font-bold text-gray-900 whitespace-nowrap">{fmtBRL4(units > 0 ? totals.monthly / units : 0)}</td>
+                      <td className="px-2 py-2.5 text-right font-bold text-gray-900 whitespace-nowrap">{fmtBRL(totals.original)}</td>
+                      <td className="px-2 py-2.5 text-right font-bold text-green-600 whitespace-nowrap">{fmtBRL(totals.monthly)}</td>
+                      <td className="px-2 py-2.5 text-right font-bold text-gray-900">100,00%</td>
+                      <td className="px-2 py-2.5 text-right font-bold text-gray-900 whitespace-nowrap">{fmtBRL4(units > 0 ? totals.monthly / units : 0)}</td>
                       <td colSpan={3} />
                     </tr>
                   </tfoot>
@@ -514,7 +516,7 @@ export default function DespesasFixas() {
         </div>
 
         {/* ═══ COLUNA DIREITA ═══ */}
-        <div className="space-y-4">
+        <div className="space-y-4 min-w-0">
           {/* RESUMO DO RATEIO */}
           <div className="card p-4 space-y-2.5">
             <h2 className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
