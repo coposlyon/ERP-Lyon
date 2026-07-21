@@ -91,6 +91,60 @@ function parseSalary(raw) {
 // (Gravação/Serigrafia é a produção da Lyon)
 const isProductionSector = s => /produ|grava|serigraf/i.test(String(s || ''));
 
+const round2 = v => Math.round((Number(v) || 0) * 100) / 100;
+const monthBounds = month => {
+  const m = /^\d{4}-\d{2}$/.test(month || '') ? month : new Date().toISOString().slice(0, 7);
+  const start = `${m}-01`;
+  const end = new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 1).toISOString().slice(0, 10);
+  return { m, start, end };
+};
+
+// Comissão por vendedor: vendas ENTREGUES do mês, atribuídas ao vendedor
+// do CLIENTE (CLIENTES.vendedor, texto), × comissão % do colaborador (RH).
+// Comissão é custo VARIÁVEL (lançada separada do salário fixo).
+async function commissionBySeller(tenantId, month) {
+  const { m, start, end } = monthBounds(month);
+  try {
+    const { data: emps, error: e1 } = await supabase.from('CLIENTES')
+      .select('id, name, admission_data')
+      .eq('tenant_id', tenantId).eq('type', 'CO');
+    if (e1) throw e1;
+    const sellers = (emps || []).map(e => ({
+      id: e.id, name: e.name,
+      pct: Number(e.admission_data?.commission_pct) || 0,
+      goal: parseSalary(e.admission_data?.sales_goal),
+    })).filter(s => s.pct > 0);
+    if (!sellers.length) return { month: m, items: [], total: 0 };
+
+    const { data: sales, error: e2 } = await supabase.from('VENDAS')
+      .select('total, CLIENTES(vendedor)')
+      .eq('tenant_id', tenantId)
+      .in('status', ['entregue', 'delivered'])
+      .gte('created_at', start).lt('created_at', end)
+      .limit(5000);
+    if (e2) throw e2;
+
+    // Soma o faturamento entregue por vendedor (match por nome, case-insensitive)
+    const salesByName = {};
+    for (const s of sales || []) {
+      const v = String(s.CLIENTES?.vendedor || '').trim().toLowerCase();
+      if (!v) continue;
+      salesByName[v] = (salesByName[v] || 0) + (Number(s.total) || 0);
+    }
+    const items = sellers.map(s => {
+      const vendas = salesByName[s.name.trim().toLowerCase()] || 0;
+      return {
+        id: s.id, name: s.name, pct: s.pct,
+        sales: round2(vendas),
+        commission: round2(vendas * s.pct / 100),
+        goal: s.goal || 0,
+        goal_pct: s.goal > 0 ? Math.round((vendas / s.goal) * 1000) / 10 : null,
+      };
+    }).filter(s => s.sales > 0 || s.commission > 0);
+    return { month: m, items, total: round2(items.reduce((a, b) => a + b.commission, 0)) };
+  } catch { return { month: m, items: [], total: 0 }; }
+}
+
 // Folha da PRODUÇÃO (mão de obra direta — Custos Variáveis)
 async function productionLabor(tenantId) {
   try {
@@ -275,6 +329,6 @@ module.exports = {
   DEFAULTS, VARIABLE_DEFAULTS,
   getConfig, saveConfig, autoMonthlyUnits,
   fixedExpenses, fixedOverview, snapshotRateio, syncEmployeesToFixed,
-  productionLabor, isProductionSector,
+  productionLabor, isProductionSector, commissionBySeller,
   computeSheet, productCostMap,
 };

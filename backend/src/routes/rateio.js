@@ -11,7 +11,7 @@ const { audit } = require('../lib/audit');
 const {
   VARIABLE_DEFAULTS, getConfig, saveConfig,
   fixedOverview, snapshotRateio, computeSheet, productCostMap,
-  syncEmployeesToFixed, productionLabor,
+  syncEmployeesToFixed, productionLabor, commissionBySeller,
 } = require('../lib/rateioLib');
 
 const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -132,7 +132,10 @@ router.get('/variable', async (req, res) => {
     const freightTotal = freights.reduce((s, f) => s + f.freight, 0);
 
     // Mão de obra direta: folha dos colaboradores da PRODUÇÃO (vem do RH)
-    const [labor, ov] = await Promise.all([productionLabor(req.tenantId), fixedOverview(req.tenantId)]);
+    const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : new Date().toISOString().slice(0, 7);
+    const [labor, ov, commissions] = await Promise.all([
+      productionLabor(req.tenantId), fixedOverview(req.tenantId), commissionBySeller(req.tenantId, month),
+    ]);
     const laborUnit = ov.monthly_units > 0 ? labor.total / ov.monthly_units : 0;
 
     res.json({
@@ -143,6 +146,7 @@ router.get('/variable', async (req, res) => {
         per_unit: Math.round(laborUnit * 10000) / 10000,
         monthly_units: ov.monthly_units,
       },
+      commissions, // { month, items:[{name,pct,sales,commission,goal_pct}], total }
     });
   } catch (err) {
     console.error('[rateio/variable]', err.message);
@@ -439,6 +443,103 @@ router.put('/goals', async (req, res) => {
   } catch (err) {
     console.error('[rateio/goals]', err.message);
     res.status(500).json({ error: 'Erro ao salvar a meta' });
+  }
+});
+
+// ── Painel de Rentabilidade ───────────────────────────────
+// Fecha o ciclo: faturamento, custo fixo, custo variável, margem por
+// produto e lucro projetado. Separa fixo (despesas + salário fixo) de
+// variável (produto + impostos + comissões + mão de obra da produção).
+// O preço NÃO muda sozinho: se a margem cai abaixo da meta, sugere reajuste.
+router.get('/rentabilidade', async (req, res) => {
+  const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : new Date().toISOString().slice(0, 7);
+  try {
+    const start = `${month}-01`;
+    const end = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1).toISOString().slice(0, 10);
+    const ov = await fixedOverview(req.tenantId);
+    const [commissions, labor, cfg] = await Promise.all([
+      commissionBySeller(req.tenantId, month),
+      productionLabor(req.tenantId),
+      getConfig(req.tenantId),
+    ]);
+    const marginGoalPct = Number(cfg.margin_pct) || 30; // meta de margem
+
+    const { data: sales } = await supabase.from('VENDAS')
+      .select('id, total, status, created_at, VENDA_ITENS(product_id, product_name, quantity, total)')
+      .eq('tenant_id', req.tenantId).neq('status', 'cancelled')
+      .gte('created_at', start).lt('created_at', end).limit(2000);
+
+    // Custo VARIÁVEL do produto (sem overhead — o fixo entra como custo de período)
+    const varCosts = await productCostMap(req.tenantId, 0, 0);
+    const productIds = [...new Set((sales || []).flatMap(s => (s.VENDA_ITENS || []).map(i => i.product_id)).filter(Boolean))];
+    let priceMap = {};
+    if (productIds.length) {
+      const { data } = await supabase.from('PRODUTOS').select('id, cost_price').eq('tenant_id', req.tenantId).in('id', productIds);
+      priceMap = Object.fromEntries((data || []).map(p => [p.id, p.cost_price]));
+    }
+
+    const taxPct = Number(ov.tax_pct_default) || 0;
+    let receita = 0, custoProduto = 0, qtdVendida = 0;
+    const perProduct = new Map();
+    for (const s of sales || []) {
+      receita += Number(s.total) || 0;
+      for (const it of (s.VENDA_ITENS || [])) {
+        const q = Number(it.quantity) || 0;
+        const rec = Number(it.total) || 0;
+        const cUnit = varCosts.get(it.product_id, priceMap[it.product_id]).cost_unit;
+        const cost = cUnit * q;
+        custoProduto += cost; qtdVendida += q;
+        const key = it.product_id || it.product_name || '—';
+        const agg = perProduct.get(key) || { name: it.product_name || '—', receita: 0, custo: 0, qty: 0 };
+        agg.receita += rec; agg.custo += cost; agg.qty += q;
+        perProduct.set(key, agg);
+      }
+    }
+
+    const impostos = receita * taxPct / 100;
+    const custoFixo = ov.total;               // despesas fixas + folha administrativa
+    const maoObraProd = labor.total;          // mão de obra direta (produção)
+    const comissoes = commissions.total;
+    const custoVariavel = custoProduto + impostos + comissoes + maoObraProd;
+    const lucroProjetado = receita - custoVariavel - custoFixo;
+
+    // Margem por produto (variável) + sugestão de reajuste quando abaixo da meta
+    const produtos = [...perProduct.values()].map(p => {
+      const margem = p.receita > 0 ? ((p.receita - p.custo) / p.receita) * 100 : 0;
+      const abaixoMeta = margem < marginGoalPct;
+      // Preço sugerido p/ atingir a meta (não altera nada — só sugere)
+      const precoAtualUnit = p.qty > 0 ? p.receita / p.qty : 0;
+      const custoUnit = p.qty > 0 ? p.custo / p.qty : 0;
+      const precoSugeridoUnit = (1 - marginGoalPct / 100) > 0 ? custoUnit / (1 - marginGoalPct / 100) : 0;
+      return {
+        name: p.name, receita: r2(p.receita), custo: r2(p.custo), qty: p.qty,
+        margem_pct: Math.round(margem * 10) / 10,
+        abaixo_meta: abaixoMeta,
+        preco_atual_unit: r2(precoAtualUnit),
+        preco_sugerido_unit: abaixoMeta ? r2(precoSugeridoUnit) : null,
+        reajuste_pct: abaixoMeta && precoAtualUnit > 0 ? Math.round(((precoSugeridoUnit / precoAtualUnit) - 1) * 1000) / 10 : null,
+      };
+    }).sort((a, b) => b.receita - a.receita);
+
+    res.json({
+      month,
+      faturamento: r2(receita),
+      quantidade: qtdVendida,
+      custo_fixo: r2(custoFixo),
+      custo_variavel: r2(custoVariavel),
+      variavel_breakdown: {
+        produtos: r2(custoProduto), impostos: r2(impostos),
+        comissoes: r2(comissoes), mao_obra_producao: r2(maoObraProd),
+      },
+      lucro_projetado: r2(lucroProjetado),
+      margem_pct: receita > 0 ? Math.round((lucroProjetado / receita) * 1000) / 10 : 0,
+      margin_goal_pct: marginGoalPct,
+      commissions: commissions.items,
+      produtos,
+    });
+  } catch (err) {
+    console.error('[rateio/rentabilidade]', err.message);
+    res.status(500).json({ error: 'Erro ao calcular a rentabilidade' });
   }
 });
 

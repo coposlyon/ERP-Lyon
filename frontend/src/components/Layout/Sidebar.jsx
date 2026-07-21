@@ -88,6 +88,7 @@ const menuItems = [
       { label: 'Despesas Variáveis', path: '/rateio/despesas-variaveis', icon: Percent, module: 'financial' },
       { label: 'Rateio por Produto', path: '/rateio/produto', icon: Package, module: 'financial' },
       { label: 'Rateio por Pedido', path: '/rateio/pedido', icon: ShoppingCart, module: 'financial' },
+      { label: 'Painel de Rentabilidade', path: '/rateio/rentabilidade', icon: LineChart, module: 'financial' },
       { label: 'Simulador de Metas', path: '/rateio/metas', icon: Target, module: 'financial' },
       { label: 'Histórico de Rateios', path: '/rateio/historico', icon: ScrollText, module: 'financial' },
     ],

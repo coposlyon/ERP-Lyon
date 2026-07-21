@@ -29,10 +29,11 @@ function PctField({ label, value, onChange, suffix = '%' }) {
 export default function DespesasVariaveis() {
   const [form, setForm] = useState(null); // null = ainda não editou
   const [saving, setSaving] = useState(false);
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['rateio-variable'],
-    queryFn: () => api.get('/rateio/variable'),
+    queryKey: ['rateio-variable', month],
+    queryFn: () => api.get(`/rateio/variable?month=${month}`),
   });
 
   const v = form || {
@@ -94,11 +95,14 @@ export default function DespesasVariaveis() {
             Comissões, taxas bancárias e de marketplace que entram no cálculo dos pedidos
           </p>
         </div>
-        {form && (
-          <button className="btn-primary" disabled={saving} onClick={save}>
-            {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} SALVAR
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <input type="month" className="input py-1.5 text-sm w-auto" value={month} onChange={e => setMonth(e.target.value)} />
+          {form && (
+            <button className="btn-primary" disabled={saving} onClick={save}>
+              {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} SALVAR
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -151,15 +155,65 @@ export default function DespesasVariaveis() {
           </p>
         </div>
 
-        {/* COMISSÕES */}
+        {/* COMISSÕES DE VENDAS (calculado do RH + vendas entregues) */}
+        <div className="card overflow-hidden md:col-span-2">
+          <div className="card-header flex items-center justify-between">
+            <h2 className="font-semibold text-gray-900 uppercase text-sm tracking-wide flex items-center gap-2">
+              <Percent size={15} className="text-primary-600" /> Comissões de Vendas
+            </h2>
+            {(data?.commissions?.items || []).length > 0 && (
+              <span className="text-xs text-gray-500">Total do mês: <b>{fmtBRL(data.commissions.total)}</b></span>
+            )}
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+                <th className="px-4 py-2">Vendedor</th>
+                <th className="px-4 py-2 text-right">Vendas entregues (mês)</th>
+                <th className="px-4 py-2 text-right">Comissão %</th>
+                <th className="px-4 py-2 text-right">Meta</th>
+                <th className="px-4 py-2 text-right">Comissão (R$)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.commissions?.items || []).map(c => (
+                <tr key={c.id} className="border-b border-gray-50">
+                  <td className="px-4 py-2 font-medium text-gray-900">{c.name}</td>
+                  <td className="px-4 py-2 text-right">{fmtBRL(c.sales)}</td>
+                  <td className="px-4 py-2 text-right text-gray-500">{String(c.pct).replace('.', ',')}%</td>
+                  <td className="px-4 py-2 text-right">
+                    {c.goal_pct != null
+                      ? <span className={c.goal_pct >= 100 ? 'text-green-600 font-medium' : 'text-gray-500'}>{c.goal_pct.toFixed(0)}%</span>
+                      : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-4 py-2 text-right font-semibold text-green-700">{fmtBRL(c.commission)}</td>
+                </tr>
+              ))}
+              {(data?.commissions?.items || []).length === 0 && (
+                <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">
+                  Nenhuma comissão no mês. Defina a comissão % no cadastro do colaborador (RH) e vincule o vendedor ao cliente.
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+          <p className="px-4 py-2 text-xs text-gray-400 flex items-start gap-1.5 border-t border-gray-100">
+            <Info size={12} className="mt-0.5 shrink-0" />
+            <span>
+              Calculada automaticamente: comissão % do <Link to="/employees" className="text-primary-600 hover:underline">RH</Link> ×
+              vendas <b>entregues</b> do mês atribuídas ao vendedor do cliente. Lançada como custo variável, separada do salário fixo.
+            </span>
+          </p>
+        </div>
+
+        {/* TAXA PADRÃO DE COMISSÃO (fallback p/ o cálculo de pedidos sem vendedor) */}
         <div className="card p-4 space-y-3">
           <h2 className="font-semibold text-gray-900 uppercase text-sm tracking-wide flex items-center gap-2">
-            <Percent size={15} className="text-primary-600" /> Comissões
+            <Percent size={15} className="text-primary-600" /> Comissão padrão
           </h2>
           <PctField label="Comissão de vendedor (% sobre a venda)" value={v.commission_pct}
             onChange={x => set({ commission_pct: x })} />
           <p className="text-xs text-gray-400">
-            Aplicada sobre o valor de cada pedido no cálculo de lucratividade.
+            Usada no cálculo de lucratividade dos pedidos quando o vendedor não tem % próprio no RH.
           </p>
         </div>
 
