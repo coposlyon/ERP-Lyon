@@ -40,6 +40,7 @@ const RateioPedido       = lazy(() => import('@/pages/Rateio/RateioPedido'));
 const SimuladorMetas     = lazy(() => import('@/pages/Rateio/SimuladorMetas'));
 const HistoricoRateios   = lazy(() => import('@/pages/Rateio/HistoricoRateios'));
 const Rentabilidade      = lazy(() => import('@/pages/Rateio/Rentabilidade'));
+const Insumos            = lazy(() => import('@/pages/Insumos/Insumos'));
 const Fiscal             = lazy(() => import('@/pages/Fiscal/Fiscal'));
 const Contabil           = lazy(() => import('@/pages/Contabil/Contabil'));
 const Reports            = lazy(() => import('@/pages/Reports/Reports'));
@@ -159,6 +160,7 @@ function AppRoutes() {
         <Route path="rateio/metas" element={<Mod m={['financial','products','settings']}><SimuladorMetas /></Mod>} />
         <Route path="rateio/historico" element={<Mod m={['financial','products','settings']}><HistoricoRateios /></Mod>} />
         <Route path="rateio/rentabilidade" element={<Mod m={['financial','products','settings']}><Rentabilidade /></Mod>} />
+        <Route path="engenharia/insumos" element={<Mod m={['financial','products','settings','production']}><Insumos /></Mod>} />
         {/* Fiscal */}
         <Route path="fiscal" element={<Mod m="fiscal"><Fiscal /></Mod>} />
         {/* Contábil / Fiscal */}

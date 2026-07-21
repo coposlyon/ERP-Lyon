@@ -1,0 +1,6 @@
+import{k as u,r as l,j as t,m as p,z as n}from"./index-PUSglFBW.js";/**
+ * @license lucide-react v0.460.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const y=u("Link2",[["path",{d:"M9 17H7A5 5 0 0 1 7 7h2",key:"8i5ue5"}],["path",{d:"M15 7h2a5 5 0 1 1 0 10h-2",key:"1b9ql8"}],["line",{x1:"8",x2:"16",y1:"12",y2:"12",key:"1jonct"}]]);function h({path:s,label:c="Copiar link de cadastro",className:i="btn-secondary"}){const[r,o]=l.useState(!1);async function d(){const a=`Olá! Faça o seu cadastro na nossa empresa! ${`${window.location.origin}${s}`}`;try{await navigator.clipboard.writeText(a)}catch{const e=document.createElement("textarea");e.value=a,e.style.position="fixed",e.style.opacity="0",document.body.appendChild(e),e.select();try{document.execCommand("copy")}catch{n.error("Não consegui copiar"),document.body.removeChild(e);return}document.body.removeChild(e)}o(!0),setTimeout(()=>o(!1),2e3),n.success("Link de cadastro copiado!")}return t.jsxs("button",{type:"button",onClick:d,className:i,title:"Copia a mensagem + o link de cadastro",children:[r?t.jsx(p,{size:16}):t.jsx(y,{size:16})," ",c]})}export{h as C};

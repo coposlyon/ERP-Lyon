@@ -81,9 +81,10 @@ const menuItems = [
     ],
   },
   {
-    label: 'Rateio de Custos',
+    label: 'Engenharia de Custos',
     icon: PieChart,
     children: [
+      { label: 'Insumos', path: '/engenharia/insumos', icon: FlaskConical, module: 'financial' },
       { label: 'Despesas Fixas', path: '/rateio/despesas-fixas', icon: Home, module: 'financial' },
       { label: 'Despesas Variáveis', path: '/rateio/despesas-variaveis', icon: Percent, module: 'financial' },
       { label: 'Rateio por Produto', path: '/rateio/produto', icon: Package, module: 'financial' },
