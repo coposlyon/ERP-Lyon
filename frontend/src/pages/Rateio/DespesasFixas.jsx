@@ -32,8 +32,24 @@ const LEGEND_ORDER = ['Marketing', 'Administrativa', 'Tecnologia', 'Financeiro',
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
+// Paleta para categorias personalizadas (cor estável derivada do nome)
+const EXTRA_META = [
+  { text: '#4338ca', bg: '#eef2ff', border: '#c7d2fe', dot: '#4f46e5' },
+  { text: '#9333ea', bg: '#faf5ff', border: '#e9d5ff', dot: '#a855f7' },
+  { text: '#0891b2', bg: '#ecfeff', border: '#a5f3fc', dot: '#06b6d4' },
+  { text: '#ca8a04', bg: '#fefce8', border: '#fef08a', dot: '#eab308' },
+  { text: '#be123c', bg: '#fff1f2', border: '#fecdd3', dot: '#f43f5e' },
+  { text: '#15803d', bg: '#f0fdf4', border: '#bbf7d0', dot: '#16a34a' },
+];
+
 const catOf = exp => exp.category || 'Outros';
-const meta = cat => CAT_META[cat] || CAT_META.Outros;
+const meta = cat => {
+  if (CAT_META[cat]) return CAT_META[cat];
+  if (!cat) return CAT_META.Outros;
+  let h = 0;
+  for (const ch of String(cat)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return EXTRA_META[h % EXTRA_META.length];
+};
 const pctBR = v => `${v.toFixed(2).replace('.', ',')}%`;
 
 // Máscara de dinheiro: dígitos = reais com ponto de milhar; vírgula manual
@@ -110,7 +126,7 @@ function StatCard({ icon: Icon, iconBg, iconColor, label, value, sub, valueClass
 }
 
 // ─── Modal de adicionar/editar despesa ─────────────────────
-function ExpenseModal({ open, initial, onClose, onSaved }) {
+function ExpenseModal({ open, initial, categories = [], onClose, onSaved }) {
   const isEdit = !!initial?.id;
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -119,6 +135,7 @@ function ExpenseModal({ open, initial, onClose, onSaved }) {
     name: initial?.name || '',
     notes: initial?.notes || '',
     category: initial?.category || 'Administrativa',
+    custom: '',
     periodicity: initial?.periodicity || 'mensal',
     amount: initial?.original_amount != null || initial?.amount != null
       ? Number(initial.original_amount ?? initial.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
@@ -128,17 +145,21 @@ function ExpenseModal({ open, initial, onClose, onSaved }) {
     is_active: initial?.is_active !== false,
   };
   const set = patch => setForm({ ...f, ...patch });
+  // Todas as categorias disponíveis (padrão + personalizadas já em uso)
+  const catOptions = [...new Set([...CATEGORIES, ...categories])];
 
   async function save() {
     const name = f.name.trim();
     if (!name) { toast.error('Informe o nome da despesa'); return; }
+    const category = f.category === '__nova' ? f.custom.trim() : f.category;
+    if (!category) { toast.error('Dê um nome à nova categoria'); return; }
     const amount = moneyToNumber(f.amount);
     if (!(amount >= 0)) { toast.error('Informe um valor válido'); return; }
     setSaving(true);
     try {
       const payload = {
         name, notes: f.notes, amount,
-        category: f.category,
+        category,
         periodicity: f.periodicity, due_day: f.due_day,
         due_month: f.periodicity === 'anual' ? f.due_month : null,
         ...(isEdit ? { is_active: f.is_active } : {}),
@@ -168,11 +189,21 @@ function ExpenseModal({ open, initial, onClose, onSaved }) {
               onChange={e => set({ notes: e.target.value })} />
           </div>
         </div>
-        <div>
-          <label className="label">Categoria</label>
-          <select className="input" value={f.category} onChange={e => set({ category: e.target.value })}>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Categoria</label>
+            <select className="input" value={f.category} onChange={e => set({ category: e.target.value })}>
+              {catOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="__nova">➕ Nova categoria...</option>
+            </select>
+          </div>
+          {f.category === '__nova' && (
+            <div>
+              <label className="label">Nome da categoria</label>
+              <input className="input" value={f.custom} placeholder="Ex.: Impostos" autoFocus
+                onChange={e => set({ custom: e.target.value })} />
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -283,6 +314,7 @@ export default function DespesasFixas() {
   // Liga/desliga a despesa (inativa não entra no rateio nem nas contas do mês)
   async function toggleActive(exp) {
     const next = exp.is_active === false;
+    if (!next && !confirm(`Desativar a despesa "${exp.name}"?\nEla sai do rateio e não gera conta do mês (o histórico é mantido).`)) return;
     try {
       await api.put(`/contas/fixed-expenses/${exp.id}`, { is_active: next });
       toast.success(next ? 'Despesa ativada' : 'Despesa desativada');
@@ -628,6 +660,7 @@ export default function DespesasFixas() {
       </div>
 
       <ExpenseModal open={!!modal} initial={modal || {}}
+        categories={[...new Set(expenses.map(catOf))]}
         onClose={() => setModal(null)}
         onSaved={() => { setModal(null); invalidate(); }} />
     </div>
