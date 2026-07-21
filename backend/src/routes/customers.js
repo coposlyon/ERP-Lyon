@@ -25,7 +25,9 @@ async function syncEmployeeSalary(tenantId, customer) {
     const salary = (typeof raw === 'string' && raw.includes(','))
       ? (parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0)
       : (Number(raw) || 0);
-    const active = isEmployee && customer.is_active !== false && salary > 0;
+    // Produção não entra nas fixas — a folha dela é Custo Variável
+    const isProd = /produ|grava|serigraf/i.test(String(customer.admission_data?.sector || ''));
+    const active = isEmployee && !isProd && customer.is_active !== false && salary > 0;
 
     const { data: existing, error: e1 } = await supabase.from('DESPESAS_FIXAS')
       .select('id').eq('tenant_id', tenantId).eq('employee_id', customer.id).maybeSingle();

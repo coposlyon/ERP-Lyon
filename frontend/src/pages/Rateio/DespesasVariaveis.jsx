@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
-  Loader2, Save, Truck, Landmark, Percent, Store, Info,
+  Loader2, Save, Truck, Landmark, Percent, Store, Info, HardHat,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
-import { fmtBRL } from '@/lib/pricingCalc';
+import { fmtBRL, fmtBRL4, fmtQty } from '@/lib/pricingCalc';
 
 const dBR = iso => {
   const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -102,6 +102,55 @@ export default function DespesasVariaveis() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* MÃO DE OBRA DA PRODUÇÃO (integração com RH) */}
+        <div className="card overflow-hidden md:col-span-2">
+          <div className="card-header flex items-center justify-between">
+            <h2 className="font-semibold text-gray-900 uppercase text-sm tracking-wide flex items-center gap-2">
+              <HardHat size={15} className="text-primary-600" /> Mão de Obra da Produção
+            </h2>
+            {(data?.prod_labor?.items || []).length > 0 && (
+              <span className="text-xs text-gray-500">
+                {fmtBRL(data.prod_labor.total)}/mês · {fmtBRL4(data.prod_labor.per_unit)}/un
+                <span className="text-gray-400"> ({fmtQty(data.prod_labor.monthly_units)} un/mês)</span>
+              </span>
+            )}
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+                <th className="px-4 py-2">Colaborador</th>
+                <th className="px-4 py-2">Departamento</th>
+                <th className="px-4 py-2 text-right">Salário (R$)</th>
+                <th className="px-4 py-2 text-right">Custo por Unidade</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.prod_labor?.items || []).map(p => (
+                <tr key={p.id} className="border-b border-gray-50">
+                  <td className="px-4 py-2 font-medium text-gray-900">{p.name}</td>
+                  <td className="px-4 py-2 text-gray-500">{p.role || 'Produção'}</td>
+                  <td className="px-4 py-2 text-right font-medium">{fmtBRL(p.salary)}</td>
+                  <td className="px-4 py-2 text-right text-gray-600">
+                    {fmtBRL4(data?.prod_labor?.monthly_units > 0 ? p.salary / data.prod_labor.monthly_units : 0)}
+                  </td>
+                </tr>
+              ))}
+              {(data?.prod_labor?.items || []).length === 0 && (
+                <tr><td colSpan={4} className="text-center py-8 text-sm text-gray-400">
+                  Nenhum colaborador do departamento PRODUÇÃO com salário cadastrado no RH.
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+          <p className="px-4 py-2 text-xs text-gray-400 flex items-start gap-1.5 border-t border-gray-100">
+            <Info size={12} className="mt-0.5 shrink-0" />
+            <span>
+              Puxado automaticamente do módulo <Link to="/employees" className="text-primary-600 hover:underline">Recursos Humanos → Colaboradores</Link>:
+              departamento PRODUÇÃO entra aqui como custo variável; os demais departamentos vão para as Despesas Fixas. Nada é digitado duas vezes.
+            </span>
+          </p>
+        </div>
+
         {/* COMISSÕES */}
         <div className="card p-4 space-y-3">
           <h2 className="font-semibold text-gray-900 uppercase text-sm tracking-wide flex items-center gap-2">

@@ -87,6 +87,29 @@ function parseSalary(raw) {
     : (Number(raw) || 0);
 }
 
+// Departamento de produção → salário vai para Custos Variáveis
+// (Gravação/Serigrafia é a produção da Lyon)
+const isProductionSector = s => /produ|grava|serigraf/i.test(String(s || ''));
+
+// Folha da PRODUÇÃO (mão de obra direta — Custos Variáveis)
+async function productionLabor(tenantId) {
+  try {
+    const { data: emps, error } = await supabase.from('CLIENTES')
+      .select('id, name, is_active, admission_data')
+      .eq('tenant_id', tenantId).eq('type', 'CO');
+    if (error) throw error;
+    const items = (emps || [])
+      .filter(e => e.is_active !== false && isProductionSector(e.admission_data?.sector))
+      .map(e => ({
+        id: e.id, name: e.name,
+        role: e.admission_data?.sector || null,
+        salary: parseSalary(e.admission_data?.salary),
+      }))
+      .filter(e => e.salary > 0);
+    return { items, total: items.reduce((s, e) => s + e.salary, 0) };
+  } catch { return { items: [], total: 0 }; }
+}
+
 // Garante que cada colaborador (CLIENTES type CO) com salário tem sua
 // despesa fixa na categoria "Colaboradores" — roda ao abrir o Rateio,
 // então colaboradores antigos entram sem precisar re-salvar o cadastro.
@@ -106,7 +129,9 @@ async function syncEmployeesToFixed(tenantId) {
 
     for (const emp of emps) {
       const salary = parseSalary(emp.admission_data?.salary);
-      const active = emp.is_active !== false && salary > 0;
+      // Produção NÃO entra nas fixas — a folha dela vai para Custos Variáveis
+      const active = emp.is_active !== false && salary > 0
+        && !isProductionSector(emp.admission_data?.sector);
       const cur = byEmp.get(emp.id);
       if (cur) {
         // também migra o nome antigo "Funcionários" → "Colaboradores"
@@ -250,5 +275,6 @@ module.exports = {
   DEFAULTS, VARIABLE_DEFAULTS,
   getConfig, saveConfig, autoMonthlyUnits,
   fixedExpenses, fixedOverview, snapshotRateio, syncEmployeesToFixed,
+  productionLabor, isProductionSector,
   computeSheet, productCostMap,
 };

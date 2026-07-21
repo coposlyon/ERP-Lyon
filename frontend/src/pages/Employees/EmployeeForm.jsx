@@ -5,7 +5,10 @@ import toast from 'react-hot-toast';
 import { Loader2, Instagram, Paperclip, Trash2, Download, Upload, Shield, Eye, EyeOff } from 'lucide-react';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
-const SETORES = ['GRAVAÇÃO','MARKETING','LOGÍSTICA','DESIGNER','VENDAS','FINANCEIRO','ALMOXARIFADO','QUALIDADE'];
+// Departamentos: PRODUÇÃO vai para Custos Variáveis; os demais para
+// Despesas Fixas (roteamento automático do salário no Rateio)
+const SETORES = ['PRODUÇÃO','COMERCIAL','FINANCEIRO','ADMINISTRATIVO','MARKETING','LOGÍSTICA','COMPRAS',
+  'GRAVAÇÃO','DESIGNER','VENDAS','ALMOXARIFADO','QUALIDADE'];
 
 const MODULOS = [
   { key: 'dashboard',      label: 'Dashboard' },

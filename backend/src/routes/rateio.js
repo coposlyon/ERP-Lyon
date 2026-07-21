@@ -11,7 +11,7 @@ const { audit } = require('../lib/audit');
 const {
   VARIABLE_DEFAULTS, getConfig, saveConfig,
   fixedOverview, snapshotRateio, computeSheet, productCostMap,
-  syncEmployeesToFixed,
+  syncEmployeesToFixed, productionLabor,
 } = require('../lib/rateioLib');
 
 const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -20,14 +20,17 @@ const userName = req => req.user?.name || req.user?.email || null;
 // ── Despesas Fixas: visão geral + histórico ───────────────
 router.get('/summary', async (req, res) => {
   try {
-    // Puxa os salários dos colaboradores para a categoria "Colaboradores"
+    // Roteia os salários: Produção → Custos Variáveis; demais → Despesas Fixas
     await syncEmployeesToFixed(req.tenantId);
-    const [ov, cfg] = await Promise.all([fixedOverview(req.tenantId), getConfig(req.tenantId)]);
+    const [ov, cfg, labor] = await Promise.all([
+      fixedOverview(req.tenantId), getConfig(req.tenantId), productionLabor(req.tenantId),
+    ]);
     res.json({
       ...ov,
       manual_units: cfg.monthly_units,
       history: Array.isArray(cfg.rateio_history) ? cfg.rateio_history : [],
       expense_cards: Array.isArray(cfg.expense_cards) ? cfg.expense_cards : [],
+      prod_labor_total: labor.total,
     });
   } catch (err) {
     console.error('[rateio/summary]', err.message);
@@ -128,7 +131,19 @@ router.get('/variable', async (req, res) => {
     } catch { /* coluna freight (042) pendente */ }
     const freightTotal = freights.reduce((s, f) => s + f.freight, 0);
 
-    res.json({ variable, freights, freight_total: r2(freightTotal) });
+    // Mão de obra direta: folha dos colaboradores da PRODUÇÃO (vem do RH)
+    const [labor, ov] = await Promise.all([productionLabor(req.tenantId), fixedOverview(req.tenantId)]);
+    const laborUnit = ov.monthly_units > 0 ? labor.total / ov.monthly_units : 0;
+
+    res.json({
+      variable, freights, freight_total: r2(freightTotal),
+      prod_labor: {
+        items: labor.items,
+        total: r2(labor.total),
+        per_unit: Math.round(laborUnit * 10000) / 10000,
+        monthly_units: ov.monthly_units,
+      },
+    });
   } catch (err) {
     console.error('[rateio/variable]', err.message);
     res.status(500).json({ error: 'Erro ao carregar as despesas variáveis' });
