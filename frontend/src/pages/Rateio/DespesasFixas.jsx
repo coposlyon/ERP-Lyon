@@ -29,7 +29,6 @@ const CAT_META = {
 };
 const CATEGORIES = Object.keys(CAT_META);
 const LEGEND_ORDER = ['Marketing', 'Administrativa', 'Tecnologia', 'Financeiro', 'Logística', 'RH', 'Outros'];
-const COST_CENTERS = ['Administrativo', 'Comercial', 'Produção', 'Tecnologia', 'Logística', 'Financeiro', 'RH'];
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -114,7 +113,6 @@ function ExpenseModal({ open, initial, onClose, onSaved }) {
     name: initial?.name || '',
     notes: initial?.notes || '',
     category: initial?.category || 'Administrativa',
-    cost_center: initial?.cost_center || 'Administrativo',
     periodicity: initial?.periodicity || 'mensal',
     amount: initial?.original_amount != null || initial?.amount != null
       ? Number(initial.original_amount ?? initial.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
@@ -134,7 +132,7 @@ function ExpenseModal({ open, initial, onClose, onSaved }) {
     try {
       const payload = {
         name, notes: f.notes, amount,
-        category: f.category, cost_center: f.cost_center,
+        category: f.category,
         periodicity: f.periodicity, due_day: f.due_day,
         due_month: f.periodicity === 'anual' ? f.due_month : null,
         ...(isEdit ? { is_active: f.is_active } : {}),
@@ -164,19 +162,11 @@ function ExpenseModal({ open, initial, onClose, onSaved }) {
               onChange={e => set({ notes: e.target.value })} />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="label">Categoria</label>
-            <select className="input" value={f.category} onChange={e => set({ category: e.target.value })}>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Centro de Custo</label>
-            <select className="input" value={f.cost_center} onChange={e => set({ cost_center: e.target.value })}>
-              {COST_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+        <div>
+          <label className="label">Categoria</label>
+          <select className="input" value={f.category} onChange={e => set({ category: e.target.value })}>
+            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -234,9 +224,9 @@ function ExpenseModal({ open, initial, onClose, onSaved }) {
 export default function DespesasFixas() {
   const qc = useQueryClient();
   const today = new Date();
-  const [refMonth, setRefMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
+  // Período do snapshot do rateio = mês corrente (sem seletor na tela)
+  const refMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   const [modal, setModal] = useState(null);
-  const [fCentro, setFCentro] = useState('');
   const [fCat, setFCat] = useState('');
   const [fStatus, setFStatus] = useState('');
   const [fTipo, setFTipo] = useState('');
@@ -286,12 +276,11 @@ export default function DespesasFixas() {
 
   // Filtros + ordenação por próximo vencimento
   const rows = useMemo(() => expenses
-    .filter(e => !fCentro || (e.cost_center || '—') === fCentro)
     .filter(e => !fCat || catOf(e) === fCat)
     .filter(e => !fStatus || (fStatus === 'ativa' ? e.is_active !== false : e.is_active === false))
     .filter(e => !fTipo || (e.periodicity || 'mensal') === fTipo)
     .sort((a, b) => nextDue(a) - nextDue(b)),
-  [expenses, fCentro, fCat, fStatus, fTipo]);
+  [expenses, fCat, fStatus, fTipo]);
 
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const curPage = Math.min(page, pageCount);
@@ -326,8 +315,6 @@ export default function DespesasFixas() {
   }, [expenses, folhaFixa]);
   const distNonZero = dist.filter(d => d.value > 0);
 
-  const centros = useMemo(() => [...new Set(expenses.map(e => e.cost_center).filter(Boolean))], [expenses]);
-
   if (isLoading) {
     return <div className="flex justify-center p-16"><Loader2 className="animate-spin text-primary-500" size={28} /></div>;
   }
@@ -346,12 +333,8 @@ export default function DespesasFixas() {
         {/* min-w-0: deixa a coluna encolher — sem isso a tabela larga
             empurra a sidebar para fora da tela */}
         <div className="xl:col-span-3 space-y-4 min-w-0">
-          {/* Filtros + período + nova despesa */}
+          {/* Filtros + nova despesa */}
           <div className="flex flex-wrap items-center gap-2">
-            <select className="input py-1.5 text-sm w-auto" value={fCentro} onChange={e => { setFCentro(e.target.value); setPage(1); }}>
-              <option value="">Todos os Centros</option>
-              {centros.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
             <select className="input py-1.5 text-sm w-auto" value={fCat} onChange={e => { setFCat(e.target.value); setPage(1); }}>
               <option value="">Todas as Categorias</option>
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -367,11 +350,6 @@ export default function DespesasFixas() {
               <option value="anual">Anual</option>
             </select>
             <div className="flex-1" />
-            <div className="flex items-center gap-1.5">
-              <CalendarDays size={15} className="text-gray-400" />
-              <input type="month" className="input py-1.5 text-sm w-auto" value={refMonth}
-                onChange={e => setRefMonth(e.target.value)} />
-            </div>
             <button className="btn-primary" onClick={() => setModal({})}>
               <Plus size={15} /> Nova Despesa
             </button>
@@ -400,7 +378,7 @@ export default function DespesasFixas() {
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-100">
                     <th className="px-4 py-2.5">Despesa</th>
-                    <th className="px-2 py-2">Categoria<br /><span className="normal-case font-normal">Centro de Custo</span></th>
+                    <th className="px-2 py-2">Categoria</th>
                     <th className="px-2 py-2">Tipo</th>
                     <th className="px-2 py-2">Periodicidade</th>
                     <th className="px-2 py-2 text-right">Valor Original</th>
@@ -439,7 +417,6 @@ export default function DespesasFixas() {
                             style={{ color: m.text, background: m.bg, borderColor: m.border }}>
                             {cat}
                           </span>
-                          <span className="block text-xs text-gray-400 mt-0.5">{exp.cost_center || '—'}</span>
                         </td>
                         <td className="px-2 py-2"><TipoPill /></td>
                         <td className="px-2 py-2 text-gray-600">{exp.periodicity === 'anual' ? 'Anual' : 'Mensal'}</td>
