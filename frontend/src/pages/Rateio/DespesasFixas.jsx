@@ -80,12 +80,18 @@ const TipoPill = () => (
     Fixa
   </span>
 );
-const StatusPill = ({ active }) => (
-  <span className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold border ${
-    active ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
-    {active ? 'Ativa' : 'Inativa'}
-  </span>
-);
+const StatusPill = ({ active, onToggle }) => {
+  const cls = `inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold border ${
+    active ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`;
+  if (!onToggle) return <span className={cls}>{active ? 'Ativa' : 'Inativa'}</span>;
+  return (
+    <button type="button" onClick={onToggle}
+      title={active ? 'Clique para desativar' : 'Clique para ativar'}
+      className={`${cls} cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-200 transition`}>
+      {active ? 'Ativa' : 'Inativa'}
+    </button>
+  );
+};
 
 // ─── Card de estatística do topo ───────────────────────────
 function StatCard({ icon: Icon, iconBg, iconColor, label, value, sub, valueClass = 'text-gray-900' }) {
@@ -274,6 +280,16 @@ export default function DespesasFixas() {
     } catch (err) { toast.error(err.error || 'Erro ao remover'); }
   }
 
+  // Liga/desliga a despesa (inativa não entra no rateio nem nas contas do mês)
+  async function toggleActive(exp) {
+    const next = exp.is_active === false;
+    try {
+      await api.put(`/contas/fixed-expenses/${exp.id}`, { is_active: next });
+      toast.success(next ? 'Despesa ativada' : 'Despesa desativada');
+      invalidate();
+    } catch (err) { toast.error(err.error || 'Erro ao alterar status'); }
+  }
+
   // Filtros + ordenação por próximo vencimento
   const rows = useMemo(() => expenses
     .filter(e => !fCat || catOf(e) === fCat)
@@ -427,7 +443,7 @@ export default function DespesasFixas() {
                         <td className={`px-2 py-2 whitespace-nowrap ${isSoon(due) && active ? 'text-red-500 font-medium' : 'text-gray-600'}`}>
                           {fmtDate(due)}
                         </td>
-                        <td className="px-2 py-2"><StatusPill active={active} /></td>
+                        <td className="px-2 py-2"><StatusPill active={active} onToggle={() => toggleActive(exp)} /></td>
                         <td className="px-2 py-2">
                           <div className="flex items-center justify-center gap-1">
                             <button className="btn-ghost p-1.5 text-blue-600" title="Editar" onClick={() => setModal(exp)}>
