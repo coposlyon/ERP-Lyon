@@ -7,7 +7,7 @@ import {
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
-  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory,
+  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory, ShieldCheck,
   Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark, Star,
 } from 'lucide-react';
 
@@ -108,6 +108,7 @@ const menuItems = [
       { label: 'Férias',              path: '/hr/ferias',     icon: Umbrella,   module: 'hr' },
       { label: 'Folha de Pagamento',  path: '/hr/folha',      icon: DollarSign, module: 'hr' },
       { label: 'Documentos',          path: '/hr/documentos', icon: FileText,   module: 'hr' },
+      { label: 'Conformidade Trab.',  path: '/hr/conformidade', icon: ShieldCheck, module: 'hr' },
     ],
   },
 

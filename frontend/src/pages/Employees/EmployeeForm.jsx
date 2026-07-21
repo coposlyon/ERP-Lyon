@@ -39,9 +39,16 @@ const MODULOS = [
 const emptyAddress  = { street:'', number:'', complement:'', neighborhood:'', city:'', state:'', zip:'' };
 const emptyAdmission = {
   salary:'', father_name:'', mother_name:'', pis:'', sector:'', scale:'', scale_id:'', monthly_hours:'', start_date:'',
+  // Remuneração variável e metas (RH é a fonte única — alimenta rateio/comissão)
+  commission_pct:'', sales_goal:'', role:'',
+  // Benefícios (R$/mês)
+  benefit_vt:'', benefit_vr:'', benefit_health:'', benefit_other:'',
   // Acesso ao sistema
   has_access: false, access_email:'', access_password:'', work_start:'', work_end:'', allowed_modules:[],
 };
+
+// Departamentos que atuam em vendas → mostram campos de comissão/meta
+const SALES_SECTORS = ['COMERCIAL', 'VENDAS'];
 
 // Máscara de dinheiro: dígitos são os reais e ganham ponto de milhar
 // sozinhos (20000 → 20.000); a vírgula dos centavos é digitada à mão.
@@ -189,17 +196,25 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
         phone:          employee.phone || '',
         instagram:      employee.instagram || '',
         address:        employee.address || { ...emptyAddress },
-        admission_data: {
-          ...emptyAdmission, ...(employee.admission_data || {}), access_password: '',
-          // salário salvo como número → exibe formatado (20.000,00)
-          salary: employee.admission_data?.salary != null && employee.admission_data.salary !== ''
-            ? Number(String(employee.admission_data.salary).replace(',', '.')).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-            : '',
-        },
+        admission_data: (() => {
+          const adm = { ...emptyAdmission, ...(employee.admission_data || {}), access_password: '' };
+          // valores em dinheiro salvos como número → exibe formatado (20.000,00)
+          for (const k of ['salary', 'sales_goal', 'benefit_vt', 'benefit_vr', 'benefit_health', 'benefit_other']) {
+            const v = employee.admission_data?.[k];
+            adm[k] = (v != null && v !== '')
+              ? Number(String(v).replace(',', '.')).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+              : '';
+          }
+          return adm;
+        })(),
         is_active:      employee.is_active !== false,
       });
     }
   }, [employee]);
+
+  const sector = form.admission_data.sector || '';
+  const isSalesSector = SALES_SECTORS.includes(sector);
+  const isProductionSector = /PRODU|GRAVA|SERIGRAF/.test(sector);
 
   const up = s => (typeof s === 'string' ? s.toUpperCase() : s);
   function set(f, v)    { setForm(p => ({ ...p, [f]: ((f === 'email' || f === 'instagram') ? v : up(v)) })); }
@@ -246,11 +261,15 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
 
     setLoading(true);
     try {
-      // Salário vai como número puro (a máscara "20.000,00" é só visual)
-      const payload = {
-        ...form, type: 'CO',
-        admission_data: { ...form.admission_data, salary: moneyToNumber(form.admission_data.salary) },
-      };
+      // Valores em dinheiro vão como número puro (a máscara é só visual)
+      const adm = { ...form.admission_data };
+      for (const k of ['salary', 'sales_goal', 'benefit_vt', 'benefit_vr', 'benefit_health', 'benefit_other']) {
+        const n = moneyToNumber(adm[k]);
+        adm[k] = Number.isFinite(n) ? n : null;
+      }
+      const pct = parseFloat(String(adm.commission_pct ?? '').replace(',', '.'));
+      adm.commission_pct = Number.isFinite(pct) ? pct : null;
+      const payload = { ...form, type: 'CO', admission_data: adm };
       let savedId = employee?.id;
 
       if (employee?.id) {
@@ -464,6 +483,59 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
             💡 Salve o colaborador primeiro para adicionar documentos (CTPS, contratos, exames...)
           </p>
         )}
+      </div>
+
+      {/* ── Remuneração e Benefícios (fonte única p/ rateio e comissão) ── */}
+      <div className="border border-amber-200 rounded-lg bg-amber-50/30 p-4 space-y-4">
+        <p className="text-sm font-semibold text-amber-800 flex items-center gap-1.5">💰 Remuneração e Benefícios</p>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Cargo</label>
+            <input className="input" placeholder="Ex: Impressor Silk"
+              value={form.admission_data.role} onChange={e => setAdm('role', e.target.value)} />
+          </div>
+          {isSalesSector && (
+            <>
+              <div>
+                <label className="label">Comissão (% sobre vendas)</label>
+                <input type="text" inputMode="decimal" className="input" placeholder="0,00"
+                  value={form.admission_data.commission_pct}
+                  onChange={e => setAdm('commission_pct', e.target.value.replace(/[^\d,.]/g, ''))} />
+              </div>
+              <div>
+                <label className="label">Meta de vendas (R$/mês)</label>
+                <input type="text" inputMode="decimal" className="input" placeholder="0,00"
+                  value={form.admission_data.sales_goal}
+                  onChange={e => setAdm('sales_goal', fmtMoney(e.target.value))} />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Benefícios (R$/mês)</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              ['benefit_vt', 'Vale-Transporte'],
+              ['benefit_vr', 'Vale-Refeição/Alim.'],
+              ['benefit_health', 'Plano de Saúde'],
+              ['benefit_other', 'Outros'],
+            ].map(([k, l]) => (
+              <div key={k}>
+                <label className="label">{l}</label>
+                <input type="text" inputMode="decimal" className="input" placeholder="0,00"
+                  value={form.admission_data[k]} onChange={e => setAdm(k, fmtMoney(e.target.value))} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <p className="text-xs text-amber-700 bg-amber-100/60 rounded-lg px-3 py-2">
+          {isProductionSector
+            ? '⚙️ Colaborador da PRODUÇÃO: o salário entra como custo variável (mão de obra direta) no Rateio.'
+            : '📌 Salário fixo entra nas Despesas Fixas do Rateio. A comissão (se houver) é lançada como custo variável, calculada sobre as vendas.'}
+        </p>
       </div>
 
       {/* ── Acesso ao Sistema ── */}

@@ -66,6 +66,7 @@ const HRPonto            = lazy(() => import('@/pages/HR/HRPonto'));
 const HRFerias           = lazy(() => import('@/pages/HR/HRFerias'));
 const HRFolha            = lazy(() => import('@/pages/HR/HRFolha'));
 const HRDocumentos       = lazy(() => import('@/pages/HR/HRDocumentos'));
+const HRConformidade     = lazy(() => import('@/pages/HR/HRConformidade'));
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -179,6 +180,7 @@ function AppRoutes() {
           <Route path="ferias"     element={<HRFerias />} />
           <Route path="folha"      element={<HRFolha />} />
           <Route path="documentos" element={<HRDocumentos />} />
+          <Route path="conformidade" element={<HRConformidade />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -5,8 +5,9 @@ import {
   Users, Clock, Umbrella, DollarSign, FileText,
   Plus, Trash2, Check, ChevronLeft, ChevronRight,
   AlertCircle, CheckCircle, PenLine, MoreVertical,
-  ArrowLeft, Search, X,
+  ArrowLeft, Search, X, ShieldCheck, Send, ExternalLink,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
@@ -1231,6 +1232,175 @@ export function TabDocumentos({ employee }) {
   );
 }
 
+// ══ TAB CONFORMIDADE TRABALHISTA ══════════════════════════
+// Semáforo verde/amarelo/vermelho para eSocial, documentos e eventos.
+const LIGHT = {
+  green:  { dot:'bg-green-500',  bg:'bg-green-50 border-green-200',   text:'text-green-700',  label:'Em dia' },
+  yellow: { dot:'bg-amber-400',  bg:'bg-amber-50 border-amber-200',   text:'text-amber-700',  label:'Atenção' },
+  red:    { dot:'bg-red-500',    bg:'bg-red-50 border-red-200',       text:'text-red-700',    label:'Pendente' },
+  gray:   { dot:'bg-gray-300',   bg:'bg-gray-50 border-gray-200',     text:'text-gray-500',   label:'—' },
+};
+// Documentos exigidos para conformidade (tipo em RH_DOCUMENTOS)
+const REQUIRED_DOCS = [
+  { type:'ctps',     label:'CTPS' },
+  { type:'contrato', label:'Contrato de trabalho' },
+  { type:'aso',      label:'ASO (exame admissional)' },
+];
+
+function Semaforo({ color, children }) {
+  const l = LIGHT[color] || LIGHT.gray;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${l.bg} ${l.text}`}>
+      <span className={`w-2 h-2 rounded-full ${l.dot}`} /> {children || l.label}
+    </span>
+  );
+}
+
+export function TabConformidade({ employee }) {
+  const { data: status, isLoading } = useQuery({
+    queryKey: ['esocial-status'],
+    queryFn: () => api.get('/esocial/status'),
+  });
+  const { data: docs = [] } = useQuery({
+    queryKey: ['rh-docs', employee?.id],
+    queryFn: () => api.get(`/hr/documents?employee_id=${employee.id}`),
+    enabled: !!employee,
+  });
+
+  if (isLoading) return <div className="py-16 text-center text-gray-400 text-sm">Carregando conformidade...</div>;
+
+  const st = status || {};
+  // Semáforo do eSocial (config + empregador aceito)
+  const esColor = !st.configurado ? 'red'
+    : (st.config_pendencias?.length || !st.empregador_aceito) ? 'yellow' : 'green';
+  const eventos = st.eventos_por_status || {};
+  const rejeitados = eventos.rejeitado || 0;
+  const pendentesEnv = (eventos.pendente || 0) + (eventos.aguardando_retorno || 0);
+
+  // Documentos do colaborador selecionado
+  const docTypes = new Set((docs || []).map(d => d.type));
+  const docsPresent = REQUIRED_DOCS.filter(d => docTypes.has(d.type)).length;
+  const docColor = !employee ? 'gray'
+    : docsPresent === REQUIRED_DOCS.length ? 'green'
+    : docsPresent === 0 ? 'red' : 'yellow';
+
+  const trabPend = st.trabalhadores_pendentes || [];
+  const trabColor = !st.trabalhadores_total ? 'gray'
+    : trabPend.length === 0 ? 'green'
+    : trabPend.length === st.trabalhadores_total ? 'red' : 'yellow';
+
+  return (
+    <div className="space-y-4">
+      {/* Semáforos resumo */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className={`card p-4 border ${LIGHT[esColor].bg}`}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><ShieldCheck size={15} /> eSocial</p>
+            <Semaforo color={esColor} />
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            {!st.configurado ? 'Não configurado — preencha os dados do empregador.'
+              : !st.empregador_aceito ? 'Configurado, mas o evento S-1000 (empregador) ainda não foi aceito.'
+              : `Ambiente: ${st.ambiente === 'producao' ? 'Produção' : 'Homologação'} · ${st.provider || 'gateway'}.`}
+          </p>
+        </div>
+        <div className={`card p-4 border ${LIGHT[trabColor].bg}`}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><Users size={15} /> Cadastros eSocial</p>
+            <Semaforo color={trabColor} />
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            {st.trabalhadores_total
+              ? `${st.trabalhadores_total - trabPend.length}/${st.trabalhadores_total} trabalhadores com cadastro completo.`
+              : 'Nenhum trabalhador com dados eSocial preenchidos.'}
+          </p>
+        </div>
+        <div className={`card p-4 border ${LIGHT[docColor].bg}`}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><FileText size={15} /> Documentos</p>
+            <Semaforo color={docColor}>{employee ? undefined : 'Selecione'}</Semaforo>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            {employee ? `${docsPresent}/${REQUIRED_DOCS.length} documentos obrigatórios de ${employee.name.split(' ')[0]}.`
+              : 'Selecione um colaborador acima para ver o checklist.'}
+          </p>
+        </div>
+      </div>
+
+      {/* Eventos eSocial */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><Send size={15} /> Eventos enviados ao governo</p>
+          <Link to="/settings" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+            Configurar eSocial <ExternalLink size={11} />
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            ['Aceitos', eventos.sucesso || 0, 'text-green-700'],
+            ['Aguardando retorno', pendentesEnv, 'text-amber-600'],
+            ['Rejeitados', rejeitados, 'text-red-600'],
+            ['Total', Object.values(eventos).reduce((a, b) => a + b, 0), 'text-gray-700'],
+          ].map(([l, v, cls]) => (
+            <div key={l} className="text-center bg-gray-50 rounded-xl py-3">
+              <p className={`text-xl font-bold ${cls}`}>{v}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{l}</p>
+            </div>
+          ))}
+        </div>
+        {rejeitados > 0 && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3">
+            {rejeitados} evento(s) rejeitado(s) pelo governo — corrija o cadastro e reenvie na tela do eSocial.
+          </p>
+        )}
+      </div>
+
+      {/* Checklist de documentos do colaborador */}
+      {employee && (
+        <div className="card p-4">
+          <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+            <FileText size={15} /> Checklist de documentos — {employee.name}
+          </p>
+          <div className="space-y-2">
+            {REQUIRED_DOCS.map(d => {
+              const ok = docTypes.has(d.type);
+              return (
+                <div key={d.type} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+                  <span className="flex items-center gap-2 text-sm text-gray-700">
+                    {ok ? <CheckCircle size={15} className="text-green-500" /> : <AlertCircle size={15} className="text-red-400" />}
+                    {d.label}
+                  </span>
+                  <Semaforo color={ok ? 'green' : 'red'}>{ok ? 'Anexado' : 'Faltando'}</Semaforo>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-gray-400 mt-3">
+            Anexe os documentos na aba <Link to="/hr/documentos" className="text-indigo-600 hover:underline">Documentos</Link> ou na ficha do colaborador.
+          </p>
+        </div>
+      )}
+
+      {/* Trabalhadores com pendências eSocial */}
+      {trabPend.length > 0 && (
+        <div className="card p-4">
+          <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+            <AlertCircle size={15} className="text-amber-500" /> Cadastros eSocial incompletos
+          </p>
+          <div className="space-y-2">
+            {trabPend.map(t => (
+              <div key={t.id} className="flex items-start justify-between gap-3 py-1.5 border-b border-gray-50 last:border-0">
+                <span className="text-sm text-gray-700">{t.nome || 'Sem nome'}</span>
+                <span className="text-xs text-amber-600 text-right">{(t.pendencias || []).slice(0, 3).join(' · ')}{(t.pendencias || []).length > 3 ? '…' : ''}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ══ LAYOUT PRINCIPAL ══════════════════════════════════════
 function HRLayoutInner() {
   const { employee, setEmployee } = useHR();
@@ -1249,7 +1419,7 @@ function HRLayoutInner() {
           </div>
           <div>
             <h1 className="page-title">Recursos Humanos</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Ponto · Férias · Folha · Documentos</p>
+            <p className="text-sm text-gray-500 mt-0.5">Ponto · Férias · Folha · Documentos · Conformidade</p>
           </div>
         </div>
       </div>
