@@ -16,6 +16,8 @@ const {
 } = require('../lib/rateioLib');
 
 const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
+// R$ com 4 casas, para exibir custo unitário dentro das fórmulas
+const fmt4 = v => `R$ ${(Number(v) || 0).toFixed(4).replace('.', ',')}`;
 const userName = req => req.user?.name || req.user?.email || null;
 
 // ── Despesas Fixas: visão geral + histórico ───────────────
@@ -389,8 +391,25 @@ router.post('/product/:id/recalcular', async (req, res) => {
   }
 });
 
-// Custo de cada item de uma venda (mapa ficha → cadastro)
-async function saleCosts(tenantId, sales, ov) {
+// Comissão % de cada vendedor (RH) → mapa por nome
+async function sellerPctMap(tenantId) {
+  try {
+    const { data } = await supabase.from('CLIENTES')
+      .select('name, admission_data').eq('tenant_id', tenantId).eq('type', 'CO');
+    const map = {};
+    for (const e of data || []) {
+      const pct = Number(e.admission_data?.commission_pct) || 0;
+      if (pct > 0) map[String(e.name).trim().toLowerCase()] = pct;
+    }
+    return map;
+  } catch { return {}; }
+}
+
+// Custo de cada item de uma venda. TUDO vem dos módulos:
+// produto (ficha/cadastro) · fixo (rateio) · variável (despesas variáveis)
+// · comissão (RH × vendedor do cliente) · imposto (Fiscal)
+async function saleCosts(tenantId, sales, ov, ctx = {}) {
+  const { variableUnit = 0, sellers = {}, defaultCommission = 0 } = ctx;
   const costs = await productCostMap(tenantId, ov.overhead_unit, ov.tax_pct_default);
   const productIds = [...new Set(sales.flatMap(s => (s.VENDA_ITENS || []).map(i => i.product_id)).filter(Boolean))];
   let priceMap = {};
@@ -407,50 +426,110 @@ async function saleCosts(tenantId, sales, ov) {
       qty += q;
       custo += costs.get(it.product_id, priceMap[it.product_id]).cost_unit * q;
     }
+    const seller = s.CLIENTES?.vendedor || null;
+    const pct = seller ? (sellers[String(seller).trim().toLowerCase()] ?? defaultCommission) : defaultCommission;
+    const comissao = receita * pct / 100;
+    const variavel = variableUnit * qty;
     const impostos = receita * ov.tax_pct_default / 100;
-    const lucro = receita - custo - impostos;
+    const lucro = receita - custo - impostos - comissao - variavel;
     return {
       id: s.id, number: s.number, date: s.created_at, status: s.status,
       customer: s.CLIENTES?.name || null,
+      customer_id: s.customer_id || null,
+      seller,
+      seller_pct: pct,
       quantity: qty,
       receita: r2(receita), custos: r2(custo), impostos: r2(impostos),
+      comissao: r2(comissao), variavel: r2(variavel),
       lucro: r2(lucro),
       margem_pct: receita > 0 ? Math.round((lucro / receita) * 1000) / 10 : 0,
     };
   });
 }
 
+// Contexto de custos que vem dos outros módulos (usado por /orders e /order)
+async function orderCtx(tenantId, month) {
+  const [ov, labor, commissions, marketing, extras, cfg, sellers] = await Promise.all([
+    fixedOverview(tenantId), productionLabor(tenantId),
+    commissionBySeller(tenantId, month), marketingSpend(tenantId, month),
+    extraVariableCosts(tenantId, month), getConfig(tenantId), sellerPctMap(tenantId),
+  ]);
+  const units = ov.monthly_units;
+  // custo variável/un SEM comissão (a comissão é aplicada por pedido)
+  const variableUnit = units > 0
+    ? (labor.total + marketing.total + extras.total) / units
+    : 0;
+  return {
+    ov, sellers,
+    variableUnit: Math.round(variableUnit * 10000) / 10000,
+    defaultCommission: Number(cfg.variable_costs?.commission_pct) || 0,
+    parts: { labor: labor.total, marketing: marketing.total, extras: extras.total, commissions: commissions.total },
+  };
+}
+
 // ── Rateio por Pedido: lucro real de cada venda ───────────
+// Filtros: período (month OU start/end), vendedor, cliente e produto.
 router.get('/orders', async (req, res) => {
   const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : new Date().toISOString().slice(0, 7);
+  const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
   try {
-    const start = `${month}-01`;
-    const end = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1).toISOString().slice(0, 10);
-    const ov = await fixedOverview(req.tenantId);
-    const { data: sales, error } = await supabase.from('VENDAS')
-      .select('id, number, total, status, created_at, CLIENTES(name), VENDA_ITENS(product_id, quantity)')
+    const start = isDate(req.query.start) ? req.query.start : `${month}-01`;
+    const end = isDate(req.query.end)
+      ? new Date(new Date(req.query.end).getTime() + 86400000).toISOString().slice(0, 10) // fim inclusivo
+      : new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1).toISOString().slice(0, 10);
+
+    const ctx = await orderCtx(req.tenantId, month);
+
+    let q = supabase.from('VENDAS')
+      .select('id, number, total, status, created_at, customer_id, CLIENTES(name, vendedor), VENDA_ITENS(product_id, quantity)')
       .eq('tenant_id', req.tenantId)
       .neq('status', 'cancelled')
       .gte('created_at', start).lt('created_at', end)
       .order('created_at', { ascending: false })
-      .limit(500);
+      .limit(1000);
+    if (req.query.customer_id) q = q.eq('customer_id', req.query.customer_id);
+    const { data: sales, error } = await q;
     if (error) throw error;
 
-    const rows = await saleCosts(req.tenantId, sales || [], ov);
+    let list = sales || [];
+    // Produto: mantém só pedidos que contêm o produto escolhido
+    if (req.query.product_id) {
+      list = list.filter(s => (s.VENDA_ITENS || []).some(i => i.product_id === req.query.product_id));
+    }
+    // Vendedor: vem do cadastro do cliente
+    if (req.query.seller) {
+      const want = String(req.query.seller).trim().toLowerCase();
+      list = list.filter(s => String(s.CLIENTES?.vendedor || '').trim().toLowerCase() === want);
+    }
+
+    const rows = await saleCosts(req.tenantId, list, ctx.ov, ctx);
     const totals = rows.reduce((a, o) => ({
       receita: a.receita + o.receita, custos: a.custos + o.custos,
-      impostos: a.impostos + o.impostos, lucro: a.lucro + o.lucro,
+      impostos: a.impostos + o.impostos, comissao: a.comissao + o.comissao,
+      variavel: a.variavel + o.variavel, lucro: a.lucro + o.lucro,
       quantity: a.quantity + o.quantity,
-    }), { receita: 0, custos: 0, impostos: 0, lucro: 0, quantity: 0 });
+    }), { receita: 0, custos: 0, impostos: 0, comissao: 0, variavel: 0, lucro: 0, quantity: 0 });
+
+    // Opções dos filtros — todas vindas dos módulos, nada digitado
+    const { data: sellersRaw } = await supabase.from('CLIENTES')
+      .select('vendedor').eq('tenant_id', req.tenantId).not('vendedor', 'is', null).limit(2000);
+    const sellers = [...new Set((sellersRaw || []).map(c => String(c.vendedor).trim()).filter(Boolean))].sort();
+    const customers = [...new Map((sales || [])
+      .filter(s => s.customer_id && s.CLIENTES?.name)
+      .map(s => [s.customer_id, { id: s.customer_id, name: s.CLIENTES.name }])).values()]
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 
     res.json({
-      month, orders: rows,
+      month, start, orders: rows,
+      variable_unit: ctx.variableUnit,
       totals: {
         receita: r2(totals.receita), custos: r2(totals.custos),
-        impostos: r2(totals.impostos), lucro: r2(totals.lucro),
+        impostos: r2(totals.impostos), comissao: r2(totals.comissao),
+        variavel: r2(totals.variavel), lucro: r2(totals.lucro),
         quantity: totals.quantity,
         margem_pct: totals.receita > 0 ? Math.round((totals.lucro / totals.receita) * 1000) / 10 : 0,
       },
+      filters: { sellers, customers },
     });
   } catch (err) {
     console.error('[rateio/orders]', err.message);
@@ -458,15 +537,55 @@ router.get('/orders', async (req, res) => {
   }
 });
 
+// POST /rateio/order/:id/recalcular
+// Atualiza as fichas dos produtos do pedido com o rateio ATUAL e
+// devolve o pedido recalculado. Nada é digitado — só reprocessado.
+router.post('/order/:id/recalcular', async (req, res) => {
+  try {
+    const ov = await fixedOverview(req.tenantId);
+    const { data: sale } = await supabase.from('VENDAS')
+      .select('id, VENDA_ITENS(product_id)')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!sale) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const ids = [...new Set((sale.VENDA_ITENS || []).map(i => i.product_id).filter(Boolean))];
+    let atualizadas = 0;
+    if (ids.length) {
+      const { data: sheets } = await supabase.from('PRECIFICACOES')
+        .select('*').eq('tenant_id', req.tenantId).eq('is_active', true).in('product_id', ids);
+      for (const sheet of sheets || []) {
+        const c = computeSheet({ ...sheet, overhead_unit: ov.overhead_unit });
+        const { error } = await supabase.from('PRECIFICACOES').update({
+          overhead_unit: ov.overhead_unit,
+          cost_direct: c.cost_direct, cost_subtotal: c.cost_subtotal, cost_unit: c.cost_unit,
+          price_min: c.price_min, price_ideal: c.price_ideal, price_premium: c.price_premium,
+          updated_at: new Date().toISOString(),
+        }).eq('id', sheet.id).eq('tenant_id', req.tenantId);
+        if (!error) atualizadas++;
+      }
+    }
+    audit(req, 'update', 'rateio_pedido_recalculo', req.params.id, { fichas: atualizadas });
+    res.json({
+      ok: true, fichas_atualizadas: atualizadas, produtos: ids.length,
+      overhead_unit: ov.overhead_unit,
+    });
+  } catch (err) {
+    console.error('[rateio/order/recalcular]', err.message);
+    res.status(500).json({ error: 'Erro ao recalcular o pedido' });
+  }
+});
+
 // Detalhe de um pedido (item a item)
 router.get('/order/:id', async (req, res) => {
   try {
-    const ov = await fixedOverview(req.tenantId);
     const { data: sale, error } = await supabase.from('VENDAS')
-      .select('id, number, total, subtotal, discount, freight, status, created_at, CLIENTES(name), VENDA_ITENS(product_id, product_name, quantity, unit_price, total)')
+      .select('id, number, total, subtotal, discount, freight, status, created_at, CLIENTES(name, vendedor), VENDA_ITENS(product_id, product_name, quantity, unit_price, total)')
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
     if (error) throw error;
     if (!sale) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const ctx = await orderCtx(req.tenantId, String(sale.created_at || '').slice(0, 7));
+    const ov = ctx.ov;
 
     const costs = await productCostMap(req.tenantId, ov.overhead_unit, ov.tax_pct_default);
     const productIds = [...new Set((sale.VENDA_ITENS || []).map(i => i.product_id).filter(Boolean))];
@@ -494,17 +613,46 @@ router.get('/order/:id', async (req, res) => {
 
     const receita = Number(sale.total) || 0;
     const custos = items.reduce((s, i) => s + i.custo, 0);
+    const qtdTotal = items.reduce((s, i) => s + i.quantity, 0);
     const impostos = receita * ov.tax_pct_default / 100;
+
+    // Comissão do vendedor do cliente + variáveis rateados por unidade
+    const seller = sale.CLIENTES?.vendedor || null;
+    const pct = seller ? (ctx.sellers[String(seller).trim().toLowerCase()] ?? ctx.defaultCommission) : ctx.defaultCommission;
+    const comissao = receita * pct / 100;
+    const variavel = ctx.variableUnit * qtdTotal;
+    const lucro = receita - custos - impostos - comissao - variavel;
+
+    // ORIGEM de cada custo — tudo puxado de módulo, nada digitado aqui
+    const origens = [
+      { key: 'produtos', label: 'Custo dos produtos', value: r2(custos),
+        origin: 'Formação de Preço / Cadastro', link: '/pricing/formacao',
+        formula: 'custo unitário da ficha (ou cadastro + rateio) × quantidade' },
+      { key: 'variavel', label: 'Custos variáveis rateados', value: r2(variavel),
+        origin: 'Despesas Variáveis', link: '/rateio/despesas-variaveis',
+        formula: `${fmt4(ctx.variableUnit)}/un × ${qtdTotal} un (mão de obra + marketing + extras ÷ produção)` },
+      { key: 'comissao', label: 'Comissão do vendedor', value: r2(comissao),
+        origin: seller ? `RH — ${seller}` : 'Despesas Variáveis (taxa padrão)', link: '/employees',
+        formula: `${String(pct).replace('.', ',')}% sobre a receita${seller ? ` · vendedor do cliente` : ' · sem vendedor definido'}` },
+      { key: 'impostos', label: 'Impostos', value: r2(impostos),
+        origin: ov.tax_source === 'fiscal' ? 'Fiscal' : 'Precificação', link: '/fiscal',
+        formula: `${String(ov.tax_pct_default).replace('.', ',')}% sobre a receita` },
+    ];
+
     res.json({
       order: {
         id: sale.id, number: sale.number, date: sale.created_at, status: sale.status,
         customer: sale.CLIENTES?.name || null,
-        quantity: items.reduce((s, i) => s + i.quantity, 0),
+        seller, seller_pct: pct,
+        quantity: qtdTotal,
       },
       items,
+      origens,
       receita: r2(receita), custos: r2(custos), impostos: r2(impostos),
-      lucro: r2(receita - custos - impostos),
-      margem_pct: receita > 0 ? Math.round(((receita - custos - impostos) / receita) * 1000) / 10 : 0,
+      comissao: r2(comissao), variavel: r2(variavel),
+      variable_unit: ctx.variableUnit,
+      lucro: r2(lucro),
+      margem_pct: receita > 0 ? Math.round((lucro / receita) * 1000) / 10 : 0,
     });
   } catch (err) {
     console.error('[rateio/order]', err.message);
