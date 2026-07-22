@@ -12,7 +12,7 @@ const {
   VARIABLE_DEFAULTS, getConfig, saveConfig,
   fixedOverview, snapshotRateio, computeSheet, productCostMap,
   syncEmployeesToFixed, productionLabor, commissionBySeller,
-  marketingSpend, extraVariableCosts,
+  marketingSpend, extraVariableCosts, ensureSnapshot,
 } = require('../lib/rateioLib');
 
 const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -845,6 +845,103 @@ router.put('/goals', async (req, res) => {
   } catch (err) {
     console.error('[rateio/goals]', err.message);
     res.status(500).json({ error: 'Erro ao salvar a meta' });
+  }
+});
+
+// ── Histórico de Rateios ──────────────────────────────────
+// Carrega sozinho: se o mês corrente ainda não tem snapshot, ou se os
+// números mudaram, grava uma nova versão antes de devolver a lista.
+router.get('/historico', async (req, res) => {
+  try {
+    await ensureSnapshot(req.tenantId, req.user?.name || req.user?.email || null);
+    const cfg = await getConfig(req.tenantId);
+    let history = Array.isArray(cfg.rateio_history) ? [...cfg.rateio_history] : [];
+
+    // Filtros de período
+    if (/^\d{4}-\d{2}$/.test(req.query.start || '')) history = history.filter(h => h.period >= req.query.start);
+    if (/^\d{4}-\d{2}$/.test(req.query.end || '')) history = history.filter(h => h.period <= req.query.end);
+
+    // Centro de custo / categoria: recalcula o período só com o que casa
+    const cc = req.query.cost_center, cat = req.query.category;
+    if (cc || cat) {
+      history = history.map(h => {
+        const itens = (h.breakdown?.items || []).filter(i =>
+          (!cc || (i.cost_center || 'Sem centro') === cc) &&
+          (!cat || (i.category || 'Outros') === cat));
+        const total = r2(itens.reduce((s, i) => s + (Number(i.amount) || 0), 0));
+        const prod = Number(h.production) || 0;
+        return {
+          ...h, filtrado: true,
+          total,
+          per_unit: prod > 0 ? Math.round((total / prod) * 10000) / 10000 : 0,
+          breakdown: { ...h.breakdown, items: itens },
+        };
+      }).filter(h => (h.breakdown?.items || []).length > 0);
+    }
+
+    // Só a última versão de cada período, com as anteriores anexadas
+    const porPeriodo = new Map();
+    for (const h of history) {
+      const cur = porPeriodo.get(h.period);
+      if (!cur || (Number(h.version) || 1) > (Number(cur.version) || 1)) porPeriodo.set(h.period, h);
+    }
+    const linhas = [...porPeriodo.values()]
+      .sort((a, b) => b.period.localeCompare(a.period))
+      .map(h => ({
+        ...h,
+        versoes: history.filter(x => x.period === h.period)
+          .sort((a, b) => (Number(b.version) || 1) - (Number(a.version) || 1))
+          .map(x => ({ version: x.version || 1, total: x.total, per_unit: x.per_unit, production: x.production, user_name: x.user_name, created_at: x.created_at, reason: x.reason })),
+      }));
+
+    // Alerta de variação relevante no rateio por unidade (>= 10%)
+    for (let i = 0; i < linhas.length; i++) {
+      const ant = linhas[i + 1];
+      if (ant && Number(ant.per_unit) > 0) {
+        const varia = ((linhas[i].per_unit - ant.per_unit) / ant.per_unit) * 100;
+        linhas[i].variacao_pct = Math.round(varia * 10) / 10;
+        linhas[i].alerta = Math.abs(varia) >= 10;
+      } else {
+        linhas[i].variacao_pct = null; linhas[i].alerta = false;
+      }
+    }
+
+    // Opções de filtro vindas dos próprios snapshots
+    const todosItens = (Array.isArray(cfg.rateio_history) ? cfg.rateio_history : [])
+      .flatMap(h => h.breakdown?.items || []);
+    const centros = [...new Set(todosItens.map(i => i.cost_center || 'Sem centro'))].sort();
+    const categorias = [...new Set(todosItens.map(i => i.category || 'Outros'))].sort();
+
+    res.json({
+      historico: linhas,
+      filtros: { cost_centers: centros, categories: categorias },
+      atualizacao: {
+        ultimo_snapshot: linhas[0]?.created_at || null,
+        carregado_em: new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    console.error('[rateio/historico]', err.message);
+    res.status(500).json({ error: 'Erro ao carregar o histórico de rateios' });
+  }
+});
+
+// POST /rateio/historico/recalcular — grava uma nova versão do período
+router.post('/historico/recalcular', async (req, res) => {
+  const period = /^\d{4}-\d{2}$/.test(req.body?.period || '')
+    ? req.body.period : new Date().toISOString().slice(0, 7);
+  try {
+    const history = await snapshotRateio(
+      req.tenantId, period,
+      req.user?.name || req.user?.email || null,
+      { reason: 'recalculo' },
+    );
+    const nova = (history || []).find(h => h.period === period);
+    audit(req, 'update', 'rateio_historico', period, { version: nova?.version });
+    res.json({ ok: true, period, version: nova?.version || 1, per_unit: nova?.per_unit, total: nova?.total });
+  } catch (err) {
+    console.error('[rateio/historico/recalcular]', err.message);
+    res.status(500).json({ error: 'Erro ao recalcular o rateio' });
   }
 });
 

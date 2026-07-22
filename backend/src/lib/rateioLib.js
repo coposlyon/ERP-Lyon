@@ -389,25 +389,87 @@ async function fixedOverview(tenantId) {
 }
 
 // Snapshot do rateio no histórico (1 por período; regrava se já existir)
-async function snapshotRateio(tenantId, period, userName) {
+// Grava um snapshot do rateio COM a composição completa daquele momento.
+// Mantém versões: salvar de novo no mesmo mês cria a versão seguinte,
+// preservando o que foi calculado antes (auditoria).
+async function snapshotRateio(tenantId, period, userName, opts = {}) {
   if (!/^\d{4}-\d{2}$/.test(period || '')) return null;
   const ov = await fixedOverview(tenantId);
   const cfg = await getConfig(tenantId);
+
+  // Composição: só despesas ativas (as que formaram o total)
+  const ativas = (ov.items || []).filter(f => f.is_active !== false);
+  const somaPor = campo => {
+    const m = new Map();
+    for (const f of ativas) {
+      const k = f[campo] || (campo === 'category' ? 'Outros' : 'Sem centro');
+      m.set(k, (m.get(k) || 0) + (Number(f.amount) || 0));
+    }
+    return [...m.entries()].map(([name, total]) => ({ name, total: round2(total) }))
+      .sort((a, b) => b.total - a.total);
+  };
+
+  const history = Array.isArray(cfg.rateio_history) ? [...cfg.rateio_history] : [];
+  const doPeriodo = history.filter(h => h.period === period);
+  const versao = doPeriodo.length
+    ? Math.max(...doPeriodo.map(h => Number(h.version) || 1)) + 1
+    : 1;
+
   const entry = {
+    id: `${period}-v${versao}`,
     period,
+    version: versao,
     production: ov.monthly_units,
-    total: Math.round(ov.total * 100) / 100,
+    production_source: ov.monthly_units_source || null,
+    total: round2(ov.total),
     per_unit: ov.overhead_unit,
     method: ov.rateio_method,
+    tax_pct: ov.tax_pct_default,
+    tax_source: ov.tax_source || null,
     user_name: userName || null,
     created_at: new Date().toISOString(),
+    reason: opts.reason || 'manual',
+    breakdown: {
+      by_category: somaPor('category'),
+      by_cost_center: somaPor('cost_center'),
+      items: ativas.map(f => ({
+        name: f.name,
+        notes: f.notes || null,
+        category: f.category || 'Outros',
+        cost_center: f.cost_center || null,
+        origin: f.origin || (f.employee_id ? 'rh' : 'manual'),
+        periodicity: f.periodicity || 'mensal',
+        amount: round2(f.amount),
+      })).sort((a, b) => b.amount - a.amount),
+    },
   };
-  const history = (Array.isArray(cfg.rateio_history) ? cfg.rateio_history : [])
-    .filter(h => h.period !== period);
+
   history.push(entry);
-  history.sort((a, b) => b.period.localeCompare(a.period));
-  await saveConfig(tenantId, { rateio_history: history.slice(0, 36) });
-  return history.slice(0, 36);
+  // ordena por período (desc) e, dentro do período, versão (desc)
+  history.sort((a, b) => b.period.localeCompare(a.period) || (Number(b.version) || 1) - (Number(a.version) || 1));
+  const cortado = history.slice(0, 120);
+  await saveConfig(tenantId, { rateio_history: cortado });
+  return cortado;
+}
+
+// Devolve o histórico, criando o snapshot do mês corrente se ainda não
+// existir ou se os números mudaram — assim a tela nunca depende de
+// alguém lembrar de salvar.
+async function ensureSnapshot(tenantId, userName) {
+  const cfg = await getConfig(tenantId);
+  const history = Array.isArray(cfg.rateio_history) ? cfg.rateio_history : [];
+  const period = new Date().toISOString().slice(0, 7);
+  const ov = await fixedOverview(tenantId);
+
+  const ultima = history.filter(h => h.period === period)
+    .sort((a, b) => (Number(b.version) || 1) - (Number(a.version) || 1))[0];
+
+  const mudou = !ultima
+    || round2(ultima.total) !== round2(ov.total)
+    || Number(ultima.production) !== Number(ov.monthly_units);
+
+  if (mudou) return await snapshotRateio(tenantId, period, userName, { reason: ultima ? 'auto-alteracao' : 'auto-inicial' });
+  return history;
 }
 
 // Mesmo cálculo da tela de Formação de Preço (fonte da verdade no servidor)
@@ -478,7 +540,7 @@ async function productCostMap(tenantId, overheadUnit, taxPctDefault) {
 module.exports = {
   DEFAULTS, VARIABLE_DEFAULTS,
   getConfig, saveConfig, autoMonthlyUnits,
-  fixedExpenses, fixedOverview, snapshotRateio, syncEmployeesToFixed,
+  fixedExpenses, fixedOverview, snapshotRateio, ensureSnapshot, syncEmployeesToFixed,
   productionLabor, isProductionSector, commissionBySeller, producedUnits,
   marketingSpend, extraVariableCosts,
   computeSheet, productCostMap,
