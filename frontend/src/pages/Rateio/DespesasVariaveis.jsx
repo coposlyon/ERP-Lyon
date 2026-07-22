@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Loader2, Save, Truck, Landmark, Store, Info, HardHat,
-  Users, DollarSign, RefreshCw, X,
+  Users, DollarSign, RefreshCw, X, Megaphone, Layers, ArrowRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -118,6 +118,8 @@ export default function DespesasVariaveis() {
   // ── Agregados p/ KPIs e totais ──
   const labor = data?.prod_labor || { items: [], total: 0, per_unit: 0, monthly_units: 0 };
   const comm = data?.commissions || { items: [], total: 0 };
+  const mkt = data?.marketing || { items: [], total: 0, per_unit: 0 };
+  const extras = data?.extras || { items: [], total: 0, per_unit: 0 };
   const commSales = comm.items.reduce((s, c) => s + (Number(c.sales) || 0), 0);
   const commTotal = comm.items.reduce((s, c) => s + (Number(c.commission) || 0), 0);
   const commAvgPct = commSales > 0 ? (commTotal / commSales) * 100 : 0;
@@ -345,6 +347,126 @@ export default function DespesasVariaveis() {
           <p className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
             Buscados do módulo de <Link to="/purchases" className="text-primary-600 hover:underline">Compras</Link>. O frete entra no custo do produto pela Formação de Preço.
           </p>
+        </div>
+      </div>
+
+      {/* 7 e 8 — automáticos */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {/* 7. MARKETING VARIÁVEL */}
+        <div className="card overflow-hidden">
+          <div className="card-header flex items-center justify-between">
+            <SectionTitle icon={Megaphone} n="7">Marketing Variável<span className="ml-1">(Automático)</span></SectionTitle>
+            {mkt.total > 0 && <span className="text-xs text-gray-500">{fmtBRL4(mkt.per_unit)}/un</span>}
+          </div>
+          <p className="px-4 pt-2 text-xs text-gray-400">
+            Gasto real com anúncios lançado no Financeiro (Meta, Google, impulsionamentos). O marketing fixo continua nas Despesas Fixas.
+          </p>
+          <div className="max-h-56 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase text-gray-500 border-b border-gray-100">
+                  <th className="px-4 py-2">Lançamento</th>
+                  <th className="px-4 py-2">Conta</th>
+                  <th className="px-4 py-2">Data</th>
+                  <th className="px-4 py-2 text-right">Valor (R$)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mkt.items.map(i => (
+                  <tr key={i.id} className="border-b border-gray-50">
+                    <td className="px-4 py-2 font-medium text-gray-900">{i.description}</td>
+                    <td className="px-4 py-2 text-gray-500">{i.account || '—'}</td>
+                    <td className="px-4 py-2 text-gray-500">{dBR(i.date)}</td>
+                    <td className="px-4 py-2 text-right font-medium">{fmtBRL(i.amount)}</td>
+                  </tr>
+                ))}
+                {mkt.items.length === 0 && (
+                  <tr><td colSpan={4} className="text-center py-8 text-sm text-gray-400">
+                    Nenhum gasto com anúncio no mês. Lance a fatura do Meta/Google no Financeiro que ela aparece aqui.
+                  </td></tr>
+                )}
+              </tbody>
+              {mkt.items.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-gray-200 bg-gray-50/60">
+                    <td className="px-4 py-2.5 font-bold text-gray-900 uppercase text-xs" colSpan={3}>Total Marketing Variável</td>
+                    <td className="px-4 py-2.5 text-right font-bold text-green-600">{fmtBRL(mkt.total)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+          <p className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
+            Puxado do <Link to="/financial" className="text-primary-600 hover:underline">Financeiro</Link> — contas a pagar do mês classificadas como anúncio/publicidade.
+          </p>
+        </div>
+
+        {/* 8. CUSTOS VARIÁVEIS EXTRAS */}
+        <div className="card overflow-hidden">
+          <div className="card-header flex items-center justify-between">
+            <SectionTitle icon={Layers} n="8">Custos Variáveis Extras<span className="ml-1">(Automático)</span></SectionTitle>
+            {extras.total > 0 && <span className="text-xs text-gray-500">{fmtBRL4(extras.per_unit)}/un</span>}
+          </div>
+          <p className="px-4 pt-2 text-xs text-gray-400">
+            Perdas de produção, frete das vendas e demais lançamentos variáveis — todos apurados nos módulos de origem.
+          </p>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[11px] uppercase text-gray-500 border-b border-gray-100">
+                <th className="px-4 py-2">Custo</th>
+                <th className="px-4 py-2">Origem</th>
+                <th className="px-4 py-2 text-right">Valor (R$)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {extras.items.map(i => (
+                <tr key={i.label} className="border-b border-gray-50">
+                  <td className="px-4 py-2">
+                    <span className="block font-medium text-gray-900">{i.label}</span>
+                    <span className="text-xs text-gray-400">{i.hint}</span>
+                  </td>
+                  <td className="px-4 py-2 text-gray-500">{i.source}</td>
+                  <td className="px-4 py-2 text-right font-medium">{fmtBRL(i.value)}</td>
+                </tr>
+              ))}
+              {extras.items.length === 0 && (
+                <tr><td colSpan={3} className="text-center py-8 text-sm text-gray-400">
+                  Nenhum custo variável extra no mês.
+                </td></tr>
+              )}
+            </tbody>
+            {extras.items.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 bg-gray-50/60">
+                  <td className="px-4 py-2.5 font-bold text-gray-900 uppercase text-xs" colSpan={2}>Total Extras</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-green-600">{fmtBRL(extras.total)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+          <p className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
+            Depreciação, manutenção e investimentos <b>não entram aqui</b> — serão tratados no módulo de Engenharia de Custos e Ativos.
+          </p>
+        </div>
+      </div>
+
+      {/* Para onde esse módulo alimenta */}
+      <div className="card p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+            <ArrowRight size={15} className="text-primary-500" /> Custo variável por unidade
+          </span>
+          <span className="text-xl font-extrabold text-green-600">{fmtBRL4(data?.variable_unit)}</span>
+          <span className="text-xs text-gray-400">
+            (mão de obra + comissões + marketing + extras) ÷ {fmtQty(data?.monthly_units)} un
+          </span>
+          <span className="flex-1" />
+          <span className="text-xs text-gray-500">Alimenta:</span>
+          <Link to="/pricing/formacao" className="text-xs text-primary-600 hover:underline">Formação de Preço</Link>
+          <span className="text-gray-300">·</span>
+          <Link to="/rateio/pedido" className="text-xs text-primary-600 hover:underline">Rateio por Pedido</Link>
+          <span className="text-gray-300">·</span>
+          <Link to="/rateio/rentabilidade" className="text-xs text-primary-600 hover:underline">Painel de Rentabilidade</Link>
         </div>
       </div>
 

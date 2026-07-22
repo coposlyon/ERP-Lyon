@@ -167,6 +167,105 @@ async function commissionBySeller(tenantId, month) {
   } catch { return { month: m, items: [], total: 0 }; }
 }
 
+// Palavras que identificam gasto com anúncio/tráfego pago
+const MKT_RX = /marketing|publicidad|an[úu]ncio|ads|tr[áa]fego|meta|google|instagram|facebook|impulsion/i;
+// Lançamentos que JÁ são contabilizados em outro bloco — não podem
+// entrar em "outros" para não contar duas vezes
+const DUP_RX = /comiss[ãa]o|sal[áa]rio|folha|imposto|tributo|das\b|simples|frete/i;
+
+// Marketing VARIÁVEL: gasto real de anúncio lançado no Financeiro.
+// (o marketing fixo continua nas Despesas Fixas — aqui é só o variável)
+async function marketingSpend(tenantId, month) {
+  const { m, start, end } = monthBounds(month);
+  const run = sel => supabase.from('LANCAMENTOS').select(sel)
+    .eq('tenant_id', tenantId).eq('type', 'payable')
+    .neq('status', 'cancelled')
+    .is('fixed_expense_id', null)          // despesa fixa não entra aqui
+    .gte('due_date', start).lt('due_date', end)
+    .limit(1000);
+  try {
+    // com plano de contas (ideal) → sem plano de contas (fallback)
+    let { data, error } = await run('id, description, amount, paid_amount, status, due_date, PLANO_CONTAS(name)');
+    if (error) ({ data, error } = await run('id, description, amount, paid_amount, status, due_date'));
+    if (error) throw error;
+
+    const items = (data || [])
+      .filter(l => MKT_RX.test(`${l.PLANO_CONTAS?.name || ''} ${l.description || ''}`))
+      .map(l => ({
+        id: l.id,
+        description: l.description || 'Anúncio',
+        account: l.PLANO_CONTAS?.name || null,
+        amount: Number(l.amount) || 0,
+        paid: Number(l.paid_amount) || 0,
+        date: l.due_date,
+      }));
+    return { month: m, items, total: round2(items.reduce((s, i) => s + i.amount, 0)) };
+  } catch { return { month: m, items: [], total: 0 }; }
+}
+
+// Custos variáveis extras, todos automáticos:
+//   perdas de produção · frete pago nas vendas · demais lançamentos variáveis
+async function extraVariableCosts(tenantId, month) {
+  const { m, start, end } = monthBounds(month);
+  const out = { month: m, perdas: 0, frete_venda: 0, outros: 0, items: [], total: 0 };
+
+  // 1) Perdas de produção (qtd perdida × custo do produto)
+  try {
+    const { data: perdas } = await supabase.from('PRODUCAO_PERDAS')
+      .select('quantity, product_id, product_name, created_at')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', start).lt('created_at', end).limit(2000);
+    const ids = [...new Set((perdas || []).map(p => p.product_id).filter(Boolean))];
+    let costs = {};
+    if (ids.length) {
+      const { data: prods } = await supabase.from('PRODUTOS')
+        .select('id, cost_price').eq('tenant_id', tenantId).in('id', ids);
+      costs = Object.fromEntries((prods || []).map(p => [p.id, Number(p.cost_price) || 0]));
+    }
+    const qty = (perdas || []).reduce((s, p) => s + (Number(p.quantity) || 0), 0);
+    out.perdas = round2((perdas || []).reduce((s, p) =>
+      s + (Number(p.quantity) || 0) * (costs[p.product_id] || 0), 0));
+    if (out.perdas > 0 || qty > 0) {
+      out.items.push({ label: 'Perdas de produção', value: out.perdas, hint: `${qty} un perdidas`, source: 'Produção' });
+    }
+  } catch { /* módulo de perdas ausente */ }
+
+  // 2) Frete pago nas vendas do mês
+  try {
+    const { data: vendas } = await supabase.from('VENDAS')
+      .select('freight').eq('tenant_id', tenantId)
+      .neq('status', 'cancelled')
+      .gte('created_at', start).lt('created_at', end).limit(2000);
+    out.frete_venda = round2((vendas || []).reduce((s, v) => s + (Number(v.freight) || 0), 0));
+    if (out.frete_venda > 0) {
+      out.items.push({ label: 'Frete das vendas', value: out.frete_venda, hint: 'frete cobrado nos pedidos', source: 'Vendas' });
+    }
+  } catch { /* coluna freight ausente */ }
+
+  // 3) Demais lançamentos variáveis do Financeiro (exclui o que já é
+  //    contado em outro bloco: comissão, salário, imposto, frete, marketing)
+  try {
+    const run = sel => supabase.from('LANCAMENTOS').select(sel)
+      .eq('tenant_id', tenantId).eq('type', 'payable')
+      .neq('status', 'cancelled').is('fixed_expense_id', null)
+      .gte('due_date', start).lt('due_date', end).limit(1000);
+    let { data, error } = await run('id, description, amount, PLANO_CONTAS(name)');
+    if (error) ({ data, error } = await run('id, description, amount'));
+    if (error) throw error;
+    const outros = (data || []).filter(l => {
+      const txt = `${l.PLANO_CONTAS?.name || ''} ${l.description || ''}`;
+      return !MKT_RX.test(txt) && !DUP_RX.test(txt);
+    });
+    out.outros = round2(outros.reduce((s, l) => s + (Number(l.amount) || 0), 0));
+    if (out.outros > 0) {
+      out.items.push({ label: 'Outros lançamentos variáveis', value: out.outros, hint: `${outros.length} lançamento(s)`, source: 'Financeiro' });
+    }
+  } catch { /* sem lançamentos */ }
+
+  out.total = round2(out.perdas + out.frete_venda + out.outros);
+  return out;
+}
+
 // Folha da PRODUÇÃO (mão de obra direta — Custos Variáveis)
 async function productionLabor(tenantId) {
   try {
@@ -360,5 +459,6 @@ module.exports = {
   getConfig, saveConfig, autoMonthlyUnits,
   fixedExpenses, fixedOverview, snapshotRateio, syncEmployeesToFixed,
   productionLabor, isProductionSector, commissionBySeller, producedUnits,
+  marketingSpend, extraVariableCosts,
   computeSheet, productCostMap,
 };

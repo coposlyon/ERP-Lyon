@@ -73,6 +73,8 @@ export default function Rentabilidade() {
               ['Impostos sobre vendas', vb.impostos],
               ['Comissões de vendas', vb.comissoes],
               ['Mão de obra (produção)', vb.mao_obra_producao],
+              ['Marketing variável', vb.marketing],
+              ['Extras (perdas, frete)', vb.extras],
             ].map(([l, val]) => (
               <div key={l} className="flex justify-between text-sm">
                 <span className="text-gray-500">{l}</span>

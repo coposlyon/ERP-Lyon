@@ -12,6 +12,7 @@ const {
   VARIABLE_DEFAULTS, getConfig, saveConfig,
   fixedOverview, snapshotRateio, computeSheet, productCostMap,
   syncEmployeesToFixed, productionLabor, commissionBySeller,
+  marketingSpend, extraVariableCosts,
 } = require('../lib/rateioLib');
 
 const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -133,20 +134,31 @@ router.get('/variable', async (req, res) => {
 
     // Mão de obra direta: folha dos colaboradores da PRODUÇÃO (vem do RH)
     const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : new Date().toISOString().slice(0, 7);
-    const [labor, ov, commissions] = await Promise.all([
-      productionLabor(req.tenantId), fixedOverview(req.tenantId), commissionBySeller(req.tenantId, month),
+    const [labor, ov, commissions, marketing, extras] = await Promise.all([
+      productionLabor(req.tenantId), fixedOverview(req.tenantId),
+      commissionBySeller(req.tenantId, month),
+      marketingSpend(req.tenantId, month), extraVariableCosts(req.tenantId, month),
     ]);
-    const laborUnit = ov.monthly_units > 0 ? labor.total / ov.monthly_units : 0;
+    const units = ov.monthly_units;
+    const perUnit = v => (units > 0 ? Math.round((v / units) * 10000) / 10000 : 0);
+
+    // Custo variável por unidade que alimenta Formação de Preço,
+    // Rateio por Pedido e Painel de Rentabilidade
+    const variableUnit = perUnit(labor.total + commissions.total + marketing.total + extras.total);
 
     res.json({
       variable, freights, freight_total: r2(freightTotal),
       prod_labor: {
         items: labor.items,
         total: r2(labor.total),
-        per_unit: Math.round(laborUnit * 10000) / 10000,
-        monthly_units: ov.monthly_units,
+        per_unit: perUnit(labor.total),
+        monthly_units: units,
       },
       commissions, // { month, items:[{name,pct,sales,commission,goal_pct}], total }
+      marketing: { ...marketing, per_unit: perUnit(marketing.total) },
+      extras: { ...extras, per_unit: perUnit(extras.total) },
+      variable_unit: variableUnit,
+      monthly_units: units,
     });
   } catch (err) {
     console.error('[rateio/variable]', err.message);
@@ -519,10 +531,12 @@ router.get('/rentabilidade', async (req, res) => {
     const start = `${month}-01`;
     const end = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1).toISOString().slice(0, 10);
     const ov = await fixedOverview(req.tenantId);
-    const [commissions, labor, cfg] = await Promise.all([
+    const [commissions, labor, cfg, marketing, extras] = await Promise.all([
       commissionBySeller(req.tenantId, month),
       productionLabor(req.tenantId),
       getConfig(req.tenantId),
+      marketingSpend(req.tenantId, month),
+      extraVariableCosts(req.tenantId, month),
     ]);
     const marginGoalPct = Number(cfg.margin_pct) || 30; // meta de margem
 
@@ -562,7 +576,9 @@ router.get('/rentabilidade', async (req, res) => {
     const custoFixo = ov.total;               // despesas fixas + folha administrativa
     const maoObraProd = labor.total;          // mão de obra direta (produção)
     const comissoes = commissions.total;
-    const custoVariavel = custoProduto + impostos + comissoes + maoObraProd;
+    const mktVariavel = marketing.total;      // anúncios (Financeiro)
+    const extrasVar = extras.total;           // perdas + frete de venda + outros
+    const custoVariavel = custoProduto + impostos + comissoes + maoObraProd + mktVariavel + extrasVar;
     const lucroProjetado = receita - custoVariavel - custoFixo;
 
     // Margem por produto (variável) + sugestão de reajuste quando abaixo da meta
@@ -592,6 +608,7 @@ router.get('/rentabilidade', async (req, res) => {
       variavel_breakdown: {
         produtos: r2(custoProduto), impostos: r2(impostos),
         comissoes: r2(comissoes), mao_obra_producao: r2(maoObraProd),
+        marketing: r2(mktVariavel), extras: r2(extrasVar),
       },
       lucro_projetado: r2(lucroProjetado),
       margem_pct: receita > 0 ? Math.round((lucroProjetado / receita) * 1000) / 10 : 0,
