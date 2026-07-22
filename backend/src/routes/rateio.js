@@ -814,46 +814,125 @@ router.get('/rentabilidade', async (req, res) => {
     ]);
     const marginGoalPct = Number(cfg.margin_pct) || 30; // meta de margem
 
-    const { data: sales } = await supabase.from('VENDAS')
-      .select('id, total, status, created_at, VENDA_ITENS(product_id, product_name, quantity, total)')
+    // ── Filtros (tudo vem de módulo; nada é digitado)
+    let q = supabase.from('VENDAS')
+      .select('id, total, status, source, created_at, customer_id, CLIENTES(name, vendedor, address), VENDA_ITENS(product_id, product_name, quantity, total)')
       .eq('tenant_id', req.tenantId).neq('status', 'cancelled')
       .gte('created_at', start).lt('created_at', end).limit(2000);
+    if (req.query.customer_id) q = q.eq('customer_id', req.query.customer_id);
+    if (req.query.source) q = q.eq('source', req.query.source);
+    let { data: sales, error: sErr } = await q;
+    if (sErr) { // coluna source pode não existir
+      ({ data: sales } = await supabase.from('VENDAS')
+        .select('id, total, status, created_at, customer_id, CLIENTES(name, vendedor, address), VENDA_ITENS(product_id, product_name, quantity, total)')
+        .eq('tenant_id', req.tenantId).neq('status', 'cancelled')
+        .gte('created_at', start).lt('created_at', end).limit(2000));
+    }
+    sales = sales || [];
+    if (req.query.seller) {
+      const want = String(req.query.seller).trim().toLowerCase();
+      sales = sales.filter(s => String(s.CLIENTES?.vendedor || '').trim().toLowerCase() === want);
+    }
+    if (req.query.state) {
+      const uf = String(req.query.state).trim().toUpperCase();
+      sales = sales.filter(s => String(s.CLIENTES?.address?.state || '').trim().toUpperCase() === uf);
+    }
+    if (req.query.product_id) {
+      sales = sales.filter(s => (s.VENDA_ITENS || []).some(i => i.product_id === req.query.product_id));
+    }
 
     // Custo VARIÁVEL do produto (sem overhead — o fixo entra como custo de período)
     const varCosts = await productCostMap(req.tenantId, 0, 0);
-    const productIds = [...new Set((sales || []).flatMap(s => (s.VENDA_ITENS || []).map(i => i.product_id)).filter(Boolean))];
-    let priceMap = {};
+    const productIds = [...new Set(sales.flatMap(s => (s.VENDA_ITENS || []).map(i => i.product_id)).filter(Boolean))];
+    let priceMap = {}, catMap = {};
     if (productIds.length) {
-      const { data } = await supabase.from('PRODUTOS').select('id, cost_price').eq('tenant_id', req.tenantId).in('id', productIds);
+      const { data } = await supabase.from('PRODUTOS')
+        .select('id, cost_price, CATEGORIAS(name)').eq('tenant_id', req.tenantId).in('id', productIds);
       priceMap = Object.fromEntries((data || []).map(p => [p.id, p.cost_price]));
+      catMap = Object.fromEntries((data || []).map(p => [p.id, p.CATEGORIAS?.name || 'Sem categoria']));
     }
+    const sellers = await sellerPctMap(req.tenantId);
+    const defaultCommission = Number(cfg.variable_costs?.commission_pct) || 0;
 
     const taxPct = Number(ov.tax_pct_default) || 0;
-    let receita = 0, custoProduto = 0, qtdVendida = 0;
+    let receita = 0, custoProduto = 0, qtdVendida = 0, comissaoPedidos = 0;
     const perProduct = new Map();
-    for (const s of sales || []) {
-      receita += Number(s.total) || 0;
+    // Agrupamentos gerenciais
+    const gSeller = new Map(), gCustomer = new Map(), gState = new Map(), gLine = new Map();
+    const bump = (map, key, name, patch) => {
+      const cur = map.get(key) || { name, receita: 0, custo: 0, qty: 0, pedidos: 0 };
+      cur.receita += patch.receita || 0; cur.custo += patch.custo || 0;
+      cur.qty += patch.qty || 0; cur.pedidos += patch.pedidos || 0;
+      map.set(key, cur);
+    };
+
+    for (const s of sales) {
+      const rec = Number(s.total) || 0;
+      receita += rec;
+      let custoPedido = 0, qtyPedido = 0;
       for (const it of (s.VENDA_ITENS || [])) {
         const q = Number(it.quantity) || 0;
-        const rec = Number(it.total) || 0;
+        const recItem = Number(it.total) || 0;
         const cUnit = varCosts.get(it.product_id, priceMap[it.product_id]).cost_unit;
         const cost = cUnit * q;
         custoProduto += cost; qtdVendida += q;
+        custoPedido += cost; qtyPedido += q;
+
         const key = it.product_id || it.product_name || '—';
-        const agg = perProduct.get(key) || { name: it.product_name || '—', receita: 0, custo: 0, qty: 0 };
-        agg.receita += rec; agg.custo += cost; agg.qty += q;
-        perProduct.set(key, agg);
+        bump(perProduct, key, it.product_name || '—', { receita: recItem, custo: cost, qty: q });
+        // Linha de produto = categoria
+        const linha = catMap[it.product_id] || 'Sem categoria';
+        bump(gLine, linha, linha, { receita: recItem, custo: cost, qty: q });
       }
+      // Comissão do pedido (vendedor do cliente)
+      const vend = s.CLIENTES?.vendedor || null;
+      const pct = vend ? (sellers[String(vend).trim().toLowerCase()] ?? defaultCommission) : defaultCommission;
+      comissaoPedidos += rec * pct / 100;
+
+      bump(gSeller, vend || '—', vend || 'Sem vendedor', { receita: rec, custo: custoPedido, qty: qtyPedido, pedidos: 1 });
+      const cliNome = s.CLIENTES?.name || 'Sem cliente';
+      bump(gCustomer, s.customer_id || cliNome, cliNome, { receita: rec, custo: custoPedido, qty: qtyPedido, pedidos: 1 });
+      const uf = String(s.CLIENTES?.address?.state || '').trim().toUpperCase() || '—';
+      bump(gState, uf, uf === '—' ? 'Sem UF' : uf, { receita: rec, custo: custoPedido, qty: qtyPedido, pedidos: 1 });
     }
 
     const impostos = receita * taxPct / 100;
     const custoFixo = ov.total;               // despesas fixas + folha administrativa
     const maoObraProd = labor.total;          // mão de obra direta (produção)
-    const comissoes = commissions.total;
+    // Com filtro ativo a comissão vem dos pedidos filtrados; sem filtro,
+    // usa o total do mês já apurado no módulo de variáveis.
+    const temFiltro = !!(req.query.seller || req.query.customer_id || req.query.product_id || req.query.state || req.query.source);
+    const comissoes = temFiltro ? comissaoPedidos : commissions.total;
     const mktVariavel = marketing.total;      // anúncios (Financeiro)
     const extrasVar = extras.total;           // perdas + frete de venda + outros
     const custoVariavel = custoProduto + impostos + comissoes + maoObraProd + mktVariavel + extrasVar;
     const lucroProjetado = receita - custoVariavel - custoFixo;
+
+    // ── Indicadores gerenciais ──
+    // Margem de contribuição = o que sobra da receita depois dos VARIÁVEIS
+    const margemContribuicao = receita - custoVariavel;
+    const mcPct = receita > 0 ? (margemContribuicao / receita) * 100 : 0;
+    // Ponto de equilíbrio: faturamento que zera o resultado
+    const pontoEquilibrio = mcPct > 0 ? (custoFixo / (mcPct / 100)) : 0;
+    const precoMedio = qtdVendida > 0 ? receita / qtdVendida : 0;
+    const peUnidades = precoMedio > 0 && mcPct > 0 ? Math.ceil(pontoEquilibrio / precoMedio) : 0;
+    const ticketMedio = sales.length > 0 ? receita / sales.length : 0;
+
+    // Rateia o custo fixo proporcional à receita para dar lucro por grupo
+    const fixoSobreReceita = receita > 0 ? custoFixo / receita : 0;
+    // Custos variáveis que não estão no custo do produto (rateados por receita)
+    const varIndiretos = impostos + comissoes + maoObraProd + mktVariavel + extrasVar;
+    const varSobreReceita = receita > 0 ? varIndiretos / receita : 0;
+    const grupo = map => [...map.values()].map(g => {
+      const custoTotal = g.custo + g.receita * (varSobreReceita + fixoSobreReceita);
+      const lucro = g.receita - custoTotal;
+      return {
+        name: g.name, receita: r2(g.receita), qty: g.qty, pedidos: g.pedidos,
+        custo: r2(custoTotal), lucro: r2(lucro),
+        margem_pct: g.receita > 0 ? Math.round((lucro / g.receita) * 1000) / 10 : 0,
+        ticket_medio: g.pedidos > 0 ? r2(g.receita / g.pedidos) : null,
+      };
+    }).sort((a, b) => b.lucro - a.lucro);
 
     // Margem por produto (variável) + sugestão de reajuste quando abaixo da meta
     const produtos = [...perProduct.values()].map(p => {
@@ -873,10 +952,29 @@ router.get('/rentabilidade', async (req, res) => {
       };
     }).sort((a, b) => b.receita - a.receita);
 
+    // ── Opções dos filtros e data de atualização
+    const { data: sellersRaw } = await supabase.from('CLIENTES')
+      .select('vendedor').eq('tenant_id', req.tenantId).not('vendedor', 'is', null).limit(2000);
+    const sellerOpts = [...new Set((sellersRaw || []).map(c => String(c.vendedor).trim()).filter(Boolean))].sort();
+    const customerOpts = [...new Map(sales.filter(s => s.customer_id && s.CLIENTES?.name)
+      .map(s => [s.customer_id, { id: s.customer_id, name: s.CLIENTES.name }])).values()]
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    const stateOpts = [...new Set(sales.map(s => String(s.CLIENTES?.address?.state || '').trim().toUpperCase()).filter(Boolean))].sort();
+    const sourceOpts = [...new Set(sales.map(s => s.source).filter(Boolean))].sort();
+
+    let sheetAt = null;
+    try {
+      const { data: sh } = await supabase.from('PRECIFICACOES').select('updated_at')
+        .eq('tenant_id', req.tenantId).eq('is_active', true)
+        .order('updated_at', { ascending: false }).limit(1).maybeSingle();
+      sheetAt = sh?.updated_at || null;
+    } catch { /* sem fichas */ }
+
     res.json({
       month,
       faturamento: r2(receita),
       quantidade: qtdVendida,
+      pedidos: sales.length,
       custo_fixo: r2(custoFixo),
       custo_variavel: r2(custoVariavel),
       variavel_breakdown: {
@@ -889,10 +987,67 @@ router.get('/rentabilidade', async (req, res) => {
       margin_goal_pct: marginGoalPct,
       commissions: commissions.items,
       produtos,
+
+      // Indicadores gerenciais
+      indicadores: {
+        margem_contribuicao: r2(margemContribuicao),
+        margem_contribuicao_pct: Math.round(mcPct * 10) / 10,
+        ponto_equilibrio: r2(pontoEquilibrio),
+        ponto_equilibrio_un: peUnidades,
+        atingiu_equilibrio: receita >= pontoEquilibrio && pontoEquilibrio > 0,
+        ticket_medio: r2(ticketMedio),
+        preco_medio_un: r2(precoMedio),
+      },
+      // Lucro por dimensão
+      por_vendedor: grupo(gSeller),
+      por_cliente: grupo(gCustomer).slice(0, 20),
+      por_regiao: grupo(gState),
+      por_linha: grupo(gLine),
+
+      // Origem de cada dado (nada é digitado nesta tela)
+      origens: [
+        { label: 'Faturamento', origin: 'Vendas', link: '/sales', detail: 'pedidos não cancelados do período' },
+        { label: 'Custo dos produtos', origin: 'Formação de Preço', link: '/pricing/formacao', detail: 'ficha do produto (ou custo do cadastro)' },
+        { label: 'Custo fixo', origin: 'Despesas Fixas', link: '/rateio/despesas-fixas', detail: 'despesas ativas + folha administrativa' },
+        { label: 'Mão de obra / marketing / extras', origin: 'Despesas Variáveis', link: '/rateio/despesas-variaveis', detail: 'apurados nos módulos de origem' },
+        { label: 'Comissões', origin: 'RH', link: '/employees', detail: '% do vendedor sobre as vendas' },
+        { label: 'Impostos', origin: ov.tax_source === 'fiscal' ? 'Fiscal' : 'Precificação', link: '/fiscal', detail: `alíquota de ${String(taxPct).replace('.', ',')}%` },
+        { label: 'Região / canal', origin: 'Cadastro de Clientes e Vendas', link: '/customers', detail: 'UF do cliente e origem do pedido' },
+      ],
+      filtros: { sellers: sellerOpts, customers: customerOpts, states: stateOpts, sources: sourceOpts },
+      atualizacao: { fichas: sheetAt, calculado_em: new Date().toISOString() },
     });
   } catch (err) {
     console.error('[rateio/rentabilidade]', err.message);
     res.status(500).json({ error: 'Erro ao calcular a rentabilidade' });
+  }
+});
+
+// POST /rateio/rentabilidade/recalcular
+// Reprocessa TODAS as fichas ativas com o rateio atual. Não digita nada:
+// só reaplica o cálculo sobre o que já está cadastrado.
+router.post('/rentabilidade/recalcular', async (req, res) => {
+  try {
+    const ov = await fixedOverview(req.tenantId);
+    const { data: sheets } = await supabase.from('PRECIFICACOES')
+      .select('*').eq('tenant_id', req.tenantId).eq('is_active', true).limit(1000);
+
+    let atualizadas = 0;
+    for (const sheet of sheets || []) {
+      const c = computeSheet({ ...sheet, overhead_unit: ov.overhead_unit });
+      const { error } = await supabase.from('PRECIFICACOES').update({
+        overhead_unit: ov.overhead_unit,
+        cost_direct: c.cost_direct, cost_subtotal: c.cost_subtotal, cost_unit: c.cost_unit,
+        price_min: c.price_min, price_ideal: c.price_ideal, price_premium: c.price_premium,
+        updated_at: new Date().toISOString(),
+      }).eq('id', sheet.id).eq('tenant_id', req.tenantId);
+      if (!error) atualizadas++;
+    }
+    audit(req, 'update', 'rentabilidade_recalculo', req.tenantId, { fichas: atualizadas });
+    res.json({ ok: true, fichas_atualizadas: atualizadas, overhead_unit: ov.overhead_unit, calculado_em: new Date().toISOString() });
+  } catch (err) {
+    console.error('[rateio/rentabilidade/recalcular]', err.message);
+    res.status(500).json({ error: 'Erro ao recalcular a rentabilidade' });
   }
 });
 
