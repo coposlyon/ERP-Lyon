@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import storeApi from './storeApi';
 import Bottle from './Bottle';
 import { useCart } from './CartContext';
+import { resolveColor, needsBorder } from './colors';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
@@ -27,6 +28,15 @@ function methodTable(product, method) {
   }
   return { tiers: product?.price_tiers || [], base: product?.sale_price };
 }
+// Rótulo curto da cor: tira o nome do modelo e o volume do fim.
+// (quando store_color não está preenchido, o label vem como o nome inteiro)
+function shortColor(label, group) {
+  let s = String(label || '');
+  if (group && s.toUpperCase().startsWith(group.toUpperCase())) s = s.slice(group.length);
+  s = s.replace(/^[\s\-–—]+/, '').replace(/\s*\d+\s*ml\s*$/i, '').trim();
+  return s || String(label || '');
+}
+
 function availableMethods(product) {
   return (product?.print_methods || []).filter(m => {
     const d = product?.print_pricing?.[m.key];
@@ -67,6 +77,11 @@ export default function ProductPage() {
   const productImg = anyImg;
   const methods = availableMethods(product);
   const table = methodTable(product, printMethod);
+  // Cores do modelo (produtos irmãos do mesmo store_group)
+  const colorOptions = useMemo(
+    () => (product?.color_options || []).map(c => ({ ...c, short: shortColor(c.label, product?.group) })),
+    [product]);
+  const currentColor = colorOptions.find(c => c.id === product?.id) || null;
 
   const unitPrice = useMemo(() => {
     if (!product) return 0;
@@ -86,6 +101,7 @@ export default function ProductPage() {
     add({
       product_id: product.id,
       product_name: product.name,
+      color: currentColor?.short || product.color_label || null,
       print_method: printMethod || null,
       print_name: methodLabel || null,
       unit_price: unitPrice,
@@ -111,7 +127,9 @@ export default function ProductPage() {
               className="relative z-10 max-h-[360px] w-auto object-contain st-float drop-shadow-2xl" />
           ) : (
             <div className="relative st-float">
-              <Bottle color="#F26522" gradient={gradient} size={240} />
+              <Bottle
+                color={currentColor ? resolveColor({ name: currentColor.short, value: currentColor.short }) : '#F26522'}
+                gradient={gradient} size={240} />
             </div>
           )}
         </div>
@@ -126,6 +144,32 @@ export default function ProductPage() {
             <p className="text-sm text-gray-400">{product.price_tiers?.length ? 'a partir de' : 'preço unitário'}</p>
             <p className="text-3xl font-extrabold text-gray-900">{fmt(unitPrice)}</p>
           </div>
+
+          {/* Cores do modelo — cada cor é um produto do mesmo grupo */}
+          {colorOptions.length > 1 && (
+            <div className="mt-5">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                Cor {currentColor && <span className="text-gray-900 normal-case font-bold">· {currentColor.short}</span>}
+                <span className="text-gray-400 font-normal normal-case"> ({colorOptions.length} disponíveis)</span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {colorOptions.map(c => {
+                  const hex = resolveColor({ name: c.short, value: c.short });
+                  const active = c.id === product.id;
+                  return (
+                    <button key={c.id} title={c.short}
+                      onClick={() => { if (!active) navigate(`/loja/produto/${c.id}`); }}
+                      className={`w-10 h-10 rounded-full transition-transform hover:scale-110 ${
+                        active ? 'ring-2 ring-offset-2 ring-orange-500 scale-110' : ''}`}
+                      style={{
+                        background: hex,
+                        border: needsBorder(hex) ? '1px solid #D8DCE2' : '1px solid rgba(0,0,0,.08)',
+                      }} />
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Tipo de impressão */}
           {methods.length > 0 && (
