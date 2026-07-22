@@ -78,9 +78,13 @@
 @keyframes st-open { from { opacity:0; transform: translateY(30px) scale(.95); } to { opacity:1; transform: none; } }
 .st-open { animation: st-open .55s cubic-bezier(.16,1,.3,1) both; }
 
+/* Troca de cor do copo: fade + leve zoom, em vez de recarregar a tela */
+@keyframes st-color-in { from { opacity:0; transform: scale(.94); } to { opacity:1; transform: none; } }
+.st-color-in { animation: st-color-in .32s cubic-bezier(.16,1,.3,1) both; }
+
 /* Respeita quem prefere menos movimento */
 @media (prefers-reduced-motion: reduce) {
-  .st-float,.st-blob,.st-animated-gradient,.st-marquee-track,.st-shine,.st-pulse,.st-spin-slow,.st-bob,.st-open { animation: none !important; }
-  .st-reveal,.st-reveal-scale,.st-open { opacity: 1 !important; transform: none !important; }
+  .st-float,.st-blob,.st-animated-gradient,.st-marquee-track,.st-shine,.st-pulse,.st-spin-slow,.st-bob,.st-open,.st-color-in { animation: none !important; }
+  .st-reveal,.st-reveal-scale,.st-open,.st-color-in { opacity: 1 !important; transform: none !important; }
   .st-slide { transition: none; }
 }

@@ -52,10 +52,13 @@ export default function ProductPage() {
   const [qty, setQty] = useState(1);
   const [imgError, setImgError] = useState(false);
 
-  const { data: product, isLoading, error } = useQuery({
+  const { data: product, isLoading, isFetching, error } = useQuery({
     queryKey: ['store-product', id],
     queryFn: () => storeApi.get(`/products/${id}`),
     retry: false,
+    // mantém o produto anterior na tela enquanto busca o da nova cor —
+    // sem isso a página inteira vira "Carregando..." a cada troca
+    placeholderData: prev => prev,
   });
 
   const minQty = Math.max(1, product?.min_order_qty || 1);
@@ -83,7 +86,9 @@ export default function ProductPage() {
   const colorOptions = useMemo(
     () => (product?.color_options || []).map(c => ({ ...c, short: shortColor(c.label, product?.group) })),
     [product]);
-  const currentColor = colorOptions.find(c => c.id === product?.id) || null;
+  // usa o id da URL (muda na hora do clique) → a cor troca antes da resposta chegar
+  const currentColor = colorOptions.find(c => c.id === id)
+    || colorOptions.find(c => c.id === product?.id) || null;
 
   const unitPrice = useMemo(() => {
     if (!product) return 0;
@@ -129,7 +134,7 @@ export default function ProductPage() {
               onError={() => setImgError(true)}
               className="relative z-10 max-h-[360px] w-auto object-contain st-float drop-shadow-2xl" />
           ) : (
-            <div className="relative st-float">
+            <div key={currentColor?.id || 'base'} className="relative st-float st-color-in">
               <Bottle
                 color={currentColor ? resolveColor({ name: currentColor.short, value: currentColor.short }) : '#F26522'}
                 gradient={gradient} size={240} />
@@ -140,7 +145,9 @@ export default function ProductPage() {
         {/* Info */}
         <div>
           {product.category && <span className="text-xs text-orange-500 font-semibold uppercase tracking-wide">{product.category}</span>}
-          <h1 className="text-3xl font-extrabold text-gray-900 mt-1">{product.name}</h1>
+          <h1 className={`text-3xl font-extrabold text-gray-900 mt-1 transition-opacity duration-200 ${isFetching ? 'opacity-50' : ''}`}>
+            {product.name}
+          </h1>
           {product.description && <p className="text-gray-500 mt-2">{product.description}</p>}
 
           <div className="mt-4">
@@ -158,7 +165,7 @@ export default function ProductPage() {
               <div className="flex flex-wrap gap-2">
                 {colorOptions.map(c => {
                   const hex = resolveColor({ name: c.short, value: c.short });
-                  const active = c.id === product.id;
+                  const active = c.id === id;
                   return (
                     <button key={c.id} title={c.short}
                       onClick={() => { if (!active) navigate(`/loja/produto/${c.id}`); }}
