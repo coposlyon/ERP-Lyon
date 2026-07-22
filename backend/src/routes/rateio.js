@@ -660,17 +660,22 @@ router.get('/order/:id', async (req, res) => {
   }
 });
 
-// ── Simulador de Metas + Dashboard do Rateio ──────────────
+// ── Simulador de Metas ────────────────────────────────────
+// Tudo automático. Simula por período, vendedor, cliente, produto,
+// região e canal, usando os mesmos números do Rateio por Pedido.
 router.get('/goals', async (req, res) => {
   try {
-    const month = new Date().toISOString().slice(0, 7);
-    const [ov, cfg] = await Promise.all([fixedOverview(req.tenantId), getConfig(req.tenantId)]);
+    const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : new Date().toISOString().slice(0, 7);
+    const [ov, cfg, ctx] = await Promise.all([
+      fixedOverview(req.tenantId), getConfig(req.tenantId), orderCtx(req.tenantId, month),
+    ]);
 
-    // Margem média por unidade (fichas salvas: preço usado − custo)
-    let avgMargin = 0, sheetCount = 0;
+    // Margem média por unidade — vem da Formação de Preço (ficha:
+    // preço praticado − custo unitário). Pode ser fixada manualmente.
+    let avgMargin = 0, sheetCount = 0, sheetAt = null;
     try {
       const { data: sheets } = await supabase.from('PRECIFICACOES')
-        .select('cost_unit, price_ideal, PRODUTOS(sale_price)')
+        .select('cost_unit, price_ideal, updated_at, PRODUTOS(sale_price)')
         .eq('tenant_id', req.tenantId).eq('is_active', true).limit(1000);
       const margins = (sheets || []).map(s => {
         const price = Number(s.PRODUTOS?.sale_price) > 0 ? Number(s.PRODUTOS.sale_price) : Number(s.price_ideal) || 0;
@@ -678,26 +683,104 @@ router.get('/goals', async (req, res) => {
       }).filter(m => m !== 0);
       sheetCount = margins.length;
       avgMargin = margins.length ? margins.reduce((a, b) => a + b, 0) / margins.length : 0;
+      sheetAt = (sheets || []).map(s => s.updated_at).filter(Boolean).sort().pop() || null;
     } catch { /* migração 042 pendente */ }
 
-    // Lucro do mês atual (mesmo cálculo do Rateio por Pedido)
+    // ── Vendas do período, com os mesmos filtros do painel
     const start = `${month}-01`;
     const end = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1).toISOString().slice(0, 10);
-    const { data: sales } = await supabase.from('VENDAS')
-      .select('id, number, total, status, created_at, CLIENTES(name), VENDA_ITENS(product_id, quantity)')
+    let q = supabase.from('VENDAS')
+      .select('id, number, total, status, source, created_at, customer_id, CLIENTES(name, vendedor, address), VENDA_ITENS(product_id, quantity)')
       .eq('tenant_id', req.tenantId).neq('status', 'cancelled')
-      .gte('created_at', start).lt('created_at', end).limit(500);
-    const rows = await saleCosts(req.tenantId, sales || [], ov);
+      .gte('created_at', start).lt('created_at', end).limit(2000);
+    if (req.query.customer_id) q = q.eq('customer_id', req.query.customer_id);
+    if (req.query.source) q = q.eq('source', req.query.source);
+    let { data: sales, error: sErr } = await q;
+    if (sErr) {
+      ({ data: sales } = await supabase.from('VENDAS')
+        .select('id, number, total, status, created_at, customer_id, CLIENTES(name, vendedor, address), VENDA_ITENS(product_id, quantity)')
+        .eq('tenant_id', req.tenantId).neq('status', 'cancelled')
+        .gte('created_at', start).lt('created_at', end).limit(2000));
+    }
+    sales = sales || [];
+    if (req.query.seller) {
+      const w = String(req.query.seller).trim().toLowerCase();
+      sales = sales.filter(s => String(s.CLIENTES?.vendedor || '').trim().toLowerCase() === w);
+    }
+    if (req.query.state) {
+      const uf = String(req.query.state).trim().toUpperCase();
+      sales = sales.filter(s => String(s.CLIENTES?.address?.state || '').trim().toUpperCase() === uf);
+    }
+    if (req.query.product_id) {
+      sales = sales.filter(s => (s.VENDA_ITENS || []).some(i => i.product_id === req.query.product_id));
+    }
+    // Linha de produto (categoria)
+    if (req.query.line) {
+      const ids = [...new Set(sales.flatMap(s => (s.VENDA_ITENS || []).map(i => i.product_id)).filter(Boolean))];
+      let catOf = {};
+      if (ids.length) {
+        const { data: prods } = await supabase.from('PRODUTOS')
+          .select('id, CATEGORIAS(name)').eq('tenant_id', req.tenantId).in('id', ids);
+        catOf = Object.fromEntries((prods || []).map(p => [p.id, p.CATEGORIAS?.name || 'Sem categoria']));
+      }
+      sales = sales.filter(s => (s.VENDA_ITENS || []).some(i => catOf[i.product_id] === req.query.line));
+    }
+
+    const rows = await saleCosts(req.tenantId, sales, ov, ctx);
     const lucroMes = rows.reduce((s, o) => s + o.lucro, 0);
     const receitaMes = rows.reduce((s, o) => s + o.receita, 0);
     const unidadesMes = rows.reduce((s, o) => s + o.quantity, 0);
+    const custoVarMes = rows.reduce((s, o) => s + o.custos + o.impostos + o.comissao + o.variavel, 0);
+
+    // ── Base do cálculo
+    const meta = cfg.profit_goal != null ? Number(cfg.profit_goal) : 0;
+    const margemUnit = cfg.avg_margin_unit != null ? Number(cfg.avg_margin_unit) : avgMargin;
+    const custoFixo = ov.total;
+    // Margem de contribuição % (o que sobra da receita após os variáveis)
+    const mcPct = receitaMes > 0 ? ((receitaMes - custoVarMes) / receitaMes) * 100 : 0;
+    const ticketMedio = rows.length > 0 ? receitaMes / rows.length : 0;
+    const precoMedio = unidadesMes > 0 ? receitaMes / unidadesMes : 0;
+
+    // Faturamento necessário = (custo fixo + meta) ÷ margem de contribuição %
+    const fatNecessario = mcPct > 0 ? (custoFixo + meta) / (mcPct / 100) : 0;
+    const unNecessarias = margemUnit > 0 ? Math.ceil((custoFixo + meta) / margemUnit)
+      : (precoMedio > 0 ? Math.ceil(fatNecessario / precoMedio) : 0);
+    const pedidosNecessarios = ticketMedio > 0 ? Math.ceil(fatNecessario / ticketMedio) : 0;
+    const pctMeta = meta > 0 ? (lucroMes / meta) * 100 : null;
+
+    // ── Indicadores de tempo (dias, ritmo e projeção)
+    const hoje = new Date();
+    const ehMesAtual = month === hoje.toISOString().slice(0, 7);
+    const diasNoMes = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+    const diaAtual = ehMesAtual ? hoje.getDate() : diasNoMes;
+    const diasRestantes = Math.max(0, diasNoMes - diaAtual);
+    const faltaFaturar = Math.max(0, fatNecessario - receitaMes);
+    const metaDiaria = diasRestantes > 0 ? faltaFaturar / diasRestantes : 0;
+    // Projeção linear pelo ritmo até aqui
+    const projFaturamento = diaAtual > 0 ? (receitaMes / diaAtual) * diasNoMes : 0;
+    const projLucro = diaAtual > 0 ? (lucroMes / diaAtual) * diasNoMes : 0;
+
+    // ── Opções dos filtros
+    const { data: sellersRaw } = await supabase.from('CLIENTES')
+      .select('vendedor').eq('tenant_id', req.tenantId).not('vendedor', 'is', null).limit(2000);
+    const sellerOpts = [...new Set((sellersRaw || []).map(c => String(c.vendedor).trim()).filter(Boolean))].sort();
+    const customerOpts = [...new Map(sales.filter(s => s.customer_id && s.CLIENTES?.name)
+      .map(s => [s.customer_id, { id: s.customer_id, name: s.CLIENTES.name }])).values()]
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    const stateOpts = [...new Set(sales.map(s => String(s.CLIENTES?.address?.state || '').trim().toUpperCase()).filter(Boolean))].sort();
+    const sourceOpts = [...new Set(sales.map(s => s.source).filter(Boolean))].sort();
+    let lineOpts = [];
+    try {
+      const { data: cats } = await supabase.from('CATEGORIAS').select('name').eq('tenant_id', req.tenantId).limit(200);
+      lineOpts = (cats || []).map(c => c.name).filter(Boolean).sort();
+    } catch { /* sem categorias */ }
 
     res.json({
       month,
-      fixed_total: r2(ov.total),
+      fixed_total: r2(custoFixo),
       monthly_units: ov.monthly_units,
       overhead_unit: ov.overhead_unit,
-      avg_margin_unit: r2(cfg.avg_margin_unit != null ? cfg.avg_margin_unit : avgMargin),
+      avg_margin_unit: r2(margemUnit),
       avg_margin_source: cfg.avg_margin_unit != null ? 'manual' : 'auto',
       sheet_count: sheetCount,
       profit_goal: cfg.profit_goal != null ? Number(cfg.profit_goal) : null,
@@ -705,6 +788,39 @@ router.get('/goals', async (req, res) => {
       month_revenue: r2(receitaMes),
       month_units: unidadesMes,
       month_orders: rows.length,
+
+      // O que é preciso para bater a meta
+      necessario: {
+        faturamento: r2(fatNecessario),
+        unidades: unNecessarias,
+        pedidos: pedidosNecessarios,
+        margem_contribuicao_pct: Math.round(mcPct * 10) / 10,
+        ticket_medio: r2(ticketMedio),
+        preco_medio_un: r2(precoMedio),
+        lucro_esperado: r2(meta),
+        pct_meta_atingida: pctMeta == null ? null : Math.round(pctMeta * 10) / 10,
+      },
+      // Ritmo e projeção
+      ritmo: {
+        dias_no_mes: diasNoMes,
+        dia_atual: diaAtual,
+        dias_restantes: diasRestantes,
+        falta_faturar: r2(faltaFaturar),
+        meta_diaria: r2(metaDiaria),
+        projecao_faturamento: r2(projFaturamento),
+        projecao_lucro: r2(projLucro),
+        projecao_bate_meta: meta > 0 ? projLucro >= meta : null,
+      },
+      origens: [
+        { label: 'Despesas fixas do mês', origin: 'Despesas Fixas', link: '/rateio/despesas-fixas', detail: 'despesas ativas + folha administrativa' },
+        { label: 'Produção e rateio unitário', origin: 'Produção / Metas', link: '/production', detail: 'produção mensal usada no rateio' },
+        { label: 'Margem média por unidade', origin: 'Formação de Preço', link: '/pricing/formacao', detail: `média de ${sheetCount} ficha(s): preço − custo` },
+        { label: 'Lucro e faturamento atuais', origin: 'Rateio por Pedido', link: '/rateio/pedido', detail: 'vendas do período, líquidas de custos' },
+        { label: 'Custos variáveis', origin: 'Despesas Variáveis', link: '/rateio/despesas-variaveis', detail: 'mão de obra, comissão, marketing e extras' },
+        { label: 'Impostos', origin: ov.tax_source === 'fiscal' ? 'Fiscal' : 'Precificação', link: '/fiscal', detail: `alíquota de ${String(ov.tax_pct_default).replace('.', ',')}%` },
+      ],
+      filtros: { sellers: sellerOpts, customers: customerOpts, states: stateOpts, sources: sourceOpts, lines: lineOpts },
+      atualizacao: { fichas: sheetAt, calculado_em: new Date().toISOString() },
     });
   } catch (err) {
     console.error('[rateio/goals]', err.message);
