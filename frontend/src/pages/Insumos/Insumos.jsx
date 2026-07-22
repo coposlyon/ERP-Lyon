@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Loader2, Pencil, Trash2, X, Save, Search, FlaskConical, Package,
+  Users, LineChart, AlertTriangle, Clock, TrendingUp, TrendingDown, Star,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -23,8 +24,232 @@ const fmtMoney = v => {
 const money = s => { const n = parseFloat(String(s ?? '').replace(/\./g, '').replace(',', '.')); return Number.isFinite(n) ? n : NaN; };
 const numOf = s => { const n = parseFloat(String(s ?? '').replace(',', '.')); return Number.isFinite(n) ? n : NaN; };
 const fmt6 = v => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+const pctBR = v => `${(Number(v) || 0).toFixed(1).replace('.', ',')}%`;
+const dtBR = iso => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+};
+const COST_SOURCE = {
+  manual: { label: 'Manual', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
+  compra: { label: 'Compra', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  nfe: { label: 'NF-e', cls: 'bg-teal-50 text-teal-700 border-teal-200' },
+};
 
-function InsumoModal({ open, initial, suppliers, onClose, onSaved }) {
+// ─── Modal: fornecedores do insumo ─────────────────────────
+function FornecedoresModal({ insumo, suppliers, onClose }) {
+  const qc = useQueryClient();
+  const [novo, setNovo] = useState(null);
+
+  const { data: lista = [], isLoading } = useQuery({
+    queryKey: ['insumo-fornecedores', insumo?.id],
+    queryFn: () => api.get(`/insumos/${insumo.id}/fornecedores`),
+    enabled: !!insumo?.id,
+  });
+
+  async function salvar() {
+    if (!(numOf(novo.package_qty) > 0)) { toast.error('Informe a quantidade da embalagem'); return; }
+    try {
+      await api.post(`/insumos/${insumo.id}/fornecedores`, {
+        supplier_id: novo.supplier_id || null,
+        supplier_name: novo.supplier_name || null,
+        package_qty: numOf(novo.package_qty),
+        package_price: money(novo.package_price) || 0,
+        lead_time_days: novo.lead_time_days || null,
+        is_default: !!novo.is_default,
+      });
+      toast.success('Fornecedor adicionado!');
+      setNovo(null);
+      qc.invalidateQueries({ queryKey: ['insumo-fornecedores', insumo.id] });
+      qc.invalidateQueries({ queryKey: ['insumos'] });
+    } catch (err) { toast.error(err.error || 'Erro ao salvar'); }
+  }
+
+  async function remover(f) {
+    if (!confirm(`Remover o fornecedor "${f.supplier}"?`)) return;
+    try {
+      await api.delete(`/insumos/${insumo.id}/fornecedores/${f.id}`);
+      qc.invalidateQueries({ queryKey: ['insumo-fornecedores', insumo.id] });
+    } catch (err) { toast.error(err.error || 'Erro ao remover'); }
+  }
+
+  return (
+    <Modal isOpen={!!insumo} onClose={onClose} title={`Fornecedores — ${insumo?.name || ''}`} size="lg">
+      <div className="space-y-3 text-sm">
+        <p className="text-xs text-gray-500">
+          O fornecedor marcado como <b>padrão</b> define o custo usado na precificação. Os demais ficam para cotação.
+        </p>
+
+        {isLoading ? <div className="py-6 text-center text-gray-400">Carregando...</div> : (
+          <div className="rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase text-gray-500 bg-gray-50">
+                  <th className="px-3 py-2">Fornecedor</th>
+                  <th className="px-3 py-2 text-right">Embalagem</th>
+                  <th className="px-3 py-2 text-right">Preço</th>
+                  <th className="px-3 py-2 text-right">Custo/un</th>
+                  <th className="px-3 py-2 text-right">Prazo</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {lista.map(f => (
+                  <tr key={f.id} className={`border-t border-gray-100 ${f.is_default ? 'bg-primary-50/40' : ''}`}>
+                    <td className="px-3 py-2 font-medium text-gray-900">
+                      {f.is_default && <Star size={11} className="inline text-primary-600 mr-1" />}
+                      {f.supplier}
+                    </td>
+                    <td className="px-3 py-2 text-right">{fmt6(f.package_qty)} {insumo?.base_unit}</td>
+                    <td className="px-3 py-2 text-right">{fmtBRL(f.package_price)}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-green-700">{fmtBRL(f.unit_cost)}</td>
+                    <td className="px-3 py-2 text-right text-gray-500">{f.lead_time_days ? `${f.lead_time_days}d` : '—'}</td>
+                    <td className="px-3 py-2 text-center">
+                      <button className="btn-ghost p-1 text-red-500" onClick={() => remover(f)}><Trash2 size={13} /></button>
+                    </td>
+                  </tr>
+                ))}
+                {lista.length === 0 && (
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">
+                    Nenhum fornecedor extra. O do cadastro principal continua valendo.
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {novo ? (
+          <div className="rounded-xl border border-primary-200 bg-primary-50/30 p-3 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="label">Fornecedor</label>
+                <select className="input" value={novo.supplier_id || ''} onChange={e => setNovo({ ...novo, supplier_id: e.target.value })}>
+                  <option value="">— digitar —</option>
+                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Nome (se não cadastrado)</label>
+                <input className="input" value={novo.supplier_name || ''} disabled={!!novo.supplier_id}
+                  onChange={e => setNovo({ ...novo, supplier_name: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="label">Embalagem ({insumo?.base_unit})</label>
+                <input className="input" inputMode="decimal" value={novo.package_qty || ''}
+                  onChange={e => setNovo({ ...novo, package_qty: e.target.value.replace(/[^\d,.]/g, '') })} />
+              </div>
+              <div>
+                <label className="label">Preço (R$)</label>
+                <input className="input" inputMode="decimal" value={novo.package_price || ''}
+                  onChange={e => setNovo({ ...novo, package_price: fmtMoney(e.target.value) })} />
+              </div>
+              <div>
+                <label className="label">Prazo (dias)</label>
+                <input type="number" min="0" className="input" value={novo.lead_time_days || ''}
+                  onChange={e => setNovo({ ...novo, lead_time_days: e.target.value })} />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input type="checkbox" checked={!!novo.is_default} onChange={e => setNovo({ ...novo, is_default: e.target.checked })} />
+              Definir como fornecedor padrão (passa a valer como custo do insumo)
+            </label>
+            <div className="flex justify-end gap-2">
+              <button className="btn-secondary btn-sm" onClick={() => setNovo(null)}>Cancelar</button>
+              <button className="btn-primary btn-sm" onClick={salvar}><Save size={13} /> Adicionar</button>
+            </div>
+          </div>
+        ) : (
+          <button className="btn-secondary w-full" onClick={() => setNovo({})}>
+            <Plus size={14} /> Adicionar fornecedor
+          </button>
+        )}
+
+        <div className="flex justify-end pt-2 border-t">
+          <button className="btn-secondary" onClick={onClose}><X size={14} /> Fechar</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Modal: histórico de preço ─────────────────────────────
+function HistoricoModal({ insumo, onClose }) {
+  const { data: precos = [], isLoading } = useQuery({
+    queryKey: ['insumo-precos', insumo?.id],
+    queryFn: () => api.get(`/insumos/${insumo.id}/precos`),
+    enabled: !!insumo?.id,
+  });
+
+  return (
+    <Modal isOpen={!!insumo} onClose={onClose} title={`Histórico de preço — ${insumo?.name || ''}`} size="lg">
+      <div className="space-y-3 text-sm">
+        {isLoading ? <div className="py-6 text-center text-gray-400">Carregando...</div> : precos.length === 0 ? (
+          <p className="py-6 text-center text-gray-400">Nenhum registro ainda. Toda alteração de preço passa a ser registrada aqui.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                ['Atual', precos[0]?.unit_cost],
+                ['Menor', Math.min(...precos.map(p => Number(p.unit_cost) || 0))],
+                ['Maior', Math.max(...precos.map(p => Number(p.unit_cost) || 0))],
+              ].map(([l, v]) => (
+                <div key={l} className="rounded-lg bg-gray-50 px-3 py-2 text-center">
+                  <p className="text-[11px] text-gray-500 uppercase">{l}</p>
+                  <p className="font-bold text-gray-900">{fmtBRL(v)}</p>
+                </div>
+              ))}
+            </div>
+            <div className="rounded-xl border border-gray-200 overflow-hidden max-h-72 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr className="text-left text-[11px] uppercase text-gray-500">
+                    <th className="px-3 py-2">Data</th>
+                    <th className="px-3 py-2">Fornecedor</th>
+                    <th className="px-3 py-2">Origem</th>
+                    <th className="px-3 py-2 text-right">Embalagem</th>
+                    <th className="px-3 py-2 text-right">Custo/un</th>
+                    <th className="px-3 py-2 text-right">Variação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {precos.map(p => (
+                    <tr key={p.id} className="border-t border-gray-100">
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{dtBR(p.created_at)}</td>
+                      <td className="px-3 py-2 text-gray-500">{p.supplier_name || '—'}</td>
+                      <td className="px-3 py-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${(COST_SOURCE[p.source] || COST_SOURCE.manual).cls}`}>
+                          {(COST_SOURCE[p.source] || COST_SOURCE.manual).label}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-500">{fmt6(p.package_qty)} × {fmtBRL(p.package_price)}</td>
+                      <td className="px-3 py-2 text-right font-semibold">{fmtBRL(p.unit_cost)}</td>
+                      <td className="px-3 py-2 text-right">
+                        {p.variacao_pct == null ? <span className="text-gray-300">—</span> : (
+                          <span className={`inline-flex items-center gap-0.5 ${p.variacao_pct > 0 ? 'text-red-600' : p.variacao_pct < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                            {p.variacao_pct > 0 ? <TrendingUp size={11} /> : p.variacao_pct < 0 ? <TrendingDown size={11} /> : null}
+                            {p.variacao_pct > 0 ? '+' : ''}{pctBR(p.variacao_pct)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        <div className="flex justify-end pt-2 border-t">
+          <button className="btn-secondary" onClick={onClose}><X size={14} /> Fechar</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function InsumoModal({ open, initial, suppliers, products, onClose, onSaved }) {
   const isEdit = !!initial?.id;
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -40,6 +265,9 @@ function InsumoModal({ open, initial, suppliers, onClose, onSaved }) {
     cost_method: initial?.cost_method || 'consumo',
     consumption: initial?.consumption != null && initial.consumption !== 0 ? String(initial.consumption).replace('.', ',') : '',
     lifespan: initial?.lifespan != null && initial.lifespan !== 0 ? String(initial.lifespan).replace('.', ',') : '',
+    min_stock: initial?.min_stock != null && initial.min_stock !== 0 ? String(initial.min_stock).replace('.', ',') : '',
+    product_id: initial?.product_id || '',
+    cost_source: initial?.cost_source || 'manual',
     notes: initial?.notes || '',
   };
   const set = patch => setForm({ ...f, ...patch });
@@ -67,6 +295,9 @@ function InsumoModal({ open, initial, suppliers, onClose, onSaved }) {
         cost_method: f.cost_method,
         consumption: numOf(f.consumption) || 0,
         lifespan: numOf(f.lifespan) || 0,
+        min_stock: numOf(f.min_stock) || 0,
+        product_id: f.product_id || null,
+        cost_source: f.cost_source,
         notes: f.notes,
       };
       if (isEdit) await api.put(`/insumos/${initial.id}`, payload);
@@ -155,6 +386,39 @@ function InsumoModal({ open, initial, suppliers, onClose, onSaved }) {
           </div>
         )}
 
+        {/* Estoque e integração com Compras/Estoque */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Estoque mínimo ({f.base_unit})</label>
+            <input className="input" inputMode="decimal" value={f.min_stock} placeholder="0"
+              onChange={e => set({ min_stock: e.target.value.replace(/[^\d,.]/g, '') })} />
+            <p className="text-[11px] text-gray-400 mt-1">Abaixo disso, o insumo entra no alerta de reposição.</p>
+          </div>
+          <div>
+            <label className="label">Produto vinculado (Compras/Estoque)</label>
+            <select className="input" value={f.product_id} onChange={e => set({ product_id: e.target.value })}>
+              <option value="">— sem vínculo —</option>
+              {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              Vincule para o insumo herdar saldo em estoque e o preço da última compra.
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Origem do custo</label>
+          <div className="flex gap-2">
+            {Object.entries(COST_SOURCE).map(([k, v]) => (
+              <button key={k} type="button" onClick={() => set({ cost_source: k })}
+                className={`flex-1 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
+                  f.cost_source === k ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Prévia do custo */}
         <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-2 gap-2 text-sm">
           <div className="flex justify-between">
@@ -188,6 +452,9 @@ export default function Insumos() {
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState('');
   const [fCat, setFCat] = useState('');
+  const [soRepor, setSoRepor] = useState(false);
+  const [fornModal, setFornModal] = useState(null);
+  const [histModal, setHistModal] = useState(null);
 
   const { data: insumos = [], isLoading } = useQuery({
     queryKey: ['insumos'],
@@ -197,13 +464,21 @@ export default function Insumos() {
     queryKey: ['suppliers-min'],
     queryFn: () => api.get('/suppliers?limit=500').then(d => (Array.isArray(d) ? d : d.data || [])),
   });
+  const { data: productsRes } = useQuery({
+    queryKey: ['pricing-products'],
+    queryFn: () => api.get('/products?limit=1000'),
+  });
+  const products = productsRes?.data || [];
 
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase();
     return insumos
       .filter(i => !fCat || i.category === fCat)
+      .filter(i => !soRepor || i.precisa_repor)
       .filter(i => !s || (i.name || '').toLowerCase().includes(s) || (i.supplier || '').toLowerCase().includes(s));
-  }, [insumos, search, fCat]);
+  }, [insumos, search, fCat, soRepor]);
+
+  const repor = insumos.filter(i => i.precisa_repor);
 
   const cats = useMemo(() => [...new Set(insumos.map(i => i.category))], [insumos]);
 
@@ -235,7 +510,27 @@ export default function Insumos() {
           <option value="">Todas as categorias</option>
           {cats.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
+        <button onClick={() => setSoRepor(v => !v)}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+            soRepor ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+          <AlertTriangle size={13} className="inline mr-1" /> Repor ({repor.length})
+        </button>
       </div>
+
+      {/* Alerta de reposição */}
+      {repor.length > 0 && !soRepor && (
+        <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          <div className="text-sm flex-1">
+            <p className="font-semibold text-amber-800">{repor.length} insumo(s) no estoque mínimo</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              {repor.slice(0, 6).map(i => `${i.name} (${fmt6(i.stock)} ${i.base_unit})`).join(' · ')}
+              {repor.length > 6 && ` e mais ${repor.length - 6}`}
+            </p>
+          </div>
+          <button className="btn-secondary btn-sm shrink-0" onClick={() => setSoRepor(true)}>Ver</button>
+        </div>
+      )}
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -249,6 +544,9 @@ export default function Insumos() {
                 <th className="px-3 py-2.5 text-right">Custo / unidade</th>
                 <th className="px-3 py-2.5">Método</th>
                 <th className="px-3 py-2.5 text-right">Custo / peça</th>
+                <th className="px-3 py-2.5 text-right">Estoque</th>
+                <th className="px-3 py-2.5">Origem</th>
+                <th className="px-3 py-2.5">Atualizado</th>
                 <th className="px-3 py-2.5 text-center">Ações</th>
               </tr>
             </thead>
@@ -269,8 +567,28 @@ export default function Insumos() {
                       : <span className="text-xs text-blue-600">Consumo · {fmt6(i.consumption)} {i.base_unit}</span>}
                   </td>
                   <td className="px-3 py-2.5 text-right font-semibold text-green-700 whitespace-nowrap">{fmtBRL(i.cost_per_piece)}</td>
+                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                    {i.stock == null ? <span className="text-gray-300" title="Sem produto vinculado">—</span> : (
+                      <span className={i.precisa_repor ? 'text-amber-600 font-semibold' : 'text-gray-600'}>
+                        {i.precisa_repor && <AlertTriangle size={11} className="inline mr-0.5" />}
+                        {fmt6(i.stock)} {i.base_unit}
+                        {Number(i.min_stock) > 0 && <span className="block text-[10px] text-gray-400">mín. {fmt6(i.min_stock)}</span>}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${(COST_SOURCE[i.cost_source] || COST_SOURCE.manual).cls}`}>
+                      {(COST_SOURCE[i.cost_source] || COST_SOURCE.manual).label}
+                    </span>
+                    {i.fornecedores_count > 0 && (
+                      <span className="block text-[10px] text-gray-400 mt-0.5">{i.fornecedores_count} fornec.</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">{dtBR(i.updated_at)}</td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-center gap-1">
+                      <button className="btn-ghost p-1.5 text-gray-600" title="Fornecedores" onClick={() => setFornModal(i)}><Users size={14} /></button>
+                      <button className="btn-ghost p-1.5 text-gray-600" title="Histórico de preço" onClick={() => setHistModal(i)}><LineChart size={14} /></button>
                       <button className="btn-ghost p-1.5 text-blue-600" title="Editar" onClick={() => setModal(i)}><Pencil size={14} /></button>
                       <button className="btn-ghost p-1.5 text-red-500" title="Excluir" onClick={() => remove(i)}><Trash2 size={14} /></button>
                     </div>
@@ -278,7 +596,7 @@ export default function Insumos() {
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-12 text-sm text-gray-400">
+                <tr><td colSpan={11} className="text-center py-12 text-sm text-gray-400">
                   <Package size={28} className="mx-auto mb-2 opacity-30" />
                   {insumos.length === 0 ? 'Nenhum insumo cadastrado — clique em Novo Insumo.' : 'Nenhum insumo para esse filtro.'}
                 </td></tr>
@@ -292,9 +610,12 @@ export default function Insumos() {
         O <b>custo por peça</b> alimenta o Processo de Produção e a Formação de Preço — atualiza o preço de um material aqui e o custo real de todos os produtos que o usam se ajusta.
       </p>
 
-      <InsumoModal open={!!modal} initial={modal || {}} suppliers={suppliers}
+      <InsumoModal open={!!modal} initial={modal || {}} suppliers={suppliers} products={products}
         onClose={() => setModal(null)}
         onSaved={() => { setModal(null); qc.invalidateQueries({ queryKey: ['insumos'] }); }} />
+
+      {fornModal && <FornecedoresModal insumo={fornModal} suppliers={suppliers} onClose={() => setFornModal(null)} />}
+      {histModal && <HistoricoModal insumo={histModal} onClose={() => setHistModal(null)} />}
     </div>
   );
 }
