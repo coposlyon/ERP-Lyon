@@ -37,13 +37,6 @@ const menuItems = [
     ],
   },
   {
-    label: 'Compras',
-    icon: ShoppingBag,
-    children: [
-      { label: 'Pedidos de Compra', path: '/purchases', icon: ShoppingBag, module: 'purchases' },
-    ],
-  },
-  {
     label: 'Cadastros',
     icon: Package,
     children: [
