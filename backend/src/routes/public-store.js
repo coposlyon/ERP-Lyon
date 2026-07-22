@@ -298,7 +298,7 @@ router.get('/products/border', async (req, res) => {
 router.get('/products/:id', async (req, res) => {
   const build = (full) => supabase
     .from('PRODUTOS')
-    .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, print_pricing, store_group, store_color, variations' : ''}, CATEGORIAS(name)`)
+    .select(`id, name, code, unit, description, sale_price, price_tiers, category_id${full ? ', min_order_qty, print_pricing, store_group, store_color, variations' : ''}, CATEGORIAS(name)`)
     .eq('tenant_id', STORE_TENANT).eq('id', req.params.id).eq('is_active', true)
     .maybeSingle();
   try {
@@ -328,25 +328,51 @@ router.get('/products/:id', async (req, res) => {
       if (pv?.variation_images && typeof pv.variation_images === 'object') variationImages = pv.variation_images;
     } catch { /* colunas ainda não existem */ }
 
+    // tipo_id (isolado: a coluna pode não existir em bases antigas)
+    try {
+      const { data: pt } = await supabase.from('PRODUTOS')
+        .select('tipo_id').eq('tenant_id', STORE_TENANT).eq('id', req.params.id).maybeSingle();
+      if (pt && pt.tipo_id) p.tipo_id = pt.tipo_id;
+    } catch { /* sem tipo_id */ }
+
     const { data: variants } = await supabase
       .from('VARIANTES_PRODUTO')
       .select('id, name, type, value, extra_price')
       .eq('tenant_id', STORE_TENANT).eq('product_id', p.id)
       .order('name');
 
-    // Cores = outros produtos do mesmo modelo (store_group)
+    // Cores = outros produtos do MESMO modelo E da mesma categoria/tipo.
+    // Sem o recorte por categoria, um store_group genérico traz produtos de
+    // todas as linhas (bicolor, borda, degradê...) e a lista explode.
     let colorOptions = [];
     if (p.store_group) {
-      const { data: sib } = await supabase
-        .from('PRODUTOS')
-        .select('id, name, store_color, sale_price, price_tiers')
-        .eq('tenant_id', STORE_TENANT).eq('is_active', true).eq('store_group', p.store_group)
-        .order('store_color');
-      colorOptions = (sib || []).map(s => ({
-        id: s.id,
-        label: (s.store_color && s.store_color.trim()) || s.name,
-        from_price: fromPrice(s),
-      }));
+      const sibSel = 'id, name, store_color, sale_price, price_tiers, show_in_store, category_id, tipo_id';
+      const sibQuery = (cols, useTipo) => {
+        let q = supabase.from('PRODUTOS').select(cols)
+          .eq('tenant_id', STORE_TENANT).eq('is_active', true)
+          .eq('store_group', p.store_group)
+          .order('store_color').limit(300);
+        if (p.category_id) q = q.eq('category_id', p.category_id);
+        if (useTipo && p.tipo_id) q = q.eq('tipo_id', p.tipo_id);
+        return q;
+      };
+      // tipo_id/show_in_store podem não existir → cai para um select mais simples
+      let { data: sib, error: sibErr } = await sibQuery(sibSel, true);
+      if (sibErr) ({ data: sib } = await sibQuery('id, name, store_color, sale_price, price_tiers, category_id', false));
+
+      const seen = new Set();
+      colorOptions = (sib || [])
+        .filter(s => s.show_in_store !== false)
+        .map(s => ({
+          id: s.id,
+          label: (s.store_color && s.store_color.trim()) || s.name,
+          from_price: fromPrice(s),
+        }))
+        .filter(s => { // não repete a mesma cor
+          const k = s.label.toUpperCase();
+          if (seen.has(k)) return false;
+          seen.add(k); return true;
+        });
     }
 
     res.json({

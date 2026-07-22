@@ -50,6 +50,7 @@ export default function ProductPage() {
   const { add } = useCart();
   const [printMethod, setPrintMethod] = useState(null);
   const [qty, setQty] = useState(1);
+  const [imgError, setImgError] = useState(false);
 
   const { data: product, isLoading, error } = useQuery({
     queryKey: ['store-product', id],
@@ -60,6 +61,7 @@ export default function ProductPage() {
   const minQty = Math.max(1, product?.min_order_qty || 1);
 
   useEffect(() => { if (product) setQty(q => Math.max(q, minQty)); }, [product, minQty]);
+  useEffect(() => { setImgError(false); }, [id]);
 
   // seleciona o primeiro tipo de impressão disponível
   useEffect(() => {
@@ -122,8 +124,9 @@ export default function ProductPage() {
         <div className="relative rounded-3xl overflow-hidden flex items-center justify-center py-16 bg-gray-900">
           <div className="st-blob" style={{ width: 240, height: 240, background: '#F26522', top: '8%', left: '6%', opacity: .5 }} />
           <div className="st-blob" style={{ width: 200, height: 200, background: '#F26522', bottom: '4%', right: '8%', opacity: .35, animationDelay: '3s' }} />
-          {productImg ? (
+          {productImg && !imgError ? (
             <img key={productImg} src={productImg} alt={product.name}
+              onError={() => setImgError(true)}
               className="relative z-10 max-h-[360px] w-auto object-contain st-float drop-shadow-2xl" />
           ) : (
             <div className="relative st-float">
