@@ -30,11 +30,30 @@ const VARIABLE_DEFAULTS = {
   antecipacao_pct: 0,       // antecipação de recebíveis (%)
   payment_link_pct: 0,      // link de pagamento (%)
   marketplace: { shopee: 0, mercado_livre: 0, amazon: 0, site_proprio: 0 }, // (%)
+  // Taxas por operadora de cartão e faixa de parcelas (%)
+  card_operators: [],   // [{ name, debito, credito, inst_2_6, inst_7_12, antecipacao }]
+  // Canais de marketplace extras além dos padrão: [{ name, pct }]
+  marketplace_channels: [],
 };
 
 async function getConfig(tenantId) {
   const { data } = await supabase.from('EMPRESAS').select('settings').eq('id', tenantId).maybeSingle();
   return { ...DEFAULTS, ...(data?.settings?.pricing || {}) };
+}
+
+// Alíquota de venda — o FISCAL é a fonte da verdade. Só cai no valor
+// da precificação se o fiscal ainda não tiver alíquota definida.
+async function taxRate(tenantId, cfg) {
+  try {
+    const { data, error } = await supabase.from('CONFIG_FISCAL')
+      .select('aliquota_venda, regime_tributario').eq('tenant_id', tenantId).maybeSingle();
+    if (error) throw error;
+    const a = Number(data?.aliquota_venda);
+    if (Number.isFinite(a) && a > 0) {
+      return { pct: a, source: 'fiscal', regime: data?.regime_tributario || 'simples' };
+    }
+  } catch { /* coluna/tabela ausente → usa a precificação */ }
+  return { pct: Number(cfg?.tax_pct) || 0, source: 'precificacao', regime: cfg?.tax_regime || 'simples' };
 }
 
 // Mescla e grava settings.pricing (preserva o resto do settings)
@@ -345,9 +364,10 @@ async function fixedOverview(tenantId) {
   //   meta      → meta definida no Simulador de Metas
   //   producao  → unidades realmente produzidas no mês (módulo Produção)
   //   vendas    → média de vendas dos últimos 90 dias (fallback)
-  const [autoUnits, produced] = await Promise.all([
+  const [autoUnits, produced, tax] = await Promise.all([
     autoMonthlyUnits(tenantId),
     producedUnits(tenantId, null),
+    taxRate(tenantId, cfg),
   ]);
   const meta = cfg.monthly_units != null && cfg.monthly_units > 0 ? Number(cfg.monthly_units) : 0;
   const units = meta || produced || autoUnits;
@@ -359,10 +379,11 @@ async function fixedOverview(tenantId) {
     monthly_units_source: source,
     production_sources: { meta, producao: produced, vendas: autoUnits },
     rateio_method: 'producao',
+    tax_source: tax.source,
     auto_monthly_units: autoUnits,
     overhead_unit: Math.round(overheadUnit * 10000) / 10000,
-    tax_regime: cfg.tax_regime || 'simples',
-    tax_pct_default: Number(cfg.tax_pct) || 0,
+    tax_regime: tax.regime,
+    tax_pct_default: tax.pct,
     category_colors: cfg.category_colors && typeof cfg.category_colors === 'object' ? cfg.category_colors : {},
   };
 }

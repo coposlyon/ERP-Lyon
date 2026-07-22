@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import {
   Loader2, Save, Truck, Landmark, Store, Info, HardHat,
   Users, DollarSign, RefreshCw, X, Megaphone, Layers, ArrowRight,
+  Plus, Trash2, Receipt,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -80,6 +81,8 @@ export default function DespesasVariaveis() {
       amazon: data?.variable?.marketplace?.amazon ?? 0,
       site_proprio: data?.variable?.marketplace?.site_proprio ?? 0,
     },
+    card_operators: data?.variable?.card_operators ?? [],
+    marketplace_channels: data?.variable?.marketplace_channels ?? [],
   };
   const set = patch => setForm({ ...v, ...patch });
   const setMk = patch => setForm({ ...v, marketplace: { ...v.marketplace, ...patch } });
@@ -103,6 +106,13 @@ export default function DespesasVariaveis() {
           amazon: num(v.marketplace.amazon),
           site_proprio: num(v.marketplace.site_proprio),
         },
+        card_operators: (v.card_operators || []).map(o => ({
+          name: o.name,
+          debito: num(o.debito), credito: num(o.credito),
+          inst_2_6: num(o.inst_2_6), inst_7_12: num(o.inst_7_12),
+          antecipacao: num(o.antecipacao),
+        })),
+        marketplace_channels: (v.marketplace_channels || []).map(c => ({ name: c.name, pct: num(c.pct) })),
       });
       toast.success('Despesas variáveis salvas!');
       setForm(null);
@@ -290,6 +300,66 @@ export default function DespesasVariaveis() {
             <PctField label="Antecipação (%)" value={v.antecipacao_pct} onChange={x => set({ antecipacao_pct: x })} />
             <PctField label="Link de Pagamento (%)" value={v.payment_link_pct} onChange={x => set({ payment_link_pct: x })} />
           </div>
+
+          {/* Taxas por operadora e faixa de parcelas */}
+          <div className="pt-3 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Taxas por operadora e parcelas</p>
+              <button type="button" className="btn-secondary btn-sm"
+                onClick={() => set({ card_operators: [...(v.card_operators || []), { name: '', debito: 0, credito: 0, inst_2_6: 0, inst_7_12: 0, antecipacao: 0 }] })}>
+                <Plus size={13} /> Operadora
+              </button>
+            </div>
+            {(v.card_operators || []).length === 0 ? (
+              <p className="text-xs text-gray-400">Nenhuma operadora cadastrada. Use os campos acima como taxa geral, ou adicione Cielo, Stone, Mercado Pago... com a taxa de cada faixa de parcela.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase text-gray-500 border-b border-gray-100">
+                      <th className="px-2 py-2">Operadora</th>
+                      <th className="px-2 py-2 text-right">Débito</th>
+                      <th className="px-2 py-2 text-right">Crédito 1x</th>
+                      <th className="px-2 py-2 text-right">2–6x</th>
+                      <th className="px-2 py-2 text-right">7–12x</th>
+                      <th className="px-2 py-2 text-right">Antecip.</th>
+                      <th className="px-2 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(v.card_operators || []).map((o, i) => {
+                      const upd = patch => {
+                        const arr = [...v.card_operators];
+                        arr[i] = { ...arr[i], ...patch };
+                        set({ card_operators: arr });
+                      };
+                      const cell = k => (
+                        <td className="px-2 py-1.5">
+                          <input className="input text-sm text-right py-1" inputMode="decimal"
+                            value={o[k] ?? 0} onChange={e => upd({ [k]: e.target.value })} />
+                        </td>
+                      );
+                      return (
+                        <tr key={i} className="border-b border-gray-50">
+                          <td className="px-2 py-1.5">
+                            <input className="input text-sm py-1" placeholder="Ex.: Cielo"
+                              value={o.name} onChange={e => upd({ name: e.target.value })} />
+                          </td>
+                          {cell('debito')}{cell('credito')}{cell('inst_2_6')}{cell('inst_7_12')}{cell('antecipacao')}
+                          <td className="px-2 py-1.5 text-center">
+                            <button type="button" className="btn-ghost p-1 text-red-500"
+                              onClick={() => set({ card_operators: v.card_operators.filter((_, x) => x !== i) })}>
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -304,6 +374,45 @@ export default function DespesasVariaveis() {
             <PctField label="Mercado Livre (%)" value={v.marketplace.mercado_livre} onChange={x => setMk({ mercado_livre: x })} />
             <PctField label="Amazon (%)" value={v.marketplace.amazon} onChange={x => setMk({ amazon: x })} />
             <PctField label="Site Próprio (%)" value={v.marketplace.site_proprio} onChange={x => setMk({ site_proprio: x })} />
+          </div>
+
+          {/* Outros canais */}
+          <div className="pt-3 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Outros canais</p>
+              <button type="button" className="btn-secondary btn-sm"
+                onClick={() => set({ marketplace_channels: [...(v.marketplace_channels || []), { name: '', pct: 0 }] })}>
+                <Plus size={13} /> Canal
+              </button>
+            </div>
+            {(v.marketplace_channels || []).length === 0 ? (
+              <p className="text-xs text-gray-400">Adicione canais como Magalu, Shein, Elo7, marketplace próprio...</p>
+            ) : (
+              <div className="space-y-2">
+                {(v.marketplace_channels || []).map((c, i) => {
+                  const upd = patch => {
+                    const arr = [...v.marketplace_channels];
+                    arr[i] = { ...arr[i], ...patch };
+                    set({ marketplace_channels: arr });
+                  };
+                  return (
+                    <div key={i} className="flex items-center gap-2">
+                      <input className="input text-sm py-1 flex-1" placeholder="Nome do canal"
+                        value={c.name} onChange={e => upd({ name: e.target.value })} />
+                      <div className="relative w-24">
+                        <input className="input text-sm py-1 pr-7 text-right" inputMode="decimal"
+                          value={c.pct ?? 0} onChange={e => upd({ pct: e.target.value })} />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                      </div>
+                      <button type="button" className="btn-ghost p-1 text-red-500"
+                        onClick={() => set({ marketplace_channels: v.marketplace_channels.filter((_, x) => x !== i) })}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -448,6 +557,18 @@ export default function DespesasVariaveis() {
             Depreciação, manutenção e investimentos <b>não entram aqui</b> — serão tratados no módulo de Engenharia de Custos e Ativos.
           </p>
         </div>
+      </div>
+
+      {/* Impostos ficam no Fiscal */}
+      <div className="card p-4 flex flex-wrap items-center gap-3">
+        <Receipt size={16} className="text-primary-500 shrink-0" />
+        <p className="text-sm text-gray-600 flex-1 min-w-[240px]">
+          <b className="text-gray-800">Impostos não são configurados aqui.</b> A alíquota fica no módulo Fiscal e vai
+          automaticamente para a Formação de Preço e o Rateio.
+        </p>
+        <Link to="/fiscal" className="btn-secondary btn-sm">
+          Configurar no Fiscal <ArrowRight size={13} />
+        </Link>
       </div>
 
       {/* Para onde esse módulo alimenta */}

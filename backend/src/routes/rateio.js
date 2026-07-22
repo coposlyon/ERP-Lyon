@@ -185,6 +185,23 @@ router.put('/variable', async (req, res) => {
         amazon: pct(v.marketplace?.amazon),
         site_proprio: pct(v.marketplace?.site_proprio),
       },
+      // Operadoras de cartão: taxa por bandeira/adquirente e faixa de parcelas
+      card_operators: (Array.isArray(v.card_operators) ? v.card_operators : [])
+        .filter(o => String(o?.name || '').trim())
+        .slice(0, 20)
+        .map(o => ({
+          name: String(o.name).trim().slice(0, 60),
+          debito: pct(o.debito),
+          credito: pct(o.credito),
+          inst_2_6: pct(o.inst_2_6),
+          inst_7_12: pct(o.inst_7_12),
+          antecipacao: pct(o.antecipacao),
+        })),
+      // Canais de marketplace adicionais
+      marketplace_channels: (Array.isArray(v.marketplace_channels) ? v.marketplace_channels : [])
+        .filter(c => String(c?.name || '').trim())
+        .slice(0, 20)
+        .map(c => ({ name: String(c.name).trim().slice(0, 60), pct: pct(c.pct) })),
     };
     await saveConfig(req.tenantId, { variable_costs: clean });
     audit(req, 'update', 'rateio_variable', req.tenantId, clean);
@@ -199,9 +216,11 @@ router.put('/variable', async (req, res) => {
 router.get('/product/:id', async (req, res) => {
   try {
     const ov = await fixedOverview(req.tenantId);
-    const { data: product } = await supabase.from('PRODUTOS')
-      .select('id, name, cost_price, sale_price, CATEGORIAS(name)')
+    const findProduct = sel => supabase.from('PRODUTOS').select(sel)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    // updated_at pode não existir em bases antigas
+    let { data: product, error: pErr } = await findProduct('id, name, cost_price, sale_price, updated_at, CATEGORIAS(name)');
+    if (pErr) ({ data: product } = await findProduct('id, name, cost_price, sale_price, CATEGORIAS(name)'));
     if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
 
     // Ficha de Formação de Preço mais recente do produto
@@ -246,20 +265,127 @@ router.get('/product/:id', async (req, res) => {
       };
     }
 
+    // ── Custo VARIÁVEL por unidade (vem do módulo de Despesas Variáveis)
+    const month = new Date().toISOString().slice(0, 7);
+    const [labor, commissions, marketing, extras, cfg] = await Promise.all([
+      productionLabor(req.tenantId), commissionBySeller(req.tenantId, month),
+      marketingSpend(req.tenantId, month), extraVariableCosts(req.tenantId, month),
+      getConfig(req.tenantId),
+    ]);
+    const units = ov.monthly_units;
+    const pu = v => (units > 0 ? Math.round((v / units) * 10000) / 10000 : 0);
+    const variavelUnit = pu(labor.total + commissions.total + marketing.total + extras.total);
+
+    // ── Linhas com ORIGEM de cada custo
+    const src = breakdown.source === 'ficha'
+      ? { o: `Ficha "${breakdown.sheet_name}"`, l: '/pricing/formacao' }
+      : { o: 'Cadastro do produto', l: '/products' };
+    const lines = [
+      { key: 'materia_prima', label: 'Matéria-prima', value: breakdown.materia_prima, origin: src.o, link: src.l },
+      { key: 'tintas',        label: 'Tinta',          value: breakdown.tintas,        origin: src.o, link: src.l },
+      { key: 'serigrafia',    label: 'Tela / Serigrafia', value: breakdown.serigrafia, origin: src.o, link: src.l },
+      { key: 'caixa',         label: 'Embalagem',      value: breakdown.caixa,         origin: src.o, link: src.l },
+      { key: 'frete',         label: 'Frete de compra', value: breakdown.frete,        origin: 'Compras', link: '/purchases' },
+      { key: 'rateio',        label: 'Rateio de despesas fixas', value: breakdown.rateio, origin: 'Despesas Fixas', link: '/rateio/despesas-fixas' },
+      { key: 'variavel',      label: 'Custos variáveis (mão de obra, comissão, marketing)', value: variavelUnit, origin: 'Despesas Variáveis', link: '/rateio/despesas-variaveis' },
+      { key: 'impostos',      label: 'Impostos', value: breakdown.impostos, origin: 'Fiscal', link: '/fiscal' },
+    ];
+    const custoTotal = r2(lines.reduce((s, l) => s + (Number(l.value) || 0), 0));
+    for (const l of lines) {
+      l.value = Math.round((Number(l.value) || 0) * 10000) / 10000;
+      l.pct = custoTotal > 0 ? Math.round((l.value / custoTotal) * 1000) / 10 : 0;
+    }
+
+    // ── Datas de atualização (alerta quando o custo está velho)
+    const dates = [
+      sheet?.updated_at ? { label: 'Ficha de preço', at: sheet.updated_at } : null,
+      product.updated_at ? { label: 'Cadastro do produto', at: product.updated_at } : null,
+    ].filter(Boolean);
+    let insumoAt = null;
+    try {
+      const { data: ins } = await supabase.from('INSUMOS').select('updated_at')
+        .eq('tenant_id', req.tenantId).eq('is_active', true)
+        .order('updated_at', { ascending: false }).limit(1).maybeSingle();
+      if (ins?.updated_at) { insumoAt = ins.updated_at; dates.push({ label: 'Insumos', at: ins.updated_at }); }
+    } catch { /* migração 050 pendente */ }
+
+    const oldest = dates.length ? dates.reduce((a, b) => (new Date(a.at) < new Date(b.at) ? a : b)) : null;
+    const newest = dates.length ? dates.reduce((a, b) => (new Date(a.at) > new Date(b.at) ? a : b)) : null;
+    const days = newest ? Math.floor((Date.now() - new Date(newest.at)) / 86400000) : null;
+
     const preco = Number(product.sale_price) || 0;
+    const metaMargem = Number(cfg.margin_pct) || 30;
+    const precoSugerido = (1 - metaMargem / 100) > 0 ? r2(custoTotal / (1 - metaMargem / 100)) : 0;
+    const lucro = preco > 0 ? r2(preco - custoTotal) : null;
+    const margem = preco > 0 ? Math.round(((preco - custoTotal) / preco) * 1000) / 10 : null;
+
     res.json({
       product: {
         id: product.id, name: product.name,
         category: product.CATEGORIAS?.name || null,
         sale_price: preco,
       },
-      breakdown,
-      lucro_unit: preco > 0 ? r2(preco - breakdown.custo_total) : null,
-      margem_pct: preco > 0 ? Math.round(((preco - breakdown.custo_total) / preco) * 1000) / 10 : null,
+      breakdown: { ...breakdown, custo_total: custoTotal, variavel: variavelUnit },
+      lines,
+      custo_total: custoTotal,
+      variavel_unit: variavelUnit,
+      monthly_units: units,
+      lucro_unit: lucro,
+      margem_pct: margem,
+      margem_meta: metaMargem,
+      preco_sugerido: precoSugerido,
+      abaixo_meta: margem != null && margem < metaMargem,
+      atualizacao: {
+        itens: dates,
+        mais_recente: newest?.at || null,
+        mais_antiga: oldest?.at || null,
+        dias: days,
+        // custo parado há mais de 30 dias merece revisão
+        alerta: days != null && days > 30,
+      },
     });
   } catch (err) {
     console.error('[rateio/product]', err.message);
     res.status(500).json({ error: 'Erro ao calcular o rateio do produto' });
+  }
+});
+
+// POST /rateio/product/:id/recalcular
+// Regrava a ficha com o rateio e os custos ATUAIS. Não inventa valores:
+// só recalcula os campos derivados a partir do que está cadastrado hoje.
+router.post('/product/:id/recalcular', async (req, res) => {
+  try {
+    const ov = await fixedOverview(req.tenantId);
+    const { data: sheet } = await supabase.from('PRECIFICACOES')
+      .select('*').eq('tenant_id', req.tenantId).eq('product_id', req.params.id)
+      .eq('is_active', true).order('updated_at', { ascending: false })
+      .limit(1).maybeSingle();
+
+    if (!sheet) {
+      return res.status(400).json({
+        error: 'Este produto não tem ficha de preço. Crie a ficha na Formação de Preço para recalcular.',
+        code: 'NO_SHEET',
+      });
+    }
+
+    const c = computeSheet({ ...sheet, overhead_unit: ov.overhead_unit });
+    const { data, error } = await supabase.from('PRECIFICACOES').update({
+      overhead_unit: ov.overhead_unit,
+      cost_direct: c.cost_direct,
+      cost_subtotal: c.cost_subtotal,
+      cost_unit: c.cost_unit,
+      price_min: c.price_min,
+      price_ideal: c.price_ideal,
+      price_premium: c.price_premium,
+      updated_at: new Date().toISOString(),
+    }).eq('id', sheet.id).eq('tenant_id', req.tenantId).select().single();
+    if (error) throw error;
+
+    audit(req, 'update', 'rateio_recalculo', req.params.id, { cost_unit: c.cost_unit });
+    res.json({ ok: true, cost_unit: c.cost_unit, overhead_unit: ov.overhead_unit, updated_at: data.updated_at });
+  } catch (err) {
+    console.error('[rateio/recalcular]', err.message);
+    res.status(500).json({ error: 'Erro ao recalcular os custos' });
   }
 });
 
