@@ -28,11 +28,11 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
             <button onClick={onClose} className="btn-ghost p-1.5"><X size={20} /></button>
           </div>
         )}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="modal-body flex-1 overflow-y-auto p-4 sm:p-6">
           {children}
         </div>
         {footer && (
-          <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3 shrink-0">
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-100 flex flex-wrap items-center justify-end gap-2 sm:gap-3 shrink-0">
             {footer}
           </div>
         )}
@@ -41,25 +41,26 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className={`relative bg-white rounded-xl shadow-2xl w-full ${sizes[size]} max-h-[90vh] flex flex-col`}>
+      {/* No celular vira uma folha que sobe de baixo (mais fácil de alcançar) */}
+      <div className={`relative bg-white rounded-t-2xl sm:rounded-xl shadow-2xl w-full ${sizes[size]} max-h-[92vh] sm:max-h-[90vh] flex flex-col`}>
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-            <button onClick={onClose} className="btn-ghost p-1">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 pr-2">{title}</h2>
+            <button onClick={onClose} className="btn-ghost p-1 shrink-0">
               <X size={18} />
             </button>
           </div>
         )}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="modal-body flex-1 overflow-y-auto px-4 sm:px-6 py-4">
           {children}
         </div>
         {footer && (
-          <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3">
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-100 flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             {footer}
           </div>
         )}

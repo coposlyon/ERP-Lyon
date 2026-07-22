@@ -100,11 +100,11 @@ export function Pagination({ page, total, limit, onPageChange }) {
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-      <p className="text-sm text-gray-500">
+    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-100">
+      <p className="text-xs sm:text-sm text-gray-500">
         {start}–{end} de {total} registros
       </p>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 ml-auto">
         <button
           onClick={() => onPageChange(page - 1)}
           disabled={page === 1}

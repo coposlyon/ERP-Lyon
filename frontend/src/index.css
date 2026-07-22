@@ -132,11 +132,65 @@
   }
 
   .page-header {
-    @apply flex items-center justify-between mb-6;
+    @apply flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6;
   }
 
   .page-title {
-    @apply text-2xl font-bold text-gray-900;
+    @apply text-xl sm:text-2xl font-bold text-gray-900;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MOBILE  —  ajustes globais (valem para todas as telas)
+   ═══════════════════════════════════════════════════════ */
+
+/* Nunca deixa a página inteira rolar de lado */
+html, body { max-width: 100%; overflow-x: hidden; }
+
+@media (max-width: 640px) {
+  /* iOS dá zoom automático em campo com fonte < 16px. Isso é o que
+     "quebra" o layout ao tocar num input. 16px resolve na origem. */
+  .input,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Respiro menor nos cards para ganhar largura útil */
+  .card-header { @apply px-4 py-3; }
+  .card-body   { @apply px-4 py-3; }
+
+  /* Tabelas mais compactas. Sem quebra de linha elas rolam de lado
+     em vez de espremer as colunas até virar coluna de 3 letras. */
+  .table-auto th { @apply px-3 py-2.5 whitespace-nowrap; }
+  .table-auto td { @apply px-3 py-2.5 whitespace-nowrap; }
+
+  /* Grades que contêm CAMPOS viram 1 coluna — campo espremido em meia
+     tela de celular é ilegível. Usa :has para não afetar grades de
+     números/cores (ex.: swatches), que continuam multi-coluna. */
+  [class*="grid-cols-"]:has(> input),
+  [class*="grid-cols-"]:has(> select),
+  [class*="grid-cols-"]:has(> textarea),
+  [class*="grid-cols-"]:has(> div > input),
+  [class*="grid-cols-"]:has(> div > select),
+  [class*="grid-cols-"]:has(> div > textarea),
+  [class*="grid-cols-"]:has(> div > .input),
+  [class*="grid-cols-"]:has(> div > div > input) {
+    grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+  }
+
+  /* Alvo de toque mínimo confortável nos botões de ícone */
+  .btn-ghost { @apply px-2.5 py-2; }
+}
+
+/* Tabela solta dentro de um card (sem wrapper de rolagem) passa a
+   rolar sozinha, em vez de esticar a página */
+@media (max-width: 1023px) {
+  .card > table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
