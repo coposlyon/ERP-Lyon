@@ -41,11 +41,12 @@ async function syncEmployeeSalary(tenantId, customer) {
     } else if (active) {
       const row = {
         tenant_id: tenantId, name: 'Colaboradores', amount: salary,
-        due_day: 5, notes: customer.name, employee_id: customer.id, category: 'RH',
+        due_day: 5, notes: customer.name, employee_id: customer.id,
+        category: 'RH', cost_center: 'RH', origin: 'rh',
       };
       let { error } = await supabase.from('DESPESAS_FIXAS').insert(row);
-      if (error && /category/i.test(error.message || '')) {
-        delete row.category; // migração 049 pendente
+      if (error && /category|cost_center|origin/i.test(error.message || '')) {
+        delete row.category; delete row.cost_center; delete row.origin;
         await supabase.from('DESPESAS_FIXAS').insert(row);
       }
     }

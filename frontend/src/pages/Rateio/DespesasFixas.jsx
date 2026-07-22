@@ -6,7 +6,8 @@ import { Chart as ChartJS, ArcElement, Tooltip as ChartTooltip } from 'chart.js'
 import {
   Plus, Loader2, Pencil, Trash2, Lightbulb, X, Save, Check,
   ChevronLeft, ChevronRight, CalendarDays, CircleDollarSign,
-  PieChart as PieIcon, BarChart3, ClipboardList,
+  PieChart as PieIcon, BarChart3, ClipboardList, TrendingUp, TrendingDown,
+  Factory, FlaskConical, ArrowRight, Minus,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -29,6 +30,23 @@ const CAT_META = {
 };
 const CATEGORIES = Object.keys(CAT_META);
 const LEGEND_ORDER = ['Marketing', 'Administrativa', 'Tecnologia', 'Financeiro', 'Logística', 'RH', 'Outros'];
+const COST_CENTERS = ['Administrativo', 'Comercial', 'Produção', 'Tecnologia', 'Logística', 'Financeiro', 'RH'];
+
+// Origem do lançamento — de onde a despesa veio
+const ORIGINS = {
+  manual:     { label: 'Manual',     cls: 'bg-gray-100 text-gray-600 border-gray-200' },
+  rh:         { label: 'RH',         cls: 'bg-green-50 text-green-700 border-green-200' },
+  financeiro: { label: 'Financeiro', cls: 'bg-teal-50 text-teal-700 border-teal-200' },
+  contratos:  { label: 'Contratos',  cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+};
+const originOf = e => e.origin || (e.employee_id ? 'rh' : 'manual');
+
+// Fonte da produção mensal (não se digita mais aqui — vem de Metas/Produção)
+const UNITS_SOURCE = {
+  meta:     { label: 'Meta de produção', hint: 'definida no Simulador de Metas' },
+  producao: { label: 'Produção do mês',  hint: 'apurada no módulo de Produção' },
+  vendas:   { label: 'Média de vendas',  hint: 'média dos últimos 90 dias' },
+};
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -135,6 +153,8 @@ function ExpenseModal({ open, initial, categories = [], onClose, onSaved }) {
     name: initial?.name || '',
     notes: initial?.notes || '',
     category: initial?.category || 'Administrativa',
+    cost_center: initial?.cost_center || 'Administrativo',
+    origin: originOf(initial || {}),
     custom: '',
     periodicity: initial?.periodicity || 'mensal',
     amount: initial?.original_amount != null || initial?.amount != null
@@ -159,7 +179,7 @@ function ExpenseModal({ open, initial, categories = [], onClose, onSaved }) {
     try {
       const payload = {
         name, notes: f.notes, amount,
-        category,
+        category, cost_center: f.cost_center, origin: f.origin,
         periodicity: f.periodicity, due_day: f.due_day,
         due_month: f.periodicity === 'anual' ? f.due_month : null,
         ...(isEdit ? { is_active: f.is_active } : {}),
@@ -204,6 +224,23 @@ function ExpenseModal({ open, initial, categories = [], onClose, onSaved }) {
                 onChange={e => set({ custom: e.target.value })} />
             </div>
           )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Centro de Custo</label>
+            <select className="input" value={f.cost_center} onChange={e => set({ cost_center: e.target.value })}>
+              {COST_CENTERS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Origem do lançamento</label>
+            <select className="input" value={f.origin} disabled={!!initial?.employee_id}
+              onChange={e => set({ origin: e.target.value })}>
+              {Object.entries(ORIGINS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            {initial?.employee_id && <p className="text-[11px] text-gray-400 mt-1">Vem do RH — não editável aqui.</p>}
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -257,6 +294,92 @@ function ExpenseModal({ open, initial, categories = [], onClose, onSaved }) {
   );
 }
 
+// ─── Modal: Analisar Impacto (simulação de cenários) ───────
+// Nada aqui altera dados — é só projeção sobre os números atuais.
+function ImpactModal({ open, total, units, onClose }) {
+  const [pct, setPct] = useState(0);          // variação % nas despesas
+  const [nova, setNova] = useState('');       // nova despesa mensal (R$)
+  const [prod, setProd] = useState(units || 0); // produção simulada
+
+  const novaVal = moneyToNumber(nova) || 0;
+  const totalSim = total * (1 + pct / 100) + novaVal;
+  const prodSim = Number(prod) || 0;
+  const unitAtual = units > 0 ? total / units : 0;
+  const unitSim = prodSim > 0 ? totalSim / prodSim : 0;
+  const difTotal = totalSim - total;
+  const difUnit = unitSim - unitAtual;
+
+  function reset() { setPct(0); setNova(''); setProd(units || 0); }
+
+  return (
+    <Modal isOpen={open} onClose={() => { reset(); onClose(); }} title="Analisar impacto" size="md">
+      <div className="space-y-4">
+        <p className="text-xs text-gray-500">
+          Simule cenários sobre os números atuais. <b>Nada é salvo</b> — serve para decidir antes de mexer.
+        </p>
+
+        <div>
+          <label className="label">Variação nas despesas fixas: <span className={pct > 0 ? 'text-red-600' : pct < 0 ? 'text-green-600' : ''}>{pct > 0 ? '+' : ''}{pct}%</span></label>
+          <input type="range" min="-50" max="50" step="1" value={pct}
+            onChange={e => setPct(Number(e.target.value))} className="w-full accent-primary-600" />
+          <div className="flex justify-between text-[11px] text-gray-400"><span>-50%</span><span>0</span><span>+50%</span></div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Nova despesa mensal (R$)</label>
+            <input className="input" inputMode="decimal" value={nova} placeholder="0,00"
+              onChange={e => setNova(fmtMoney(e.target.value))} />
+          </div>
+          <div>
+            <label className="label">Produção simulada (un/mês)</label>
+            <input type="number" min="0" className="input" value={prod}
+              onChange={e => setProd(e.target.value)} />
+          </div>
+        </div>
+
+        {/* Resultado */}
+        <div className="rounded-xl border border-gray-200 overflow-hidden">
+          <div className="grid grid-cols-3 text-xs font-semibold text-gray-500 uppercase bg-gray-50 px-3 py-2">
+            <span>Indicador</span><span className="text-right">Atual</span><span className="text-right">Simulado</span>
+          </div>
+          {[
+            ['Total fixo/mês', fmtBRL(total), fmtBRL(totalSim), difTotal],
+            ['Produção (un)', fmtQty(units), fmtQty(prodSim), prodSim - units],
+            ['Custo por unidade', fmtBRL4(unitAtual), fmtBRL4(unitSim), difUnit],
+          ].map(([label, a, b, dif]) => (
+            <div key={label} className="grid grid-cols-3 px-3 py-2.5 border-t border-gray-100 text-sm items-center">
+              <span className="text-gray-600">{label}</span>
+              <span className="text-right text-gray-500">{a}</span>
+              <span className={`text-right font-semibold ${dif > 0 ? 'text-red-600' : dif < 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                {b}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className={`rounded-xl px-3 py-2.5 text-sm border ${
+          difUnit > 0 ? 'bg-red-50 border-red-200 text-red-700'
+          : difUnit < 0 ? 'bg-green-50 border-green-200 text-green-700'
+          : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+          {difUnit === 0 ? 'Sem mudança no custo por unidade.' : (
+            <>
+              O custo por unidade {difUnit > 0 ? 'sobe' : 'cai'} <b>{fmtBRL4(Math.abs(difUnit))}</b>
+              {unitAtual > 0 && <> ({pctBR(Math.abs(difUnit / unitAtual) * 100)})</>}.
+              {' '}Cada 1.000 peças {difUnit > 0 ? 'custam' : 'economizam'} <b>{fmtBRL(Math.abs(difUnit) * 1000)}</b> a {difUnit > 0 ? 'mais' : 'menos'}.
+            </>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <button className="btn-secondary" onClick={reset}>Limpar</button>
+          <button className="btn-primary" onClick={() => { reset(); onClose(); }}>Fechar</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Página ────────────────────────────────────────────────
 export default function DespesasFixas() {
   const qc = useQueryClient();
@@ -267,6 +390,8 @@ export default function DespesasFixas() {
   const [fCat, setFCat] = useState('');
   const [fStatus, setFStatus] = useState('');
   const [fTipo, setFTipo] = useState('');
+  const [fOrigem, setFOrigem] = useState('');
+  const [impactOpen, setImpactOpen] = useState(false);
   const [showAllDue, setShowAllDue] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -275,12 +400,17 @@ export default function DespesasFixas() {
     queryKey: ['rateio-summary'],
     queryFn: () => api.get('/rateio/summary'),
   });
+  const { data: comp } = useQuery({
+    queryKey: ['rateio-comparativo', refMonth],
+    queryFn: () => api.get(`/rateio/comparativo?month=${refMonth}`),
+  });
 
   const items = sum?.items || [];
   const total = sum?.total || 0;             // fixas ativas (inclui folha adm.)
   const units = sum?.monthly_units || 0;
   const perUnit = sum?.overhead_unit || 0;
   const prodLabor = sum?.prod_labor_total || 0;
+  const source = sum?.monthly_units_source || 'vendas';
 
   // Colaboradores NÃO aparecem aqui — só as despesas
   const expenses = useMemo(() => items.filter(e => !e.employee_id), [items]);
@@ -292,14 +422,6 @@ export default function DespesasFixas() {
     refetch();
     qc.invalidateQueries({ queryKey: ['pricing-fixed-summary'] });
     qc.invalidateQueries({ queryKey: ['fixed-expenses'] });
-  }
-
-  async function saveConfig(patch) {
-    try {
-      await api.put('/rateio/config', { ...patch, period: refMonth });
-      toast.success('Rateio recalculado e registrado no histórico');
-      invalidate();
-    } catch (err) { toast.error(err.error || 'Erro ao salvar o rateio'); }
   }
 
   async function removeExpense(exp) {
@@ -327,8 +449,9 @@ export default function DespesasFixas() {
     .filter(e => !fCat || catOf(e) === fCat)
     .filter(e => !fStatus || (fStatus === 'ativa' ? e.is_active !== false : e.is_active === false))
     .filter(e => !fTipo || (e.periodicity || 'mensal') === fTipo)
+    .filter(e => !fOrigem || originOf(e) === fOrigem)
     .sort((a, b) => nextDue(a) - nextDue(b)),
-  [expenses, fCat, fStatus, fTipo]);
+  [expenses, fCat, fStatus, fTipo, fOrigem]);
 
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const curPage = Math.min(page, pageCount);
@@ -397,7 +520,14 @@ export default function DespesasFixas() {
               <option value="mensal">Mensal</option>
               <option value="anual">Anual</option>
             </select>
+            <select className="input py-1.5 text-sm w-auto" value={fOrigem} onChange={e => { setFOrigem(e.target.value); setPage(1); }}>
+              <option value="">Todas as Origens</option>
+              {Object.entries(ORIGINS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
             <div className="flex-1" />
+            <button className="btn-secondary" onClick={() => setImpactOpen(true)}>
+              <FlaskConical size={15} /> Analisar impacto
+            </button>
             <button className="btn-primary" onClick={() => setModal({})}>
               <Plus size={15} /> Nova Despesa
             </button>
@@ -427,6 +557,8 @@ export default function DespesasFixas() {
                   <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-100">
                     <th className="px-4 py-2.5">Despesa</th>
                     <th className="px-2 py-2">Categoria</th>
+                    <th className="px-2 py-2">Centro de Custo</th>
+                    <th className="px-2 py-2">Origem</th>
                     <th className="px-2 py-2">Tipo</th>
                     <th className="px-2 py-2">Periodicidade</th>
                     <th className="px-2 py-2 text-right">Valor Original</th>
@@ -466,6 +598,17 @@ export default function DespesasFixas() {
                             {cat}
                           </span>
                         </td>
+                        <td className="px-2 py-2 text-gray-600 whitespace-nowrap">{exp.cost_center || '—'}</td>
+                        <td className="px-2 py-2">
+                          {(() => {
+                            const o = ORIGINS[originOf(exp)] || ORIGINS.manual;
+                            return (
+                              <span className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold border whitespace-nowrap ${o.cls}`}>
+                                {o.label}
+                              </span>
+                            );
+                          })()}
+                        </td>
                         <td className="px-2 py-2"><TipoPill /></td>
                         <td className="px-2 py-2 text-gray-600">{exp.periodicity === 'anual' ? 'Anual' : 'Mensal'}</td>
                         <td className="px-2 py-2 text-right whitespace-nowrap">{fmtBRL(original)}</td>
@@ -490,7 +633,7 @@ export default function DespesasFixas() {
                     );
                   })}
                   {pageRows.length === 0 && (
-                    <tr><td colSpan={11} className="text-center py-10 text-sm text-gray-400">
+                    <tr><td colSpan={13} className="text-center py-10 text-sm text-gray-400">
                       {expenses.length === 0
                         ? 'Nenhuma despesa fixa cadastrada — clique em Nova Despesa.'
                         : 'Nenhuma despesa encontrada para esse filtro.'}
@@ -500,7 +643,7 @@ export default function DespesasFixas() {
                 {rows.length > 0 && (
                   <tfoot>
                     <tr className="border-t-2 border-gray-200 bg-gray-50/60">
-                      <td className="px-4 py-3" colSpan={4}>
+                      <td className="px-4 py-3" colSpan={6}>
                         <span className="font-bold text-gray-900 uppercase text-xs">Total Geral</span>
                         <span className="block text-[11px] text-gray-400 normal-case">
                           {rows.length} registro{rows.length === 1 ? '' : 's'} encontrado{rows.length === 1 ? '' : 's'}
@@ -551,16 +694,16 @@ export default function DespesasFixas() {
               <span className="text-gray-500">Total de Despesas Fixas (Mês)</span>
               <span className="font-semibold">{fmtBRL(total)}</span>
             </div>
-            <div className="flex justify-between items-center text-sm gap-2">
+            {/* Produção não é mais digitada aqui — vem de Metas ou Produção */}
+            <div className="flex justify-between items-start text-sm gap-2">
               <span className="text-gray-500 shrink-0">Produção Mensal Estimada</span>
-              <span className="flex items-center gap-1">
-                <input type="number" min="0"
-                  className="input py-0.5 px-1.5 text-sm text-right w-24 font-semibold"
-                  key={`mu-${sum?.manual_units}`}
-                  defaultValue={sum?.manual_units ?? ''}
-                  placeholder={fmtQty(sum?.auto_monthly_units)}
-                  onBlur={e => { const v = e.target.value; if (v !== String(sum?.manual_units ?? '')) saveConfig({ monthly_units: v }); }} />
-                <span className="text-xs text-gray-400">un</span>
+              <span className="text-right">
+                <span className="font-semibold">{fmtQty(units)} un</span>
+                <Link to={source === 'producao' ? '/production' : '/rateio/metas'}
+                  className="block text-[11px] text-primary-600 hover:underline"
+                  title={UNITS_SOURCE[source]?.hint}>
+                  {UNITS_SOURCE[source]?.label} ↗
+                </Link>
               </span>
             </div>
             <div className="flex justify-between items-center text-sm">
@@ -575,6 +718,64 @@ export default function DespesasFixas() {
               className="block text-center text-sm font-semibold text-primary-600 bg-primary-50 hover:bg-primary-100 rounded-lg py-2 transition-colors">
               Ver análise completa
             </Link>
+          </div>
+
+          {/* COMPARATIVO */}
+          <div className="card p-4 space-y-2.5">
+            <h2 className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
+              <BarChart3 size={15} className="text-primary-500" /> Comparativo
+            </h2>
+            {!comp ? (
+              <p className="text-sm text-gray-400">Carregando...</p>
+            ) : (
+              <>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Mês atual</span>
+                  <span className="font-bold text-gray-900">{fmtBRL(comp.atual)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Mês anterior</span>
+                  <span className="font-medium">{comp.anterior > 0 ? fmtBRL(comp.anterior) : '—'}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Média 12 meses</span>
+                  <span className="font-medium">{comp.media_12m > 0 ? fmtBRL(comp.media_12m) : '—'}</span>
+                </div>
+
+                {/* Variação vs mês anterior */}
+                <div className="flex justify-between items-center text-sm pt-2 border-t border-gray-100">
+                  <span className="text-gray-600 font-medium">Variação</span>
+                  {comp.variacao_pct == null ? (
+                    <span className="text-gray-400 text-xs">sem base anterior</span>
+                  ) : (
+                    <span className={`inline-flex items-center gap-1 font-bold ${
+                      comp.variacao_pct > 0 ? 'text-red-600' : comp.variacao_pct < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                      {comp.variacao_pct > 0 ? <TrendingUp size={14} /> : comp.variacao_pct < 0 ? <TrendingDown size={14} /> : <Minus size={14} />}
+                      {comp.variacao_pct > 0 ? '+' : ''}{pctBR(comp.variacao_pct)}
+                    </span>
+                  )}
+                </div>
+                {comp.variacao_pct != null && (
+                  <p className="text-[11px] text-gray-400 text-right -mt-1">
+                    {comp.variacao_valor > 0 ? '+' : ''}{fmtBRL(comp.variacao_valor)} vs mês anterior
+                  </p>
+                )}
+                {comp.vs_media_pct != null && (
+                  <p className="text-[11px] text-gray-400">
+                    Contra a média de 12 meses:{' '}
+                    <span className={comp.vs_media_pct > 0 ? 'text-red-500' : 'text-green-600'}>
+                      {comp.vs_media_pct > 0 ? '+' : ''}{pctBR(comp.vs_media_pct)}
+                    </span>
+                    {comp.meses_com_dados < 12 && <span className="text-gray-300"> ({comp.meses_com_dados} meses com dados)</span>}
+                  </p>
+                )}
+                {comp.anterior === 0 && comp.media_12m === 0 && (
+                  <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                    Sem histórico ainda. O comparativo se forma conforme as contas do mês forem geradas na Central de Contas.
+                  </p>
+                )}
+              </>
+            )}
           </div>
 
           {/* DISTRIBUIÇÃO POR CATEGORIA */}
@@ -663,6 +864,9 @@ export default function DespesasFixas() {
         categories={[...new Set(expenses.map(catOf))]}
         onClose={() => setModal(null)}
         onSaved={() => { setModal(null); invalidate(); }} />
+
+      <ImpactModal open={impactOpen} total={total} units={units}
+        onClose={() => setImpactOpen(false)} />
     </div>
   );
 }

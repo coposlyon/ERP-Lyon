@@ -64,6 +64,14 @@ async function autoMonthlyUnits(tenantId) {
   } catch { return 0; }
 }
 
+const round2 = v => Math.round((Number(v) || 0) * 100) / 100;
+const monthBounds = month => {
+  const m = /^\d{4}-\d{2}$/.test(month || '') ? month : new Date().toISOString().slice(0, 7);
+  const start = `${m}-01`;
+  const end = new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 1).toISOString().slice(0, 10);
+  return { m, start, end };
+};
+
 // Despesas fixas (ativas E inativas — o filtro de status é da tela;
 // os cálculos do rateio usam só as ativas)
 async function fixedExpenses(tenantId) {
@@ -71,13 +79,35 @@ async function fixedExpenses(tenantId) {
     .eq('tenant_id', tenantId)
     .order('amount', { ascending: false });
   try {
-    // colunas das migrações 048/049 podem não existir ainda → fallbacks
-    let { data, error } = await sel('id, name, amount, notes, due_day, is_active, employee_id, category, cost_center, periodicity, original_amount, due_month');
+    // colunas das migrações 048/049/051 podem não existir ainda → fallbacks
+    let { data, error } = await sel('id, name, amount, notes, due_day, is_active, employee_id, category, cost_center, periodicity, original_amount, due_month, origin');
+    if (error) ({ data, error } = await sel('id, name, amount, notes, due_day, is_active, employee_id, category, cost_center, periodicity, original_amount, due_month'));
     if (error) ({ data, error } = await sel('id, name, amount, notes, due_day, is_active, employee_id'));
     if (error) ({ data, error } = await sel('id, name, amount, notes, due_day, is_active'));
     if (error) throw error;
     return data || [];
   } catch { return []; } // migração 040 pendente
+}
+
+// Unidades efetivamente PRODUZIDAS no mês (módulo de Produção):
+// pedidos em fabricação ou já entregues, somando os itens.
+async function producedUnits(tenantId, month) {
+  const { start, end } = monthBounds(month);
+  try {
+    const { data, error } = await supabase.from('VENDAS')
+      .select('created_at, status, VENDA_ITENS(quantity)')
+      .eq('tenant_id', tenantId)
+      .in('status', [
+        'aguardando_estoque', 'aguardando_arte', 'aguardando_vegetal',
+        'aguardando_revelacao', 'aguardando_coleta', 'em_transito', 'entregue',
+        'confirmed', 'in_production', 'ready', 'delivered',
+      ])
+      .gte('created_at', start).lt('created_at', end)
+      .limit(2000);
+    if (error) throw error;
+    return (data || []).reduce((s, v) =>
+      s + (v.VENDA_ITENS || []).reduce((n, i) => n + (Number(i.quantity) || 0), 0), 0);
+  } catch { return 0; }
 }
 
 // Salário aceita número puro (20000) e formato BR ("20.000,00")
@@ -90,14 +120,6 @@ function parseSalary(raw) {
 // Departamento de produção → salário vai para Custos Variáveis
 // (Gravação/Serigrafia é a produção da Lyon)
 const isProductionSector = s => /produ|grava|serigraf/i.test(String(s || ''));
-
-const round2 = v => Math.round((Number(v) || 0) * 100) / 100;
-const monthBounds = month => {
-  const m = /^\d{4}-\d{2}$/.test(month || '') ? month : new Date().toISOString().slice(0, 7);
-  const start = `${m}-01`;
-  const end = new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 1).toISOString().slice(0, 10);
-  return { m, start, end };
-};
 
 // Comissão por vendedor: vendas ENTREGUES do mês, atribuídas ao vendedor
 // do CLIENTE (CLIENTES.vendedor, texto), × comissão % do colaborador (RH).
@@ -198,11 +220,12 @@ async function syncEmployeesToFixed(tenantId) {
       } else if (active) {
         const row = {
           tenant_id: tenantId, name: 'Colaboradores', amount: salary,
-          due_day: 5, notes: emp.name, employee_id: emp.id, category: 'RH',
+          due_day: 5, notes: emp.name, employee_id: emp.id,
+          category: 'RH', cost_center: 'RH', origin: 'rh',
         };
         let { error } = await supabase.from('DESPESAS_FIXAS').insert(row);
-        if (error && /category/i.test(error.message || '')) {
-          delete row.category; // migração 049 pendente
+        if (error && /category|cost_center|origin/i.test(error.message || '')) {
+          delete row.category; delete row.cost_center; delete row.origin;
           await supabase.from('DESPESAS_FIXAS').insert(row);
         }
       }
@@ -219,16 +242,23 @@ async function fixedOverview(tenantId) {
   // Só as ativas entram no total/rateio (inativas aparecem na tela via filtro)
   const total = items.filter(f => f.is_active !== false)
     .reduce((s, f) => s + (Number(f.amount) || 0), 0);
-  const autoUnits = await autoMonthlyUnits(tenantId);
-  const manual = cfg.monthly_units != null && cfg.monthly_units > 0;
-  // Método único: rateio por produção (a média de vendas de 90 dias é só
-  // o fallback automático quando a produção não foi informada)
-  const units = manual ? cfg.monthly_units : autoUnits;
+  // Produção mensal — 3 fontes, nesta ordem de prioridade:
+  //   meta      → meta definida no Simulador de Metas
+  //   producao  → unidades realmente produzidas no mês (módulo Produção)
+  //   vendas    → média de vendas dos últimos 90 dias (fallback)
+  const [autoUnits, produced] = await Promise.all([
+    autoMonthlyUnits(tenantId),
+    producedUnits(tenantId, null),
+  ]);
+  const meta = cfg.monthly_units != null && cfg.monthly_units > 0 ? Number(cfg.monthly_units) : 0;
+  const units = meta || produced || autoUnits;
+  const source = meta ? 'meta' : (produced ? 'producao' : 'vendas');
   const overheadUnit = units > 0 ? total / units : 0;
   return {
     items, total,
     monthly_units: units,
-    monthly_units_source: manual ? 'manual' : 'auto',
+    monthly_units_source: source,
+    production_sources: { meta, producao: produced, vendas: autoUnits },
     rateio_method: 'producao',
     auto_monthly_units: autoUnits,
     overhead_unit: Math.round(overheadUnit * 10000) / 10000,
@@ -329,6 +359,6 @@ module.exports = {
   DEFAULTS, VARIABLE_DEFAULTS,
   getConfig, saveConfig, autoMonthlyUnits,
   fixedExpenses, fixedOverview, snapshotRateio, syncEmployeesToFixed,
-  productionLabor, isProductionSector, commissionBySeller,
+  productionLabor, isProductionSector, commissionBySeller, producedUnits,
   computeSheet, productCostMap,
 };

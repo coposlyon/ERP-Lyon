@@ -446,6 +446,68 @@ router.put('/goals', async (req, res) => {
   }
 });
 
+// ── Comparativo das despesas fixas ────────────────────────
+// Mês atual x mês anterior x média de 12 meses. O histórico vem das
+// contas realmente geradas (LANCAMENTOS de despesa fixa); o mês
+// corrente usa o total ao vivo, já que as contas podem não ter sido
+// geradas ainda.
+router.get('/comparativo', async (req, res) => {
+  const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : new Date().toISOString().slice(0, 7);
+  try {
+    const [y, m] = month.split('-').map(Number);
+    const shift = n => {
+      const d = new Date(y, m - 1 + n, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
+    const from = `${shift(-12)}-01`;
+
+    const { data: rows, error } = await supabase.from('LANCAMENTOS')
+      .select('amount, competence_month')
+      .eq('tenant_id', req.tenantId)
+      .not('fixed_expense_id', 'is', null)
+      .neq('status', 'cancelled')
+      .gte('competence_month', from)
+      .limit(5000);
+    if (error) throw error;
+
+    const byMonth = {};
+    for (const l of rows || []) {
+      const k = String(l.competence_month || '').slice(0, 7);
+      if (!k) continue;
+      byMonth[k] = (byMonth[k] || 0) + (Number(l.amount) || 0);
+    }
+
+    const ov = await fixedOverview(req.tenantId);
+    const isCurrent = month === new Date().toISOString().slice(0, 7);
+    const atual = isCurrent ? ov.total : (byMonth[month] || 0);
+    const anterior = byMonth[shift(-1)] || 0;
+
+    // Média dos 12 meses anteriores que têm lançamento
+    const past = [];
+    for (let i = 1; i <= 12; i++) {
+      const v = byMonth[shift(-i)];
+      if (v > 0) past.push(v);
+    }
+    const media12 = past.length ? past.reduce((a, b) => a + b, 0) / past.length : 0;
+
+    res.json({
+      month,
+      atual: r2(atual),
+      anterior: r2(anterior),
+      media_12m: r2(media12),
+      meses_com_dados: past.length,
+      variacao_pct: anterior > 0 ? Math.round(((atual - anterior) / anterior) * 1000) / 10 : null,
+      variacao_valor: r2(atual - anterior),
+      vs_media_pct: media12 > 0 ? Math.round(((atual - media12) / media12) * 1000) / 10 : null,
+      historico: Object.entries(byMonth).sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([mes, total]) => ({ mes, total: r2(total) })),
+    });
+  } catch (err) {
+    console.error('[rateio/comparativo]', err.message);
+    res.status(500).json({ error: 'Erro ao montar o comparativo' });
+  }
+});
+
 // ── Painel de Rentabilidade ───────────────────────────────
 // Fecha o ciclo: faturamento, custo fixo, custo variável, margem por
 // produto e lucro projetado. Separa fixo (despesas + salário fixo) de

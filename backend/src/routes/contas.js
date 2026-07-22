@@ -150,10 +150,12 @@ router.get('/fixed-expenses', async (req, res) => {
 
 // Campos do layout novo (migração 049). Despesa anual: o valor mensal
 // (amount, usado no rateio e nas contas do mês) é o original ÷ 12.
+const ORIGINS = ['manual', 'rh', 'financeiro', 'contratos'];
 function layoutFields(body) {
   const out = {};
   if (body.category !== undefined) out.category = String(body.category || '').trim() || null;
   if (body.cost_center !== undefined) out.cost_center = String(body.cost_center || '').trim() || null;
+  if (body.origin !== undefined) out.origin = ORIGINS.includes(body.origin) ? body.origin : 'manual';
   if (body.periodicity !== undefined) out.periodicity = body.periodicity === 'anual' ? 'anual' : 'mensal';
   if (body.due_month !== undefined) {
     const m = parseInt(body.due_month);
@@ -164,13 +166,13 @@ function layoutFields(body) {
 const monthlyOf = (amt, periodicity) =>
   periodicity === 'anual' ? Math.round((amt / 12) * 100) / 100 : amt;
 
-// Se as colunas da 049 ainda não existem, tenta de novo sem elas
+// Se as colunas das migrações 049/051 ainda não existem, tenta sem elas
 async function insertOrUpdateFixa(run, row) {
   let { data, error } = await run(row);
-  if (error && /category|cost_center|periodicity|original_amount|due_month/i.test(error.message || '')) {
+  if (error && /category|cost_center|periodicity|original_amount|due_month|origin/i.test(error.message || '')) {
     const clean = { ...row };
     delete clean.category; delete clean.cost_center; delete clean.periodicity;
-    delete clean.original_amount; delete clean.due_month;
+    delete clean.original_amount; delete clean.due_month; delete clean.origin;
     ({ data, error } = await run(clean));
   }
   return { data, error };
