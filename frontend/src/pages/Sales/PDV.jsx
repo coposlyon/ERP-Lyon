@@ -947,7 +947,7 @@ export default function PDV({ onDone, mode = 'sale' }) {
         {!isQuote && (
         <div className="card p-4">
           <p className="text-sm font-semibold text-gray-700 mb-2">Pagamento</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {[
               { value: 'cash', label: '💵 Dinheiro' },
               { value: 'pix', label: '📱 Pix' },

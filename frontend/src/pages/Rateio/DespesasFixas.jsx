@@ -197,7 +197,7 @@ function ExpenseModal({ open, initial, categories = [], onClose, onSaved }) {
     <Modal isOpen={open} onClose={() => { setForm(null); onClose(); }}
       title={isEdit ? 'Editar despesa fixa' : 'Nova despesa fixa'} size="sm">
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Despesa *</label>
             <input className="input" value={f.name} placeholder="Ex.: Energia Elétrica"
@@ -209,7 +209,7 @@ function ExpenseModal({ open, initial, categories = [], onClose, onSaved }) {
               onChange={e => set({ notes: e.target.value })} />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Categoria</label>
             <select className="input" value={f.category} onChange={e => set({ category: e.target.value })}>
@@ -226,7 +226,7 @@ function ExpenseModal({ open, initial, categories = [], onClose, onSaved }) {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Centro de Custo</label>
             <select className="input" value={f.cost_center} onChange={e => set({ cost_center: e.target.value })}>
@@ -242,7 +242,7 @@ function ExpenseModal({ open, initial, categories = [], onClose, onSaved }) {
             {initial?.employee_id && <p className="text-[11px] text-gray-400 mt-1">Vem do RH — não editável aqui.</p>}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Periodicidade</label>
             <select className="input" value={f.periodicity} onChange={e => set({ periodicity: e.target.value })}>
@@ -256,7 +256,7 @@ function ExpenseModal({ open, initial, categories = [], onClose, onSaved }) {
               onChange={e => set({ amount: fmtMoney(e.target.value) })} />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Dia de vencimento</label>
             <input type="number" min="1" max="31" className="input" value={f.due_day}
@@ -325,7 +325,7 @@ function ImpactModal({ open, total, units, onClose }) {
           <div className="flex justify-between text-[11px] text-gray-400"><span>-50%</span><span>0</span><span>+50%</span></div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Nova despesa mensal (R$)</label>
             <input className="input" inputMode="decimal" value={nova} placeholder="0,00"

@@ -11,6 +11,16 @@ const INPUT = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border
 const maskCNPJ = v => v.replace(/\D/g,'').slice(0,14).replace(/(\d{2})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1/$2').replace(/(\d{4})(\d{1,2})$/,'$1-$2');
 const maskPhone = v => { const d=v.replace(/\D/g,'').slice(0,11); return d.length<=10 ? d.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{4})(\d{1,4})$/,'$1-$2') : d.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{5})(\d{1,4})$/,'$1-$2'); };
 const maskCEP = v => v.replace(/\D/g,'').slice(0,8).replace(/(\d{5})(\d)/,'$1-$2');
+const maskCPF = v => v.replace(/\D/g,'').slice(0,11).replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+
+function validCPF(v) {
+  const c = String(v||'').replace(/\D/g,'');
+  if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
+  let s = 0; for (let i = 0; i < 9; i++) s += +c[i] * (10 - i);
+  let d = (s * 10) % 11; if (d === 10) d = 0; if (d !== +c[9]) return false;
+  s = 0; for (let i = 0; i < 10; i++) s += +c[i] * (11 - i);
+  d = (s * 10) % 11; if (d === 10) d = 0; return d === +c[10];
+}
 
 function validCNPJ(v) {
   const c = String(v||'').replace(/\D/g,'');
@@ -51,6 +61,9 @@ export default function CadastroTransportadora() {
   const [done, setDone] = useState(false);
   const [cnpjLoading, setCnpjLoading] = useState(false);
   const [storeCfg, setStoreCfg] = useState(null);
+  const [contrato, setContrato] = useState(null);
+  const [tabela, setTabela] = useState(null);
+  const [resp, setResp] = useState({ name: '', cpf: '', cargo: '' });
 
   // Config do site (modo manutenção dos cadastros)
   useEffect(() => { storeApi.get('/store').then(d => setStoreCfg(d?.cadastro || null)).catch(() => {}); }, []);
@@ -129,14 +142,28 @@ export default function CadastroTransportadora() {
     if (!f.phone.trim()) return toast.error('Informe o telefone');
     if (!addr.zip.trim() || !addr.street.trim() || !addr.number.trim() || !addr.neighborhood.trim() || !addr.city.trim() || !addr.state.trim())
       return toast.error('Preencha o endereço completo (CEP, rua, número, bairro, cidade e estado)');
+    if (!resp.name.trim() || !resp.cargo.trim()) return toast.error('Informe o nome completo e o cargo de quem está enviando o cadastro.');
+    if (!validCPF(resp.cpf)) return toast.error('CPF inválido. Confira os números digitados.');
+    if (!contrato || !tabela) return toast.error('Anexe o Contrato Comercial assinado e a Tabela de Preços vigente para finalizar o cadastro.');
     setSending(true);
     try {
-      await storeApi.post('/cadastro-transportadora', {
-        name: f.name, trade_name: f.trade_name, cnpj: f.cnpj,
-        ie: ieIsento ? 'ISENTO' : f.ie, ie_isento: ieIsento,
-        email: f.email, phone: f.phone, whatsapp: f.whatsapp,
-        contact_name: f.contact_name, address: addr,
-      });
+      const fd = new FormData();
+      fd.append('name', f.name);
+      fd.append('trade_name', f.trade_name);
+      fd.append('cnpj', f.cnpj);
+      fd.append('ie', ieIsento ? 'ISENTO' : f.ie);
+      fd.append('ie_isento', ieIsento ? 'true' : '');
+      fd.append('email', f.email);
+      fd.append('phone', f.phone);
+      fd.append('whatsapp', f.whatsapp);
+      fd.append('contact_name', f.contact_name);
+      fd.append('address', JSON.stringify(addr));
+      fd.append('responsible_name', resp.name.trim());
+      fd.append('responsible_cpf', resp.cpf);
+      fd.append('responsible_cargo', resp.cargo.trim());
+      fd.append('contrato', contrato);
+      fd.append('tabela', tabela);
+      await storeApi.post('/cadastro-transportadora', fd);
       setDone(true);
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Não foi possível enviar. Tente novamente.');
@@ -252,6 +279,41 @@ export default function CadastroTransportadora() {
                 <select className={INPUT} value={addr.state} onChange={e => setA('state', e.target.value)}>
                   <option value="">UF</option>{UFS.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
+              </Field>
+            </div>
+          </div>
+
+          {/* Documentos obrigatórios + responsável */}
+          <div className="border border-gray-200 rounded-2xl p-4 space-y-4">
+            <p className="text-sm font-semibold text-gray-700">Documentos obrigatórios e responsável</p>
+            {[['contrato', 'Contrato Comercial assinado', contrato, setContrato],
+              ['tabela', 'Tabela de Preços vigente', tabela, setTabela]].map(([key, label, file, setter]) => (
+              <div key={key} className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-700">{label} *</p>
+                  <p className={`text-xs truncate ${file ? 'text-green-600' : 'text-gray-400'}`}>
+                    {file ? file.name : 'Nenhum arquivo (PDF, imagem ou planilha)'}
+                  </p>
+                </div>
+                <label className="shrink-0 inline-flex items-center gap-1.5 bg-violet-100 text-violet-700 hover:bg-violet-200 text-sm font-medium px-3 py-2 rounded-xl cursor-pointer transition">
+                  {file ? 'Trocar' : 'Anexar'}
+                  <input type="file" className="hidden"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                    onChange={e => { const x = e.target.files[0]; if (x) setter(x); e.target.value = ''; }} />
+                </label>
+              </div>
+            ))}
+            <Field label="Quem está enviando (nome completo) *">
+              <input className={INPUT} value={resp.name} onChange={e => setResp(p => ({ ...p, name: e.target.value }))} />
+            </Field>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="CPF *">
+                <input className={INPUT} value={resp.cpf} placeholder="000.000.000-00" maxLength={14}
+                  onChange={e => setResp(p => ({ ...p, cpf: maskCPF(e.target.value) }))} />
+              </Field>
+              <Field label="Cargo *">
+                <input className={INPUT} value={resp.cargo} placeholder="Ex: Comercial"
+                  onChange={e => setResp(p => ({ ...p, cargo: e.target.value }))} />
               </Field>
             </div>
           </div>

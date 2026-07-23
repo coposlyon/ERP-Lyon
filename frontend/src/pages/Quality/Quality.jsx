@@ -84,7 +84,7 @@ function LotForm({ onSaved, onCancel }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Quantidade *</label>
           <input type="number" className="input" min="0.001" step="0.001"
@@ -157,7 +157,7 @@ function InspectForm({ lot, onSaved, onCancel }) {
         <p className="text-xs text-blue-600 mt-0.5">Lote: {lot.number} · Qtd: {lot.quantity} {lot.unit}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Total inspecionado *</label>
           <input type="number" className="input" min="1" value={total}
@@ -259,7 +259,7 @@ function Certificate({ lot }) {
       {lastInsp && (
         <div className="bg-gray-50 rounded-xl p-4 space-y-2">
           <p className="font-semibold text-gray-700">Resultado da Inspeção</p>
-          <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
             <div><p className="text-xs text-gray-400">Inspecionados</p><p className="font-bold text-lg">{lastInsp.total_inspected}</p></div>
             <div><p className="text-xs text-gray-400">Aprovados</p><p className="font-bold text-lg text-green-700">{lastInsp.approved_qty}</p></div>
             <div><p className="text-xs text-gray-400">Rejeitados</p><p className="font-bold text-lg text-red-600">{lastInsp.rejected_qty}</p></div>

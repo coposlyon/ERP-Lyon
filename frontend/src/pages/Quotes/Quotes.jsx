@@ -151,7 +151,7 @@ export default function Quotes() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: 'Total em Aberto', value: summary.abertos, suffix: ' orçamentos', color: 'blue' },
           { label: 'Aprovados', value: summary.aprovados, suffix: ' para converter', color: 'green' },

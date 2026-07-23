@@ -131,7 +131,44 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   nesse caso a cotação é descartada e o sistema usa a tabela por UF. Sem as credenciais,
   a J&T simplesmente não aparece — nada quebra.
 
-## 10. Erros em produção (Sentry) — opcional
+## 10. eSocial (RH → governo)
+
+- **Onde usa:** RH → **eSocial**. Cadastro do empregador, rubricas, dados dos
+  colaboradores e a fila de eventos (enviar / consultar / reenviar).
+- **Como funciona:** igual à NF-e, o ERP **não** guarda o certificado nem assina
+  XML. Quem faz isso é um **gateway** (TecnoSpeed, RESocial, L2MAKER...). O ERP
+  monta o evento no leiaute do governo e manda JSON. Trocar de gateway = mexer
+  só em `PROVIDERS`, em `backend/src/lib/esocial.js`.
+- **Requer a migração `046_esocial.sql`.**
+- **Configuração:** fica no banco (`CONFIG_ESOCIAL`), não em variável de ambiente,
+  porque é por empresa. Preencher em RH → eSocial → Configuração:
+  - `provider` — `tecnospeed` | `resocial` | `l2maker` | `custom`
+  - `provider_base_url` — só para `custom` (ou para sobrescrever a base padrão)
+  - `ambiente` — `restrita` (produção restrita, para testes) ou `producao`
+  - `provider_token_restrita` / `provider_token_producao` — token do gateway
+  - `nr_insc`, `classif_trib`, `nat_jur`, `ini_valid` (AAAA-MM) — dados do S-1000
+  - `nm_ctt`, `cpf_ctt`, `fone_ctt`, `email_ctt` — contato do empregador
+  - `cnae_preponderante`, `aliq_rat`, `fap` — dados do S-1005
+- **Eventos suportados:** S-1000 (empregador), S-1005 (estabelecimento),
+  S-1010 (rubricas), S-2200 (admissão), S-1200 (remuneração), S-2299 (desligamento).
+- **Ordem obrigatória:** o governo só aceita eventos periódicos depois que o
+  **S-1000 está aceito**. Depois: S-1005 → S-1010 → S-2200 → S-1200.
+  `GET /api/esocial/status` mostra o que falta.
+- **É assíncrono:** enviar devolve **protocolo**, não aprovação. Só depois de
+  `POST /api/esocial/eventos/:id/consultar` é que vem o **recibo** (ou a rejeição).
+  Nenhum evento é marcado como aceito sem recibo.
+- **Conferir antes de mandar:** `POST /api/esocial/eventos` com `dry_run: true`
+  devolve o payload montado **sem transmitir** — use para validar o evento com a
+  contabilidade antes do envio real.
+- **Validação local:** o sistema barra o evento antes de enviar (CPF, CBO,
+  categoria, matrícula, endereço, rubricas da folha). Ser rejeitado pelo governo
+  custa caro; barrar aqui é de graça.
+- **Atenção:** os caminhos REST em `PROVIDERS` (`lib/esocial.js`) seguem o formato
+  documentado dos gateways, mas **precisam ser conferidos com a doc do fornecedor
+  contratado** antes da homologação.
+- **Sem token, nada quebra:** as telas mostram "eSocial não configurado".
+
+## 11. Erros em produção (Sentry) — opcional
 - `SENTRY_DSN` — DSN do projeto no sentry.io. Com isso, todo erro de servidor é
   reportado automaticamente.
 

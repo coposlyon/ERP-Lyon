@@ -1,7 +1,14 @@
 const express  = require('express');
 const router   = express.Router();
 const rateLimit = require('express-rate-limit');
+const multer   = require('multer');
 const supabase = require('../config/supabase');
+
+// Upload em memória para os documentos do autocadastro de transportadora
+const uploadDocs = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB por documento
+});
 const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
 const { uploadDataUrl } = require('../lib/storage');
 const { calcularFrete, packItem } = require('../lib/frete');
@@ -684,18 +691,42 @@ router.post('/cadastro-fornecedor', cadastroLimiter, async (req, res) => {
 });
 
 // ── Autocadastro de TRANSPORTADORA (link público) ─────────
-router.post('/cadastro-transportadora', cadastroLimiter, async (req, res) => {
-  const { name, trade_name, cnpj, ie, ie_isento, email, phone, whatsapp, contact_name, address } = req.body;
+// Recebe os dados + os 2 documentos obrigatórios (Contrato Comercial assinado e
+// Tabela de Preços vigente) + a identificação de quem envia, tudo via multipart.
+// Como multipart não carrega objeto aninhado, `address` chega como string JSON.
+router.post('/cadastro-transportadora', cadastroLimiter,
+  uploadDocs.fields([{ name: 'contrato', maxCount: 1 }, { name: 'tabela', maxCount: 1 }]),
+  async (req, res) => {
+  const { name, trade_name, cnpj, ie, ie_isento, email, phone, whatsapp, contact_name } = req.body;
+  const { responsible_name, responsible_cpf, responsible_cargo } = req.body;
+
+  let address = {};
+  try { address = req.body.address ? JSON.parse(req.body.address) : {}; } catch { address = {}; }
+
   const nm = String(name || '').trim();
   const em = String(email || '').trim();
   const ph = String(phone || '').trim();
   const docDigits = soDigitos(cnpj);
+  const contrato = req.files?.contrato?.[0];
+  const tabela   = req.files?.tabela?.[0];
+
   if (!nm) return res.status(400).json({ error: 'Informe a razão social' });
   if (!docDigits) return res.status(400).json({ error: 'Informe o CNPJ' });
   if (!validaCNPJ(docDigits)) return res.status(400).json({ error: 'CNPJ inválido. Confira os números digitados.' });
   if (!ie_isento && !String(ie || '').trim()) return res.status(400).json({ error: 'Informe a Inscrição Estadual (ou marque Isento)' });
   if (!em) return res.status(400).json({ error: 'Informe o e-mail' });
   if (!ph) return res.status(400).json({ error: 'Informe o telefone' });
+
+  // Identificação de quem está enviando o cadastro
+  if (!String(responsible_name || '').trim() || !String(responsible_cargo || '').trim())
+    return res.status(400).json({ error: 'Informe o nome completo e o cargo de quem está enviando o cadastro.' });
+  if (!validaCPF(responsible_cpf))
+    return res.status(400).json({ error: 'CPF inválido. Confira os números digitados.' });
+
+  // Documentos obrigatórios
+  if (!contrato || !tabela)
+    return res.status(400).json({ error: 'Anexe o Contrato Comercial assinado e a Tabela de Preços vigente para finalizar o cadastro.' });
+
   try {
     const { data: all } = await supabase.from('TRANSPORTADORAS').select('id, cnpj').eq('tenant_id', STORE_TENANT).limit(5000);
     if ((all || []).some(s => soDigitos(s.cnpj) === docDigits)) {
@@ -714,8 +745,43 @@ router.post('/cadastro-transportadora', cadastroLimiter, async (req, res) => {
       address: address && typeof address === 'object' ? address : {},
       is_active: true,
     };
-    const { error } = await supabase.from('TRANSPORTADORAS').insert(payload);
+    const { data: created, error } = await supabase.from('TRANSPORTADORAS')
+      .insert(payload).select('id').single();
     if (error) throw error;
+
+    // Sobe os documentos. Se qualquer um falhar, desfaz o cadastro para não
+    // deixar transportadora sem a documentação obrigatória.
+    try {
+      const uploaded_by = {
+        name: String(responsible_name).trim(),
+        cpf: soDigitos(responsible_cpf),
+        cargo: String(responsible_cargo).trim(),
+      };
+      const now = new Date().toISOString();
+      const attachments = [];
+      for (const [kind, file] of [['contrato', contrato], ['tabela', tabela]]) {
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        const filePath = `${STORE_TENANT}/transportadoras/${created.id}/${Date.now()}_${kind}_${safeName}`;
+        const { error: upErr } = await supabase.storage.from('DOCUMENTOS')
+          .upload(filePath, file.buffer, { contentType: file.mimetype, upsert: false });
+        if (upErr) throw upErr;
+        const { data: { publicUrl } } = supabase.storage.from('DOCUMENTOS').getPublicUrl(filePath);
+        attachments.push({
+          id: `${Date.now()}_${kind}`,
+          kind, name: file.originalname, url: publicUrl, path: filePath,
+          type: file.mimetype, size: file.size, uploaded_at: now, uploaded_by,
+        });
+      }
+      await supabase.from('TRANSPORTADORAS')
+        .update({ documents: { attachments, responsible: { ...uploaded_by, at: now } } })
+        .eq('id', created.id).eq('tenant_id', STORE_TENANT);
+    } catch (upErr) {
+      // rollback: remove a transportadora recém-criada para não ficar sem docs
+      await supabase.from('TRANSPORTADORAS').delete().eq('id', created.id).eq('tenant_id', STORE_TENANT);
+      console.error('[public-store:cadastro-transportadora upload]', upErr.message || upErr);
+      return res.status(500).json({ error: 'Não foi possível anexar os documentos. Tente novamente.' });
+    }
+
     res.status(201).json({ success: true });
   } catch (err) { fail(res, err); }
 });

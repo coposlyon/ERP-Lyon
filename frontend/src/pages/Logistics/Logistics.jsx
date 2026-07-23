@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Loader2, CheckCircle2, XCircle, Truck } from 'lucide-react';
+import { Plus, Search, Edit2, Loader2, CheckCircle2, XCircle, Truck, Upload, Paperclip, Trash2, FileText } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
@@ -24,6 +24,33 @@ function formatCnpj(v) {
   if (d.length <= 8)  return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5)}`;
   if (d.length <= 12) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8)}`;
   return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`;
+}
+
+function maskCpf(v) {
+  return String(v || '').replace(/\D/g, '').slice(0, 11)
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+}
+function validCpf(v) {
+  const c = String(v || '').replace(/\D/g, '');
+  if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
+  let s = 0;
+  for (let i = 0; i < 9; i++) s += +c[i] * (10 - i);
+  let d = (s * 10) % 11; if (d === 10) d = 0;
+  if (d !== +c[9]) return false;
+  s = 0;
+  for (let i = 0; i < 10; i++) s += +c[i] * (11 - i);
+  d = (s * 10) % 11; if (d === 10) d = 0;
+  return d === +c[10];
+}
+
+const DOC_LABELS = { contrato: 'Contrato Comercial assinado', tabela: 'Tabela de Preços vigente' };
+
+function formatSize(bytes) {
+  if (!bytes) return '';
+  const kb = bytes / 1024;
+  return kb < 1024 ? `${kb.toFixed(0)} KB` : `${(kb / 1024).toFixed(1)} MB`;
 }
 
 const DAYS = [
@@ -57,6 +84,17 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
   const [cnpjLoading,  setCnpjLoading]  = useState(false);
   const [cnpjStatus,   setCnpjStatus]   = useState(null);
   const [addressOpen,  setAddressOpen]  = useState(true);
+
+  // Documentos obrigatórios + quem está anexando
+  const existingDocs = carrier?.documents?.attachments || [];
+  const resp0 = carrier?.documents?.responsible || {};
+  const [newFiles, setNewFiles] = useState({ contrato: null, tabela: null });
+  const [resp, setResp] = useState({
+    name:  resp0.name  || '',
+    cpf:   resp0.cpf ? maskCpf(resp0.cpf) : '',
+    cargo: resp0.cargo || '',
+  });
+  const hasKind = k => !!newFiles[k] || existingDocs.some(d => d.kind === k);
 
   const up = s => (typeof s === 'string' ? s.toUpperCase() : s);
   function set(k, v)    { setForm(p => ({ ...p, [k]: (k === 'email' ? v : up(v)) })); }
@@ -148,18 +186,43 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
     if (!a.neighborhood?.trim())       { setAddressOpen(true); toast.error('Informe o Bairro'); return; }
     if (!a.city?.trim())               { setAddressOpen(true); toast.error('Informe a Cidade'); return; }
     if (!a.state?.trim())              { setAddressOpen(true); toast.error('Informe o Estado (UF)'); return; }
+
+    // Identificação de quem está anexando
+    if (!resp.name.trim() || !resp.cargo.trim()) { toast.error('Informe o nome completo e o cargo de quem está anexando os documentos'); return; }
+    if (!validCpf(resp.cpf))                      { toast.error('CPF inválido. Confira os números digitados.'); return; }
+    // Documentos obrigatórios
+    if (!hasKind('contrato') || !hasKind('tabela')) {
+      toast.error('Anexe o Contrato Comercial assinado e a Tabela de Preços vigente para finalizar o cadastro.');
+      return;
+    }
+
     setLoading(true);
     try {
-      if (carrier?.id) {
-        await api.put(`/logistics/${carrier.id}`, form);
-        toast.success('Transportadora atualizada!');
+      let carrierId = carrier?.id;
+      if (carrierId) {
+        await api.put(`/logistics/${carrierId}`, form);
       } else {
-        await api.post('/logistics', form);
-        toast.success('Transportadora cadastrada!');
+        const created = await api.post('/logistics', form);
+        carrierId = created?.id;
       }
+      // Sobe os documentos recém-selecionados, registrando quem anexou
+      for (const kind of ['contrato', 'tabela']) {
+        const file = newFiles[kind];
+        if (!file) continue;
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('kind', kind);
+        fd.append('uploader_name', resp.name.trim());
+        fd.append('uploader_cpf', resp.cpf);
+        fd.append('uploader_cargo', resp.cargo.trim());
+        await api.post(`/logistics/${carrierId}/attachments`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
+      toast.success(carrier?.id ? 'Transportadora atualizada!' : 'Transportadora cadastrada!');
       onSaved();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Erro ao salvar');
+      toast.error(err?.response?.data?.error || err?.error || 'Erro ao salvar');
     } finally {
       setLoading(false);
     }
@@ -265,7 +328,7 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
           </span>
           <span className="text-gray-400 text-xs">{addressOpen ? '▲' : '▼'}</span>
         </button>
-        {addressOpen && <div className="px-4 pb-4 grid grid-cols-3 gap-3 border-t border-gray-100 pt-3">
+        {addressOpen && <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-gray-100 pt-3">
           <div>
             <label className="label">CEP *</label>
             <input className="input" value={form.address.zip}
@@ -375,6 +438,65 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
           onChange={e => set('is_active', e.target.checked)} className="rounded" />
         <span className="text-sm text-gray-700">Transportadora ativa</span>
       </label>
+
+      {/* Documentos obrigatórios + responsável */}
+      <div className="border border-indigo-200 rounded-lg bg-indigo-50/30 p-4 space-y-3">
+        <p className="text-sm font-semibold text-indigo-800 flex items-center gap-1.5">
+          <Paperclip size={15} /> Documentos obrigatórios
+        </p>
+
+        {['contrato', 'tabela'].map(kind => {
+          const existing = existingDocs.find(d => d.kind === kind);
+          const picked   = newFiles[kind];
+          return (
+            <div key={kind} className="bg-white border border-gray-200 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2">
+                <FileText size={16} className="text-indigo-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800">{DOC_LABELS[kind]} *</p>
+                  {picked ? (
+                    <p className="text-xs text-green-600 truncate">{picked.name} · {formatSize(picked.size)}</p>
+                  ) : existing ? (
+                    <a href={existing.url} target="_blank" rel="noreferrer"
+                      className="text-xs text-indigo-500 hover:underline truncate block">
+                      {existing.name} (enviado)
+                    </a>
+                  ) : (
+                    <p className="text-xs text-gray-400">Nenhum arquivo</p>
+                  )}
+                </div>
+                <label className="btn-secondary text-xs cursor-pointer flex items-center gap-1.5 shrink-0">
+                  <Upload size={13} /> {existing || picked ? 'Trocar' : 'Anexar'}
+                  <input type="file" className="hidden"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                    onChange={e => { const f = e.target.files[0]; if (f) setNewFiles(p => ({ ...p, [kind]: f })); e.target.value = ''; }} />
+                </label>
+              </div>
+            </div>
+          );
+        })}
+
+        <div className="pt-1">
+          <label className="label">Quem está anexando *</label>
+          <input className="input" value={resp.name} placeholder="Nome completo"
+            onChange={e => setResp(p => ({ ...p, name: e.target.value }))} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label">CPF *</label>
+            <input className="input" value={resp.cpf} placeholder="000.000.000-00" maxLength={14}
+              onChange={e => setResp(p => ({ ...p, cpf: maskCpf(e.target.value) }))} />
+          </div>
+          <div>
+            <label className="label">Cargo *</label>
+            <input className="input" value={resp.cargo} placeholder="Ex: Comercial"
+              onChange={e => setResp(p => ({ ...p, cargo: e.target.value }))} />
+          </div>
+        </div>
+        <p className="text-xs text-gray-400">
+          O cadastro só é concluído com os dois documentos anexados e a identificação preenchida.
+        </p>
+      </div>
 
       <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
         <button type="button" onClick={onCancel} className="btn-secondary">Cancelar</button>

@@ -103,7 +103,7 @@ function OpportunityForm({ onSaved, onCancel }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Valor estimado</label>
           <input type="number" className="input" min="0" step="0.01"
@@ -235,7 +235,7 @@ function OpportunityDetail({ opp, onClose, onRefresh }) {
           <textarea className="input resize-none w-full text-sm" rows={2}
             placeholder="Descreva a interação..."
             value={interactionDesc} onChange={e => setInteractionDesc(e.target.value)} />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className="input text-sm" placeholder="Próxima ação..."
               value={nextAction} onChange={e => setNextAction(e.target.value)} />
             <input type="date" className="input text-sm"
@@ -320,7 +320,7 @@ function FollowUpForm({ onSaved, onCancel }) {
         <textarea className="input resize-none" rows={2}
           value={form.description} onChange={e => setForm(p=>({...p,description:e.target.value}))} required />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Data *</label>
           <input type="date" className="input" value={form.due_date}

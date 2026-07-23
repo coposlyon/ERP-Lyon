@@ -120,7 +120,7 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
     <form onSubmit={handleSubmit} className="space-y-5">
 
       {/* CNPJ com auto-fill + Inscrição Estadual */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="label">CNPJ *</label>
           <div className="relative">
@@ -151,7 +151,7 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
       </div>
 
       {/* Razão Social + Nome Fantasia */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="col-span-2">
           <label className="label">Razão Social *</label>
           <input className="input" value={form.name}
@@ -186,7 +186,7 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
         <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg select-none">
           Endereço {form.address.street && <span className="text-gray-400 font-normal">— {form.address.street}, {form.address.city}/{form.address.state}</span>}
         </summary>
-        <div className="px-4 pb-4 grid grid-cols-3 gap-3 mt-3">
+        <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
           <div>
             <label className="label">CEP *</label>
             <input className="input" value={form.address.zip}

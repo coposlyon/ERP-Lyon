@@ -76,7 +76,7 @@ export default function Marketing() {
         <div className="lg:col-span-2 space-y-4">
           <div className="card p-4 space-y-3">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Canais</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {CHANNELS.map(c => {
                 const on = channels[c.key];
                 const configured = status?.[c.key];

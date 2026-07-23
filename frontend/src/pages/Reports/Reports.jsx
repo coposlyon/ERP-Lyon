@@ -567,7 +567,7 @@ export default function Reports() {
       {reportType === 'cashflow' && (
         <div className="space-y-4">
           {cashflowData?.summary && (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="card p-5 border-l-4 border-green-500">
                 <p className="text-xs text-gray-500 uppercase">A Receber</p>
                 <p className="text-2xl font-bold text-green-600 mt-1">{fmt(cashflowData.summary.total_receivable)}</p>

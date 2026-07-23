@@ -321,7 +321,7 @@ function SituationModal({ day, employee, escala, situacoes, onClose }) {
 
         <div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Selecione a situação</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {situacoes.map(s => (
               <button key={s.code} type="button" onClick={() => setCode(s.code)}
                 className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-sm font-medium transition-colors text-left ${
@@ -339,7 +339,7 @@ function SituationModal({ day, employee, escala, situacoes, onClose }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label text-xs">Minutos (opcional)</label>
             <input type="number" min="0" className="input" placeholder="Ex: 11"
@@ -906,7 +906,7 @@ export function TabFerias({ employee }) {
 
       <Modal isOpen={modalNew} onClose={() => setModalNew(false)} title="Agendar Férias" size="md">
         <form onSubmit={e => { e.preventDefault(); createMut.mutate({ employee_id: employee.id, ...form }); }} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Início *</label>
               <input type="date" className="input" value={form.start_date}
@@ -1062,7 +1062,7 @@ export function TabFolha({ employee }) {
           </div>
           {form.kind === 'ferias' && <p className="text-xs text-teal-600">Inclui 1/3 constitucional automaticamente sobre o salário base.</p>}
           {form.kind === '13' && <p className="text-xs text-amber-600">13º integral (ajuste o salário base se for proporcional).</p>}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               ['base_salary', 'Salário base *', true],
               ['bonus', 'Bônus / Comissão', false],
@@ -1206,7 +1206,7 @@ export function TabDocumentos({ employee }) {
             <label className="label">Descrição *</label>
             <input className="input" value={form.description} onChange={e => setForm(p=>({...p,description:e.target.value}))} required />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Data do documento</label>
               <input type="date" className="input" value={form.document_date} onChange={e => setForm(p=>({...p,document_date:e.target.value}))} />

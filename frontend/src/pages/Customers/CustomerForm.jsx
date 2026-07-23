@@ -364,7 +364,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
       </div>
 
       {/* Dados principais */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="col-span-2">
           <label className="label">{isPJ ? 'Razão Social *' : 'Nome Completo *'}</label>
           <input className="input" value={form.name} onChange={e => setUp('name', e.target.value)} />
@@ -524,7 +524,7 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
         <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg select-none">
           Endereço
         </summary>
-        <div className="px-4 pb-4 grid grid-cols-3 gap-3 mt-3">
+        <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
           <div>
             <label className="label">CEP</label>
             <div className="relative">

@@ -264,7 +264,7 @@ export default function LabelEditor({ initialDesign, onAddToCart }) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-2 mt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
           <button onClick={download} className="btn-secondary"><Download size={14} /> Baixar imagem</button>
           <button onClick={addCart} className="bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl px-4 py-2.5 flex items-center justify-center gap-2 transition-colors">
             <ShoppingCart size={16} /> Adicionar ao carrinho

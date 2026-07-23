@@ -211,7 +211,7 @@ export default function Users() {
       <Modal isOpen={modal === 'new' || modal === 'edit'} onClose={close}
         title={modal === 'new' ? 'Novo Usuário' : `Editar — ${target?.name}`} size="lg">
         <form onSubmit={modal === 'new' ? submitNew : submitEdit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label">Nome *</label>
               <input className="input" value={form.name}

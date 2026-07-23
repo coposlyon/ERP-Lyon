@@ -318,7 +318,7 @@ export default function CustomerDetail() {
               <p className={`font-black ${fin?.situacao === 'Regular' ? 'text-emerald-600' : 'text-red-600'}`}>{fin?.situacao || '—'}</p>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="border border-gray-100 rounded-xl p-3">
               <p className="text-[11px] text-gray-400">Última consulta SPC/Serasa</p>
               <p className="font-bold text-gray-900 text-sm">{lastCredit ? fmtDateBR(lastCredit.created_at) : 'Nunca'}</p>

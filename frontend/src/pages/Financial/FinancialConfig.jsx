@@ -55,7 +55,7 @@ function ChartAccounts() {
       </div>
       <Modal isOpen={modal} onClose={() => setModal(false)} title={editing ? 'Editar Conta' : 'Nova Conta'} size="sm">
         <form onSubmit={save} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="label">Código *</label><input className="input" value={form.code} onChange={e => setForm(p => ({...p, code: e.target.value}))} required /></div>
             <div><label className="label">Tipo *</label>
               <select className="input" value={form.type} onChange={e => setForm(p => ({...p, type: e.target.value}))}>
@@ -138,7 +138,7 @@ function BankAccounts() {
       </div>
       <Modal isOpen={modal} onClose={() => setModal(false)} title={editing ? 'Editar Conta' : 'Nova Conta Bancária'} size="md">
         <form onSubmit={save} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="col-span-2"><label className="label">Nome da conta *</label><input className="input" value={form.name} onChange={e => setForm(p => ({...p, name: e.target.value}))} required /></div>
             <div><label className="label">Tipo</label>
               <select className="input" value={form.type} onChange={e => setForm(p => ({...p, type: e.target.value}))}>

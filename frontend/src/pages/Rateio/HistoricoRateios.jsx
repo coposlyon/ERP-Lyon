@@ -412,7 +412,7 @@ export default function HistoricoRateios() {
       {/* Comparar Períodos */}
       <Modal isOpen={compare} onClose={() => setCompare(false)} title="Comparar períodos" size="lg">
         <div className="space-y-4 text-sm">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Período A</label>
               <select className="input" value={cmpA} onChange={e => setCmpA(e.target.value)}>

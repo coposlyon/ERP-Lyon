@@ -133,7 +133,7 @@ export default function CustomizationStudio() {
         actions={(a) => {
           apiRef.current = a;
           return (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button onClick={downloadPNG} className="btn-secondary"><Download size={14} /> Baixar PNG</button>
               <button onClick={() => setSaveOpen(true)} className="btn-primary"><Save size={15} /> {currentId ? 'Atualizar' : 'Salvar'}</button>
               <button onClick={exportProductionPDF} className="btn-secondary col-span-2"><FileText size={14} /> PDF para produção (com sangria)</button>

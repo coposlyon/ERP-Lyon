@@ -72,7 +72,7 @@ function NewTransactionModal({ type, onClose, onSaved }) {
         <label className="label">Descrição *</label>
         <input className="input" value={form.description} onChange={e => setForm(p => ({...p, description: e.target.value}))} required />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Valor (R$) *</label>
           <input type="number" step="0.01" min="0.01" className="input" value={form.amount} onChange={e => setForm(p => ({...p, amount: e.target.value}))} required />
@@ -82,7 +82,7 @@ function NewTransactionModal({ type, onClose, onSaved }) {
           <input type="date" className="input" value={form.due_date} onChange={e => setForm(p => ({...p, due_date: e.target.value}))} required />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Parcelas</label>
           <select className="input" value={form.installments} onChange={e => setForm(p => ({...p, installments: parseInt(e.target.value)}))}>
@@ -112,7 +112,7 @@ function NewTransactionModal({ type, onClose, onSaved }) {
           </select>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Plano de Contas</label>
           <select className="input" value={form.chart_account_id} onChange={e => setForm(p => ({...p, chart_account_id: e.target.value}))}>

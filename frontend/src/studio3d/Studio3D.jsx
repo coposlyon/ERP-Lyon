@@ -364,7 +364,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
       <div className="space-y-3 max-h-[80vh] overflow-y-auto pr-1">
         {saved?.length > 0 && (
           <Sec icon={Layers} title="Designs salvos">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {saved.slice(0, 9).map(s => (
                 <button key={s.id} onClick={() => onPickSaved?.(s)} title={s.title}
                   className="rounded-lg border border-gray-200 overflow-hidden hover:border-violet-400 transition-colors">
@@ -405,7 +405,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
         )}
 
         <Sec icon={LayoutGrid} title="Modelos prontos">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {TEMPLATES.map(t => (
               <button key={t.name} onClick={() => applyTemplate(t)}
                 className="flex items-center gap-2 px-2 py-2 rounded-xl border border-gray-200 hover:border-violet-400 transition-colors text-left">
@@ -417,7 +417,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
         </Sec>
 
         <Sec icon={Layers} title="Modelo">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {MODELS.map(m => (
               <button key={m.key} onClick={() => setModel(m.key)}
                 className={`px-2 py-2 rounded-xl text-xs font-semibold border-2 transition-colors ${model === m.key ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>{m.label}</button>
@@ -453,7 +453,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
         </Sec>
 
         <Sec icon={Wand2} title="Acabamento">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {FINISHES.map(f => (
               <button key={f.key} onClick={() => setFinish(f.key)}
                 className={`px-3 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${finish === f.key ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>{f.label}</button>

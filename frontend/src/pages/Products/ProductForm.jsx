@@ -251,7 +251,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {/* Identificação */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="col-span-2">
           <label className="label">Nome do Produto *</label>
           <input className="input uppercase" value={form.name}
@@ -331,7 +331,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
       </div>
 
       {/* Preços base */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label className="label">Preço de Custo (R$)</label>
           <input type="number" step="0.01" min="0" className="input"
@@ -349,7 +349,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label className="label">Qtd. mínima de pedido (loja)</label>
           <input type="number" step="1" min="1" className="input"
@@ -432,7 +432,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
       {isProdutoAcabado && (
         <div className="border border-gray-200 rounded-lg p-4 space-y-3">
           <p className="text-sm font-semibold text-gray-700">📦 Dimensões do Produto Acabado</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div><label className="label">Altura (mm)</label><input type="number" step="0.001" min="0" className="input" value={form.height} onChange={e => set('height', e.target.value)} placeholder="0" /></div>
             <div><label className="label">Peso (g)</label><input type="number" step="0.001" min="0" className="input" value={form.weight} onChange={e => set('weight', e.target.value)} placeholder="0" /></div>
             <div><label className="label">Espessura (mm)</label><input type="number" step="0.001" min="0" className="input" value={form.thickness} onChange={e => set('thickness', e.target.value)} placeholder="0" /></div>
@@ -446,7 +446,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
       {isImpresso && (
         <div className="border border-gray-200 rounded-lg p-4 space-y-3">
           <p className="text-sm font-semibold text-gray-700">🖨️ Dimensões do Impresso</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="label">Comprimento (mm)</label><input type="number" step="0.001" min="0" className="input" value={form.length} onChange={e => set('length', e.target.value)} placeholder="0" /></div>
             <div><label className="label">Largura (mm)</label><input type="number" step="0.001" min="0" className="input" value={form.width} onChange={e => set('width', e.target.value)} placeholder="0" /></div>
           </div>
@@ -458,7 +458,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg">
           Dados Fiscais (NCM, CST, CFOP)
         </summary>
-        <div className="px-4 pb-4 grid grid-cols-3 gap-4 mt-3">
+        <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
           <div><label className="label">NCM</label><input className="input" value={form.ncm} onChange={e => set('ncm', e.target.value)} placeholder="00000000" maxLength={8} /></div>
           <div><label className="label">CST / CSOSN</label><input className="input" value={form.cst} onChange={e => set('cst', e.target.value)} placeholder="000" maxLength={4} /></div>
           <div><label className="label">CFOP</label><input className="input" value={form.cfop} onChange={e => set('cfop', e.target.value)} placeholder="5102" maxLength={4} /></div>

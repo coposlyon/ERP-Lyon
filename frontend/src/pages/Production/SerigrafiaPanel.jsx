@@ -103,7 +103,7 @@ export default function SerigrafiaPanel({ saleId, defaultQuadro = '' }) {
       {/* Modal de registro de perda */}
       <Modal isOpen={open} onClose={() => !perdaMut.isPending && setOpen(false)} title="Registrar perda de matriz" size="md">
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Nº do quadro *</label>
               <input className="input font-mono" value={form.quadro} autoFocus
@@ -127,7 +127,7 @@ export default function SerigrafiaPanel({ saleId, defaultQuadro = '' }) {
           {/* Insumos calculados (editáveis) */}
           <div className="bg-gray-50 rounded-xl p-3 space-y-2">
             <p className="text-xs font-semibold text-gray-500">Insumo gasto (calculado pela área — pode ajustar)</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
                 <label className="text-[11px] text-gray-500">Emulsão (g)</label>
                 <input type="number" className="input text-sm" value={form.emulsao_g}

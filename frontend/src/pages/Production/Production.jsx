@@ -300,7 +300,7 @@ export default function Production() {
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="label">Data do evento</label><input type="date" className="input" value={ef('event_date') || ''} onChange={e => setEdit(s => ({ ...s, event_date: e.target.value }))} /></div>
                 <div><label className="label">Prazo máx. entrega</label><input type="date" className="input" value={ef('max_delivery_date') || ''} onChange={e => setEdit(s => ({ ...s, max_delivery_date: e.target.value }))} /></div>
                 <div><label className="label">Data de saída</label><input type="date" className="input" value={ef('ship_date') || ''} onChange={e => setEdit(s => ({ ...s, ship_date: e.target.value }))} /></div>

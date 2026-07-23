@@ -302,7 +302,7 @@ export default function QuoteForm() {
                   {PAYMENT_METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="label">Válido até</label>
                   <input type="date" className="input" value={form.valid_until} onChange={e => setForm(p => ({ ...p, valid_until: e.target.value }))} />

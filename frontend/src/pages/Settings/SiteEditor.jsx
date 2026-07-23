@@ -318,7 +318,7 @@ function IconPicker({ value, onChange, disabled }) {
         <Cur size={18} />
       </button>
       {open && !disabled && (
-        <div className="absolute z-20 mt-1 p-2 bg-white rounded-xl border border-gray-200 shadow-lg grid grid-cols-6 gap-1 w-56">
+        <div className="absolute z-20 mt-1 p-2 bg-white rounded-xl border border-gray-200 shadow-lg grid grid-cols-1 sm:grid-cols-6 gap-1 w-56">
           {SITE_ICON_KEYS.map(k => {
             const Ic = SITE_ICONS[k];
             return (

@@ -357,7 +357,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
         {/* Preço + qtd mínima */}
         <div>
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Preço e quantidade</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="label">Custo (R$)</label>
               <input className="input" type="number" step="0.01" value={costPrice} onChange={e => setCostPrice(e.target.value)} placeholder="—" />
@@ -385,7 +385,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
         {/* Fiscal */}
         <div>
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Fiscal (NCM / CST / CFOP)</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <input className="input" value={ncm} onChange={e => setNcm(e.target.value)} placeholder="NCM" />
             <input className="input" value={cst} onChange={e => setCst(e.target.value)} placeholder="CST / CSOSN" />
             <input className="input" value={cfop} onChange={e => setCfop(e.target.value)} placeholder="CFOP (ex.: 5101)" />

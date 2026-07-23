@@ -122,7 +122,7 @@ function EditModal({ transaction, onClose, onSaved }) {
         <label className="label">Descrição</label>
         <input className="input" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} required />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Valor (R$)</label>
           <input type="number" step="0.01" min="0.01" className="input" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} required />
@@ -186,7 +186,7 @@ function FixedExpenseModal({ expense, onClose, onSaved }) {
         <input className="input" placeholder="Aluguel, Energia, Internet..." value={form.name}
           onChange={e => setForm(p => ({ ...p, name: e.target.value }))} required />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Valor mensal (R$) *</label>
           <input type="number" step="0.01" min="0" className="input" value={form.amount}
@@ -205,7 +205,7 @@ function FixedExpenseModal({ expense, onClose, onSaved }) {
           {(suppliers?.data || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Plano de Contas</label>
           <select className="input" value={form.chart_account_id} onChange={e => setForm(p => ({ ...p, chart_account_id: e.target.value }))}>
@@ -221,7 +221,7 @@ function FixedExpenseModal({ expense, onClose, onSaved }) {
           </select>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Termina em (opcional)</label>
           <input type="month" className="input" value={form.end_month} onChange={e => setForm(p => ({ ...p, end_month: e.target.value }))} />

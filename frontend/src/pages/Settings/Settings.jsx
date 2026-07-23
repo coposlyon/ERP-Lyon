@@ -134,7 +134,7 @@ export default function Settings() {
         {tab === 'company' && (
           <div className="card-body space-y-5">
             {!isAdmin && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-2">Apenas admins podem editar as configurações da empresa.</p>}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="label">Nome da Empresa *</label>
                 <input className="input" value={form.name} onChange={e => set('name', e.target.value)} disabled={!isAdmin} />
@@ -167,7 +167,7 @@ export default function Settings() {
 
             <div>
               <h3 className="font-medium text-gray-900 mb-3">Endereço</h3>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="label">CEP</label>
                   <input className="input" value={form.address?.zip || ''} onChange={e => setAddr('zip', e.target.value)} disabled={!isAdmin} />
@@ -294,7 +294,7 @@ export default function Settings() {
                 <label className="label">Servidor SMTP</label>
                 <input className="input" value={form.settings?.email?.smtp_host || ''} onChange={e => setEmailCfg('smtp_host', e.target.value)} placeholder="smtp.gmail.com" disabled={!isAdmin} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="label">Porta</label>
                   <input type="number" className="input" value={form.settings?.email?.smtp_port ?? ''} onChange={e => setEmailCfg('smtp_port', e.target.value)} placeholder="465" disabled={!isAdmin} />
@@ -590,7 +590,7 @@ export default function Settings() {
 
                 <div>
                   <h4 className="text-sm font-semibold text-gray-700 mb-2">Tamanho padrão da tela</h4>
-                  <div className="grid grid-cols-3 gap-4 max-w-md">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-md">
                     <div><label className="label">Largura (cm)</label><input type="number" className="input" value={seri.screen_w ?? ''} onChange={e => setSe('screen_w', e.target.value)} disabled={!isAdmin} /></div>
                     <div><label className="label">Comprimento (cm)</label><input type="number" className="input" value={seri.screen_h ?? ''} onChange={e => setSe('screen_h', e.target.value)} disabled={!isAdmin} /></div>
                     <div><label className="label">Área (cm²)</label><input className="input bg-gray-50" disabled value={(Number(seri.screen_w) || 0) * (Number(seri.screen_h) || 0)} /></div>
@@ -727,7 +727,7 @@ export default function Settings() {
                 Essas configurações ficam armazenadas com segurança no servidor.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">Ambiente</label>
                 <select className="input" disabled={!isAdmin}>

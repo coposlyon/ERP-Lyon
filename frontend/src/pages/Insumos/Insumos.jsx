@@ -121,7 +121,7 @@ function FornecedoresModal({ insumo, suppliers, onClose }) {
 
         {novo ? (
           <div className="rounded-xl border border-primary-200 bg-primary-50/30 p-3 space-y-2">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className="label">Fornecedor</label>
                 <select className="input" value={novo.supplier_id || ''} onChange={e => setNovo({ ...novo, supplier_id: e.target.value })}>
@@ -135,7 +135,7 @@ function FornecedoresModal({ insumo, suppliers, onClose }) {
                   onChange={e => setNovo({ ...novo, supplier_name: e.target.value })} />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
                 <label className="label">Embalagem ({insumo?.base_unit})</label>
                 <input className="input" inputMode="decimal" value={novo.package_qty || ''}
@@ -312,7 +312,7 @@ function InsumoModal({ open, initial, suppliers, products, onClose, onSaved }) {
     <Modal isOpen={open} onClose={() => { setForm(null); onClose(); }}
       title={isEdit ? 'Editar insumo' : 'Novo insumo'} size="md">
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Categoria</label>
             <select className="input" value={f.category} onChange={e => set({ category: e.target.value })}>
@@ -325,7 +325,7 @@ function InsumoModal({ open, initial, suppliers, products, onClose, onSaved }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Fornecedor</label>
             <select className="input" value={f.supplier_id} onChange={e => set({ supplier_id: e.target.value })}>
@@ -340,7 +340,7 @@ function InsumoModal({ open, initial, suppliers, products, onClose, onSaved }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="label">Unidade base</label>
             <select className="input" value={f.base_unit} onChange={e => set({ base_unit: e.target.value })}>
@@ -387,7 +387,7 @@ function InsumoModal({ open, initial, suppliers, products, onClose, onSaved }) {
         )}
 
         {/* Estoque e integração com Compras/Estoque */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Estoque mínimo ({f.base_unit})</label>
             <input className="input" inputMode="decimal" value={f.min_stock} placeholder="0"
@@ -420,7 +420,7 @@ function InsumoModal({ open, initial, suppliers, products, onClose, onSaved }) {
         </div>
 
         {/* Prévia do custo */}
-        <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-2 gap-2 text-sm">
+        <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-500">Custo por {f.base_unit}</span>
             <span className="font-medium">{fmtBRL(unitCost)}</span>

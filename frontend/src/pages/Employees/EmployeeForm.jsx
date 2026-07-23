@@ -337,7 +337,7 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
     <form onSubmit={handleSubmit} className="space-y-5">
 
       {/* ── Dados pessoais ── */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="col-span-2">
           <label className="label">Nome Completo *</label>
           <input className="input" value={form.name} onChange={e => set('name', e.target.value)} autoFocus />
@@ -368,7 +368,7 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
         <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg select-none">
           Endereço
         </summary>
-        <div className="px-4 pb-4 grid grid-cols-3 gap-3 mt-3">
+        <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
           <div>
             <label className="label">CEP</label>
             <div className="relative">
@@ -412,7 +412,7 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
       <div className="border border-indigo-200 rounded-lg bg-indigo-50/20 p-4 space-y-4">
         <p className="text-sm font-semibold text-indigo-800">📋 Ficha de Admissão</p>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Data de Admissão</label>
             <input type="date" className="input" value={form.admission_data.start_date}
@@ -489,7 +489,7 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
       <div className="border border-amber-200 rounded-lg bg-amber-50/30 p-4 space-y-4">
         <p className="text-sm font-semibold text-amber-800 flex items-center gap-1.5">💰 Remuneração e Benefícios</p>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">Cargo</label>
             <input className="input" placeholder="Ex: Impressor Silk"
@@ -558,7 +558,7 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
         {form.admission_data.has_access && (
           <div className="space-y-4">
             {/* Credenciais */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">E-mail de acesso</label>
                 <input
@@ -589,7 +589,7 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
             </div>
 
             {/* Horário de acesso */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">Início do horário de acesso</label>
                 <input
@@ -621,7 +621,7 @@ export default function EmployeeForm({ employee, onSaved, onCancel }) {
                   Nenhum módulo selecionado — o colaborador verá apenas o Dashboard.
                 </p>
               )}
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {MODULOS.map(mod => (
                   <label key={mod.key}
                     className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer transition-colors text-xs ${

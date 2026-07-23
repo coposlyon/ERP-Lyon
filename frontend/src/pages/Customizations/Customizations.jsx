@@ -44,7 +44,7 @@ function NewCustomizationModal({ onSaved, onCancel }) {
         <label className="label">Título / Descrição *</label>
         <input className="input" placeholder="Ex: Copo personalizado evento Formatura..." value={form.title} onChange={e => setForm(p => ({...p, title: e.target.value}))} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="label">Cliente</label>
           <select className="input" value={form.customer_id} onChange={e => setForm(p => ({...p, customer_id: e.target.value}))}>

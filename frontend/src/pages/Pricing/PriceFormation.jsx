@@ -609,7 +609,7 @@ export default function PriceFormation() {
             <div className="mx-4 mb-4 rounded-xl border-2 border-green-500 bg-green-50 p-3 text-center">
               <p className="text-xs font-bold text-green-700 tracking-wide">PREÇO DE VENDA SUGERIDO</p>
               <p className="text-3xl font-extrabold text-green-700 mt-1">{fmtBRL(calc.price_ideal)}</p>
-              <div className="grid grid-cols-2 gap-2 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
                 {[
                   ['Mínimo', 'margin_min_pct', calc.price_min, 'text-amber-700'],
                   ['Premium', 'margin_premium_pct', calc.price_premium, 'text-violet-700'],
