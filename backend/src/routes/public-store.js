@@ -644,18 +644,41 @@ router.post('/cadastro', cadastroLimiter, async (req, res) => {
 });
 
 // ── Autocadastro de FORNECEDORA (link público) ────────────
-router.post('/cadastro-fornecedor', cadastroLimiter, async (req, res) => {
-  const { name, nome_fantasia, cnpj, ie, ie_isento, email, phone, mobile, contact_name, instagram, address } = req.body;
+// Recebe os dados + o Contrato Comercial assinado + a identificação de quem
+// envia, tudo via multipart. `address` chega como string JSON (multipart não
+// carrega objeto aninhado). O cadastro só é concluído com o contrato anexado.
+router.post('/cadastro-fornecedor', cadastroLimiter,
+  uploadDocs.single('contrato'),
+  async (req, res) => {
+  const { name, nome_fantasia, cnpj, ie, ie_isento, email, phone, mobile, contact_name, instagram } = req.body;
+  const { responsible_name, responsible_cpf, responsible_cargo } = req.body;
+
+  let address = {};
+  try { address = req.body.address ? JSON.parse(req.body.address) : {}; } catch { address = {}; }
+
   const nm = String(name || '').trim();
   const em = String(email || '').trim();
   const ph = String(phone || '').trim();
   const docDigits = soDigitos(cnpj);
+  const contrato = req.file;
+
   if (!nm) return res.status(400).json({ error: 'Informe a razão social' });
   if (!docDigits) return res.status(400).json({ error: 'Informe o CNPJ' });
   if (!validaCNPJ(docDigits)) return res.status(400).json({ error: 'CNPJ inválido. Confira os números digitados.' });
   if (!ie_isento && !String(ie || '').trim()) return res.status(400).json({ error: 'Informe a Inscrição Estadual (ou marque Isento)' });
   if (!em) return res.status(400).json({ error: 'Informe o e-mail' });
   if (!ph) return res.status(400).json({ error: 'Informe o telefone' });
+
+  // Identificação de quem está enviando o cadastro
+  if (!String(responsible_name || '').trim() || !String(responsible_cargo || '').trim())
+    return res.status(400).json({ error: 'Informe o nome completo e o cargo de quem está enviando o cadastro.' });
+  if (!validaCPF(responsible_cpf))
+    return res.status(400).json({ error: 'CPF inválido. Confira os números digitados.' });
+
+  // Documento obrigatório
+  if (!contrato)
+    return res.status(400).json({ error: 'Anexe o Contrato Comercial assinado para finalizar o cadastro.' });
+
   const ig = String(instagram || '').trim()
     .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?].*$/, '').replace(/^@/, '') || null;
   try {
@@ -681,11 +704,42 @@ router.post('/cadastro-fornecedor', cadastroLimiter, async (req, res) => {
       is_active: true,
     };
     const payload = { ...base, ie: ie_isento ? 'ISENTO' : (String(ie || '').trim() || null) };
-    let { error } = await supabase.from('FORNECEDORES').insert(payload);
+    let created = null, error = null;
+    ({ data: created, error } = await supabase.from('FORNECEDORES').insert(payload).select('id').single());
     if (error && /\bie\b/i.test(error.message || '')) { // coluna ie ainda não existe (migration 023)
-      ({ error } = await supabase.from('FORNECEDORES').insert(base));
+      ({ data: created, error } = await supabase.from('FORNECEDORES').insert(base).select('id').single());
     }
     if (error) throw error;
+
+    // Sobe o contrato. Se falhar, desfaz o cadastro para não deixar fornecedor
+    // sem o documento obrigatório.
+    try {
+      const uploaded_by = {
+        name: String(responsible_name).trim(),
+        cpf: soDigitos(responsible_cpf),
+        cargo: String(responsible_cargo).trim(),
+      };
+      const now = new Date().toISOString();
+      const safeName = contrato.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      const filePath = `${STORE_TENANT}/fornecedores/${created.id}/${Date.now()}_contrato_${safeName}`;
+      const { error: upErr } = await supabase.storage.from('DOCUMENTOS')
+        .upload(filePath, contrato.buffer, { contentType: contrato.mimetype, upsert: false });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = supabase.storage.from('DOCUMENTOS').getPublicUrl(filePath);
+      const attachments = [{
+        id: `${Date.now()}_contrato`,
+        kind: 'contrato', name: contrato.originalname, url: publicUrl, path: filePath,
+        type: contrato.mimetype, size: contrato.size, uploaded_at: now, uploaded_by,
+      }];
+      await supabase.from('FORNECEDORES')
+        .update({ documents: { attachments, responsible: { ...uploaded_by, at: now } } })
+        .eq('id', created.id).eq('tenant_id', STORE_TENANT);
+    } catch (upErr) {
+      await supabase.from('FORNECEDORES').delete().eq('id', created.id).eq('tenant_id', STORE_TENANT);
+      console.error('[public-store:cadastro-fornecedor upload]', upErr.message || upErr);
+      return res.status(500).json({ error: 'Não foi possível anexar o documento. Tente novamente.' });
+    }
+
     res.status(201).json({ success: true });
   } catch (err) { fail(res, err); }
 });

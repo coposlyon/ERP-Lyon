@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Loader2, CheckCircle2, XCircle, MessageCircle, Phone, Mail } from 'lucide-react';
+import { Plus, Search, Edit2, Loader2, CheckCircle2, XCircle, MessageCircle, Phone, Mail, Upload, Paperclip, FileText } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
@@ -28,6 +28,30 @@ function formatCnpj(v) {
 
 const emptyAddr = { nome_fantasia:'', street:'', number:'', complement:'', neighborhood:'', city:'', state:'', zip:'' };
 
+function maskCpf(v) {
+  return String(v || '').replace(/\D/g, '').slice(0, 11)
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+}
+function validCpf(v) {
+  const c = String(v || '').replace(/\D/g, '');
+  if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
+  let s = 0;
+  for (let i = 0; i < 9; i++) s += +c[i] * (10 - i);
+  let d = (s * 10) % 11; if (d === 10) d = 0;
+  if (d !== +c[9]) return false;
+  s = 0;
+  for (let i = 0; i < 10; i++) s += +c[i] * (11 - i);
+  d = (s * 10) % 11; if (d === 10) d = 0;
+  return d === +c[10];
+}
+function formatSize(bytes) {
+  if (!bytes) return '';
+  const kb = bytes / 1024;
+  return kb < 1024 ? `${kb.toFixed(0)} KB` : `${(kb / 1024).toFixed(1)} MB`;
+}
+
 function SupplierForm({ supplier, onSaved, onCancel }) {
   const [form, setForm] = useState({
     name:         supplier?.name         || '',
@@ -42,6 +66,18 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
   const [loading,     setLoading]     = useState(false);
   const [cnpjLoading, setCnpjLoading] = useState(false);
   const [cnpjStatus,  setCnpjStatus]  = useState(null); // null | 'ok' | 'error'
+
+  // Contrato assinado + quem está anexando
+  const existingDocs = supplier?.documents?.attachments || [];
+  const resp0 = supplier?.documents?.responsible || {};
+  const [contratoFile, setContratoFile] = useState(null);
+  const [resp, setResp] = useState({
+    name:  resp0.name  || '',
+    cpf:   resp0.cpf ? maskCpf(resp0.cpf) : '',
+    cargo: resp0.cargo || '',
+  });
+  const existingContrato = existingDocs.find(d => d.kind === 'contrato');
+  const hasContrato = !!contratoFile || !!existingContrato;
 
   const up = s => (typeof s === 'string' ? s.toUpperCase() : s);
   function set(k, v)    { setForm(p => ({ ...p, [k]: (k === 'email' ? v : up(v)) })); }
@@ -102,17 +138,41 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
     if (!a.neighborhood?.trim())       { toast.error('Informe o Bairro'); return; }
     if (!a.city?.trim())               { toast.error('Informe a Cidade'); return; }
     if (!a.state?.trim())              { toast.error('Informe o Estado (UF)'); return; }
+
+    // Contrato obrigatório no cadastro NOVO. Na edição de um fornecedor antigo
+    // (anterior a este recurso) não bloqueia — mas se for anexar um contrato
+    // agora, exige a identificação de quem está anexando.
+    const isNew = !supplier?.id;
+    if (isNew || contratoFile) {
+      if (!resp.name.trim() || !resp.cargo.trim()) { toast.error('Informe o nome completo e o cargo de quem está anexando o contrato'); return; }
+      if (!validCpf(resp.cpf))                     { toast.error('CPF inválido. Confira os números digitados.'); return; }
+    }
+    if (isNew && !hasContrato)                     { toast.error('Anexe o Contrato Comercial assinado para concluir o cadastro.'); return; }
+
     setLoading(true);
     try {
-      if (supplier?.id) {
-        await api.put(`/suppliers/${supplier.id}`, form);
-        toast.success('Fornecedor atualizado!');
+      let supplierId = supplier?.id;
+      if (supplierId) {
+        await api.put(`/suppliers/${supplierId}`, form);
       } else {
-        await api.post('/suppliers', form);
-        toast.success('Fornecedor cadastrado!');
+        const created = await api.post('/suppliers', form);
+        supplierId = created?.id;
       }
+      // Sobe o contrato recém-selecionado, registrando quem anexou
+      if (contratoFile) {
+        const fd = new FormData();
+        fd.append('file', contratoFile);
+        fd.append('kind', 'contrato');
+        fd.append('uploader_name', resp.name.trim());
+        fd.append('uploader_cpf', resp.cpf);
+        fd.append('uploader_cargo', resp.cargo.trim());
+        await api.post(`/suppliers/${supplierId}/attachments`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
+      toast.success(supplier?.id ? 'Fornecedor atualizado!' : 'Fornecedor cadastrado!');
       onSaved();
-    } catch (err) { toast.error(err.error || 'Erro ao salvar'); }
+    } catch (err) { toast.error(err?.response?.data?.error || err.error || 'Erro ao salvar'); }
     finally { setLoading(false); }
   }
 
@@ -234,6 +294,62 @@ function SupplierForm({ supplier, onSaved, onCancel }) {
           onChange={e => set('is_active', e.target.checked)} className="rounded" />
         <span className="text-sm text-gray-700">Fornecedor ativo</span>
       </label>
+
+      {/* Contrato assinado + responsável */}
+      <div className="border border-indigo-200 rounded-lg bg-indigo-50/30 p-4 space-y-3">
+        <p className="text-sm font-semibold text-indigo-800 flex items-center gap-1.5">
+          <Paperclip size={15} /> Contrato assinado
+        </p>
+
+        <div className="bg-white border border-gray-200 rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2">
+            <FileText size={16} className="text-indigo-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-800">Contrato Comercial assinado *</p>
+              {contratoFile ? (
+                <p className="text-xs text-green-600 truncate">{contratoFile.name} · {formatSize(contratoFile.size)}</p>
+              ) : existingContrato ? (
+                <a href={existingContrato.url} target="_blank" rel="noreferrer"
+                  className="text-xs text-indigo-500 hover:underline truncate block">
+                  {existingContrato.name} (enviado)
+                </a>
+              ) : (
+                <p className="text-xs text-gray-400">Nenhum arquivo</p>
+              )}
+            </div>
+            <label className="btn-secondary text-xs cursor-pointer flex items-center gap-1.5 shrink-0">
+              <Upload size={13} /> {existingContrato || contratoFile ? 'Trocar' : 'Anexar'}
+              <input type="file" className="hidden"
+                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                onChange={e => { const fl = e.target.files[0]; if (fl) setContratoFile(fl); e.target.value = ''; }} />
+            </label>
+          </div>
+        </div>
+
+        <div className="pt-1">
+          <label className="label">Quem está anexando *</label>
+          <input className="input" value={resp.name} placeholder="Nome completo"
+            onChange={e => setResp(p => ({ ...p, name: e.target.value }))} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label">CPF *</label>
+            <input className="input" value={resp.cpf} placeholder="000.000.000-00" maxLength={14}
+              onChange={e => setResp(p => ({ ...p, cpf: maskCpf(e.target.value) }))} />
+          </div>
+          <div>
+            <label className="label">Cargo *</label>
+            <input className="input" value={resp.cargo} placeholder="Ex: Comercial"
+              onChange={e => setResp(p => ({ ...p, cargo: e.target.value }))} />
+          </div>
+        </div>
+        {existingContrato?.uploaded_at && (
+          <p className="text-xs text-gray-400">
+            Último anexo em {new Date(existingContrato.uploaded_at).toLocaleDateString('pt-BR')}
+            {existingContrato.uploaded_by?.name ? ` por ${existingContrato.uploaded_by.name}` : ''}.
+          </p>
+        )}
+      </div>
 
       <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
         <button type="button" onClick={onCancel} className="btn-secondary">Cancelar</button>
