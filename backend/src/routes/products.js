@@ -724,7 +724,7 @@ router.post('/', validate(productSchema), async (req, res) => {
     name, code, ean, description, category_id, tipo_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing, variations, image, variation_images, show_in_store
+    price_tiers, min_order_qty, print_pricing, pricing_sheet_id, variations, image, variation_images, show_in_store
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Nome do produto é obrigatório' });
@@ -750,6 +750,7 @@ router.post('/', validate(productSchema), async (req, res) => {
       price_tiers: price_tiers || [],
       min_order_qty: Math.max(1, parseInt(min_order_qty) || 1),
       print_pricing: print_pricing || {},
+      ...(pricing_sheet_id ? { pricing_sheet_id } : {}),
       ...(variations != null ? { variations } : {}),
       ...(imageUrl !== undefined ? { image_url: imageUrl } : {}),
       ...(varImgs !== undefined ? { variation_images: varImgs } : {}),
@@ -757,12 +758,13 @@ router.post('/', validate(productSchema), async (req, res) => {
     };
     const ins = () => supabase.from('PRODUTOS').insert(payload).select().single();
     let { data, error } = await ins();
-    while (error && /(variations|image_url|variation_images|show_in_store|tipo_id)/i.test(error.message || '')) {
+    while (error && /(variations|image_url|variation_images|show_in_store|tipo_id|pricing_sheet_id)/i.test(error.message || '')) {
       if (/variation_images/i.test(error.message)) delete payload.variation_images;
       else if (/image_url/i.test(error.message)) delete payload.image_url;
       else if (/variations/i.test(error.message)) delete payload.variations;
       else if (/show_in_store/i.test(error.message)) delete payload.show_in_store;
       else if (/tipo_id/i.test(error.message)) delete payload.tipo_id;
+      else if (/pricing_sheet_id/i.test(error.message)) delete payload.pricing_sheet_id;
       ({ data, error } = await ins());
     }
 
@@ -779,7 +781,7 @@ router.put('/:id', async (req, res) => {
     name, code, ean, description, category_id, tipo_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing, variations, image, variation_images, show_in_store
+    price_tiers, min_order_qty, print_pricing, pricing_sheet_id, variations, image, variation_images, show_in_store
   } = req.body;
 
   try {
@@ -822,6 +824,7 @@ router.put('/:id', async (req, res) => {
     if (price_tiers !== undefined) payload.price_tiers = price_tiers || [];
     if (min_order_qty != null) payload.min_order_qty = Math.max(1, parseInt(min_order_qty) || 1);
     if (print_pricing != null) payload.print_pricing = print_pricing;
+    if (pricing_sheet_id !== undefined) payload.pricing_sheet_id = pricing_sheet_id || null;
     if (variations != null) payload.variations = variations;
     if (imageUrl !== undefined) payload.image_url = imageUrl;
     if (varImgs !== undefined) payload.variation_images = varImgs;
@@ -830,12 +833,13 @@ router.put('/:id', async (req, res) => {
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     let { data, error } = await upd();
     // remove colunas novas que ainda não existem no banco e tenta de novo
-    while (error && /(variations|image_url|variation_images|show_in_store|tipo_id)/i.test(error.message || '')) {
+    while (error && /(variations|image_url|variation_images|show_in_store|tipo_id|pricing_sheet_id)/i.test(error.message || '')) {
       if (/variation_images/i.test(error.message)) delete payload.variation_images;
       else if (/image_url/i.test(error.message)) delete payload.image_url;
       else if (/variations/i.test(error.message)) delete payload.variations;
       else if (/show_in_store/i.test(error.message)) delete payload.show_in_store;
       else if (/tipo_id/i.test(error.message)) delete payload.tipo_id;
+      else if (/pricing_sheet_id/i.test(error.message)) delete payload.pricing_sheet_id;
       ({ data, error } = await upd());
     }
     if (error) throw error;

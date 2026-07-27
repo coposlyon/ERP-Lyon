@@ -277,12 +277,13 @@ const SHEET_FIELDS = [
   'product_id', 'name', 'category', 'capacity', 'color_model', 'print_type',
   'print_colors', 'calc_quantity', 'calc_reference', 'description', 'blocks',
   'tax_regime', 'tax_pct', 'tax_notes',
-  'margin_min_pct', 'margin_ideal_pct', 'margin_premium_pct',
+  'margin_min_pct', 'margin_ideal_pct', 'margin_premium_pct', 'is_master',
 ];
 
 function pickSheetBody(body) {
   const out = {};
   for (const k of SHEET_FIELDS) if (body[k] !== undefined) out[k] = body[k];
+  if (out.is_master !== undefined) out.is_master = !!out.is_master;
   if (out.name !== undefined) out.name = String(out.name || '').trim();
   if (out.calc_quantity !== undefined) out.calc_quantity = Math.max(1, parseInt(out.calc_quantity) || 1);
   if (out.print_colors !== undefined) out.print_colors = Math.min(Math.max(parseInt(out.print_colors) || 1, 0), 8);
@@ -295,6 +296,24 @@ function pickSheetBody(body) {
   if (out.product_id === '') out.product_id = null;
   return out;
 }
+
+// Tabelas mestre (fichas marcadas como is_master) — usado pelo seletor
+// "Tabela de Precificação" no cadastro de produto. Só id + nome.
+router.get('/tables', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('PRECIFICACOES')
+      .select('id, name, capacity, category')
+      .eq('tenant_id', req.tenantId).eq('is_active', true).eq('is_master', true)
+      .order('name').limit(500);
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    // coluna is_master ausente (migração 057 pendente) → lista vazia, não quebra
+    if (missing042(err) || /is_master/i.test(err.message || '')) return res.json([]);
+    console.error('[pricing/tables]', err.message);
+    res.status(500).json({ error: 'Erro ao listar as tabelas de precificação' });
+  }
+});
 
 router.get('/sheets', async (req, res) => {
   const { search, include_inactive } = req.query;

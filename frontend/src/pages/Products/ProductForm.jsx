@@ -21,6 +21,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   const [form, setForm] = useState({
     name: '', code: '', ean: '', category_id: '', tipo_id: '',
     cost_price: '', min_stock: '', min_order_qty: '',
+    pricing_sheet_id: '',
     ncm: '', cst: '', cfop: '', is_active: true, show_in_store: true,
     supplier_id: '',
     height: '', weight: '', thickness: '',
@@ -54,6 +55,12 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     queryFn: () => api.get('/suppliers?limit=200&is_active=true'),
   });
   const suppliers = suppliersData?.data || [];
+
+  // Tabelas de Precificação (fichas marcadas como mestre) — a fonte do preço
+  const { data: pricingTables = [] } = useQuery({
+    queryKey: ['pricing-tables'],
+    queryFn: () => api.get('/pricing/tables'),
+  });
 
   const createType = useMutation({
     mutationFn: (name) => api.post('/products/categories', { name }),
@@ -104,6 +111,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         cost_price: product.cost_price || '',
         min_stock: product.min_stock || '',
         min_order_qty: product.min_order_qty || '',
+        pricing_sheet_id: product.pricing_sheet_id || '',
         ncm: product.ncm || '',
         cst: product.cst || '',
         cfop: product.cfop || '',
@@ -321,6 +329,24 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           <input type="number" step="1" min="0" className="input"
             value={form.min_stock} onChange={e => set('min_stock', e.target.value)} placeholder="0" />
         </div>
+      </div>
+
+      {/* Tabela de Precificação — fonte do preço de venda */}
+      <div>
+        <label className="label">Tabela de Precificação</label>
+        <select className="input" value={form.pricing_sheet_id}
+          onChange={e => set('pricing_sheet_id', e.target.value)}>
+          <option value="">Sem tabela (produto fica sem preço na loja)</option>
+          {pricingTables.map(t => (
+            <option key={t.id} value={t.id}>
+              {t.name}{t.capacity ? ` — ${t.capacity}` : ''}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-gray-400 mt-1">
+          O preço de venda é calculado por esta tabela (faixas de quantidade + impressão + margem).
+          Crie e edite as tabelas em <b>Precificação → Formação de Preço</b> (marque a ficha como “tabela mestre”).
+        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
