@@ -595,6 +595,32 @@ function precoPorFicha(ficha, qty, method, opts = {}) {
   };
 }
 
+// Materializa uma ficha no formato antigo de preço do produto
+// (sale_price + price_tiers + print_pricing), pra loja e checkout
+// continuarem usando precoComImpressao/precoFaixa sem alteração.
+// Retorna null se a ficha não tem faixas (aí o produto mantém o preço próprio).
+function fichaPricing(ficha) {
+  if (!ficha) return null;
+  const blocks = ficha.blocks || {};
+  const bands = Array.isArray(blocks.tiers) ? blocks.tiers : [];
+  if (!bands.length) return null;
+  const methods = Object.keys(blocks.print_costs || {});
+
+  const bandTiers = method => bands.map(b => ({
+    min_qty: Number(b.min_qty) || 0,
+    max_qty: (b.max_qty == null || b.max_qty === '') ? null : Number(b.max_qty),
+    price: precoPorFicha(ficha, Number(b.min_qty) || 1, method).unit_price,
+  }));
+
+  const price_tiers = bandTiers(null);              // sem impressão
+  const print_pricing = {};
+  for (const m of methods) print_pricing[m] = { tiers: bandTiers(m) };
+
+  const all = [...price_tiers, ...Object.values(print_pricing).flatMap(pp => pp.tiers)]
+    .map(t => t.price).filter(v => v > 0);
+  return { sale_price: all.length ? Math.min(...all) : 0, price_tiers, print_pricing };
+}
+
 // Mapa product_id → custo unitário (ficha mais recente de cada produto);
 // produtos sem ficha caem no cost_price + rateio (+ imposto padrão).
 async function productCostMap(tenantId, overheadUnit, taxPctDefault) {
@@ -627,5 +653,5 @@ module.exports = {
   productionLabor, isProductionSector, commissionBySeller, producedUnits,
   marketingSpend, extraVariableCosts,
   computeSheet, productCostMap,
-  precoPorFicha, tierForQty,
+  precoPorFicha, tierForQty, fichaPricing,
 };

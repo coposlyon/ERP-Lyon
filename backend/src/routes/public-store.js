@@ -10,6 +10,7 @@ const uploadDocs = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB por documento
 });
 const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
+const { fichaPricing } = require('../lib/rateioLib');
 const { uploadDataUrl } = require('../lib/storage');
 const { calcularFrete, packItem } = require('../lib/frete');
 const { cotar, ufFromCep, getFreteConfig, jtCotar, jtReady } = require('../lib/shipping');
@@ -48,6 +49,34 @@ function fromPrice(p) {
   return prices.length ? Math.min(...prices) : Number(p.sale_price) || 0;
 }
 
+// Sobrescreve o preço do(s) produto(s) com o calculado pela ficha de
+// Precificação ligada (pricing_sheet_id). Sem ficha, mantém o preço
+// próprio do produto (fallback da transição). Materializa no formato
+// antigo (sale_price/price_tiers/print_pricing) para o resto da loja e o
+// checkout continuarem usando fromPrice/precoComImpressao sem mudar nada.
+async function attachFichaPricing(products) {
+  const list = Array.isArray(products) ? products : (products ? [products] : []);
+  const ids = [...new Set(list.map(p => p && p.pricing_sheet_id).filter(Boolean))];
+  if (!ids.length) return products;
+  let fichas = [];
+  try {
+    ({ data: fichas } = await supabase.from('PRECIFICACOES')
+      .select('id, blocks, tax_pct, overhead_unit, margin_min_pct, margin_ideal_pct, margin_premium_pct')
+      .eq('tenant_id', STORE_TENANT).in('id', ids));
+  } catch { return products; } // coluna/tabela ausente → mantém preço próprio
+  const map = Object.fromEntries((fichas || []).map(f => [f.id, f]));
+  for (const p of list) {
+    if (!p || !p.pricing_sheet_id) continue;
+    const priced = fichaPricing(map[p.pricing_sheet_id]);
+    if (priced) {
+      p.sale_price = priced.sale_price;
+      p.price_tiers = priced.price_tiers;
+      p.print_pricing = priced.print_pricing;
+    }
+  }
+  return products;
+}
+
 // 1ª foto disponível de um produto: principal, por cor, ou por variação
 const firstImg = p => p.image_url
   || (p.variation_images && typeof p.variation_images === 'object' && Object.values(p.variation_images).find(Boolean))
@@ -84,13 +113,15 @@ const bordaKey = (type, border) => `${type} :: ${border}`;
 
 // Carrega os produtos visíveis da loja (com fallback p/ colunas novas ausentes)
 async function loadVisibleProducts() {
-  const sel = full => `id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, store_group, store_color, variations, image_url, variation_images, show_in_store' : ''}, category_id, CATEGORIAS(name)`;
+  const sel = full => `id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, print_pricing, pricing_sheet_id, store_group, store_color, variations, image_url, variation_images, show_in_store' : ''}, category_id, CATEGORIAS(name)`;
   const build = full => supabase.from('PRODUTOS').select(sel(full))
     .eq('tenant_id', STORE_TENANT).eq('is_active', true).order('name').limit(500);
   let { data, error } = await build(true);
   if (error) ({ data, error } = await build(false));
   if (error) throw error;
-  return (data || []).filter(p => p.show_in_store !== false);
+  const visible = (data || []).filter(p => p.show_in_store !== false);
+  await attachFichaPricing(visible);
+  return visible;
 }
 
 // ── Informações da loja ───────────────────────────────────
@@ -196,7 +227,7 @@ router.get('/products', async (req, res) => {
   const build = (full) => {
     let q = supabase
       .from('PRODUTOS')
-      .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, store_group, store_color, variations, image_url, variation_images, show_in_store' : ''}, category_id, CATEGORIAS(name)`)
+      .select(`id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, print_pricing, pricing_sheet_id, store_group, store_color, variations, image_url, variation_images, show_in_store' : ''}, category_id, CATEGORIAS(name)`)
       .eq('tenant_id', STORE_TENANT)
       .eq('is_active', true)
       .order('name');
@@ -214,6 +245,7 @@ router.get('/products', async (req, res) => {
     let { data: products, error } = await build(true);
     if (error) ({ data: products, error } = await build(false));
     if (error) throw error;
+    await attachFichaPricing(products);
 
     // Só mostra na loja produtos marcados como visíveis (show_in_store).
     // Se a coluna ainda não existe (fallback), products vem sem o campo → mostra todos.
@@ -305,7 +337,7 @@ router.get('/products/border', async (req, res) => {
 router.get('/products/:id', async (req, res) => {
   const build = (full) => supabase
     .from('PRODUTOS')
-    .select(`id, name, code, unit, description, sale_price, price_tiers, category_id${full ? ', min_order_qty, print_pricing, store_group, store_color, variations' : ''}, CATEGORIAS(name)`)
+    .select(`id, name, code, unit, description, sale_price, price_tiers, category_id${full ? ', min_order_qty, print_pricing, pricing_sheet_id, store_group, store_color, variations' : ''}, CATEGORIAS(name)`)
     .eq('tenant_id', STORE_TENANT).eq('id', req.params.id).eq('is_active', true)
     .maybeSingle();
   try {
@@ -313,6 +345,7 @@ router.get('/products/:id', async (req, res) => {
     if (error) ({ data: p, error } = await build(false));
     if (error) throw error;
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
+    await attachFichaPricing(p);
 
     // Variações + fotos — busca isolada para não depender das outras colunas novas
     let pvars = { colors: [], borders: [], volumes: [] };
@@ -353,7 +386,7 @@ router.get('/products/:id', async (req, res) => {
     // todas as linhas (bicolor, borda, degradê...) e a lista explode.
     let colorOptions = [];
     if (p.store_group) {
-      const sibSel = 'id, name, store_color, sale_price, price_tiers, show_in_store, category_id, tipo_id';
+      const sibSel = 'id, name, store_color, sale_price, price_tiers, print_pricing, pricing_sheet_id, show_in_store, category_id, tipo_id';
       const sibQuery = (cols, useTipo) => {
         let q = supabase.from('PRODUTOS').select(cols)
           .eq('tenant_id', STORE_TENANT).eq('is_active', true)
@@ -365,7 +398,8 @@ router.get('/products/:id', async (req, res) => {
       };
       // tipo_id/show_in_store podem não existir → cai para um select mais simples
       let { data: sib, error: sibErr } = await sibQuery(sibSel, true);
-      if (sibErr) ({ data: sib } = await sibQuery('id, name, store_color, sale_price, price_tiers, category_id', false));
+      if (sibErr) ({ data: sib } = await sibQuery('id, name, store_color, sale_price, price_tiers, pricing_sheet_id, category_id', false));
+      await attachFichaPricing(sib);
 
       const seen = new Set();
       colorOptions = (sib || [])
@@ -426,10 +460,11 @@ router.post('/quote', async (req, res) => {
     // Busca produtos do carrinho para recalcular o preço no servidor
     const ids = [...new Set(items.map(i => i.product_id).filter(Boolean))];
     const fetchProds = (full) => supabase
-      .from('PRODUTOS').select(`id, name, unit, sale_price, price_tiers${full ? ', min_order_qty, print_pricing' : ''}`)
+      .from('PRODUTOS').select(`id, name, unit, sale_price, price_tiers${full ? ', min_order_qty, print_pricing, pricing_sheet_id' : ''}`)
       .eq('tenant_id', STORE_TENANT).in('id', ids);
     let { data: prods, error: pErr } = await fetchProds(true);
     if (pErr) ({ data: prods } = await fetchProds(false));
+    await attachFichaPricing(prods);
     const prodMap = Object.fromEntries((prods || []).map(p => [p.id, p]));
     const printLabel = Object.fromEntries(PRINT_METHODS.map(m => [m.key, m.label]));
 
