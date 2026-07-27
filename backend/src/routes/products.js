@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
 const supabase = require('../config/supabase');
+const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
 const { uploadDataUrl } = require('../lib/storage');
@@ -120,6 +121,8 @@ router.patch('/bulk', async (req, res) => {
   if (fields.category_id !== undefined) patch.category_id = fields.category_id || null;
   // Tipo de produto do site (COPOS, CANECAS...): '' / null = limpa; id = define
   if (fields.tipo_id !== undefined) patch.tipo_id = fields.tipo_id || null;
+  // Fornecedor: '' / null = limpa; id = define
+  if (fields.supplier_id !== undefined) patch.supplier_id = fields.supplier_id || null;
   // Visibilidade na loja (true/false). '' / undefined = não altera.
   if (fields.show_in_store !== undefined && fields.show_in_store !== '') {
     patch.show_in_store = fields.show_in_store === true || fields.show_in_store === 'true';
@@ -200,6 +203,35 @@ router.patch('/bulk', async (req, res) => {
     if (error) throw error;
     audit(req, 'update', 'product', null, { bulk: Object.keys(patch), count: (data || []).length });
     res.json({ updated: (data || []).length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Apagar em massa (DEFINITIVO) — exige a senha da conta para confirmar.
+// Hard delete: as FKs (migração 022+) cuidam de movimentações (cascade) e
+// do histórico de vendas/orçamentos (SET NULL).
+router.post('/bulk-delete', async (req, res) => {
+  const { ids, password } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'Selecione ao menos um produto' });
+  if (!password) return res.status(400).json({ error: 'Digite a senha da conta para confirmar' });
+
+  const email = req.user?.email;
+  // Não usar 401: o interceptor do front trata 401 como sessão expirada e desloga.
+  if (!email) return res.status(403).json({ error: 'Não consegui confirmar sua sessão. Recarregue a página e tente de novo.' });
+
+  try {
+    const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { error: authErr } = await client.auth.signInWithPassword({ email, password });
+    if (authErr) {
+      const badPass = authErr.status === 400 || /invalid|credential|password|senha/i.test(authErr.message || '');
+      return res.status(badPass ? 403 : 502).json({ error: badPass ? 'Senha incorreta.' : `Não foi possível confirmar a senha: ${authErr.message}` });
+    }
+
+    const { data, error } = await supabase.from('PRODUTOS').delete()
+      .in('id', ids.slice(0, 20000)).eq('tenant_id', req.tenantId).select('id');
+    if (error) throw error;
+    const deleted = (data || []).length;
+    audit(req, 'bulk_delete', 'product', null, { count: deleted });
+    res.json({ deleted });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

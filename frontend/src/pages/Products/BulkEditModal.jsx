@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, Image as ImageIcon, AlertTriangle } from 'lucide-react';
+import { Search, Loader2, Image as ImageIcon, AlertTriangle, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
@@ -15,11 +15,14 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
   const [applyAll, setApplyAll] = useState(false);  // aplicar a TODOS do filtro
   // campos a aplicar (só os preenchidos)
+  const [supplierId, setSupplierId] = useState(''); // '' = não altera | '__none__' = limpa | id
   const [costPrice, setCostPrice] = useState('');
   const [ncm, setNcm] = useState('');
   const [cst, setCst] = useState('');
   const [cfop, setCfop] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [delOpen, setDelOpen] = useState(false);        // modal de apagar em massa
+  const [delPassword, setDelPassword] = useState('');
 
   const { data: cats } = useQuery({
     queryKey: ['categories-list'],
@@ -32,6 +35,12 @@ export default function BulkEditModal({ isOpen, onClose }) {
     enabled: isOpen,
   });
   const volumeOptions = filterOpts?.volumes || [];
+  const { data: suppliersData } = useQuery({
+    queryKey: ['suppliers-list'],
+    queryFn: () => api.get('/suppliers?limit=200&is_active=true'),
+    enabled: isOpen,
+  });
+  const suppliers = suppliersData?.data || [];
 
   // busca efetiva = texto digitado + tamanho selecionado (o backend faz AND por termo)
   const effectiveSearch = [search, size].filter(Boolean).join(' ').trim();
@@ -56,11 +65,26 @@ export default function BulkEditModal({ isOpen, onClose }) {
   function doSearch(e) { e.preventDefault(); setSearch(searchInput.trim()); }
 
   const fields = {};
+  if (supplierId === '__none__') fields.supplier_id = null;
+  else if (supplierId) fields.supplier_id = supplierId;
   if (costPrice !== '') fields.cost_price = costPrice;
   if (ncm.trim()) fields.ncm = ncm.trim();
   if (cst.trim()) fields.cst = cst.trim();
   if (cfop.trim()) fields.cfop = cfop.trim();
   const hasFields = Object.keys(fields).length > 0;
+
+  // Apagar em massa (definitivo) — só nos selecionados e com senha da conta.
+  const del = useMutation({
+    mutationFn: (password) => api.post('/products/bulk-delete', { ids: selectedIds, password }),
+    onSuccess: (r) => {
+      toast.success(`${r.deleted} produto(s) apagado(s)`);
+      qc.invalidateQueries(['products']);
+      qc.invalidateQueries(['bulk-products']);
+      setSelected({});
+      setDelOpen(false); setDelPassword('');
+    },
+    onError: (e) => toast.error(e.error || 'Erro ao apagar'),
+  });
 
   const apply = useMutation({
     mutationFn: () => api.patch('/products/bulk', applyAll
@@ -85,26 +109,31 @@ export default function BulkEditModal({ isOpen, onClose }) {
   function handleClose() {
     setSelected({});
     setApplyAll(false);
+    setSupplierId('');
     setCostPrice('');
     setNcm(''); setCst(''); setCfop('');
     setConfirmOpen(false);
+    setDelOpen(false); setDelPassword('');
     onClose();
   }
 
   // Resumo da confirmação: compara os valores novos com os atuais dos produtos-alvo
   // (carregados) e conta, por campo, quantos já têm o valor / têm outro / estão vazios.
+  const supplierName = (id) => (suppliers || []).find(s => s.id === id)?.name || '—';
   function buildSummary() {
     const targets = applyAll ? (products || []) : (products || []).filter(p => selected[p.id]);
     const labels = {
-      cost_price: 'Custo', ncm: 'NCM', cst: 'CST', cfop: 'CFOP',
+      supplier_id: 'Fornecedor', cost_price: 'Custo', ncm: 'NCM', cst: 'CST', cfop: 'CFOP',
     };
     const norm = (key, val) => {
       if (val == null) return '';
+      if (key === 'supplier_id') return String(val || '');
       if (key === 'cost_price') return val === '' ? '' : String(Number(val));
       if (['ncm', 'cst', 'cfop'].includes(key)) return String(val).trim();
       return String(val);
     };
     const display = (key) => {
+      if (key === 'supplier_id') return fields.supplier_id ? supplierName(fields.supplier_id) : 'Sem fornecedor';
       if (key === 'cost_price') return `R$ ${Number(fields[key]).toFixed(2)}`;
       if (['ncm', 'cst', 'cfop'].includes(key)) return String(fields[key]);
       return String(fields[key]);
@@ -198,6 +227,16 @@ export default function BulkEditModal({ isOpen, onClose }) {
           </div>
         </div>
 
+        {/* Fornecedor */}
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Fornecedor</p>
+          <select className="input w-full sm:w-72" value={supplierId} onChange={e => setSupplierId(e.target.value)}>
+            <option value="">— não alterar —</option>
+            <option value="__none__">Limpar (sem fornecedor)</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+
         {/* Custo */}
         <div>
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Custo</p>
@@ -234,13 +273,20 @@ export default function BulkEditModal({ isOpen, onClose }) {
           </span>
         </label>
 
-        <div className="flex gap-2 justify-end pt-3 border-t border-gray-100 sticky bottom-0 bg-white">
-          <button onClick={handleClose} className="btn-secondary">Fechar</button>
-          <button onClick={doApply}
-            disabled={apply.isPending || !canApply}
-            className="btn-primary disabled:opacity-50">
-            {apply.isPending ? 'Aplicando...' : `Aplicar a ${targetCount} produto(s)`}
+        <div className="flex flex-wrap gap-2 items-center pt-3 border-t border-gray-100 sticky bottom-0 bg-white">
+          <button onClick={() => setDelOpen(true)} disabled={selectedIds.length === 0}
+            className="flex items-center gap-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg px-3 py-2 disabled:opacity-40 disabled:hover:bg-transparent"
+            title="Apagar os produtos selecionados (exige senha)">
+            <Trash2 size={15} /> Apagar selecionados{selectedIds.length ? ` (${selectedIds.length})` : ''}
           </button>
+          <div className="flex gap-2 ml-auto">
+            <button onClick={handleClose} className="btn-secondary">Fechar</button>
+            <button onClick={doApply}
+              disabled={apply.isPending || !canApply}
+              className="btn-primary disabled:opacity-50">
+              {apply.isPending ? 'Aplicando...' : `Aplicar a ${targetCount} produto(s)`}
+            </button>
+          </div>
         </div>
       </div>
     </Modal>
@@ -288,6 +334,33 @@ export default function BulkEditModal({ isOpen, onClose }) {
           <p className="text-gray-600">Tem certeza que deseja continuar? Esta ação não pode ser desfeita.</p>
         </div>
       )}
+    </Modal>
+
+    {/* Apagar em massa — exige a senha da conta */}
+    <Modal isOpen={delOpen} onClose={() => { if (!del.isPending) { setDelOpen(false); setDelPassword(''); } }}
+      title="Apagar produtos selecionados" size="sm"
+      footer={
+        <>
+          <button onClick={() => { setDelOpen(false); setDelPassword(''); }} disabled={del.isPending} className="btn-secondary">Cancelar</button>
+          <button onClick={() => del.mutate(delPassword)} disabled={del.isPending || !delPassword}
+            className="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg px-4 py-2 flex items-center gap-1.5 disabled:opacity-50">
+            {del.isPending ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />} Apagar {selectedIds.length}
+          </button>
+        </>
+      }>
+      <div className="space-y-3 text-sm">
+        <div className="flex items-start gap-2 text-red-700 bg-red-50 rounded-lg p-3">
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+          <p>Você vai apagar <b>{selectedIds.length} produto(s)</b> em definitivo. O histórico de vendas é mantido, mas o produto some do catálogo. <b>Não dá pra desfazer.</b></p>
+        </div>
+        <div>
+          <label className="label">Senha da sua conta</label>
+          <input type="password" className="input" autoFocus value={delPassword}
+            onChange={e => setDelPassword(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && delPassword && !del.isPending) del.mutate(delPassword); }}
+            placeholder="Digite a senha para confirmar" />
+        </div>
+      </div>
     </Modal>
     </>
   );
