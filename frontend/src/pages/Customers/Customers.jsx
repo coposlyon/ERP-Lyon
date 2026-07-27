@@ -107,7 +107,7 @@ export default function Customers() {
   const { data, isLoading } = useQuery({
     queryKey: ['customers', page, search, typeFilter, ratingFilter, stateFilter],
     queryFn: () => {
-      let url = `/customers?page=${page}&limit=20`;
+      let url = `/customers?page=${page}&limit=100`;
       if (search)       url += `&search=${encodeURIComponent(search)}`;
       if (typeFilter)   url += `&type=${typeFilter}`;
       if (ratingFilter) url += `&rating=${ratingFilter}`;
@@ -150,24 +150,27 @@ export default function Customers() {
       render: v => <span className={`badge ${TYPE_BADGE[v] || 'badge-gray'}`}>{TYPE_LABELS[v] || v}</span>
     },
     { key: 'name', label: 'Nome',
-      render: (v, row) => (
-        <div>
-          <p className="font-medium text-gray-900 text-sm flex items-center gap-1.5">
-            {row.blocked && (
-              <span title={row.block_reason || 'Cliente bloqueado / com problemas'} className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 shrink-0">
-                <Ban size={11} />
-              </span>
-            )}
-            {row.notes && String(row.notes).trim() && (
-              <span title={row.notes} className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 text-amber-600 shrink-0">
-                <AlertTriangle size={11} />
-              </span>
-            )}
-            {v}
-          </p>
-          {row.nome_fantasia && <p className="text-xs text-gray-400">{row.nome_fantasia}</p>}
-        </div>
-      )
+      render: (v, row) => {
+        const primeiroNome = String(v || '').trim().split(/\s+/)[0] || v;
+        return (
+          <div>
+            <p title={v} className="font-medium text-gray-900 text-sm flex items-center gap-1.5 whitespace-nowrap">
+              {row.blocked && (
+                <span title={row.block_reason || 'Cliente bloqueado / com problemas'} className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 shrink-0">
+                  <Ban size={11} />
+                </span>
+              )}
+              {row.notes && String(row.notes).trim() && (
+                <span title={row.notes} className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 text-amber-600 shrink-0">
+                  <AlertTriangle size={11} />
+                </span>
+              )}
+              {primeiroNome}
+            </p>
+            {row.nome_fantasia && <p className="text-xs text-gray-400 whitespace-nowrap">{row.nome_fantasia}</p>}
+          </div>
+        );
+      }
     },
     { key: 'credit_limit', label: 'Limite de Crédito', width: 140,
       render: v => v > 0
@@ -355,7 +358,7 @@ export default function Customers() {
           rowClassName={row => row.id === selectedId
             ? '!bg-primary-50 shadow-[inset_3px_0_0_0_theme(colors.primary.600)]'
             : ''} />
-        <Pagination page={page} total={data?.total || 0} limit={20} onPageChange={setPage} />
+        <Pagination page={page} total={data?.total || 0} limit={100} onPageChange={setPage} />
       </div>
 
       <MarketingModal isOpen={marketingOpen} onClose={() => setMarketingOpen(false)} />
