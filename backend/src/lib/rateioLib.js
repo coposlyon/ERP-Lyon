@@ -561,6 +561,19 @@ function precoPorFicha(ficha, qty, method, opts = {}) {
   if (!ficha) return null;
   const q = Math.max(1, Number(qty) || 1);
   const blocks = ficha.blocks || {};
+  const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
+
+  // Modo pass-through (fichas migradas do preço antigo): o preço já está
+  // guardado por faixa, não é calculado. base_tiers = preço sem impressão;
+  // print_costs[metodo] = preço por método. Não aplica custo/margem/imposto.
+  if (blocks.direct) {
+    const t = method ? tierForQty(blocks.print_costs?.[method], q) : tierForQty(blocks.base_tiers, q);
+    const price = t ? (Number(t.price != null ? t.price : t.cost) || 0) : 0;
+    return {
+      quantity: q, method: method || null, tier: tierForQty(blocks.tiers, q),
+      print_unit: 0, unit_cost: 0, margin_pct: 0, unit_price: r2(price),
+    };
+  }
 
   // Custo base SEM personalização — a impressão entra pelo print_costs.
   const base = computeSheet({
@@ -582,7 +595,6 @@ function precoPorFicha(ficha, qty, method, opts = {}) {
     : Number(ficha[`margin_${marginKey}_pct`]) || 0;
   const price = (margin >= 0 && margin < 100) ? custoUnit / (1 - margin / 100) : 0;
 
-  const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
   const r4 = v => Math.round((Number(v) || 0) * 10000) / 10000;
   return {
     quantity:   q,
