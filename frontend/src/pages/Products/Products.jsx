@@ -396,24 +396,11 @@ export default function Products() {
           <p className="text-sm text-gray-500 mt-1">{data?.total || 0} produtos cadastrados</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={exportCSV} disabled={exporting} className="btn-secondary disabled:opacity-50" title="Exporta todos os produtos com as variações (cor/borda) já descritas, por categoria">
-            {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} Exportar CSV
-          </button>
-          <button onClick={() => setImportOpen(true)} className="btn-secondary">
-            <Upload size={16} /> Importar Estoque
-          </button>
           <button onClick={() => setCatalogOpen(true)} className="btn-secondary">
             <Upload size={16} /> Importar Produtos
           </button>
           <button onClick={() => setBulkOpen(true)} className="btn-secondary">
             <Layers size={16} /> Edição em massa
-          </button>
-          <button onClick={() => dedupeMutation.mutate()} disabled={dedupeMutation.isPending} className="btn-secondary disabled:opacity-50" title="Junta duplicadas e categoriza produtos sem categoria">
-            {dedupeMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <FolderTree size={16} />} Organizar Categorias
-          </button>
-          <button onClick={() => { setGenOpen(true); setUseFilter(!!(effectiveSearch || categoryId)); }} disabled={genBusy}
-            className="btn-secondary disabled:opacity-50" title="Recolore uma foto modelo na cor do nome de cada produto sem foto">
-            {genBusy ? <Loader2 size={16} className="animate-spin" /> : <Palette size={16} />} {genBusy ? `Gerando... ${genCount}/${genTotal}` : 'Gerar Fotos'}
           </button>
           <button onClick={openNew} className="btn-primary">
             <Plus size={16} /> Novo Produto
