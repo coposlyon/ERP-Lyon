@@ -19,10 +19,10 @@ function fileToDataUrl(file) {
 export default function ProductForm({ product, onSaved, onCancel }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
-    name: '', code: '', ean: '', category_id: '', tipo_id: '',
-    cost_price: '', min_stock: '', min_order_qty: '',
+    name: '', code: '', ean: '', category_id: '',
+    cost_price: '', min_stock: '',
     pricing_sheet_id: '',
-    ncm: '', cst: '', cfop: '', is_active: true, show_in_store: true,
+    ncm: '', cst: '', cfop: '', is_active: true,
     supplier_id: '',
     height: '', weight: '', thickness: '',
     base_circumference: '', mouth_circumference: '',
@@ -36,18 +36,9 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   const [newType, setNewType] = useState('');
   const [confirmDelType, setConfirmDelType] = useState(false);
 
-  // criação de novo tipo de produto do SITE (COPOS, CANECAS...) na hora
-  const [creatingTipo, setCreatingTipo] = useState(false);
-  const [newTipo, setNewTipo] = useState('');
-
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
     queryFn: () => api.get('/products/categories/list'),
-  });
-
-  const { data: tipos = [] } = useQuery({
-    queryKey: ['product-types'],
-    queryFn: () => api.get('/products/types/list'),
   });
 
   const { data: suppliersData } = useQuery({
@@ -73,17 +64,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     onError: (e) => toast.error(e.error || 'Erro ao criar tipo'),
   });
 
-  const createTipo = useMutation({
-    mutationFn: (name) => api.post('/products/types', { name }),
-    onSuccess: async (tipo) => {
-      await qc.invalidateQueries(['product-types']);
-      set('tipo_id', tipo.id);
-      setCreatingTipo(false); setNewTipo('');
-      toast.success('Tipo de produto criado!');
-    },
-    onError: (e) => toast.error(e.error || 'Erro ao criar tipo de produto'),
-  });
-
   const delType = useMutation({
     mutationFn: (id) => api.delete(`/products/categories/${id}`),
     onSuccess: async (r) => {
@@ -107,16 +87,13 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         code: product.code || '',
         ean: product.ean || '',
         category_id: product.category_id || '',
-        tipo_id: product.tipo_id || '',
         cost_price: product.cost_price || '',
         min_stock: product.min_stock || '',
-        min_order_qty: product.min_order_qty || '',
         pricing_sheet_id: product.pricing_sheet_id || '',
         ncm: product.ncm || '',
         cst: product.cst || '',
         cfop: product.cfop || '',
         is_active: product.is_active !== false,
-        show_in_store: product.show_in_store !== false,
         supplier_id: product.supplier_id || '',
         height: product.height || '',
         weight: product.weight || '',
@@ -141,14 +118,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     if (!n) return;
     if (categories.some(c => c.name?.toUpperCase() === n)) { toast.error('Esse tipo já existe'); return; }
     createType.mutate(n);
-  }
-
-  function confirmNewTipo() {
-    const n = newTipo.trim().toUpperCase();
-    if (!n) return;
-    const existing = tipos.find(t => t.name?.toUpperCase() === n);
-    if (existing) { set('tipo_id', existing.id); setCreatingTipo(false); setNewTipo(''); return; }
-    createTipo.mutate(n);
   }
 
   // Ctrl+V em QUALQUER lugar com o formulário aberto → vira a foto do produto
@@ -208,7 +177,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         cost_price: parseFloat(form.cost_price) || 0,
         min_stock: parseFloat(form.min_stock) || 0,
         category_id: form.category_id || null,
-        tipo_id: form.tipo_id || null,
         supplier_id: form.supplier_id || null,
         height: parseFloat(form.height) || null,
         weight: parseFloat(form.weight) || null,
@@ -349,46 +317,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div>
-          <label className="label">Qtd. mínima de pedido (loja)</label>
-          <input type="number" step="1" min="1" className="input"
-            value={form.min_order_qty} onChange={e => set('min_order_qty', e.target.value)} placeholder="1" />
-          <p className="text-xs text-gray-400 mt-1">Mínimo que o cliente pode pedir na loja.</p>
-        </div>
-        <div className="col-span-2">
-          <label className="label">Tipo de produto (menu do site)</label>
-          {creatingTipo ? (
-            <div className="flex gap-2">
-              <input className="input uppercase" autoFocus value={newTipo}
-                onChange={e => setNewTipo(e.target.value.toUpperCase())}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirmNewTipo(); } if (e.key === 'Escape') { setCreatingTipo(false); setNewTipo(''); } }}
-                placeholder="EX: COPOS" />
-              <button type="button" onClick={confirmNewTipo} disabled={createTipo.isPending}
-                className="btn-primary px-3" title="Salvar tipo de produto">
-                {createTipo.isPending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-              </button>
-              <button type="button" onClick={() => { setCreatingTipo(false); setNewTipo(''); }}
-                className="btn-secondary px-3" title="Cancelar"><X size={15} /></button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <select className="input flex-1" value={form.tipo_id} onChange={e => set('tipo_id', e.target.value)}>
-                <option value="">Sem tipo</option>
-                {tipos.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              <button type="button" onClick={() => setCreatingTipo(true)}
-                className="btn-secondary px-3 whitespace-nowrap" title="Adicionar novo tipo de produto">
-                <FolderPlus size={15} /> Novo tipo
-              </button>
-            </div>
-          )}
-          <p className="text-xs text-gray-400 mt-1">
-            Grupo que aparece no menu do site (ex.: COPOS). Dentro dele o cliente vê as categorias (ex.: LONG DRINK TRADICIONAL).
-          </p>
-        </div>
-      </div>
-
       {/* Dimensões — PRODUTO ACABADO */}
       {isProdutoAcabado && (
         <div className="border border-gray-200 rounded-lg p-4 space-y-3">
@@ -450,10 +378,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} className="w-4 h-4 text-primary-600 rounded" />
           <span className="text-sm text-gray-700">Produto ativo</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={form.show_in_store} onChange={e => set('show_in_store', e.target.checked)} className="w-4 h-4 text-primary-600 rounded" />
-          <span className="text-sm text-gray-700">Aparecer na loja (site)</span>
         </label>
       </div>
 
