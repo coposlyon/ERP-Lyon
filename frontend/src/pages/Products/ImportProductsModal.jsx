@@ -110,6 +110,9 @@ export default function ImportProductsModal({ isOpen, onClose }) {
     try {
       const res = await api.post('/products/import-flat', { products: items });
       setResult(res);
+      // limpa a lista/texto após importar (mantém só o resumo do resultado)
+      setText('');
+      setFileItems([]);
       qc.invalidateQueries(['products']);
       qc.invalidateQueries(['stock-report']);
       toast.success(`${res.created} produtos criados · ${res.skipped} já existiam`);
