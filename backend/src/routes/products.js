@@ -756,7 +756,8 @@ router.post('/', validate(productSchema), async (req, res) => {
     name, code, ean, description, category_id, tipo_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing, pricing_sheet_id, variations, image, variation_images, show_in_store
+    price_tiers, min_order_qty, print_pricing, pricing_sheet_id, variations, image, variation_images, show_in_store,
+    current_stock
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Nome do produto é obrigatório' });
@@ -772,6 +773,7 @@ router.post('/', validate(productSchema), async (req, res) => {
       cost_price: cost_price || 0,
       sale_price: sale_price || 0,
       min_stock: min_stock || 0,
+      current_stock: Math.max(0, Math.round(Number(current_stock) || 0)),
       ncm, cst, cfop,
       is_active: is_active !== false,
       supplier_id: supplier_id || null,
@@ -813,7 +815,8 @@ router.put('/:id', async (req, res) => {
     name, code, ean, description, category_id, tipo_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing, pricing_sheet_id, variations, image, variation_images, show_in_store
+    price_tiers, min_order_qty, print_pricing, pricing_sheet_id, variations, image, variation_images, show_in_store,
+    current_stock
   } = req.body;
 
   try {
@@ -824,7 +827,7 @@ router.put('/:id', async (req, res) => {
     // captura preços atuais para a trilha de auditoria
     const { data: before } = await supabase
       .from('PRODUTOS')
-      .select('cost_price, sale_price')
+      .select('cost_price, sale_price, current_stock')
       .eq('id', req.params.id)
       .eq('tenant_id', req.tenantId)
       .maybeSingle();
@@ -875,6 +878,25 @@ router.put('/:id', async (req, res) => {
       ({ data, error } = await upd());
     }
     if (error) throw error;
+
+    // Ajuste de estoque pelo cadastro: registra a movimentação (não sobrescreve).
+    if (current_stock !== undefined && current_stock !== '' && before) {
+      const target = Math.max(0, Math.round(Number(current_stock) || 0));
+      const delta = target - (Number(before.current_stock) || 0);
+      if (delta !== 0) {
+        try {
+          await supabase.rpc('atualizar_estoque', {
+            p_tenant_id: req.tenantId, p_product_id: req.params.id, p_quantity: delta,
+            p_type: 'adjustment', p_reference_type: 'manual', p_reference_id: null,
+            p_user_id: req.user?.id || null, p_notes: 'Ajuste pelo cadastro de produtos',
+          });
+        } catch {
+          // RPC ausente → fallback: aplica direto no saldo
+          await supabase.from('PRODUTOS').update({ current_stock: target })
+            .eq('id', req.params.id).eq('tenant_id', req.tenantId);
+        }
+      }
+    }
 
     const details = { name: data.name };
     if (before && Number(before.sale_price) !== Number(data.sale_price))

@@ -20,7 +20,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     name: '', code: '', ean: '', category_id: '',
-    cost_price: '',
+    cost_price: '', current_stock: '',
     pricing_sheet_id: '',
     ncm: '', cst: '', cfop: '', is_active: true,
     supplier_id: '',
@@ -61,6 +61,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         ean: product.ean || '',
         category_id: product.category_id || '',
         cost_price: product.cost_price || '',
+        current_stock: product.current_stock ?? '',
         pricing_sheet_id: product.pricing_sheet_id || '',
         ncm: product.ncm || '',
         cst: product.cst || '',
@@ -140,6 +141,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         ...form,
         name: form.name.toUpperCase(),
         cost_price: parseFloat(form.cost_price) || 0,
+        current_stock: parseInt(form.current_stock) || 0,
         category_id: form.category_id || null,
         supplier_id: form.supplier_id || null,
         height: parseFloat(form.height) || null,
@@ -203,11 +205,19 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         </div>
       </div>
 
-      {/* Custo — o preço de VENDA vem da Precificação */}
-      <div>
-        <label className="label">Custo de Compra (R$)</label>
-        <input type="number" step="0.01" min="0" className="input sm:w-1/2"
-          value={form.cost_price} onChange={e => set('cost_price', e.target.value)} placeholder="0,00" />
+      {/* Custo e estoque — o preço de VENDA vem da Precificação */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="label">Custo de Compra (R$)</label>
+          <input type="number" step="0.01" min="0" className="input"
+            value={form.cost_price} onChange={e => set('cost_price', e.target.value)} placeholder="0,00" />
+        </div>
+        <div>
+          <label className="label">Estoque atual (un.)</label>
+          <input type="number" step="1" min="0" className="input"
+            value={form.current_stock} onChange={e => set('current_stock', e.target.value)} placeholder="0" />
+          <p className="text-xs text-gray-400 mt-1">Editar aqui gera um ajuste de estoque registrado.</p>
+        </div>
       </div>
 
       {/* Tabela de Precificação — fonte do preço de venda */}
