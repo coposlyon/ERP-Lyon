@@ -1015,13 +1015,8 @@ router.post('/import-flat', async (req, res) => {
     items.push({ name, code: cleanCode(it.code) });
   }
 
-  // Categoria/Tipo = modelo (parte antes do " - "); ex.: "LONG DRINK TRADICIONAL - BRANCO 350 ML" → "LONG DRINK"
-  const categoriaDe = (nm) => {
-    const n = String(nm || '').toUpperCase().trim();
-    if (n.startsWith('LONG DRINK')) return 'LONG DRINK';
-    if (n.startsWith('PORTA ')) return 'PORTA GARRAFA';
-    return n.split(/\s+/)[0] || 'OUTROS';
-  };
+  // Categoria = MODELO completo do produto: todo o texto antes do primeiro
+  // " - ". Ex.: "TWISTER TRADICIONAL - BRANCO - 400 ML" → "TWISTER TRADICIONAL".
   const catCache = new Map();
   async function categoriaId(catName) {
     if (catCache.has(catName)) return catCache.get(catName);
@@ -1057,7 +1052,7 @@ router.post('/import-flat', async (req, res) => {
     for (const it of items) {
       if (existingNames.has(it.name)) { skipped++; continue; }
       const base = it.name.split(' - ')[0].trim();
-      const catId = await categoriaId(categoriaDe(base));
+      const catId = await categoriaId(base || 'OUTROS');
       let code = it.code;
       if (!code || usedCodes.has(code)) {            // sem código (ou repetido) → gera automático
         do { seq += 1; code = `${initials(base)} ${String(seq).padStart(4, '0')}`; } while (usedCodes.has(code));
