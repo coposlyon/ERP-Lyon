@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, Plus, Trash2, FolderPlus, Check, X, Image as ImageIcon, AlertTriangle } from 'lucide-react';
+import { Search, Loader2, FolderPlus, Check, X, Image as ImageIcon, AlertTriangle } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
-import PrintPricingEditor, { cleanPrintPricing } from './PrintPricingEditor';
 import toast from 'react-hot-toast';
 
 export default function BulkEditModal({ isOpen, onClose }) {
@@ -20,29 +19,15 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [newCategoryId, setNewCategoryId] = useState(''); // '' = não alterar | '__none__' = limpar | id = define
   const [creatingType, setCreatingType] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
-  const [newTipoId, setNewTipoId] = useState(''); // tipo do SITE: '' = não alterar | '__none__' = limpar | id = define
-  const [creatingTipo, setCreatingTipo] = useState(false);
-  const [newTipoName, setNewTipoName] = useState('');
   const [costPrice, setCostPrice] = useState('');
-  const [salePrice, setSalePrice] = useState('');
-  const [minOrder, setMinOrder] = useState('');
   const [ncm, setNcm] = useState('');
   const [cst, setCst] = useState('');
   const [cfop, setCfop] = useState('');
-  const [applyPrint, setApplyPrint] = useState(false);
-  const [printPricing, setPrintPricing] = useState({});
-  const [showInStore, setShowInStore] = useState(''); // '' = não altera | 'true' | 'false'
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const { data: cats } = useQuery({
     queryKey: ['categories-list'],
     queryFn: () => api.get('/products/categories/list'),
-    enabled: isOpen,
-  });
-
-  const { data: tipos } = useQuery({
-    queryKey: ['product-types'],
-    queryFn: () => api.get('/products/types/list'),
     enabled: isOpen,
   });
 
@@ -77,23 +62,6 @@ export default function BulkEditModal({ isOpen, onClose }) {
     createType.mutate(n);
   }
 
-  const createTipo = useMutation({
-    mutationFn: (name) => api.post('/products/types', { name }),
-    onSuccess: async (tipo) => {
-      await qc.invalidateQueries(['product-types']);
-      setNewTipoId(tipo.id); setCreatingTipo(false); setNewTipoName('');
-      toast.success('Tipo de produto criado!');
-    },
-    onError: (e) => toast.error(e.error || 'Erro ao criar tipo de produto'),
-  });
-  function confirmNewTipo() {
-    const n = newTipoName.trim().toUpperCase();
-    if (!n) return;
-    const existing = (tipos || []).find(t => t.name?.toUpperCase() === n);
-    if (existing) { setNewTipoId(existing.id); setCreatingTipo(false); setNewTipoName(''); return; }
-    createTipo.mutate(n);
-  }
-
   function toggle(id) { setSelected(s => ({ ...s, [id]: !s[id] })); }
   function toggleAll() {
     const n = { ...selected };
@@ -106,16 +74,10 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const fields = {};
   if (newCategoryId === '__none__') fields.category_id = null;
   else if (newCategoryId) fields.category_id = newCategoryId;
-  if (newTipoId === '__none__') fields.tipo_id = null;
-  else if (newTipoId) fields.tipo_id = newTipoId;
   if (costPrice !== '') fields.cost_price = costPrice;
-  if (salePrice !== '') fields.sale_price = salePrice;
-  if (minOrder !== '') fields.min_order_qty = minOrder;
   if (ncm.trim()) fields.ncm = ncm.trim();
   if (cst.trim()) fields.cst = cst.trim();
   if (cfop.trim()) fields.cfop = cfop.trim();
-  if (applyPrint) fields.print_pricing = cleanPrintPricing(printPricing);
-  if (showInStore !== '') fields.show_in_store = showInStore === 'true';
   const hasFields = Object.keys(fields).length > 0;
 
   const apply = useMutation({
@@ -142,10 +104,9 @@ export default function BulkEditModal({ isOpen, onClose }) {
     setSelected({});
     setApplyAll(false);
     setNewCategoryId(''); setCreatingType(false); setNewTypeName('');
-    setCostPrice(''); setSalePrice(''); setMinOrder('');
+    setCostPrice('');
     setNcm(''); setCst(''); setCfop('');
-    setApplyPrint(false); setPrintPricing({});
-    setShowInStore(''); setConfirmOpen(false);
+    setConfirmOpen(false);
     onClose();
   }
 
@@ -155,29 +116,20 @@ export default function BulkEditModal({ isOpen, onClose }) {
   function buildSummary() {
     const targets = applyAll ? (products || []) : (products || []).filter(p => selected[p.id]);
     const labels = {
-      category_id: 'Tipo', tipo_id: 'Tipo de produto (site)', show_in_store: 'Exibição na loja',
-      cost_price: 'Custo', sale_price: 'Venda', min_order_qty: 'Qtd. mínima',
+      category_id: 'Categoria', cost_price: 'Custo',
       ncm: 'NCM', cst: 'CST', cfop: 'CFOP',
-      price_tiers: 'Faixas de preço', print_pricing: 'Tabelas de impressão',
     };
     const norm = (key, val) => {
       if (val == null) return '';
-      if (key === 'category_id' || key === 'tipo_id') return String(val || '');
-      if (key === 'show_in_store') return val === false ? 'nao' : 'sim';
-      if (['cost_price', 'sale_price', 'min_order_qty'].includes(key)) return val === '' ? '' : String(Number(val));
+      if (key === 'category_id') return String(val || '');
+      if (key === 'cost_price') return val === '' ? '' : String(Number(val));
       if (['ncm', 'cst', 'cfop'].includes(key)) return String(val).trim();
-      if (['price_tiers', 'print_pricing'].includes(key)) { try { const s = JSON.stringify(val); return (s === '[]' || s === '{}') ? '' : s; } catch { return ''; } }
       return String(val);
     };
     const display = (key) => {
-      if (key === 'category_id') return fields.category_id ? catName(fields.category_id) : 'Sem tipo';
-      if (key === 'tipo_id') return fields.tipo_id ? ((tipos || []).find(t => t.id === fields.tipo_id)?.name || '—') : 'Sem tipo';
-      if (key === 'show_in_store') return fields.show_in_store ? 'Mostrar na loja' : 'Ocultar da loja';
-      if (['cost_price', 'sale_price'].includes(key)) return `R$ ${Number(fields[key]).toFixed(2)}`;
-      if (key === 'min_order_qty') return String(fields[key]);
+      if (key === 'category_id') return fields.category_id ? catName(fields.category_id) : 'Sem categoria';
+      if (key === 'cost_price') return `R$ ${Number(fields[key]).toFixed(2)}`;
       if (['ncm', 'cst', 'cfop'].includes(key)) return String(fields[key]);
-      if (key === 'price_tiers') return `${(fields.price_tiers || []).length} faixa(s)`;
-      if (key === 'print_pricing') return 'novas tabelas';
       return String(fields[key]);
     };
     const rows = Object.keys(fields).map(key => {
@@ -212,7 +164,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
       <div className="space-y-4 max-h-[85vh] overflow-y-auto pr-1">
         <p className="text-sm text-gray-500">
           Filtre por <b>categoria</b> ou <b>modelo</b>, selecione os produtos e defina o que quer alterar.
-          Só os campos preenchidos são aplicados. Preço e faixas atualizam a loja automaticamente.
+          Só os campos preenchidos são aplicados.
         </p>
         {/* Filtros rápidos por botão (acabamento + borda) */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 bg-gray-50 rounded-lg px-3 py-2">
@@ -274,7 +226,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
                 )}
                 <span className="flex-1 min-w-0">
                   <span className="font-medium block truncate">{p.name}</span>
-                  <span className="text-xs text-gray-400">{p.code || '—'} · Venda R$ {Number(p.sale_price || 0).toFixed(2)} · mín. {p.min_order_qty || 1}</span>
+                  <span className="text-xs text-gray-400">{p.code || '—'}</span>
                 </span>
               </label>
             ))}
@@ -283,7 +235,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
         {/* Alterar o TIPO (categoria) em massa */}
         <div>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Tipo do produto</p>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Categoria de produto</p>
           {creatingType ? (
             <div className="flex gap-2">
               <input className="input flex-1 uppercase" autoFocus value={newTypeName}
@@ -311,75 +263,15 @@ export default function BulkEditModal({ isOpen, onClose }) {
           )}
         </div>
 
-        {/* Alterar o TIPO DE PRODUTO do site (menu: COPOS, CANECAS...) em massa */}
+        {/* Custo */}
         <div>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Tipo de produto (menu do site)</p>
-          {creatingTipo ? (
-            <div className="flex gap-2">
-              <input className="input flex-1 uppercase" autoFocus value={newTipoName}
-                onChange={e => setNewTipoName(e.target.value.toUpperCase())}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirmNewTipo(); } if (e.key === 'Escape') { setCreatingTipo(false); setNewTipoName(''); } }}
-                placeholder="NOME DO NOVO TIPO (ex.: COPOS)" />
-              <button type="button" onClick={confirmNewTipo} disabled={createTipo.isPending} className="btn-primary px-3" title="Salvar tipo de produto">
-                {createTipo.isPending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-              </button>
-              <button type="button" onClick={() => { setCreatingTipo(false); setNewTipoName(''); }} className="btn-secondary px-3"><X size={15} /></button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <select className="input flex-1" value={newTipoId} onChange={e => setNewTipoId(e.target.value)}>
-                <option value="">— não alterar —</option>
-                <option value="__none__">Limpar (sem tipo)</option>
-                {(tipos || []).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              <button type="button" onClick={() => setCreatingTipo(true)} className="btn-secondary px-3 whitespace-nowrap" title="Adicionar novo tipo de produto">
-                <FolderPlus size={15} /> Novo tipo
-              </button>
-            </div>
-          )}
-          {newTipoId && newTipoId !== '__none__' && (
-            <p className="text-xs text-violet-600 mt-1">
-              Os produtos selecionados vão aparecer no menu <b>{(tipos || []).find(t => t.id === newTipoId)?.name}</b> do site.
-            </p>
-          )}
-        </div>
-
-        {/* Exibição na loja */}
-        <div>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Exibição na loja</p>
-          <select className="input w-full sm:w-72" value={showInStore} onChange={e => setShowInStore(e.target.value)}>
-            <option value="">— não alterar —</option>
-            <option value="true">Mostrar na loja</option>
-            <option value="false">Ocultar da loja</option>
-          </select>
-        </div>
-
-        {/* Preço + qtd mínima */}
-        <div>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Preço e quantidade</p>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Custo</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="label">Custo (R$)</label>
+              <label className="label">Custo de compra (R$)</label>
               <input className="input" type="number" step="0.01" value={costPrice} onChange={e => setCostPrice(e.target.value)} placeholder="—" />
             </div>
-            <div>
-              <label className="label">Venda (R$)</label>
-              <input className="input" type="number" step="0.01" value={salePrice} onChange={e => setSalePrice(e.target.value)} placeholder="—" />
-            </div>
-            <div>
-              <label className="label">Qtd. mínima (loja)</label>
-              <input className="input" type="number" min="1" value={minOrder} onChange={e => setMinOrder(e.target.value)} placeholder="—" />
-            </div>
           </div>
-        </div>
-
-        {/* Tabelas de preço por impressão (Serigrafia 1 Cor / 2 Cores / Transfer / Laser) */}
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-            <input type="checkbox" checked={applyPrint} onChange={e => setApplyPrint(e.target.checked)} className="w-4 h-4 accent-violet-600" />
-            Substituir as tabelas de preço (Serigrafia 1 Cor, 2 Cores, Transfer, Laser Frente, Laser F/V)
-          </label>
-          {applyPrint && <PrintPricingEditor value={printPricing} onChange={setPrintPricing} />}
         </div>
 
         {/* Fiscal */}
