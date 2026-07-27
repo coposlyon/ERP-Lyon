@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, FolderPlus, Check, X, Image as ImageIcon, AlertTriangle } from 'lucide-react';
+import { Search, Loader2, Image as ImageIcon, AlertTriangle } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
@@ -10,13 +10,11 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [size, setSize] = useState('');           // filtro de tamanho (ex.: '350')
   const [selected, setSelected] = useState({});
 
   const [applyAll, setApplyAll] = useState(false);  // aplicar a TODOS do filtro
   // campos a aplicar (só os preenchidos)
-  const [newCategoryId, setNewCategoryId] = useState(''); // '' = não alterar | '__none__' = limpar | id = define
-  const [creatingType, setCreatingType] = useState(false);
-  const [newTypeName, setNewTypeName] = useState('');
   const [costPrice, setCostPrice] = useState('');
   const [ncm, setNcm] = useState('');
   const [cst, setCst] = useState('');
@@ -28,8 +26,15 @@ export default function BulkEditModal({ isOpen, onClose }) {
     queryFn: () => api.get('/products/categories/list'),
     enabled: isOpen,
   });
+  const { data: filterOpts } = useQuery({
+    queryKey: ['product-filters'],
+    queryFn: () => api.get('/products/filters'),
+    enabled: isOpen,
+  });
+  const volumeOptions = filterOpts?.volumes || [];
 
-  const effectiveSearch = search.trim();
+  // busca efetiva = texto digitado + tamanho selecionado (o backend faz AND por termo)
+  const effectiveSearch = [search, size].filter(Boolean).join(' ').trim();
 
   const { data, isFetching } = useQuery({
     queryKey: ['bulk-products', effectiveSearch, categoryId],
@@ -41,22 +46,6 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const selectedIds = Object.keys(selected).filter(id => selected[id]);
   const allSelected = products.length > 0 && products.every(p => selected[p.id]);
 
-  const createType = useMutation({
-    mutationFn: (name) => api.post('/products/categories', { name }),
-    onSuccess: async (cat) => {
-      await qc.invalidateQueries(['categories-list']);
-      setNewCategoryId(cat.id); setCreatingType(false); setNewTypeName('');
-      toast.success('Tipo criado!');
-    },
-    onError: (e) => toast.error(e.error || 'Erro ao criar tipo'),
-  });
-  function confirmNewType() {
-    const n = newTypeName.trim().toUpperCase();
-    if (!n) return;
-    if ((cats || []).some(c => c.name?.toUpperCase() === n)) { toast.error('Esse tipo já existe'); return; }
-    createType.mutate(n);
-  }
-
   function toggle(id) { setSelected(s => ({ ...s, [id]: !s[id] })); }
   function toggleAll() {
     const n = { ...selected };
@@ -67,8 +56,6 @@ export default function BulkEditModal({ isOpen, onClose }) {
   function doSearch(e) { e.preventDefault(); setSearch(searchInput.trim()); }
 
   const fields = {};
-  if (newCategoryId === '__none__') fields.category_id = null;
-  else if (newCategoryId) fields.category_id = newCategoryId;
   if (costPrice !== '') fields.cost_price = costPrice;
   if (ncm.trim()) fields.ncm = ncm.trim();
   if (cst.trim()) fields.cst = cst.trim();
@@ -98,7 +85,6 @@ export default function BulkEditModal({ isOpen, onClose }) {
   function handleClose() {
     setSelected({});
     setApplyAll(false);
-    setNewCategoryId(''); setCreatingType(false); setNewTypeName('');
     setCostPrice('');
     setNcm(''); setCst(''); setCfop('');
     setConfirmOpen(false);
@@ -107,22 +93,18 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
   // Resumo da confirmação: compara os valores novos com os atuais dos produtos-alvo
   // (carregados) e conta, por campo, quantos já têm o valor / têm outro / estão vazios.
-  const catName = (id) => (cats || []).find(c => c.id === id)?.name || '—';
   function buildSummary() {
     const targets = applyAll ? (products || []) : (products || []).filter(p => selected[p.id]);
     const labels = {
-      category_id: 'Categoria', cost_price: 'Custo',
-      ncm: 'NCM', cst: 'CST', cfop: 'CFOP',
+      cost_price: 'Custo', ncm: 'NCM', cst: 'CST', cfop: 'CFOP',
     };
     const norm = (key, val) => {
       if (val == null) return '';
-      if (key === 'category_id') return String(val || '');
       if (key === 'cost_price') return val === '' ? '' : String(Number(val));
       if (['ncm', 'cst', 'cfop'].includes(key)) return String(val).trim();
       return String(val);
     };
     const display = (key) => {
-      if (key === 'category_id') return fields.category_id ? catName(fields.category_id) : 'Sem categoria';
       if (key === 'cost_price') return `R$ ${Number(fields[key]).toFixed(2)}`;
       if (['ncm', 'cst', 'cfop'].includes(key)) return String(fields[key]);
       return String(fields[key]);
@@ -162,12 +144,18 @@ export default function BulkEditModal({ isOpen, onClose }) {
           Só os campos preenchidos são aplicados.
         </p>
         {/* Filtros */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <select className="input sm:w-56" value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+        <div className="flex flex-wrap items-center gap-2">
+          <select className="input w-full sm:w-auto sm:min-w-[190px] max-w-full" value={categoryId} onChange={e => setCategoryId(e.target.value)}>
             <option value="">Todas as categorias</option>
             {(cats || []).filter(c => c.product_count > 0).map(c => <option key={c.id} value={c.id}>{c.name} ({c.product_count})</option>)}
           </select>
-          <form onSubmit={doSearch} className="flex gap-2 flex-1">
+          {volumeOptions.length > 0 && (
+            <select className="input w-auto" value={size} onChange={e => setSize(e.target.value)} title="Filtrar por tamanho">
+              <option value="">Todos os tamanhos</option>
+              {volumeOptions.map(v => <option key={v} value={parseInt(v)}>{v}</option>)}
+            </select>
+          )}
+          <form onSubmit={doSearch} className="flex gap-2 flex-1 min-w-[220px]">
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input className="input pl-9" placeholder="Filtrar por modelo / nome / código..."
@@ -208,36 +196,6 @@ export default function BulkEditModal({ isOpen, onClose }) {
               </label>
             ))}
           </div>
-        </div>
-
-        {/* Alterar o TIPO (categoria) em massa */}
-        <div>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Categoria de produto</p>
-          {creatingType ? (
-            <div className="flex gap-2">
-              <input className="input flex-1 uppercase" autoFocus value={newTypeName}
-                onChange={e => setNewTypeName(e.target.value.toUpperCase())}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirmNewType(); } if (e.key === 'Escape') { setCreatingType(false); setNewTypeName(''); } }}
-                placeholder="NOME DO NOVO TIPO (ex.: LONG DRINK - BORDA)" />
-              <button type="button" onClick={confirmNewType} disabled={createType.isPending} className="btn-primary px-3" title="Salvar tipo">
-                {createType.isPending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-              </button>
-              <button type="button" onClick={() => { setCreatingType(false); setNewTypeName(''); }} className="btn-secondary px-3"><X size={15} /></button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <select className="input flex-1" value={newCategoryId} onChange={e => setNewCategoryId(e.target.value)}>
-                <option value=""></option>
-                {(cats || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <button type="button" onClick={() => setCreatingType(true)} className="btn-secondary px-3 whitespace-nowrap" title="Criar novo tipo">
-                <FolderPlus size={15} /> Novo tipo
-              </button>
-            </div>
-          )}
-          {newCategoryId && newCategoryId !== '__none__' && (
-            <p className="text-xs text-violet-600 mt-1">Os produtos selecionados passam a ser do tipo <b>{(cats || []).find(c => c.id === newCategoryId)?.name}</b>.</p>
-          )}
         </div>
 
         {/* Custo */}
