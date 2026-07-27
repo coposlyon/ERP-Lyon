@@ -1,5 +1,7 @@
 -- ============================================================
--- 047. Etapa de Metalização na produção (timestamps de início/fim)
+-- 056. Etapa de Metalização na produção (timestamps de início/fim)
+--      (renumerada de 047 → 056 para resolver colisão com
+--       047_lancamentos_colunas.sql)
 --
 --      Fluxo: Revelação → Pintura → METALIZAÇÃO → Produção → Embalagem
 --
@@ -10,5 +12,5 @@
 ALTER TABLE "VENDAS" ADD COLUMN IF NOT EXISTS metalizacao_inicio timestamptz;
 ALTER TABLE "VENDAS" ADD COLUMN IF NOT EXISTS metalizacao_fim    timestamptz;
 
-INSERT INTO "_MIGRATIONS" (version, name) VALUES ('047', 'vendas_metalizacao')
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('056', 'vendas_metalizacao')
 ON CONFLICT (version) DO NOTHING;

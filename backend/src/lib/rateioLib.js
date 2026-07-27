@@ -512,6 +512,89 @@ function computeSheet(sheet) {
   };
 }
 
+// ── Tabela de Precificação: preço calculado pela ficha ─────
+// A ficha de Formação de Preço (PRECIFICACOES) vira a "tabela mestre".
+// A FAIXA de quantidade é só a ficha avaliada naquela quantidade: o custo
+// já cai com a qtd (tela/frete diluídos em computeSheet). O custo da
+// impressão escolhida vem de blocks.print_costs (R$/peça por método).
+//
+// Estrutura esperada em ficha.blocks:
+//   tiers:       [{ min_qty, max_qty }]                 — faixas exibidas
+//   print_costs: { <metodo>: custo }                    — R$/peça por método
+//     onde <custo> pode ser:
+//       · um número          → custo fixo por peça, qualquer quantidade
+//       · [{min_qty,max_qty,cost}] → custo POR FAIXA (a tela/tinta se
+//         dilui em mais peças → quanto maior a qtd, menor o custo/peça).
+//         É daqui que sai o desconto por volume.
+//
+// A personalização (serigrafia/tintas) NÃO entra pelos blocos de custo da
+// ficha: entra pelo método escolhido na loja. Por isso zeramos
+// personalizacao/tintas ao avaliar o custo base.
+
+// Faixa (tier) que cobre a quantidade pedida; null se nenhuma casar.
+function tierForQty(tiers, qty) {
+  const q = Number(qty) || 0;
+  for (const t of (tiers || [])) {
+    const min = Number(t.min_qty) || 0;
+    const max = (t.max_qty == null || t.max_qty === '') ? Infinity : Number(t.max_qty);
+    if (q >= min && q <= max) return t;
+  }
+  return null;
+}
+
+// Custo de impressão de um método na quantidade pedida.
+// Aceita número (fixo) ou lista de faixas [{min_qty,max_qty,cost}].
+function printCostForQty(entry, qty) {
+  if (entry == null) return 0;
+  if (typeof entry === 'number') return entry;
+  if (Array.isArray(entry)) {
+    const t = tierForQty(entry, qty);
+    return t ? (Number(t.cost) || 0) : 0;
+  }
+  return Number(entry) || 0;
+}
+
+// Preço final calculado pela ficha para (quantidade, método de impressão).
+// opts.margin  → margem % explícita; senão usa opts.margin_key
+// opts.margin_key → 'min' | 'ideal' (padrão) | 'premium'
+function precoPorFicha(ficha, qty, method, opts = {}) {
+  if (!ficha) return null;
+  const q = Math.max(1, Number(qty) || 1);
+  const blocks = ficha.blocks || {};
+
+  // Custo base SEM personalização — a impressão entra pelo print_costs.
+  const base = computeSheet({
+    ...ficha,
+    calc_quantity: q,
+    blocks: { ...blocks, personalizacao: {}, tintas: [] },
+  });
+
+  const printCosts = blocks.print_costs || {};
+  const printUnit = printCostForQty(printCosts[method], q);
+
+  const subtotal = (Number(base.cost_subtotal) || 0) + printUnit;
+  const taxPct   = Number(ficha.tax_pct) || 0;
+  const custoUnit = subtotal * (1 + taxPct / 100);
+
+  const marginKey = opts.margin_key || 'ideal';
+  const margin = opts.margin != null
+    ? Number(opts.margin)
+    : Number(ficha[`margin_${marginKey}_pct`]) || 0;
+  const price = (margin >= 0 && margin < 100) ? custoUnit / (1 - margin / 100) : 0;
+
+  const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
+  const r4 = v => Math.round((Number(v) || 0) * 10000) / 10000;
+  return {
+    quantity:   q,
+    method:     method || null,
+    tier:       tierForQty(blocks.tiers, q),
+    print_unit: r4(printUnit),
+    unit_cost:  r4(custoUnit),
+    margin_pct: margin,
+    unit_price: r2(price),
+  };
+}
+
 // Mapa product_id → custo unitário (ficha mais recente de cada produto);
 // produtos sem ficha caem no cost_price + rateio (+ imposto padrão).
 async function productCostMap(tenantId, overheadUnit, taxPctDefault) {
@@ -544,4 +627,5 @@ module.exports = {
   productionLabor, isProductionSector, commissionBySeller, producedUnits,
   marketingSpend, extraVariableCosts,
   computeSheet, productCostMap,
+  precoPorFicha, tierForQty,
 };
