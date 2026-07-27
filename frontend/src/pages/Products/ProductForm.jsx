@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Loader2, Trash2, Image as ImageIcon, Upload, FolderPlus, Check, X, ClipboardPaste } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Upload, ClipboardPaste } from 'lucide-react';
 
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -20,7 +20,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     name: '', code: '', ean: '', category_id: '',
-    cost_price: '', min_stock: '',
+    cost_price: '',
     pricing_sheet_id: '',
     ncm: '', cst: '', cfop: '', is_active: true,
     supplier_id: '',
@@ -30,11 +30,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   });
   const [mainImage, setMainImage] = useState(null);   // url ou dataURL
   const [loading, setLoading] = useState(false);
-
-  // criação de novo tipo (categoria) na hora
-  const [creatingType, setCreatingType] = useState(false);
-  const [newType, setNewType] = useState('');
-  const [confirmDelType, setConfirmDelType] = useState(false);
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
@@ -53,28 +48,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     queryFn: () => api.get('/pricing/tables'),
   });
 
-  const createType = useMutation({
-    mutationFn: (name) => api.post('/products/categories', { name }),
-    onSuccess: async (cat) => {
-      await qc.invalidateQueries(['categories']);
-      set('category_id', cat.id);
-      setCreatingType(false); setNewType('');
-      toast.success('Tipo criado!');
-    },
-    onError: (e) => toast.error(e.error || 'Erro ao criar tipo'),
-  });
-
-  const delType = useMutation({
-    mutationFn: (id) => api.delete(`/products/categories/${id}`),
-    onSuccess: async (r) => {
-      await qc.invalidateQueries(['categories']);
-      set('category_id', '');
-      setConfirmDelType(false);
-      toast.success(`Tipo apagado${r?.products_unlinked ? ` · ${r.products_unlinked} item(ns) ficaram sem tipo` : ''}`);
-    },
-    onError: (e) => toast.error(e.error || 'Erro ao apagar tipo'),
-  });
-
   const selectedCat = categories.find(c => c.id === form.category_id);
   const catName = selectedCat?.name?.toUpperCase() || '';
   const isProdutoAcabado = catName === 'PRODUTO ACABADO';
@@ -88,7 +61,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         ean: product.ean || '',
         category_id: product.category_id || '',
         cost_price: product.cost_price || '',
-        min_stock: product.min_stock || '',
         pricing_sheet_id: product.pricing_sheet_id || '',
         ncm: product.ncm || '',
         cst: product.cst || '',
@@ -112,13 +84,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   }, [product, categories]);
 
   function set(field, value) { setForm(prev => ({ ...prev, [field]: value })); }
-
-  function confirmNewType() {
-    const n = newType.trim().toUpperCase();
-    if (!n) return;
-    if (categories.some(c => c.name?.toUpperCase() === n)) { toast.error('Esse tipo já existe'); return; }
-    createType.mutate(n);
-  }
 
   // Ctrl+V em QUALQUER lugar com o formulário aberto → vira a foto do produto
   useEffect(() => {
@@ -175,7 +140,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         ...form,
         name: form.name.toUpperCase(),
         cost_price: parseFloat(form.cost_price) || 0,
-        min_stock: parseFloat(form.min_stock) || 0,
         category_id: form.category_id || null,
         supplier_id: form.supplier_id || null,
         height: parseFloat(form.height) || null,
@@ -222,58 +186,12 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           <input className="input" value={form.ean} onChange={e => set('ean', e.target.value)} placeholder="7891234567890" />
         </div>
 
-        {/* Tipo (categoria) + criar novo tipo */}
+        {/* Categoria — fixa: definida na importação, não editável aqui */}
         <div>
           <label className="label">Categoria de produto</label>
-          {creatingType ? (
-            <div className="flex gap-2">
-              <input className="input uppercase" autoFocus value={newType}
-                onChange={e => setNewType(e.target.value.toUpperCase())}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); confirmNewType(); } if (e.key === 'Escape') { setCreatingType(false); setNewType(''); } }}
-                placeholder="NOME DO NOVO TIPO" />
-              <button type="button" onClick={confirmNewType} disabled={createType.isPending}
-                className="btn-primary px-3" title="Salvar tipo">
-                {createType.isPending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-              </button>
-              <button type="button" onClick={() => { setCreatingType(false); setNewType(''); }}
-                className="btn-secondary px-3" title="Cancelar"><X size={15} /></button>
-            </div>
-          ) : (
-            <>
-              <div className="flex gap-2">
-                <select className="input flex-1" value={form.category_id} onChange={e => { set('category_id', e.target.value); setConfirmDelType(false); }}>
-                  <option value="">Sem categoria</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <button type="button" onClick={() => setCreatingType(true)}
-                  className="btn-secondary px-3 whitespace-nowrap" title="Criar nova categoria de produto">
-                  <FolderPlus size={15} /> Nova categoria
-                </button>
-                {form.category_id && (
-                  <button type="button" onClick={() => setConfirmDelType(true)}
-                    className="btn-secondary px-3 text-red-500 hover:text-red-600" title="Apagar este tipo">
-                    <Trash2 size={15} />
-                  </button>
-                )}
-              </div>
-              {confirmDelType && selectedCat && (
-                <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm">
-                  <p className="text-gray-800">Tem certeza que deseja apagar o tipo <b>{selectedCat.name}</b>?</p>
-                  <p className="text-gray-600 mt-0.5">
-                    Possuem <b>{selectedCat.product_count || 0}</b> {Number(selectedCat.product_count) === 1 ? 'item' : 'itens'} com esse tipo —
-                    eles ficarão <b>sem tipo</b> (não serão apagados).
-                  </p>
-                  <div className="flex justify-end gap-2 mt-2">
-                    <button type="button" onClick={() => setConfirmDelType(false)} className="btn-secondary text-xs">Cancelar</button>
-                    <button type="button" onClick={() => delType.mutate(form.category_id)} disabled={delType.isPending}
-                      className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50">
-                      {delType.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Apagar tipo
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+          <input className="input bg-gray-50 text-gray-600 cursor-not-allowed"
+            value={selectedCat?.name || 'Sem categoria'} disabled readOnly />
+          <p className="text-xs text-gray-400 mt-1">A categoria vem da importação e não é editável aqui.</p>
         </div>
 
         <div>
@@ -285,18 +203,11 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         </div>
       </div>
 
-      {/* Custo e estoque — o preço de VENDA vem da Precificação */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="label">Custo de Compra (R$)</label>
-          <input type="number" step="0.01" min="0" className="input"
-            value={form.cost_price} onChange={e => set('cost_price', e.target.value)} placeholder="0,00" />
-        </div>
-        <div>
-          <label className="label">Estoque Mínimo</label>
-          <input type="number" step="1" min="0" className="input"
-            value={form.min_stock} onChange={e => set('min_stock', e.target.value)} placeholder="0" />
-        </div>
+      {/* Custo — o preço de VENDA vem da Precificação */}
+      <div>
+        <label className="label">Custo de Compra (R$)</label>
+        <input type="number" step="0.01" min="0" className="input sm:w-1/2"
+          value={form.cost_price} onChange={e => set('cost_price', e.target.value)} placeholder="0,00" />
       </div>
 
       {/* Tabela de Precificação — fonte do preço de venda */}
