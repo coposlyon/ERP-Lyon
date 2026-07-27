@@ -1,55 +1,18 @@
 import {
-  Menu, Bell, Search, X, Sun, Moon, LogOut, ChevronDown, LayoutGrid,
-  LayoutDashboard, ShoppingCart, ClipboardList, Package, Users, Truck,
-  ShoppingBag, Boxes, Factory, Wallet, Calculator, CalendarDays, Receipt,
-  MapPin, Target, Megaphone, UserCog, BarChart3, Settings, Palette, RotateCcw, FlaskConical,
+  Menu, Bell, Search, X, Sun, Moon, LogOut, ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-// Atalhos de módulos no topo — mesmo controle de permissão do menu lateral
-const MODULES = [
-  { label: 'Dashboard',        path: '/',            icon: LayoutDashboard },
-  { label: 'Pedidos de Venda', path: '/sales',       icon: ShoppingCart,  module: 'sales' },
-  { label: 'Orçamentos',       path: '/quotes',      icon: ClipboardList, module: 'quotes' },
-  { label: 'Personalização',   path: '/customizations', icon: Palette,    module: 'customizations' },
-  { label: 'Produtos',         path: '/products',    icon: Package,       module: 'products' },
-  { label: 'Clientes',         path: '/customers',   icon: Users,         module: 'customers' },
-  { label: 'Fornecedores',     path: '/suppliers',   icon: Truck,         module: 'suppliers' },
-  { label: 'Compras',          path: '/purchases',   icon: ShoppingBag,   module: 'purchases' },
-  { label: 'Estoque',          path: '/stock',       icon: Boxes,         module: 'stock' },
-  { label: 'Produção',         path: '/production',  icon: Factory,       module: 'production' },
-  { label: 'Central de Contas', path: '/contas',     icon: CalendarDays,  module: 'financial' },
-  { label: 'Precificação',     path: '/pricing',     icon: Calculator,    module: 'financial' },
-  { label: 'Financeiro',       path: '/financial',   icon: Wallet,        module: 'financial' },
-  { label: 'Fiscal / NF-e',    path: '/fiscal',      icon: Receipt,       module: 'fiscal' },
-  { label: 'Logística',        path: '/logistics',   icon: MapPin,        module: 'logistics' },
-  { label: 'Devoluções',       path: '/returns',     icon: RotateCcw,     module: 'returns' },
-  { label: 'Qualidade',        path: '/quality',     icon: FlaskConical,  module: 'quality' },
-  { label: 'CRM',              path: '/crm',         icon: Target,        module: 'crm' },
-  { label: 'Marketing',        path: '/marketing',   icon: Megaphone,     module: 'marketing' },
-  { label: 'RH',               path: '/hr',          icon: UserCog,       module: 'hr' },
-  { label: 'Relatórios',       path: '/reports',     icon: BarChart3,     module: 'reports' },
-  { label: 'Configurações',    path: '/settings',    icon: Settings,      module: 'settings' },
-];
-
 export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
-  const { user, tenant, logout, hasModule } = useAuth();
+  const { user, tenant, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [modulesOpen, setModulesOpen] = useState(false);
   const navigate = useNavigate();
-
-  const visibleModules = MODULES.filter(m => !m.module || hasModule(m.module));
-
-  function goModule(path) {
-    setModulesOpen(false);
-    navigate(path);
-  }
 
   async function handleLogout() {
     setMenuOpen(false);
@@ -111,45 +74,6 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
       <button onClick={onToggleSidebar} className={`${iconCls} hidden lg:flex`} aria-label="Colapsar menu">
         <Menu size={20} />
       </button>
-
-      {/* Módulos — atalho rápido no topo */}
-      <div className="relative">
-        <button
-          onClick={() => setModulesOpen(v => !v)}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-            isDark ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}
-          aria-label="Abrir módulos"
-        >
-          <LayoutGrid size={17} className={modulesOpen ? 'text-primary-500' : ''} />
-          <span className="hidden sm:inline">Módulos</span>
-          <ChevronDown size={13} className={`transition-transform ${modulesOpen ? 'rotate-180' : ''}`} />
-        </button>
-
-        {modulesOpen && (
-          <>
-            <div className="fixed inset-0 z-30" onClick={() => setModulesOpen(false)} />
-            <div
-              className="absolute left-0 mt-2 w-[560px] max-w-[92vw] rounded-2xl shadow-2xl z-40 p-3 grid grid-cols-3 sm:grid-cols-4 gap-1"
-              style={{
-                background: isDark ? '#1f2937' : '#ffffff',
-                border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`,
-              }}
-            >
-              {visibleModules.map(m => (
-                <button
-                  key={m.path}
-                  onClick={() => goModule(m.path)}
-                  className={`flex flex-col items-center gap-1.5 rounded-xl px-2 py-3 text-xs font-medium transition-colors ${
-                    isDark ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-primary-50 hover:text-primary-700'}`}
-                >
-                  <m.icon size={20} className="text-primary-500" />
-                  <span className="text-center leading-tight">{m.label}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
 
       {/* Nome do sistema — só mobile */}
       <div className="flex-1 flex items-center gap-2 lg:hidden">
