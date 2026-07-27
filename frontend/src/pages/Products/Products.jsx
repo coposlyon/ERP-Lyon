@@ -345,18 +345,10 @@ export default function Products() {
       )
     },
     { key: 'cost_price', label: 'Custo', width: 110, render: v => fmt(v) },
-    { key: 'sale_price', label: 'Venda', width: 110, render: v => fmt(v) },
     { key: 'is_active', label: 'Status', width: 90,
       render: v => (
         <span className={v ? 'badge-green badge' : 'badge-gray badge'}>
           {v ? 'Ativo' : 'Inativo'}
-        </span>
-      )
-    },
-    { key: 'show_in_store', label: 'Loja', width: 80,
-      render: v => (
-        <span className={v !== false ? 'badge-green badge' : 'badge-gray badge'}>
-          {v !== false ? 'Sim' : 'Não'}
         </span>
       )
     },
@@ -418,30 +410,11 @@ export default function Products() {
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
-          {/* Linha / acabamento */}
-          <select value={linha} onChange={e => { setLinha(e.target.value); setPage(1); }}
-            className="input w-auto text-sm" title="Filtrar por linha/acabamento">
-            <option value="">Todas as linhas</option>
-            <option value="tradicional">Tradicional</option>
-            <option value="degrad">Degradê</option>
-            <option value="bicolor">Bicolor</option>
-            <option value="jateado">Jateado</option>
-            <option value="metalizado">Metalizado</option>
-          </select>
-
           {/* Cor (vem do catálogo) */}
           <select value={cor} onChange={e => { setCor(e.target.value); setPage(1); }}
             className="input w-auto text-sm max-w-[170px]" title="Filtrar por cor">
             <option value="">Todas as cores</option>
             {colorOptions.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-
-          {/* Borda */}
-          <select value={borda} onChange={e => { setBorda(e.target.value); setPage(1); }}
-            className="input w-auto text-sm" title="Filtrar por borda">
-            <option value="">Com/sem borda</option>
-            <option value="borda">Com borda</option>
-            <option value="-borda">Sem borda</option>
           </select>
 
           {/* Tamanho (vem do catálogo) */}
@@ -475,15 +448,6 @@ export default function Products() {
             </button>
           )}
 
-          {/* Ordenar */}
-          <select value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}
-            className="input w-auto text-sm" title="Ordenar">
-            <option value="name">A → Z</option>
-            <option value="name_desc">Z → A</option>
-            <option value="has_image">Com foto primeiro</option>
-            <option value="recent">Últimos adicionados</option>
-            <option value="code">Por código</option>
-          </select>
         </div>
 
         <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => openEdit(row)} />
