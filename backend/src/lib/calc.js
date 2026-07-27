@@ -43,13 +43,21 @@ function precoFaixa(tiers, salePrice, qty) {
   return price;
 }
 
-// ── Tipos de impressão (1/2/3 cores) ──────────────────────
+// ── Tipos de impressão ────────────────────────────────────
+// Fonte canônica dos métodos: usada pelo seletor da loja E pelo editor da
+// ficha (Tabela de Precificação). Mantém as chaves antigas (serigrafia_1/2,
+// transfer) para não quebrar dados existentes.
+// OBS: há uma cópia espelhada no editor da ficha (PriceFormation.jsx) —
+// manter as duas listas em sincronia.
 const PRINT_METHODS = [
-  { key: 'serigrafia_1', label: 'Serigrafia 1 Cor' },
-  { key: 'serigrafia_2', label: 'Serigrafia 2 Cores' },
-  { key: 'transfer',     label: 'Transfer' },
-  { key: 'laser_frente', label: 'Gravação a Laser - Frente' },
-  { key: 'laser_fv',     label: 'Gravação a Laser - Frente e Verso' },
+  { key: 'serigrafia_1',     label: 'Serigrafia 1 Cor' },
+  { key: 'serigrafia_2',     label: 'Serigrafia 2 Cores' },
+  { key: 'transfer',         label: 'Transfer' },
+  { key: 'dtf',              label: 'DTF' },
+  { key: 'laser',            label: 'Laser' },
+  { key: 'borda_metalizada', label: 'Borda Metalizada' },
+  { key: 'pintura',          label: 'Pintura' },
+  { key: 'degrade',          label: 'Degradê' },
 ];
 
 // Preço considerando o tipo de impressão escolhido. Cada tipo tem sua própria

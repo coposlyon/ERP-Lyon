@@ -15,6 +15,19 @@ import { buildSheetReportHtml, openPrintWindow } from '@/utils/pricingReportHtml
 import { expandVariants } from '@/pages/Products/ProductVariantsModal';
 import { iconFor } from './fixedCostIcons';
 
+// Métodos de impressão da Tabela de Precificação — espelha PRINT_METHODS
+// do backend (lib/calc.js). Manter as duas listas em sincronia.
+const PRINT_METHODS = [
+  { key: 'serigrafia_1',     label: 'Serigrafia 1 Cor' },
+  { key: 'serigrafia_2',     label: 'Serigrafia 2 Cores' },
+  { key: 'transfer',         label: 'Transfer' },
+  { key: 'dtf',              label: 'DTF' },
+  { key: 'laser',            label: 'Laser' },
+  { key: 'borda_metalizada', label: 'Borda Metalizada' },
+  { key: 'pintura',          label: 'Pintura' },
+  { key: 'degrade',          label: 'Degradê' },
+];
+
 // ─── Blocos de custo (Matéria-prima, Personalização...) ────
 function CostBlock({ title, color, children }) {
   return (
@@ -136,6 +149,44 @@ export default function PriceFormation() {
       return { ...s, blocks: { ...s.blocks, tintas } };
     });
 
+  // ── Tabela de Precificação: faixas de qtd + custos de impressão ──
+  // blocks.tiers: [{min_qty,max_qty}]  (as faixas exibidas)
+  // blocks.print_costs[method]: [{min_qty,max_qty,cost}]  (custo/peça por faixa)
+  const tiers = Array.isArray(sheet.blocks.tiers) ? sheet.blocks.tiers : [];
+  const printCosts = sheet.blocks.print_costs || {};
+
+  // Mantém cada print_costs[method] alinhado às faixas atuais (por índice).
+  function syncPrintCosts(newTiers, pc) {
+    const out = {};
+    for (const [m, arr] of Object.entries(pc || {})) {
+      out[m] = newTiers.map((t, i) => ({
+        min_qty: t.min_qty, max_qty: t.max_qty,
+        cost: (Array.isArray(arr) && arr[i] ? arr[i].cost : '') ?? '',
+      }));
+    }
+    return out;
+  }
+  const setTiers = (newTiers) =>
+    setSheet(s => ({ ...s, blocks: { ...s.blocks, tiers: newTiers, print_costs: syncPrintCosts(newTiers, s.blocks.print_costs) } }));
+  const addTier = () => setTiers([...tiers, { min_qty: '', max_qty: '' }]);
+  const removeTier = (i) => setTiers(tiers.filter((_, idx) => idx !== i));
+  const setTier = (i, patch) => setTiers(tiers.map((t, idx) => idx === i ? { ...t, ...patch } : t));
+
+  function toggleMethod(method) {
+    setSheet(s => {
+      const pc = { ...(s.blocks.print_costs || {}) };
+      if (pc[method]) delete pc[method];
+      else pc[method] = tiers.map(t => ({ min_qty: t.min_qty, max_qty: t.max_qty, cost: '' }));
+      return { ...s, blocks: { ...s.blocks, print_costs: pc } };
+    });
+  }
+  const setPrintCost = (method, i, cost) =>
+    setSheet(s => {
+      const arr = [...(s.blocks.print_costs?.[method] || [])];
+      arr[i] = { min_qty: tiers[i]?.min_qty, max_qty: tiers[i]?.max_qty, cost };
+      return { ...s, blocks: { ...s.blocks, print_costs: { ...s.blocks.print_costs, [method]: arr } } };
+    });
+
   const b = sheet.blocks;
   const nColors = Math.min(Math.max(parseInt(sheet.print_colors) || 1, 1), 4);
 
@@ -187,6 +238,7 @@ export default function PriceFormation() {
         margin_min_pct: numInput(sheet.margin_min_pct),
         margin_ideal_pct: numInput(sheet.margin_ideal_pct),
         margin_premium_pct: numInput(sheet.margin_premium_pct),
+        is_master: !!sheet.is_master,
       };
       const saved = sheet.id
         ? await api.put(`/pricing/sheets/${sheet.id}`, payload)
@@ -568,6 +620,87 @@ export default function PriceFormation() {
                   placeholder="Verifique com seu contador a alíquota correta do seu regime."
                   onChange={e => set({ tax_notes: e.target.value })} />
               </Field>
+            </div>
+          </div>
+
+          {/* TABELA DE PRECIFICAÇÃO (faixas + custos de impressão) */}
+          <div className="card p-4 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                <Coins size={17} className="text-primary-600" /> TABELA DE PRECIFICAÇÃO
+              </h2>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" className="w-4 h-4 rounded text-primary-600"
+                  checked={!!sheet.is_master} onChange={e => set({ is_master: e.target.checked })} />
+                <span className="text-gray-700">Usar como <b>tabela mestre</b> (aparece no seletor do produto)</span>
+              </label>
+            </div>
+            <p className="text-xs text-gray-400 flex items-center gap-1">
+              <Info size={12} /> Defina as faixas de quantidade e o custo de impressão por peça em cada faixa.
+              O preço da loja é calculado: custo base + impressão da faixa + margem. Custo maior nas faixas menores gera o desconto por volume.
+            </p>
+
+            {/* Faixas de quantidade */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-gray-700">Faixas de quantidade</p>
+                <button type="button" onClick={addTier}
+                  className="flex items-center gap-1 text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 px-2.5 py-1.5 rounded-lg">
+                  <Plus size={13} /> Faixa
+                </button>
+              </div>
+              {tiers.length === 0 && <p className="text-xs text-gray-400">Sem faixas. Clique em “Faixa” para começar.</p>}
+              {tiers.map((t, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">De</span>
+                  <input type="number" min="0" className="input py-1 text-sm w-24 text-center" placeholder="mín"
+                    value={t.min_qty} onChange={e => setTier(i, { min_qty: e.target.value })} />
+                  <span className="text-xs text-gray-500">até</span>
+                  <input type="number" min="0" className="input py-1 text-sm w-24 text-center" placeholder="máx"
+                    value={t.max_qty} onChange={e => setTier(i, { max_qty: e.target.value })} />
+                  <span className="text-xs text-gray-500">un.</span>
+                  <button type="button" onClick={() => removeTier(i)}
+                    className="p-1.5 text-gray-400 hover:text-red-500 rounded"><Trash2 size={14} /></button>
+                </div>
+              ))}
+            </div>
+
+            {/* Custos de impressão por faixa */}
+            <div className="space-y-2 pt-2 border-t border-gray-100">
+              <p className="text-sm font-medium text-gray-700">Custo de impressão por peça (R$)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {PRINT_METHODS.map(m => (
+                  <button key={m.key} type="button" onClick={() => toggleMethod(m.key)}
+                    className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${printCosts[m.key]
+                      ? 'bg-primary-600 text-white border-primary-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              {tiers.length === 0 && Object.keys(printCosts).length > 0 && (
+                <p className="text-xs text-amber-600">Adicione faixas acima para informar os custos por faixa.</p>
+              )}
+              {PRINT_METHODS.filter(m => printCosts[m.key]).map(m => (
+                <div key={m.key} className="rounded-lg border border-gray-100 p-2.5">
+                  <p className="text-xs font-semibold text-gray-700 mb-1.5">{m.label}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {tiers.map((t, i) => (
+                      <div key={i} className="flex items-center gap-1">
+                        <span className="text-[11px] text-gray-400 whitespace-nowrap">
+                          {t.min_qty || '?'}-{t.max_qty || '∞'}
+                        </span>
+                        <div className="flex items-center gap-0.5">
+                          <span className="text-[11px] text-gray-400">R$</span>
+                          <input type="number" min="0" step="0.01" className="input py-1 text-sm w-20"
+                            placeholder="0,00" value={printCosts[m.key]?.[i]?.cost ?? ''}
+                            onChange={e => setPrintCost(m.key, i, e.target.value)} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
