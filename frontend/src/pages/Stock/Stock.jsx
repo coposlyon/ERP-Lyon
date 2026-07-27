@@ -499,7 +499,7 @@ function StockPositionTable({ products, loading, onSetStock, onAdjust, onEdit })
           <tr className="bg-gray-50 text-[11px] uppercase tracking-wide text-gray-400">
             <th className="px-3 py-2 text-left font-semibold w-24">Código</th>
             <th className="px-3 py-2 text-left font-semibold">Produto</th>
-            <th className="px-3 py-2 text-left font-semibold w-40">Tipo</th>
+            <th className="px-3 py-2 text-left font-semibold w-40">Categoria</th>
             <th className="px-3 py-2 text-right font-semibold w-40">Estoque</th>
             <th className="px-3 py-2 text-right font-semibold w-16">Mín.</th>
             <th className="px-3 py-2 text-right font-semibold w-24">Custo</th>
@@ -1012,8 +1012,8 @@ export default function Stock() {
                   placeholder="Buscar: nome, cor, tamanho, código… (ex.: long drink amarelo 350)"
                   className="input pl-9 text-sm" />
               </div>
-              <select value={posCategory} onChange={e => setPosCategory(e.target.value)} className="input w-auto text-sm" title="Filtrar por tipo">
-                <option value="">Todos os tipos</option>
+              <select value={posCategory} onChange={e => setPosCategory(e.target.value)} className="input w-auto text-sm" title="Filtrar por categoria">
+                <option value="">Todas as categorias</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <select value={posSort} onChange={e => setPosSort(e.target.value)} className="input w-auto text-sm" title="Ordenar">
@@ -1168,7 +1168,7 @@ export default function Stock() {
                 <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-200 text-[10px] uppercase tracking-wide font-semibold text-gray-400">
                   <span className="w-[90px] shrink-0">Data/Hora</span>
                   <span className="flex-1">Produto / Código</span>
-                  <span className="w-[120px] shrink-0 text-center">Tipo</span>
+                  <span className="w-[120px] shrink-0 text-center">Categoria</span>
                   <span className="w-10 text-right shrink-0">Qtd</span>
                   <span className="w-[68px] shrink-0 text-center">Controle</span>
                   <span className="w-[80px] shrink-0 text-right">Detalhes</span>

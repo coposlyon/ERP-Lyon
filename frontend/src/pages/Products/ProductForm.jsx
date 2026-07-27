@@ -256,7 +256,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
 
         {/* Tipo (categoria) + criar novo tipo */}
         <div>
-          <label className="label">Tipo do produto</label>
+          <label className="label">Categoria de produto</label>
           {creatingType ? (
             <div className="flex gap-2">
               <input className="input uppercase" autoFocus value={newType}
@@ -274,12 +274,12 @@ export default function ProductForm({ product, onSaved, onCancel }) {
             <>
               <div className="flex gap-2">
                 <select className="input flex-1" value={form.category_id} onChange={e => { set('category_id', e.target.value); setConfirmDelType(false); }}>
-                  <option value="">Sem tipo</option>
+                  <option value="">Sem categoria</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <button type="button" onClick={() => setCreatingType(true)}
-                  className="btn-secondary px-3 whitespace-nowrap" title="Criar novo tipo de produto">
-                  <FolderPlus size={15} /> Novo tipo
+                  className="btn-secondary px-3 whitespace-nowrap" title="Criar nova categoria de produto">
+                  <FolderPlus size={15} /> Nova categoria
                 </button>
                 {form.category_id && (
                   <button type="button" onClick={() => setConfirmDelType(true)}

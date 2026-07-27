@@ -335,7 +335,7 @@ export default function Products() {
         </div>
       )
     },
-    { key: 'CATEGORIAS', label: 'Tipo', render: (v, row) => v?.name || row.categories?.name || '—' },
+    { key: 'CATEGORIAS', label: 'Categoria', render: (v, row) => v?.name || row.categories?.name || '—' },
     { key: 'unit', label: 'Un.', width: 60 },
     { key: 'current_stock', label: 'Estoque', width: 100,
       render: (v, row) => (
@@ -413,8 +413,8 @@ export default function Products() {
         <div className="card-header flex flex-wrap items-center gap-2">
           {/* Tipo */}
           <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setPage(1); }}
-            className="input w-auto text-sm" title="Filtrar por tipo">
-            <option value="">Todos os tipos</option>
+            className="input w-auto text-sm" title="Filtrar por categoria">
+            <option value="">Todas as categorias</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
