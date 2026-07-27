@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Loader2, Plus, Trash2, Image as ImageIcon, Upload, FolderPlus, Check, X, ClipboardPaste } from 'lucide-react';
-import PrintPricingEditor, { cleanPrintPricing } from './PrintPricingEditor';
+import { Loader2, Trash2, Image as ImageIcon, Upload, FolderPlus, Check, X, ClipboardPaste } from 'lucide-react';
 
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -14,21 +13,20 @@ function fileToDataUrl(file) {
   });
 }
 
-const emptyTier = () => ({ min_qty: '', max_qty: '', price: '' });
+// Preço (venda, faixas por quantidade e por impressão) NÃO fica mais aqui:
+// é responsabilidade do módulo de Precificação. O cadastro guarda só o custo.
 
 export default function ProductForm({ product, onSaved, onCancel }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     name: '', code: '', ean: '', category_id: '', tipo_id: '',
-    cost_price: '', sale_price: '', min_stock: '', min_order_qty: '',
+    cost_price: '', min_stock: '', min_order_qty: '',
     ncm: '', cst: '', cfop: '', is_active: true, show_in_store: true,
     supplier_id: '',
     height: '', weight: '', thickness: '',
     base_circumference: '', mouth_circumference: '',
     length: '', width: '',
   });
-  const [priceTiers, setPriceTiers] = useState([]);
-  const [printPricing, setPrintPricing] = useState({});
   const [mainImage, setMainImage] = useState(null);   // url ou dataURL
   const [loading, setLoading] = useState(false);
 
@@ -104,7 +102,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         category_id: product.category_id || '',
         tipo_id: product.tipo_id || '',
         cost_price: product.cost_price || '',
-        sale_price: product.sale_price || '',
         min_stock: product.min_stock || '',
         min_order_qty: product.min_order_qty || '',
         ncm: product.ncm || '',
@@ -121,11 +118,8 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         length: product.length || '',
         width: product.width || '',
       });
-      setPriceTiers(Array.isArray(product.price_tiers) ? product.price_tiers : []);
-      setPrintPricing(product.print_pricing && typeof product.print_pricing === 'object' ? product.print_pricing : {});
       setMainImage(product.image_url || null);
     } else {
-      setPrintPricing({});
       setMainImage(null);
       const defaultCat = categories.find(c => c.name?.toUpperCase() === 'PRODUTO ACABADO');
       if (defaultCat) setForm(prev => ({ ...prev, category_id: defaultCat.id }));
@@ -133,9 +127,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   }, [product, categories]);
 
   function set(field, value) { setForm(prev => ({ ...prev, [field]: value })); }
-  function addTier() { setPriceTiers(prev => [...prev, emptyTier()]); }
-  function removeTier(idx) { setPriceTiers(prev => prev.filter((_, i) => i !== idx)); }
-  function setTier(idx, field, value) { setPriceTiers(prev => prev.map((t, i) => i === idx ? { ...t, [field]: value } : t)); }
 
   function confirmNewType() {
     const n = newType.trim().toUpperCase();
@@ -199,20 +190,14 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     e.preventDefault();
     if (!form.name) { toast.error('Nome do produto é obrigatório'); return; }
 
-    for (const tier of priceTiers) {
-      if (!tier.min_qty || !tier.price) {
-        toast.error('Preencha quantidade mínima e preço em todas as faixas');
-        return;
-      }
-    }
-
     setLoading(true);
     try {
+      // Preço (venda/faixas/impressão) fica por conta da Precificação: o
+      // cadastro não os envia, então os valores atuais são preservados.
       const payload = {
         ...form,
         name: form.name.toUpperCase(),
         cost_price: parseFloat(form.cost_price) || 0,
-        sale_price: parseFloat(form.sale_price) || 0,
         min_stock: parseFloat(form.min_stock) || 0,
         category_id: form.category_id || null,
         tipo_id: form.tipo_id || null,
@@ -224,12 +209,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         mouth_circumference: parseFloat(form.mouth_circumference) || null,
         length: parseFloat(form.length) || null,
         width: parseFloat(form.width) || null,
-        price_tiers: priceTiers.map(t => ({
-          min_qty: parseInt(t.min_qty) || 0,
-          max_qty: t.max_qty ? parseInt(t.max_qty) : null,
-          price: parseFloat(t.price) || 0,
-        })),
-        print_pricing: cleanPrintPricing(printPricing),
         image: mainImage ?? '',
       };
 
@@ -330,17 +309,12 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         </div>
       </div>
 
-      {/* Preços base */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Custo e estoque — o preço de VENDA vem da Precificação */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="label">Preço de Custo (R$)</label>
+          <label className="label">Custo de Compra (R$)</label>
           <input type="number" step="0.01" min="0" className="input"
             value={form.cost_price} onChange={e => set('cost_price', e.target.value)} placeholder="0,00" />
-        </div>
-        <div>
-          <label className="label">Preço de Venda (R$)</label>
-          <input type="number" step="0.01" min="0" className="input"
-            value={form.sale_price} onChange={e => set('sale_price', e.target.value)} placeholder="0,00" />
         </div>
         <div>
           <label className="label">Estoque Mínimo</label>
@@ -388,45 +362,6 @@ export default function ProductForm({ product, onSaved, onCancel }) {
           </p>
         </div>
       </div>
-
-      {/* Faixas de preço por quantidade */}
-      <div className="border border-blue-200 rounded-lg bg-blue-50/30 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-blue-800">💰 Faixas de Preço por Quantidade</p>
-          <button type="button" onClick={addTier}
-            className="flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 px-3 py-1.5 rounded-lg transition-colors">
-            <Plus size={13} /> Adicionar faixa
-          </button>
-        </div>
-
-        {priceTiers.length === 0 && (
-          <p className="text-xs text-blue-500 text-center py-2">Sem faixas de preço. O preço de venda padrão será usado.</p>
-        )}
-
-        {priceTiers.map((tier, idx) => (
-          <div key={idx} className="flex items-center gap-2 bg-white rounded-lg border border-blue-100 px-3 py-2">
-            <div className="flex items-center gap-1.5 flex-1">
-              <span className="text-xs text-gray-500 whitespace-nowrap">De</span>
-              <input type="number" min="0" step="1" className="input py-1 text-sm w-20 text-center" placeholder="Qtd mín"
-                value={tier.min_qty} onChange={e => setTier(idx, 'min_qty', e.target.value)} />
-              <span className="text-xs text-gray-500 whitespace-nowrap">até</span>
-              <input type="number" min="0" step="1" className="input py-1 text-sm w-20 text-center" placeholder="Qtd máx"
-                value={tier.max_qty} onChange={e => setTier(idx, 'max_qty', e.target.value)} />
-              <span className="text-xs text-gray-500 whitespace-nowrap">unid. →</span>
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-500">R$</span>
-                <input type="number" min="0" step="0.01" className="input py-1 text-sm w-24" placeholder="0,00"
-                  value={tier.price} onChange={e => setTier(idx, 'price', e.target.value)} />
-              </div>
-            </div>
-            <button type="button" onClick={() => removeTier(idx)}
-              className="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded"><Trash2 size={14} /></button>
-          </div>
-        ))}
-      </div>
-
-      {/* Preço por tipo de impressão (loja) */}
-      <PrintPricingEditor value={printPricing} onChange={setPrintPricing} />
 
       {/* Dimensões — PRODUTO ACABADO */}
       {isProdutoAcabado && (
