@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Download, Trash2, Loader2, AlertTriangle, FolderTree, Image as ImageIcon, Eye, EyeOff, ClipboardPaste, Palette } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Download, Trash2, Loader2, AlertTriangle, FolderTree, Image as ImageIcon, Eye, ClipboardPaste, Palette } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
@@ -102,13 +102,6 @@ export default function Products() {
   const toggleMutation = useMutation({
     mutationFn: ({ id, is_active }) => api.put(`/products/${id}`, { is_active }),
     onSuccess: () => { qc.invalidateQueries(['products']); toast.success('Produto atualizado'); },
-  });
-
-  // Visibilidade na loja: usa /bulk (altera só o campo, sem mexer em preço/dimensões).
-  const storeToggleMutation = useMutation({
-    mutationFn: ({ id, show_in_store }) => api.patch('/products/bulk', { ids: [id], fields: { show_in_store } }),
-    onSuccess: () => { qc.invalidateQueries(['products']); toast.success('Visibilidade na loja atualizada'); },
-    onError: (e) => toast.error(e.error || 'Erro ao atualizar visibilidade'),
   });
 
   // Foto principal via clique no card (endpoint dedicado — não mexe em outros campos).
@@ -364,13 +357,6 @@ export default function Products() {
             title={row.is_active ? 'Desativar' : 'Ativar'}
           >
             {row.is_active ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
-          </button>
-          <button
-            onClick={() => storeToggleMutation.mutate({ id: row.id, show_in_store: row.show_in_store === false })}
-            className="btn-ghost p-1.5"
-            title={row.show_in_store !== false ? 'Ocultar da loja' : 'Mostrar na loja'}
-          >
-            {row.show_in_store !== false ? <Eye size={15} className="text-green-500" /> : <EyeOff size={15} className="text-gray-400" />}
           </button>
           <button onClick={() => setDelTarget(row)} className="btn-ghost p-1.5 text-red-500 hover:text-red-600" title="Apagar produto">
             <Trash2 size={14} />
