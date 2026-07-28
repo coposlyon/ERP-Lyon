@@ -21,7 +21,7 @@ function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 }
 
-const PERDA_MOTIVOS = ['Quebra', 'Vencimento', 'Defeito de fabricação', 'Erro de produção', 'Extravio', 'Outro'];
+const PERDA_MOTIVOS = ['Quebra', 'Vencimento', 'Defeito de fabricação', 'Erro de produção', 'Avaria de transportadora', 'Extravio de transporte', 'Outro'];
 
 const REF_LABELS = {
   replenishment_request:  'Solicitação de Reposição',
@@ -39,15 +39,31 @@ const REF_LABELS = {
 function PerdaForm({ onSaved, onCancel }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [search,    setSearch]    = useState('');
+  const [perdaCat,   setPerdaCat]   = useState('');   // categoria
+  const [perdaColor, setPerdaColor] = useState('');   // cor
+  const [perdaSize,  setPerdaSize]  = useState('');   // capacidade/tamanho
   const [quantity,  setQuantity]  = useState('');
   const [motivo,    setMotivo]    = useState('');
   const [notes,     setNotes]     = useState('');
   const [loading,   setLoading]   = useState(false);
 
+  const { data: perdaCats = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => api.get('/products/categories/list'),
+  });
+  const { data: perdaFilters } = useQuery({
+    queryKey: ['product-filters'],
+    queryFn: () => api.get('/products/filters'),
+  });
+  const perdaColors  = perdaFilters?.colors  || [];
+  const perdaVolumes = perdaFilters?.volumes || [];
+
+  // busca = texto + cor + capacidade (backend faz AND por termo); categoria por id
+  const effectiveSearch = [search, perdaColor, perdaSize].filter(Boolean).join(' ').trim();
   const { data: products } = useQuery({
-    queryKey: ['products-adj', search],
-    queryFn: () => api.get(`/products?search=${search}&limit=10&is_active=true`),
-    enabled: search.length >= 2,
+    queryKey: ['products-adj', effectiveSearch, perdaCat],
+    queryFn: () => api.get(`/products?search=${encodeURIComponent(effectiveSearch)}&limit=30&is_active=true${perdaCat ? `&category_id=${perdaCat}` : ''}`),
+    enabled: effectiveSearch.length >= 2 || !!perdaCat,
   });
 
   async function handleSubmit(e) {
@@ -86,7 +102,22 @@ function PerdaForm({ onSaved, onCancel }) {
           </div>
         ) : (
           <div className="space-y-2">
-            <input className="input" placeholder="Digite para buscar produto..." value={search}
+            {/* Filtros pra achar o produto: categoria / cor / capacidade */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <select className="input text-sm" value={perdaCat} onChange={e => setPerdaCat(e.target.value)} title="Categoria">
+                <option value="">Todas as categorias</option>
+                {perdaCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select className="input text-sm" value={perdaColor} onChange={e => setPerdaColor(e.target.value)} title="Cor">
+                <option value="">Todas as cores</option>
+                {perdaColors.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select className="input text-sm" value={perdaSize} onChange={e => setPerdaSize(e.target.value)} title="Capacidade">
+                <option value="">Todas as capacidades</option>
+                {perdaVolumes.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <input className="input" placeholder="Digite para buscar produto (ou use os filtros acima)..." value={search}
               onChange={e => setSearch(e.target.value)} autoFocus />
             {products?.data?.length > 0 && (
               <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -99,7 +130,7 @@ function PerdaForm({ onSaved, onCancel }) {
                 ))}
               </div>
             )}
-            {search.length >= 2 && products?.data?.length === 0 && (
+            {(effectiveSearch.length >= 2 || perdaCat) && products?.data?.length === 0 && (
               <p className="text-xs text-gray-400 text-center py-2">Nenhum produto encontrado</p>
             )}
           </div>
@@ -466,7 +497,6 @@ function StockRow({ p, onEdit }) {
       <td className="px-3 py-2 text-right text-sm text-gray-600">{fmt(p.cost_price)}</td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-1 justify-end">
-          <button onClick={() => onEdit(p)} title="Editar produto (ajustar estoque)" className="btn-ghost p-1.5"><Edit2 size={14} /></button>
           <button onClick={() => openSupplierWhatsApp(p)} title={p.FORNECEDORES?.phone ? `Solicitar a ${p.FORNECEDORES.name}` : 'Fornecedor sem telefone'}
             className="btn-ghost p-1.5 text-green-600"><MessageCircle size={14} /></button>
         </div>
