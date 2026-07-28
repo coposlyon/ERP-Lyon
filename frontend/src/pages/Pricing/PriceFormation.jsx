@@ -229,7 +229,7 @@ export default function PriceFormation() {
     setSaving(true);
     try {
       const payload = {
-        product_id: sheet.product_id, name: sheet.name, category: sheet.category,
+        product_id: sheet.product_id, category_id: sheet.category_id || null, name: sheet.name, category: sheet.category,
         capacity: sheet.capacity, color_model: sheet.color_model,
         print_type: sheet.print_type, print_colors: nColors,
         calc_quantity: calc.qty, calc_reference: sheet.calc_reference,
@@ -369,15 +369,18 @@ export default function PriceFormation() {
                 </datalist>
               </Field>
               <Field label="Categoria">
-                <select className="input text-sm" value={sheet.category || ''}
-                  onChange={e => set({ category: e.target.value })}>
+                <select className="input text-sm" value={sheet.category_id || ''}
+                  onChange={e => {
+                    const id = e.target.value;
+                    const cat = (Array.isArray(categoriesRes) ? categoriesRes : []).find(c => c.id === id);
+                    set({ category_id: id || null, category: cat?.name || sheet.category });
+                  }}>
                   <option value="">— Sem categoria —</option>
-                  {/* Somente as categorias reais do cadastro de produtos */}
-                  {sheet.category && !categories.includes(sheet.category) && (
-                    <option value={sheet.category}>{sheet.category} (antiga)</option>
-                  )}
-                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  {(Array.isArray(categoriesRes) ? categoriesRes : []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
+                {sheet.is_master && sheet.category_id && (
+                  <p className="text-[10px] text-primary-600 mt-0.5">Tabela mestre desta categoria: vale para todos os produtos dela.</p>
+                )}
               </Field>
               <Field label="Capacidade">
                 <input list="pf-capacity" className="input text-sm" value={sheet.capacity || ''}

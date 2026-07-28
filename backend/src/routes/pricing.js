@@ -274,7 +274,7 @@ router.get('/purchase-info/:productId', async (req, res) => {
 
 // ── Fichas: CRUD ──────────────────────────────────────────
 const SHEET_FIELDS = [
-  'product_id', 'name', 'category', 'capacity', 'color_model', 'print_type',
+  'product_id', 'category_id', 'name', 'category', 'capacity', 'color_model', 'print_type',
   'print_colors', 'calc_quantity', 'calc_reference', 'description', 'blocks',
   'tax_regime', 'tax_pct', 'tax_notes',
   'margin_min_pct', 'margin_ideal_pct', 'margin_premium_pct', 'is_master',
@@ -284,6 +284,7 @@ function pickSheetBody(body) {
   const out = {};
   for (const k of SHEET_FIELDS) if (body[k] !== undefined) out[k] = body[k];
   if (out.is_master !== undefined) out.is_master = !!out.is_master;
+  if (out.category_id === '') out.category_id = null;
   if (out.name !== undefined) out.name = String(out.name || '').trim();
   if (out.calc_quantity !== undefined) out.calc_quantity = Math.max(1, parseInt(out.calc_quantity) || 1);
   if (out.print_colors !== undefined) out.print_colors = Math.min(Math.max(parseInt(out.print_colors) || 1, 0), 8);
@@ -302,7 +303,7 @@ function pickSheetBody(body) {
 router.get('/tables', async (req, res) => {
   try {
     const { data, error } = await supabase.from('PRECIFICACOES')
-      .select('id, name, capacity, category')
+      .select('id, name, capacity, category, category_id')
       .eq('tenant_id', req.tenantId).eq('is_active', true).eq('is_master', true)
       .order('name').limit(500);
     if (error) throw error;

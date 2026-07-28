@@ -50,24 +50,38 @@ function fromPrice(p) {
 }
 
 // Sobrescreve o preço do(s) produto(s) com o calculado pela ficha de
-// Precificação ligada (pricing_sheet_id). Sem ficha, mantém o preço
-// próprio do produto (fallback da transição). Materializa no formato
-// antigo (sale_price/price_tiers/print_pricing) para o resto da loja e o
-// checkout continuarem usando fromPrice/precoComImpressao sem mudar nada.
+// Precificação. Resolução: (1) product.pricing_sheet_id (override do
+// produto) → (2) ficha mestre da CATEGORIA do produto → (3) preço próprio
+// (fallback da transição). Materializa no formato antigo
+// (sale_price/price_tiers/print_pricing) para a loja e o checkout
+// continuarem usando fromPrice/precoComImpressao sem mudar nada.
 async function attachFichaPricing(products) {
   const list = Array.isArray(products) ? products : (products ? [products] : []);
-  const ids = [...new Set(list.map(p => p && p.pricing_sheet_id).filter(Boolean))];
-  if (!ids.length) return products;
-  let fichas = [];
+  if (!list.length) return products;
+  const sheetIds = [...new Set(list.map(p => p && p.pricing_sheet_id).filter(Boolean))];
+  const catIds   = [...new Set(list.map(p => p && !p.pricing_sheet_id && p.category_id).filter(Boolean))];
+  if (!sheetIds.length && !catIds.length) return products;
+
+  const sel = 'id, category_id, blocks, tax_pct, overhead_unit, margin_min_pct, margin_ideal_pct, margin_premium_pct';
+  const byId = {}, byCat = {};
   try {
-    ({ data: fichas } = await supabase.from('PRECIFICACOES')
-      .select('id, blocks, tax_pct, overhead_unit, margin_min_pct, margin_ideal_pct, margin_premium_pct')
-      .eq('tenant_id', STORE_TENANT).in('id', ids));
+    if (sheetIds.length) {
+      const { data } = await supabase.from('PRECIFICACOES').select(sel)
+        .eq('tenant_id', STORE_TENANT).in('id', sheetIds);
+      for (const f of (data || [])) byId[f.id] = f;
+    }
+    if (catIds.length) {
+      const { data } = await supabase.from('PRECIFICACOES').select(sel)
+        .eq('tenant_id', STORE_TENANT).eq('is_master', true).eq('is_active', true)
+        .in('category_id', catIds).order('updated_at', { ascending: false });
+      for (const f of (data || [])) if (!byCat[f.category_id]) byCat[f.category_id] = f; // mais recente por categoria
+    }
   } catch { return products; } // coluna/tabela ausente → mantém preço próprio
-  const map = Object.fromEntries((fichas || []).map(f => [f.id, f]));
+
   for (const p of list) {
-    if (!p || !p.pricing_sheet_id) continue;
-    const priced = fichaPricing(map[p.pricing_sheet_id]);
+    if (!p) continue;
+    const ficha = p.pricing_sheet_id ? byId[p.pricing_sheet_id] : (p.category_id ? byCat[p.category_id] : null);
+    const priced = fichaPricing(ficha);
     if (priced) {
       p.sale_price = priced.sale_price;
       p.price_tiers = priced.price_tiers;
@@ -460,7 +474,7 @@ router.post('/quote', async (req, res) => {
     // Busca produtos do carrinho para recalcular o preço no servidor
     const ids = [...new Set(items.map(i => i.product_id).filter(Boolean))];
     const fetchProds = (full) => supabase
-      .from('PRODUTOS').select(`id, name, unit, sale_price, price_tiers${full ? ', min_order_qty, print_pricing, pricing_sheet_id' : ''}`)
+      .from('PRODUTOS').select(`id, name, unit, sale_price, price_tiers, category_id${full ? ', min_order_qty, print_pricing, pricing_sheet_id' : ''}`)
       .eq('tenant_id', STORE_TENANT).in('id', ids);
     let { data: prods, error: pErr } = await fetchProds(true);
     if (pErr) ({ data: prods } = await fetchProds(false));
