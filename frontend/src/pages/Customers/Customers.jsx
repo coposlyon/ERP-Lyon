@@ -289,9 +289,10 @@ export default function Customers() {
             ))}
           </div>
 
-          {/* Filtro por estrelas */}
-          <div className="flex items-center gap-0.5 border border-gray-200 rounded-lg px-2 py-1.5">
-            <span className="text-xs text-gray-400 mr-1.5 select-none">Avaliação:</span>
+          {/* Filtro por estrelas — rótulo em cima, estrelas embaixo */}
+          <div className="border border-gray-200 rounded-lg px-2 py-1">
+            <span className="block text-[10px] text-gray-400 select-none leading-none mb-1">Avaliação</span>
+            <div className="flex items-center gap-0.5">
             {[1,2,3,4,5].map(n => (
               <button
                 key={n}
@@ -314,6 +315,7 @@ export default function Customers() {
                 title="Limpar filtro"
               >✕</button>
             )}
+            </div>
           </div>
 
           {/* Filtro por estado (UF) */}
