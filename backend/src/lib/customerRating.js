@@ -1,12 +1,15 @@
 const supabase = require('../config/supabase');
 
 // Estrelas automáticas pela soma comprada nos últimos 12 meses.
-// Regra: >= 5.000 = 5★ | >= 2.000 = 4★ | >= 1.000 = 3★ | abaixo disso mantém o manual.
+// Cada estrela vale R$1.000: >=5.000=5★ | >=4.000=4★ | >=3.000=3★ |
+// >=2.000=2★ | >=1.000=1★ | abaixo de 1.000 mantém o manual.
 function starsFromTotal(total) {
   const t = Number(total) || 0;
   if (t >= 5000) return 5;
-  if (t >= 2000) return 4;
-  if (t >= 1000) return 3;
+  if (t >= 4000) return 4;
+  if (t >= 3000) return 3;
+  if (t >= 2000) return 2;
+  if (t >= 1000) return 1;
   return null;
 }
 

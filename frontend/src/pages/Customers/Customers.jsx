@@ -257,7 +257,7 @@ export default function Customers() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => recomputeMut.mutate()} disabled={recomputeMut.isPending} className="btn-secondary disabled:opacity-50"
-            title="Recalcula as estrelas dos clientes pelo total comprado nos últimos 12 meses (≥1mil=3★, ≥2mil=4★, ≥5mil=5★)">
+            title="Recalcula as estrelas dos clientes pelo total comprado nos últimos 12 meses (cada R$1.000 = 1★, até 5★ com R$5.000)">
             {recomputeMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Recalcular estrelas
           </button>
           <button onClick={exportContacts} disabled={exportingContacts} className="btn-secondary disabled:opacity-50"

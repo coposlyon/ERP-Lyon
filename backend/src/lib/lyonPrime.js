@@ -4,13 +4,14 @@ const supabase = require('../config/supabase');
 // Estrelas pelo faturamento dos últimos 12 meses + benefícios por nível.
 // Os limiares de 3/4/5 estrelas seguem a regra automática que já existia
 // (customerRating.js: 1.000 / 2.000 / 5.000).
-// Crédito por estrela: cada estrela vale R$1.000 (1★=1.000 … 5★=5.000).
-// Quem tem o Selo de Confiança recebe R$10.000.
+// Cada estrela vale R$1.000, tanto no LIMIAR (quanto comprou em 12m para
+// ganhar a estrela) quanto no CRÉDITO concedido: 1★=1.000 … 5★=5.000.
+// Quem tem o Selo de Confiança recebe R$10.000 de crédito.
 const TIERS = [
-  { stars: 1, min: 200,  credit: 1000, boleto: 0,  perks: ['Cadastro Lyon Prime'] },
-  { stars: 2, min: 500,  credit: 2000, boleto: 7,  perks: ['Boleto para até 7 dias'] },
-  { stars: 3, min: 1000, credit: 3000, boleto: 15, perks: ['Boleto para até 15 dias', 'Atendimento prioritário'] },
-  { stars: 4, min: 2000, credit: 4000, boleto: 30, perks: ['Boleto para até 30 dias', 'Atendimento prioritário', 'Prioridade na produção'] },
+  { stars: 1, min: 1000, credit: 1000, boleto: 0,  perks: ['Cadastro Lyon Prime'] },
+  { stars: 2, min: 2000, credit: 2000, boleto: 7,  perks: ['Boleto para até 7 dias'] },
+  { stars: 3, min: 3000, credit: 3000, boleto: 15, perks: ['Boleto para até 15 dias', 'Atendimento prioritário'] },
+  { stars: 4, min: 4000, credit: 4000, boleto: 30, perks: ['Boleto para até 30 dias', 'Atendimento prioritário', 'Prioridade na produção'] },
   { stars: 5, min: 5000, credit: 5000, boleto: 45, perks: ['Boleto para até 45 dias', 'Atendimento e produção prioritários', 'Condições comerciais exclusivas'] },
 ];
 const SELO_CREDIT = 10000;   // crédito de quem tem o Selo de Confiança
