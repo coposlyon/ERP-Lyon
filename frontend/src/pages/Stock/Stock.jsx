@@ -446,13 +446,10 @@ function InventoryCount() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Linha da lista de estoque — quantidade editável + entrada/saída rápida
+// Linha da lista de estoque — SÓ LEITURA (a quantidade é ajustada no cadastro).
 // ─────────────────────────────────────────────────────────────────────────────
-function StockRow({ p, onSetStock, onAdjust, onEdit }) {
-  const [val, setVal] = useState(String(p.current_stock ?? 0));
-  useEffect(() => { setVal(String(p.current_stock ?? 0)); }, [p.current_stock]); // sincroniza quando muda fora
+function StockRow({ p, onEdit }) {
   const cur = Number(p.current_stock ?? 0);
-  const changed = val !== '' && Number(val) !== cur;
   const low = cur <= Number(p.min_stock ?? 0);
 
   return (
@@ -460,28 +457,16 @@ function StockRow({ p, onSetStock, onAdjust, onEdit }) {
       <td className="px-3 py-2 font-mono text-xs text-gray-500 whitespace-nowrap">{p.code || '—'}</td>
       <td className="px-3 py-2 text-sm font-medium text-gray-800">{p.name}</td>
       <td className="px-3 py-2 text-xs text-gray-500">{p.CATEGORIAS?.name || '—'}</td>
-      <td className="px-3 py-2">
-        <div className="flex items-center gap-1 justify-end">
-          <input type="number" step="1" value={val}
-            onChange={e => setVal(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && changed) onSetStock(p, Number(val)); }}
-            className={`w-20 text-right border rounded-lg px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-primary-100 ${low ? 'text-red-600 font-bold border-red-200' : 'border-gray-200'}`} />
-          <span className="text-xs text-gray-400 w-7">{p.unit}</span>
-          {changed && (
-            <button onClick={() => onSetStock(p, Number(val))} title="Salvar quantidade"
-              className="p-1 rounded-md bg-green-100 text-green-700 hover:bg-green-200"><Check size={13} /></button>
-          )}
-        </div>
+      <td className="px-3 py-2 text-right">
+        <span className={cur < 0 ? 'text-red-700 font-bold' : low ? 'text-orange-600 font-bold' : 'text-green-700 font-semibold'}>
+          {cur.toLocaleString('pt-BR')} <span className="text-xs text-gray-400 font-normal">{p.unit}</span>
+        </span>
       </td>
       <td className="px-3 py-2 text-right text-xs text-gray-500">{Number(p.min_stock ?? 0)}</td>
       <td className="px-3 py-2 text-right text-sm text-gray-600">{fmt(p.cost_price)}</td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-1 justify-end">
-          <button onClick={() => onAdjust(p, 'in')} title="Entrada (+)"
-            className="p-1.5 rounded-md bg-green-50 text-green-600 hover:bg-green-100"><Plus size={14} /></button>
-          <button onClick={() => onAdjust(p, 'out')} title="Saída (−)"
-            className="p-1.5 rounded-md bg-orange-50 text-orange-600 hover:bg-orange-100"><Minus size={14} /></button>
-          <button onClick={() => onEdit(p)} title="Editar produto" className="btn-ghost p-1.5"><Edit2 size={14} /></button>
+          <button onClick={() => onEdit(p)} title="Editar produto (ajustar estoque)" className="btn-ghost p-1.5"><Edit2 size={14} /></button>
           <button onClick={() => openSupplierWhatsApp(p)} title={p.FORNECEDORES?.phone ? `Solicitar a ${p.FORNECEDORES.name}` : 'Fornecedor sem telefone'}
             className="btn-ghost p-1.5 text-green-600"><MessageCircle size={14} /></button>
         </div>
@@ -508,7 +493,7 @@ function StockPositionTable({ products, loading, onSetStock, onAdjust, onEdit })
         </thead>
         <tbody>
           {products.map(p => (
-            <StockRow key={p.id} p={p} onSetStock={onSetStock} onAdjust={onAdjust} onEdit={onEdit} />
+            <StockRow key={p.id} p={p} onEdit={onEdit} />
           ))}
           {products.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-gray-400 text-sm">Nenhum produto</td></tr>}
         </tbody>
@@ -565,6 +550,7 @@ export default function Stock() {
   // filtros da Lista Completa
   const [posSearch, setPosSearch] = useState('');
   const [posCategory, setPosCategory] = useState('');
+  const [posSize, setPosSize] = useState('');       // filtro de tamanho (ex.: '400 ML')
   const [posSort, setPosSort] = useState('name');
 
   // Modal de reposição
@@ -645,6 +631,12 @@ export default function Stock() {
     queryKey: ['categories'],
     queryFn: () => api.get('/products/categories/list'),
   });
+  // opções de tamanho (mesma fonte do cadastro de produtos)
+  const { data: filterOpts } = useQuery({
+    queryKey: ['product-filters'],
+    queryFn: () => api.get('/products/filters'),
+  });
+  const volumeOptions = filterOpts?.volumes || [];
 
   const allProducts     = stockReport?.data || [];
   const baseProducts    = showZeroOnly
@@ -666,6 +658,10 @@ export default function Stock() {
       const catName = (categories.find(c => c.id === posCategory)?.name || '').toUpperCase();
       list = list.filter(p => p.category_id === posCategory || (catName && (p.CATEGORIAS?.name || '').toUpperCase() === catName));
     }
+    if (posSize) {
+      const s = posSize.toUpperCase();
+      list = list.filter(p => String(p.name || '').toUpperCase().includes(s));
+    }
     list = [...list].sort((a, b) => {
       if (posSort === 'name_desc') return (b.name || '').localeCompare(a.name || '', 'pt-BR');
       if (posSort === 'code')      return seqOf(a.code) - seqOf(b.code);
@@ -673,7 +669,7 @@ export default function Stock() {
       return (a.name || '').localeCompare(b.name || '', 'pt-BR');
     });
     return list;
-  }, [baseProducts, posSearch, posCategory, posSort, categories]);
+  }, [baseProducts, posSearch, posCategory, posSize, posSort, categories]);
 
   const negativeProducts = useMemo(
     () => allProducts.filter(p => (p.current_stock ?? 0) < 0),
@@ -1009,6 +1005,12 @@ export default function Stock() {
                 <option value="">Todas as categorias</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              {volumeOptions.length > 0 && (
+                <select value={posSize} onChange={e => setPosSize(e.target.value)} className="input w-auto text-sm" title="Filtrar por tamanho">
+                  <option value="">Todos os tamanhos</option>
+                  {volumeOptions.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              )}
               <span className="text-xs text-gray-400 ml-auto">{displayProducts.length} de {baseProducts.length}</span>
             </div>
 
@@ -1017,9 +1019,9 @@ export default function Stock() {
                 ✅ Nenhum produto negativo!
               </p>
             )}
-            <p className="px-1 pb-2 text-xs text-gray-400">💡 Edite a quantidade direto na lista (✓ para salvar), use + / − para entrada e saída, ou ✏️ para editar o produto.</p>
+            <p className="px-1 pb-2 text-xs text-gray-400">💡 O estoque é ajustado no cadastro do produto (✏️). Aqui a lista é só para consulta.</p>
             <StockPositionTable products={displayProducts} loading={repLoading}
-              onSetStock={setStock} onAdjust={(p, dir) => setAdjust({ p, dir })} onEdit={p => setProductModal(p)} />
+              onEdit={p => setProductModal(p)} />
           </>
         )}
 
