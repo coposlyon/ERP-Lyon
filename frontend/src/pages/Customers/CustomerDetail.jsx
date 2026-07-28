@@ -130,6 +130,11 @@ export default function CustomerDetail() {
               {customer.type === 'PJ' ? 'CNPJ' : 'CPF'}: {customer.cpf_cnpj || 'não informado'}
               {customer.nome_fantasia ? <> · {customer.nome_fantasia}</> : null}
             </p>
+            {customer.address?.street && (
+              <p className="text-sm text-gray-600 mt-0.5 flex items-center gap-1">
+                <MapPin size={12} className="text-gray-400" /> {customer.address.street}{customer.address.number ? `, ${customer.address.number}` : ''}
+              </p>
+            )}
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-xs text-gray-500">
               <span className="flex items-center gap-1"><Hash size={12} /> {id4(customer.display_id)}</span>
               {customer.address?.city && <span className="flex items-center gap-1"><MapPin size={12} /> {customer.address.city}{customer.address.state ? ` - ${customer.address.state}` : ''}</span>}

@@ -35,7 +35,6 @@ function whatsappLink(phone, name) {
 
 const FILTERS = [
   { value: 'cliente', label: 'Clientes' },
-  { value: '',        label: 'Todos'    },
 ];
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
