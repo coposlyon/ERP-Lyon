@@ -454,14 +454,34 @@ export default function CustomerDetail() {
         {/* Cadastro (informações + histórico de alterações) */}
         {tab === 'cadastro' && (
           <div className="p-5 grid md:grid-cols-2 gap-6">
-            <div className="space-y-2 text-sm text-gray-600">
-              <p className="font-semibold text-gray-800 mb-1">Informações</p>
+            <div className="space-y-1.5 text-sm text-gray-600">
+              <p className="font-semibold text-gray-800 mb-1">Cadastro completo</p>
+
+              {/* Identificação */}
+              <p className="flex items-center gap-2">
+                {customer.type === 'PJ' ? <Building2 size={14} className="text-gray-400" /> : <User size={14} className="text-gray-400" />}
+                Tipo: <b>{customer.type === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física'}</b>
+              </p>
+              <p className="flex items-center gap-2"><Hash size={14} className="text-gray-400" /> Código: <b>{id4(customer.display_id)}</b></p>
+              <p className="flex items-center gap-2"><IdCard size={14} className="text-gray-400" /> {customer.type === 'PJ' ? 'CNPJ' : 'CPF'}: <b>{customer.cpf_cnpj || '—'}</b></p>
+              {customer.rg_ie && <p className="flex items-center gap-2"><IdCard size={14} className="text-gray-400" /> {customer.type === 'PJ' ? 'IE' : 'RG'}: {customer.rg_ie}</p>}
+              {customer.nome_fantasia && <p className="flex items-center gap-2"><Building2 size={14} className="text-gray-400" /> Nome fantasia: {customer.nome_fantasia}</p>}
               {customer.birth_date && (
                 <p className="flex items-center gap-2"><Cake size={14} className="text-pink-400" /> Nascimento: <b>{fmtDateBR(customer.birth_date)}</b>
                   {idadeAnos(customer.birth_date) != null && <span className="text-xs text-gray-400">({idadeAnos(customer.birth_date)} anos)</span>}</p>
               )}
-              {customer.rg_ie && <p className="flex items-center gap-2"><IdCard size={14} className="text-gray-400" /> {customer.type === 'PJ' ? 'IE' : 'RG'}: {customer.rg_ie}</p>}
-              {customer.mobile && <p className="flex items-center gap-2"><Phone size={14} className="text-gray-400" /> {customer.mobile} <span className="text-xs text-gray-400">(recado)</span></p>}
+
+              {/* Contato */}
+              <div className="pt-2 mt-1 border-t border-gray-100 space-y-1.5">
+                {customer.phone && <p className="flex items-center gap-2"><Phone size={14} className="text-gray-400" /> {customer.phone}</p>}
+                {customer.mobile && <p className="flex items-center gap-2"><Phone size={14} className="text-gray-400" /> {customer.mobile} <span className="text-xs text-gray-400">(recado)</span></p>}
+                {customer.email && <p className="flex items-center gap-2 break-all"><Mail size={14} className="text-gray-400" /> {customer.email}</p>}
+                {customer.instagram && <p className="flex items-center gap-2"><Instagram size={14} className="text-gray-400" /> @{String(customer.instagram).replace(/^@/, '')}</p>}
+                <p className="flex items-center gap-2"><User size={14} className="text-gray-400" /> Vendedor: <b>{customer.vendedor || '—'}</b></p>
+                <p className="flex items-center gap-2"><Wallet size={14} className="text-gray-400" /> Limite de crédito: <b>{fmt(customer.credit_limit)}</b></p>
+              </div>
+
+              {/* Endereço */}
               {customer.address && (customer.address.street || customer.address.zip) && (
                 <div className="flex gap-2 pt-2 mt-1 border-t border-gray-100">
                   <MapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
@@ -473,7 +493,8 @@ export default function CustomerDetail() {
                   </div>
                 </div>
               )}
-              {customer.notes && <p className="pt-2 mt-1 border-t border-gray-100 text-gray-500">{customer.notes}</p>}
+
+              {customer.notes && <p className="pt-2 mt-1 border-t border-gray-100 text-gray-500 whitespace-pre-wrap"><b className="text-gray-700">Obs.:</b> {customer.notes}</p>}
               {customer.created_at && <p className="text-xs text-gray-400 flex items-center gap-1.5 pt-2"><CalendarPlus size={12} /> Cadastro criado em {fmtDateTimeBR(customer.created_at)}</p>}
               {customer.updated_at && customer.created_at && (new Date(customer.updated_at) - new Date(customer.created_at) > 60000) && (
                 <p className="text-xs text-emerald-600 flex items-center gap-1.5"><RefreshCw size={12} /> Atualizado em {fmtDateTimeBR(customer.updated_at)}</p>
