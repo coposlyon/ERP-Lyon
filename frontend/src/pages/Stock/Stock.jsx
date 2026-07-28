@@ -992,13 +992,6 @@ export default function Stock() {
             </button>
           )}
 
-          {/* Novo produto direto da tela de estoque */}
-          {tab === 'position' && (
-            <button onClick={() => setProductModal('new')}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors">
-              <Plus size={13} /> Novo Produto
-            </button>
-          )}
         </div>
 
         {/* ── Aba: Lista Completa ───────────────────────────────── */}
@@ -1015,12 +1008,6 @@ export default function Stock() {
               <select value={posCategory} onChange={e => setPosCategory(e.target.value)} className="input w-auto text-sm" title="Filtrar por categoria">
                 <option value="">Todas as categorias</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <select value={posSort} onChange={e => setPosSort(e.target.value)} className="input w-auto text-sm" title="Ordenar">
-                <option value="name">A → Z</option>
-                <option value="name_desc">Z → A</option>
-                <option value="recent">Últimos adicionados</option>
-                <option value="code">Por código</option>
               </select>
               <span className="text-xs text-gray-400 ml-auto">{displayProducts.length} de {baseProducts.length}</span>
             </div>
