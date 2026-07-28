@@ -168,7 +168,39 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   contratado** antes da homologação.
 - **Sem token, nada quebra:** as telas mostram "eSocial não configurado".
 
-## 11. Erros em produção (Sentry) — opcional
+## 11. Google Contatos (cadastro do cliente → seu Google Contacts)
+
+- **O que faz:** ao cadastrar ou editar um cliente (PF/PJ, ativo, com
+  telefone), o sistema cria/atualiza o contato no **seu Google Contacts**
+  via People API. Como o celular sincroniza o Google Contacts, o
+  **WhatsApp passa a mostrar o nome certo** — sem precisar da API do
+  WhatsApp. O nome sai como `NOME #0004` (igual à exportação .vcf).
+- **Requer a migração `060_cliente_google_contato.sql`** (guarda o
+  contato do Google no cliente, pra atualizar em vez de duplicar).
+- **Sem as variáveis, nada acontece** (no-op) — o cadastro funciona normal.
+
+### Como configurar (uma vez)
+1. **console.cloud.google.com** → crie um projeto → **APIs e Serviços →
+   Biblioteca** → habilite a **People API**.
+2. **Tela de consentimento OAuth**: tipo **Externo**, modo **Teste**,
+   adicione seu Gmail como **usuário de teste**. Escopo:
+   `https://www.googleapis.com/auth/contacts`.
+3. **Credenciais → Criar credenciais → ID do cliente OAuth → App da Web**.
+   Anote o **Client ID** e o **Client Secret**.
+4. Gere um **refresh token** (uma vez): no **OAuth 2.0 Playground**
+   (developers.google.com/oauthplayground), engrenagem → *Use your own
+   OAuth credentials* → cole Client ID/Secret; selecione o escopo
+   `.../auth/contacts` → *Authorize* (logue com a SUA conta) → *Exchange
+   authorization code for tokens* → copie o **Refresh token**.
+5. No Discloud (painel do app → Variáveis de ambiente), defina:
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+   - `GOOGLE_REFRESH_TOKEN`
+- **Obs.:** só clientes com telefone viram contato. Editar o cliente
+  atualiza o mesmo contato (não duplica). Se apagar o contato no Google,
+  um novo é criado na próxima edição.
+
+## 12. Erros em produção (Sentry) — opcional
 - `SENTRY_DSN` — DSN do projeto no sentry.io. Com isso, todo erro de servidor é
   reportado automaticamente.
 

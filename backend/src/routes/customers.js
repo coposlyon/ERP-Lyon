@@ -7,6 +7,7 @@ const { audit } = require('../lib/audit');
 const { getEmailConfig, makeTransport } = require('../lib/mailer');
 const { recomputeRating, recomputeAll } = require('../lib/customerRating');
 const { computePrime, TIERS } = require('../lib/lyonPrime');
+const googleContacts = require('../lib/googleContacts');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -396,6 +397,7 @@ router.post('/', async (req, res) => {
     }
     if (error) throw error;
     await syncEmployeeSalary(req.tenantId, data);
+    googleContacts.sync(supabase, req.tenantId, data);   // → Google Contatos (fire-and-forget)
     res.status(201).json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -454,6 +456,7 @@ router.put('/:id', async (req, res) => {
     }
     if (error) throw error;
     await syncEmployeeSalary(req.tenantId, data);
+    googleContacts.sync(supabase, req.tenantId, data);   // → Google Contatos (fire-and-forget)
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
