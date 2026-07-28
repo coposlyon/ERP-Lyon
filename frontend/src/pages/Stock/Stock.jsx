@@ -21,7 +21,7 @@ function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 }
 
-const PERDA_MOTIVOS = ['Quebra', 'Vencimento', 'Defeito de fabricação', 'Erro de produção', 'Avaria de transportadora', 'Extravio de transporte', 'Outro'];
+const PERDA_MOTIVOS = ['Defeito de fabricação', 'Avaria de transportadora', 'Extravio de transporte'];
 
 const REF_LABELS = {
   replenishment_request:  'Solicitação de Reposição',
