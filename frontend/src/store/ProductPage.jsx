@@ -126,15 +126,14 @@ export default function ProductPage() {
 
       <div className="grid md:grid-cols-2 gap-8">
         {/* Visual — foto real ou desenho 3D */}
-        <div className="relative rounded-3xl overflow-hidden flex items-center justify-center py-16 bg-gray-900">
-          <div className="st-blob" style={{ width: 240, height: 240, background: '#F26522', top: '8%', left: '6%', opacity: .5 }} />
-          <div className="st-blob" style={{ width: 200, height: 200, background: '#F26522', bottom: '4%', right: '8%', opacity: .35, animationDelay: '3s' }} />
+        {/* Card branco e parado: sem os blobs de fundo e sem o copo flutuando */}
+        <div className="relative rounded-3xl overflow-hidden flex items-center justify-center py-16 bg-white border border-gray-200">
           {productImg && !imgError ? (
             <img key={productImg} src={productImg} alt={product.name}
               onError={() => setImgError(true)}
-              className="relative z-10 max-h-[360px] w-auto object-contain st-float drop-shadow-2xl" />
+              className="relative z-10 max-h-[360px] w-auto object-contain drop-shadow-xl" />
           ) : (
-            <div key={currentColor?.id || 'base'} className="relative st-float st-color-in">
+            <div key={currentColor?.id || 'base'} className="relative st-color-in">
               <Bottle
                 color={currentColor ? resolveColor({ name: currentColor.short, value: currentColor.short }) : '#F26522'}
                 gradient={gradient} size={240} />

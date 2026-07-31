@@ -59,6 +59,16 @@ function tierPrice(tiers, salePrice, qty) {
   return price;
 }
 
+// Tamanho em ML lido do nome ("TWISTER TRADICIONAL - AZUL - 400 ML" → 400).
+const volumeML = (name) => {
+  const m = String(name || '').match(/(\d{2,4})\s*ML\b/i);
+  return m ? parseInt(m[1]) : null;
+};
+
+// Opção fixa do seletor de transportadora: o cliente retira na loja.
+const RETIRADA = '__retirada__';
+const RETIRADA_LABEL = 'Retirar em mãos';
+
 // mode: 'sale' (pedido de venda) | 'quote' (orçamento — salva e gera a foto PNG)
 export default function PDV({ onDone, mode = 'sale' }) {
   const inModal = typeof onDone === 'function';
@@ -66,6 +76,7 @@ export default function PDV({ onDone, mode = 'sale' }) {
   const [items, setItems] = useState([]);
   const [productSearch, setProductSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState(''); // filtro por tipo (categoria) do produto
+  const [volFilter, setVolFilter] = useState('');   // filtro por tamanho (ML), aparece após escolher o tipo
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [discount, setDiscount] = useState('');
@@ -141,13 +152,24 @@ export default function PDV({ onDone, mode = 'sale' }) {
       (a.name || '').localeCompare(b.name || '', 'pt-BR'));
     // filtro por tipo (categoria): COM BORDA, DEGRADÊ, TRADICIONAL etc.
     if (typeFilter) arr = arr.filter(p => (p.CATEGORIAS?.name || '').trim().toUpperCase() === typeFilter);
+    // tamanho: compara o número lido do NOME (o código tem número parecido)
+    if (volFilter) arr = arr.filter(p => volumeML(p.name) === Number(volFilter));
     const term = productSearch.trim().toLowerCase();
     if (!term) return arr;
     return arr.filter(p =>
       (p.name || '').toLowerCase().includes(term) ||
       String(p.code || '').toLowerCase().includes(term)
     );
-  }, [allProducts, productSearch, typeFilter]);
+  }, [allProducts, productSearch, typeFilter, volFilter]);
+
+  // Tamanhos disponíveis dentro do tipo escolhido (vazio = o tipo não usa ML)
+  const volumeOptions = useMemo(() => {
+    const base = (allProducts?.data || []).filter(p =>
+      !typeFilter || (p.CATEGORIAS?.name || '').trim().toUpperCase() === typeFilter);
+    const set = new Set();
+    for (const p of base) { const v = volumeML(p.name); if (v) set.add(v); }
+    return [...set].sort((a, b) => a - b);
+  }, [allProducts, typeFilter]);
 
   const { data: customerResults } = useQuery({
     queryKey: ['pdv-customers', customerSearch],
@@ -169,6 +191,10 @@ export default function PDV({ onDone, mode = 'sale' }) {
     enabled: isQuote || !!selectedCustomer,
   });
   const carrierSel = (carriers?.data || []).find(c => c.id === carrierId) || null;
+  // "Retirar em mãos" é uma opção fixa da lista, não uma transportadora
+  // cadastrada: o pedido fica sem carrier_id e a informação vai na observação.
+  const isRetirada = carrierId === RETIRADA;
+  const carrierLabel = isRetirada ? RETIRADA_LABEL : (carrierSel ? (carrierSel.trade_name || carrierSel.name) : '');
 
   // Tipos (categorias) de produto — para o filtro do painel de produtos
   const { data: productTypes = [] } = useQuery({
@@ -222,7 +248,7 @@ export default function PDV({ onDone, mode = 'sale' }) {
         items: items.map(i => ({ name: i.name, quantity: i.quantity, unit_price: i.unit_price })),
         discount: sent.discount,
         freight: parseMoney(freightInput),
-        carrierName: carrierSel ? (carrierSel.trade_name || carrierSel.name) : '',
+        carrierName: carrierLabel,
         quoteNumber: quoteNumber.trim(),
         quoteDate,
         quoteValidityDays: parseInt(quoteValidityDays, 10) || 0,
@@ -498,11 +524,12 @@ export default function PDV({ onDone, mode = 'sale' }) {
       discount: discountValue + couponDiscount,
       coupon_code: coupon?.code || null,
       freight: freteValue,
-      carrier_id: carrierId || null,
+      carrier_id: isRetirada ? null : (carrierId || null),
       payment_adjustment: paymentAdj,
       ...(() => {
         const noteParts = [];
         if (payTerm) noteParts.push(`Pagamento: ${payTerm.label}${payPercent ? ` (${payPercent > 0 ? '+' : ''}${payPercent}%)` : ''}`);
+        if (isRetirada) noteParts.push(`Entrega: ${RETIRADA_LABEL}`);
         if (quoteNumber.trim()) noteParts.push(`Cotação do frete: ${quoteNumber.trim()}`);
         return noteParts.length ? { notes: noteParts.join(' · ') } : {};
       })(),
@@ -532,7 +559,7 @@ export default function PDV({ onDone, mode = 'sale' }) {
       valid_until: until.toISOString().split('T')[0],
       notes: buildQuoteNotes({
         freight: freteValue,
-        carrierName: carrierSel ? (carrierSel.trade_name || carrierSel.name) : '',
+        carrierName: carrierLabel,
         quoteNumber: quoteNumber.trim(),
         quoteDate,
         quoteValidityDays: parseInt(quoteValidityDays, 10) || 0,
@@ -563,14 +590,25 @@ export default function PDV({ onDone, mode = 'sale' }) {
         </div>
         {/* Filtro por tipo: COM BORDA / DEGRADÊ / TRADICIONAL etc. */}
         {!drill && (
-          <select className="input text-sm w-full mt-2" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
-            <option value="">Todos os tipos</option>
-            {productTypes.map(t => (
-              <option key={t.id} value={String(t.name || '').trim().toUpperCase()}>
-                {t.name}{t.product_count ? ` (${t.product_count})` : ''}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-2 mt-2">
+            <select className="input text-sm flex-1 min-w-0" value={typeFilter}
+              onChange={e => { setTypeFilter(e.target.value); setVolFilter(''); }}>
+              <option value="">Todos os tipos</option>
+              {productTypes.map(t => (
+                <option key={t.id} value={String(t.name || '').trim().toUpperCase()}>
+                  {t.name}{t.product_count ? ` (${t.product_count})` : ''}
+                </option>
+              ))}
+            </select>
+            {/* Tamanho: só aparece depois de escolher o tipo, com os ML que aquele tipo tem */}
+            {typeFilter && volumeOptions.length > 0 && (
+              <select className="input text-sm w-36 shrink-0" value={volFilter}
+                onChange={e => setVolFilter(e.target.value)} title="Filtrar por tamanho">
+                <option value="">Todos os ML</option>
+                {volumeOptions.map(v => <option key={v} value={v}>{v} ML</option>)}
+              </select>
+            )}
+          </div>
         )}
       </div>
 
@@ -706,9 +744,10 @@ export default function PDV({ onDone, mode = 'sale' }) {
             <label className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><Truck size={12} /> Transportadora</label>
             <select className="input text-sm w-full" value={carrierId} onChange={e => { setCarrierId(e.target.value); setShowSched(false); }}>
               <option value="">— selecione —</option>
+              <option value={RETIRADA}>{RETIRADA_LABEL}</option>
               {(carriers?.data || []).map(c => <option key={c.id} value={c.id}>{c.trade_name || c.name}</option>)}
             </select>
-            {carrierId && (
+            {carrierId && !isRetirada && (
               <button type="button" onClick={() => setShowSched(v => !v)} title="Horários de coleta"
                 className="mt-1 text-gray-400 hover:text-primary-600 flex items-center gap-1 text-xs">
                 <MoreHorizontal size={16} /> {showSched ? 'ocultar horários' : 'horários de coleta'}

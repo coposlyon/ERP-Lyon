@@ -65,10 +65,14 @@ export default function Products() {
   const volumeOptions = filterOpts?.volumes || [];
 
   // Os filtros viram termos de busca (o backend exige TODOS os termos).
-  // A borda é a exceção: ela mora nas variações, não no nome, então vai como
-  // parâmetro próprio (border=com|sem) tratado pelo backend.
-  const effectiveSearch = [search, linha, cor, volume].filter(Boolean).join(' ').trim();
+  // Duas exceções, que vão como parâmetro próprio:
+  //  - borda: mora nas variações, não no nome (border=com|sem);
+  //  - tamanho: como termo, o "400" casava com o CÓDIGO (CT45-2400, que é
+  //    450 ML). Vai como volume=400 e o backend compara o número do nome.
+  const effectiveSearch = [search, linha, cor].filter(Boolean).join(' ').trim();
   const borderParam = borda === 'borda' ? 'com' : borda === '-borda' ? 'sem' : '';
+  const volumeParam = parseInt(volume) || '';
+  const temFiltro = !!(effectiveSearch || categoryId || borderParam || volumeParam);
 
   async function exportCSV() {
     setExporting(true);
@@ -88,11 +92,12 @@ export default function Products() {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', page, effectiveSearch, borderParam, categoryId, sort],
+    queryKey: ['products', page, effectiveSearch, borderParam, volumeParam, categoryId, sort],
     queryFn: () => {
       let url = `/products?page=${page}&limit=50`;
       if (effectiveSearch) url += `&search=${encodeURIComponent(effectiveSearch)}`;
       if (borderParam)     url += `&border=${borderParam}`;
+      if (volumeParam)     url += `&volume=${volumeParam}`;
       if (categoryId)      url += `&category_id=${categoryId}`;
       if (sort)            url += `&sort=${sort}`;
       return api.get(url);
@@ -202,7 +207,7 @@ export default function Products() {
     setSampleBusy(true);
     try {
       const img = await loadImage(activeTemplate);
-      const body = useFilter ? { search: effectiveSearch, category_id: categoryId } : {};
+      const body = useFilter ? { search: effectiveSearch, category_id: categoryId, volume: volumeParam || undefined } : {};
       const pending = await api.post('/products/images/pending', body);
       const p = pending.find(x => x.colors?.length);
       if (!p) { toast.error('Nenhum produto pendente com cor no nome'); return; }
@@ -259,7 +264,7 @@ export default function Products() {
     setGenBusy(true); setGenCount(0); setGenTotal(0);
     try {
       const img = await loadImage(activeTemplate);
-      const body = useFilter ? { search: effectiveSearch, category_id: categoryId } : {};
+      const body = useFilter ? { search: effectiveSearch, category_id: categoryId, volume: volumeParam || undefined } : {};
       const pending = await api.post('/products/images/pending', body);
       const todo = pending.filter(p => p.colors?.length);
       const semCor = pending.length - todo.length;
@@ -427,7 +432,7 @@ export default function Products() {
             <button type="submit" className="btn-secondary">Buscar</button>
           </form>
 
-          {(effectiveSearch || categoryId) && (
+          {temFiltro && (
             <button type="button" className="btn-ghost text-sm"
               onClick={() => { setSearch(''); setSearchInput(''); setCategoryId(''); setLinha(''); setCor(''); setBorda(''); setVolume(''); setPage(1); }}>
               Limpar filtros
@@ -522,7 +527,7 @@ export default function Products() {
             <p className="text-xs text-gray-400 -mt-2">Ou copie uma imagem e aperte <b>Ctrl+V</b> aqui. <span className="text-gray-300">· motor v6.1</span></p>
           )}
 
-          {(effectiveSearch || categoryId) && (
+          {temFiltro && (
             <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
               <input type="checkbox" checked={useFilter} onChange={e => setUseFilter(e.target.checked)} className="w-4 h-4 text-violet-600 rounded" />
               Aplicar só aos produtos do filtro atual{effectiveSearch ? <> (<b>{effectiveSearch}</b>)</> : null}

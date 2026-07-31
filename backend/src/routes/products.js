@@ -50,6 +50,29 @@ function produtoTemBorda(p) {
   return hay.includes('borda');
 }
 
+// Volume em ML lido do NOME ("... - 450 ML" → 450). Mesma regra do /filters.
+// Tem que ser o nome, e não o código: "CT45 - 2400" é um produto de 450 ML,
+// e o "400" do código casava com o filtro de 400 ML quando o tamanho era só
+// mais um termo de busca.
+function produtoVolume(p) {
+  const m = String(p?.name || '').match(/(\d{2,4})\s*ML\b/i);
+  return m ? parseInt(m[1]) : null;
+}
+
+// Busca livre por VÁRIOS termos: cada palavra precisa aparecer (nome/código/ean).
+// Ex.: "long drink amarelo" só traz quem casa com todos os termos.
+// Prefixo "-" EXCLUI o termo. Ex.: "tradicional -borda" = tradicional sem borda.
+function applySearchTerms(query, search) {
+  for (const rawTok of String(search || '').trim().split(/\s+/).filter(Boolean).slice(0, 10)) {
+    const neg = rawTok.startsWith('-') && rawTok.length > 1;
+    const t = (neg ? rawTok.slice(1) : rawTok).replace(/[%,()]/g, ' ').trim();
+    if (!t) continue;
+    if (neg) query = query.not('name', 'ilike', `%${t}%`);
+    else query = query.or(`name.ilike.%${t}%,code.ilike.%${t}%,ean.ilike.%${t}%`);
+  }
+  return query;
+}
+
 router.get('/', async (req, res) => {
   const { page = 1, limit = 50, search, category_id, is_active, sort } = req.query;
   const pageN = Number(page) || 1, limitN = Number(limit) || 50;
@@ -57,6 +80,10 @@ router.get('/', async (req, res) => {
   // Filtro de borda: 'com' | 'sem'. Como depende das variations (JSONB), filtramos
   // e paginamos em memória — o PostgREST não faz esse match direto.
   const borderFilter = req.query.border === 'com' || req.query.border === 'sem' ? req.query.border : '';
+  // Filtro de tamanho (ML). Também é em memória: o match é no número extraído
+  // do nome, não um "contém 400" que pegaria 2400, 1400, 4000...
+  const volumeFilter = parseInt(req.query.volume) || 0;
+  const emMemoria = !!borderFilter || !!volumeFilter;
 
   const buildQuery = (useCreatedAt) => {
     let query = supabase
@@ -71,25 +98,13 @@ router.get('/', async (req, res) => {
     else if (sort === 'has_image') query = query.order('image_url', { ascending: true, nullsFirst: false }).order('name', { ascending: true });
     else query = query.order('name', { ascending: true });
 
-    // Busca por VÁRIOS termos: cada palavra precisa aparecer (no nome/código/ean).
-    // Ex.: "long drink amarelo 350" só traz quem casa com todos os termos.
-    // Prefixo "-" EXCLUI o termo. Ex.: "tradicional -borda" = tradicional sem borda.
-    if (search) {
-      const terms = String(search).trim().split(/\s+/).filter(Boolean).slice(0, 10);
-      for (const rawTok of terms) {
-        const neg = rawTok.startsWith('-') && rawTok.length > 1;
-        const t = (neg ? rawTok.slice(1) : rawTok).replace(/[%,()]/g, ' ').trim();
-        if (!t) continue;
-        if (neg) query = query.not('name', 'ilike', `%${t}%`);
-        else query = query.or(`name.ilike.%${t}%,code.ilike.%${t}%,ean.ilike.%${t}%`);
-      }
-    }
+    if (search) query = applySearchTerms(query, search);
     if (category_id) query = query.eq('category_id', category_id);
     if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
 
-    // Sem filtro de borda: pagina no banco (comportamento normal). Com filtro:
+    // Sem filtro em memória: pagina no banco (comportamento normal). Com filtro:
     // traz o conjunto (limitado, igual ao /filters) e pagina depois em memória.
-    return borderFilter ? query.limit(5000) : query.range(offset, offset + limitN - 1);
+    return emMemoria ? query.limit(5000) : query.range(offset, offset + limitN - 1);
   };
 
   try {
@@ -100,9 +115,13 @@ router.get('/', async (req, res) => {
     }
     if (error) throw error;
 
-    if (borderFilter) {
-      const want = borderFilter === 'com';
-      const filtered = (data || []).filter(p => produtoTemBorda(p) === want);
+    if (emMemoria) {
+      let filtered = data || [];
+      if (borderFilter) {
+        const want = borderFilter === 'com';
+        filtered = filtered.filter(p => produtoTemBorda(p) === want);
+      }
+      if (volumeFilter) filtered = filtered.filter(p => produtoVolume(p) === volumeFilter);
       const pageRows = filtered.slice(offset, offset + limitN);
       return res.json({ data: pageRows, total: filtered.length, page: pageN, limit: limitN });
     }
@@ -175,18 +194,31 @@ router.patch('/bulk', async (req, res) => {
     return res.status(400).json({ error: 'Selecione ao menos um produto (ou marque "aplicar a todos do filtro")' });
   }
 
+  // "Aplicar a todos do filtro" com tamanho selecionado: resolve os ids antes.
+  // O match do volume é no número extraído do nome, não dá pra fazer no SQL —
+  // e sem isso o update pegaria produto de outro tamanho (o 2400 do código).
+  const matchVolume = parseInt(match.volume) || 0;
+  let volumeIds = null;
+  if (all && matchVolume) {
+    try {
+      let q = supabase.from('PRODUTOS').select('id, name').eq('tenant_id', req.tenantId).limit(5000);
+      if (match.category_id) q = q.eq('category_id', match.category_id);
+      if (match.search) q = applySearchTerms(q, match.search);
+      const { data: cand, error } = await q;
+      if (error) throw error;
+      volumeIds = (cand || []).filter(p => produtoVolume(p) === matchVolume).map(p => p.id);
+    } catch (err) { return res.status(500).json({ error: err.message }); }
+    if (!volumeIds.length) return res.json({ updated: 0 });
+  }
+
   const runUpdate = (p) => {
     let q = supabase.from('PRODUTOS').update(p).eq('tenant_id', req.tenantId);
     if (all) {
-      if (match.category_id) q = q.eq('category_id', match.category_id);
-      if (match.search) {
-        for (const rawTok of String(match.search).trim().split(/\s+/).filter(Boolean).slice(0, 10)) {
-          const neg = rawTok.startsWith('-') && rawTok.length > 1;
-          const t = (neg ? rawTok.slice(1) : rawTok).replace(/[%,()]/g, ' ').trim();
-          if (!t) continue;
-          if (neg) q = q.not('name', 'ilike', `%${t}%`);
-          else q = q.or(`name.ilike.%${t}%,code.ilike.%${t}%,ean.ilike.%${t}%`);
-        }
+      if (volumeIds) {
+        q = q.in('id', volumeIds.slice(0, 20000));
+      } else {
+        if (match.category_id) q = q.eq('category_id', match.category_id);
+        if (match.search) q = applySearchTerms(q, match.search);
       }
     } else {
       q = q.in('id', ids.slice(0, 20000));
@@ -480,6 +512,7 @@ router.delete('/categories/:catId', async (req, res) => {
 // Devolve as cores/efeitos do nome — o navegador recolore a foto modelo.
 router.post('/images/pending', async (req, res) => {
   const { search, category_id } = req.body || {};
+  const volume = parseInt(req.body?.volume) || 0;
   try {
     const { data, error } = await supabase
       .from('PRODUTOS')
@@ -496,6 +529,7 @@ router.post('/images/pending', async (req, res) => {
       const substituivel = !p.image_url || /\/(produtos-auto|produtos-render)\//.test(p.image_url);
       if (!substituivel) continue;
       if (category_id && p.category_id !== category_id) continue;
+      if (volume && produtoVolume(p) !== volume) continue;
       if (terms.length) {
         const nm = String(p.name || '').toLowerCase();
         let ok = true;

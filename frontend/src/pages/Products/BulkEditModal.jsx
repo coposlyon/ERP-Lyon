@@ -42,12 +42,15 @@ export default function BulkEditModal({ isOpen, onClose }) {
   });
   const suppliers = suppliersData?.data || [];
 
-  // busca efetiva = texto digitado + tamanho selecionado (o backend faz AND por termo)
-  const effectiveSearch = [search, size].filter(Boolean).join(' ').trim();
+  // O tamanho NÃO entra na busca: como termo, o "400" casava com o código
+  // (CT45-2400, que é 450 ML). Vai como volume=400, que o backend compara
+  // com o número do nome. Vale para a lista e para o "aplicar a todos".
+  const effectiveSearch = String(search || '').trim();
+  const volumeParam = parseInt(size) || '';
 
   const { data, isFetching } = useQuery({
-    queryKey: ['bulk-products', effectiveSearch, categoryId],
-    queryFn: () => api.get(`/products?limit=1000&is_active=true${effectiveSearch ? `&search=${encodeURIComponent(effectiveSearch)}` : ''}${categoryId ? `&category_id=${categoryId}` : ''}`),
+    queryKey: ['bulk-products', effectiveSearch, volumeParam, categoryId],
+    queryFn: () => api.get(`/products?limit=1000&is_active=true${effectiveSearch ? `&search=${encodeURIComponent(effectiveSearch)}` : ''}${volumeParam ? `&volume=${volumeParam}` : ''}${categoryId ? `&category_id=${categoryId}` : ''}`),
     enabled: isOpen,
   });
   const products = data?.data || [];
@@ -88,7 +91,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
   const apply = useMutation({
     mutationFn: () => api.patch('/products/bulk', applyAll
-      ? { all: true, match: { search: effectiveSearch, category_id: categoryId }, fields }
+      ? { all: true, match: { search: effectiveSearch, category_id: categoryId, volume: volumeParam || undefined }, fields }
       : { ids: selectedIds, fields }),
     onSuccess: (r) => {
       toast.success(`${r.updated} produto(s) atualizado(s)!`);
@@ -101,7 +104,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
     onError: (e) => toast.error(e.error || 'Erro ao aplicar'),
   });
 
-  const hasFilter = !!(effectiveSearch || categoryId);
+  const hasFilter = !!(effectiveSearch || categoryId || volumeParam);
   const targetCount = applyAll ? totalMatching : selectedIds.length;
   const canApply = hasFields && (applyAll ? totalMatching > 0 : selectedIds.length > 0);
 
