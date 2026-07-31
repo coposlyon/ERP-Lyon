@@ -325,13 +325,36 @@ export default function PDV({ onDone, mode = 'sale' }) {
   // Horários de coleta da transportadora (abrem pelo ⋯)
   const [showSched, setShowSched] = useState(false);
 
-  // ESC fecha primeiro o card de produtos (antes de fechar a tela toda)
+  // Lançamento do item: escolher o produto abre este card para ajustar
+  // quantidade, preço, desconto e cor da personalização antes de entrar no
+  // pedido. null = fechado.
+  const [launch, setLaunch] = useState(null);
+  const qtyRef = useRef(null);
+
+  // ESC fecha primeiro o card de produtos (antes de fechar a tela toda).
+  // Com o lançamento aberto, o ESC é dele — não fecha os produtos por baixo.
   useEffect(() => {
     if (!productsOpen) return;
-    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setProductsOpen(false); } };
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || launch) return;
+      e.stopPropagation();
+      setProductsOpen(false);
+    };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [productsOpen]);
+  }, [productsOpen, launch]);
+
+  // Atalhos do card de lançamento: F2 confirma, F3 acumula, ESC cancela.
+  useEffect(() => {
+    if (!launch) return;
+    const onKey = (e) => {
+      if (e.key === 'F2')      { e.preventDefault(); e.stopPropagation(); commitLaunch(false); }
+      else if (e.key === 'F3') { e.preventDefault(); e.stopPropagation(); commitLaunch(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setLaunch(null); }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
 
   // Variações reais do modelo em drill (com código), filtradas pela busca
   const variantList = useMemo(() => {
@@ -341,34 +364,6 @@ export default function PDV({ onDone, mode = 'sale' }) {
     if (!term) return all;
     return all.filter(x => x.name.toLowerCase().includes(term) || x.code.toLowerCase().includes(term));
   }, [drill, productSearch]);
-
-  // Adiciona um item ao carrinho. variantName != null → variação específica.
-  function pushItem(product, variantName, variantCode) {
-    const key = `${product.id}__${variantName || ''}`;
-    setItems(prev => {
-      const existing = prev.find(i => `${i.product_id}__${i.variant || ''}` === key);
-      if (existing) {
-        return prev.map(i => {
-          if (`${i.product_id}__${i.variant || ''}` !== key) return i;
-          const qty = i.quantity + 1;
-          return { ...i, quantity: qty, unit_price: i.priceTouched ? i.unit_price : tierPrice(i.price_tiers, i.sale_price, qty) };
-        });
-      }
-      return [...prev, {
-        product_id: product.id,
-        variant: variantName || null,
-        variant_code: variantCode || null,
-        name: variantName || product.name,
-        unit: product.unit,
-        sale_price: product.sale_price,
-        price_tiers: product.price_tiers || [],
-        unit_price: tierPrice(product.price_tiers, product.sale_price, 1),
-        quantity: 1,
-        discount: 0,
-        priceTouched: false,
-      }];
-    });
-  }
 
   // Clicou num modelo: se tem variações, abre a lista delas; senão adiciona direto.
   function pickProduct(product) {
@@ -382,19 +377,131 @@ export default function PDV({ onDone, mode = 'sale' }) {
   }
 
   function addProduct(product) {
-    setProductSearch('');
-    pushItem(product, null);
-    toast.success(`${product.name} adicionado`, { duration: 1200 });
-    setTimeout(() => searchRef.current?.focus(), 50);
+    openLaunch(product, null, null);
   }
 
-  // Adiciona a variação escolhida; permanece no drill p/ adicionar mais do mesmo modelo.
+  // Escolheu a variação: abre o lançamento dela (o drill continua atrás).
   function addVariant(variant) {
     if (!drill) return;
-    pushItem(drill, variant.name, variant.code);
-    toast.success(`${variant.name} adicionado`, { duration: 1200 });
-    setProductSearch('');
-    setTimeout(() => searchRef.current?.focus(), 30);
+    openLaunch(drill, variant.name, variant.code);
+  }
+
+  // ── Card de lançamento do item ──────────────────────────────────────
+  // Abre com o preço sugerido da faixa e deixa ajustar antes de entrar
+  // no pedido: quantidade, valor unitário, desconto (% ou R$) e a cor da
+  // personalização.
+  function openLaunch(product, variantName, variantCode) {
+    setLaunch({
+      product,
+      variantName: variantName || null,
+      variantCode: variantCode || null,
+      qty: '1',
+      priceStr: maskMoney(tierPrice(product.price_tiers, product.sale_price, 1)),
+      priceTouched: false,
+      discPercent: '0',
+      discStr: maskMoney(0),
+      color: '',
+    });
+    setTimeout(() => qtyRef.current?.select(), 40);
+  }
+
+  const lQty   = Math.max(1, parseFloat(String(launch?.qty ?? '1').replace(',', '.')) || 1);
+  const lPrice = parseMoney(launch?.priceStr);
+  const lGross = lQty * lPrice;
+  const lDisc  = Math.min(lGross, parseMoney(launch?.discStr));
+  const lNet   = Math.max(0, lGross - lDisc);
+
+  // Cores sugeridas: as do próprio produto (variações). O campo é livre.
+  const launchColorOptions = useMemo(() => {
+    const v = launch?.product?.variations || {};
+    return Array.isArray(v.colors) ? v.colors.filter(Boolean) : [];
+  }, [launch]);
+
+  // Mudou a quantidade: reaplica a faixa de preço (se o preço não foi
+  // editado na mão) e mantém o percentual de desconto escolhido.
+  function launchSetQty(v) {
+    setLaunch(l => {
+      if (!l) return l;
+      const q = Math.max(1, parseFloat(String(v).replace(',', '.')) || 1);
+      const next = { ...l, qty: v };
+      if (!l.priceTouched) next.priceStr = maskMoney(tierPrice(l.product.price_tiers, l.product.sale_price, q));
+      const pct = parseFloat(String(l.discPercent).replace(',', '.')) || 0;
+      if (pct > 0) next.discStr = maskMoney(Math.round(q * parseMoney(next.priceStr) * pct) / 100);
+      return next;
+    });
+  }
+
+  // Desconto: os dois campos andam juntos (digitou %, calcula R$ e vice-versa)
+  function launchSetPercent(v) {
+    setLaunch(l => {
+      if (!l) return l;
+      const pct = Math.min(100, Math.max(0, parseFloat(String(v).replace(',', '.')) || 0));
+      const q = Math.max(1, parseFloat(String(l.qty).replace(',', '.')) || 1);
+      const gross = q * parseMoney(l.priceStr);
+      return { ...l, discPercent: v, discStr: maskMoney(Math.round(gross * pct) / 100) };
+    });
+  }
+  function launchSetDisc(v) {
+    setLaunch(l => {
+      if (!l) return l;
+      const q = Math.max(1, parseFloat(String(l.qty).replace(',', '.')) || 1);
+      const gross = q * parseMoney(l.priceStr);
+      const val = Math.min(gross, parseMoney(v));
+      const pct = gross > 0 ? Math.round((val / gross) * 10000) / 100 : 0;
+      return { ...l, discStr: v, discPercent: String(pct).replace('.', ',') };
+    });
+  }
+
+  // Joga o item lançado no pedido. Mesmo produto + mesma variação + mesma
+  // cor cai na mesma linha (soma quantidade e desconto).
+  function pushLaunchItem(l, q, price, disc, color, priceTouched) {
+    const product = l.product;
+    const key = `${product.id}__${l.variantName || ''}__${color || ''}`;
+    setItems(prev => {
+      const existing = prev.find(i => `${i.product_id}__${i.variant || ''}__${i.print_color || ''}` === key);
+      if (existing) {
+        return prev.map(i => {
+          if (`${i.product_id}__${i.variant || ''}__${i.print_color || ''}` !== key) return i;
+          return { ...i, quantity: i.quantity + q, unit_price: price, discount: (i.discount || 0) + disc, priceTouched };
+        });
+      }
+      return [...prev, {
+        product_id: product.id,
+        variant: l.variantName || null,
+        variant_code: l.variantCode || null,
+        name: l.variantName || product.name,
+        unit: product.unit,
+        sale_price: product.sale_price,
+        price_tiers: product.price_tiers || [],
+        unit_price: price,
+        quantity: q,
+        discount: disc,
+        print_color: color || null,
+        priceTouched,
+      }];
+    });
+  }
+
+  // Confirmar (F2) fecha o card. Acumular (F3) mantém aberto no mesmo
+  // produto, com a quantidade zerada, para lançar outra cor/quantidade.
+  function commitLaunch(keepOpen) {
+    if (!launch) return;
+    const l = launch;
+    const q = Math.max(1, parseFloat(String(l.qty).replace(',', '.')) || 1);
+    const price = parseMoney(l.priceStr);
+    const gross = q * price;
+    const disc = Math.min(gross, parseMoney(l.discStr));
+    const color = String(l.color || '').trim();
+    pushLaunchItem(l, q, price, disc, color, !!l.priceTouched);
+    toast.success(`${l.variantName || l.product.name} adicionado`, { duration: 1200 });
+    if (keepOpen) {
+      setLaunch(cur => cur && { ...cur, qty: '1', discPercent: '0', discStr: maskMoney(0), color: '' });
+      setTimeout(() => qtyRef.current?.select(), 30);
+    } else {
+      setLaunch(null);
+      setProductSearch('');
+      setTimeout(() => searchRef.current?.focus(), 50);
+    }
   }
 
   function backToModels() {
@@ -454,7 +561,10 @@ export default function PDV({ onDone, mode = 'sale' }) {
     ));
   }
 
-  const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
+  // O desconto do item (dado no lançamento) já sai do subtotal — é assim
+  // que o backend grava o total da linha (qtd × preço − desconto).
+  const itemsDiscount = items.reduce((sum, i) => sum + (i.discount || 0), 0);
+  const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price - (i.discount || 0), 0);
   const discountValue = parseMoney(discount);
   const couponDiscount = coupon
     ? (coupon.discount_type === 'percent'
@@ -518,8 +628,14 @@ export default function PDV({ onDone, mode = 'sale' }) {
         quantity: i.quantity,
         unit_price: i.unit_price,
         discount: i.discount || 0,
-        // guarda a variação escolhida (código + nome) no item da venda
-        ...(i.variant ? { customization: { ...(i.variant_code ? { 'Código': i.variant_code } : {}), 'Variação': i.variant } } : {}),
+        // guarda a variação escolhida (código + nome) e a cor da personalização
+        ...((i.variant || i.print_color) ? {
+          customization: {
+            ...(i.variant_code ? { 'Código': i.variant_code } : {}),
+            ...(i.variant ? { 'Variação': i.variant } : {}),
+            ...(i.print_color ? { 'Cor da personalização': i.print_color } : {}),
+          },
+        } : {}),
       })),
       discount: discountValue + couponDiscount,
       coupon_code: coupon?.code || null,
@@ -552,9 +668,16 @@ export default function PDV({ onDone, mode = 'sale' }) {
         product_name: i.name,
         quantity: i.quantity,
         unit_price: i.unit_price,
-        ...(i.variant ? { customization: { ...(i.variant_code ? { 'Código': i.variant_code } : {}), 'Variação': i.variant } } : {}),
+        ...((i.variant || i.print_color) ? {
+          customization: {
+            ...(i.variant_code ? { 'Código': i.variant_code } : {}),
+            ...(i.variant ? { 'Variação': i.variant } : {}),
+            ...(i.print_color ? { 'Cor da personalização': i.print_color } : {}),
+          },
+        } : {}),
       })),
-      discount: discountValue,
+      // o orçamento não tem desconto por item: soma no desconto do total
+      discount: discountValue + itemsDiscount,
       delivery_days: parseInt(deliveryDays, 10) || 10,
       valid_until: until.toISOString().split('T')[0],
       notes: buildQuoteNotes({
@@ -931,6 +1054,13 @@ export default function PDV({ onDone, mode = 'sale' }) {
                         {item.variant_code && <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{item.variant_code}</span>}
                         <span>{item.name}</span>
                       </p>
+                      {(item.print_color || item.discount > 0) && (
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          {item.print_color && <>Personalização: {item.print_color}</>}
+                          {item.print_color && item.discount > 0 && ' · '}
+                          {item.discount > 0 && <>Desconto: {fmt(item.discount)}</>}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -965,7 +1095,7 @@ export default function PDV({ onDone, mode = 'sale' }) {
                       )}
                     </td>
                     <td className="px-4 py-2 text-right font-semibold">
-                      {fmt(item.quantity * item.unit_price)}
+                      {fmt(item.quantity * item.unit_price - (item.discount || 0))}
                     </td>
                     <td className="px-4 py-2">
                       <button onClick={() => removeItem(i)} className="btn-ghost p-1 text-red-400 hover:text-red-600">
@@ -1198,6 +1328,86 @@ export default function PDV({ onDone, mode = 'sale' }) {
         <div className="h-[65vh] flex flex-col">
           {ProductPanel}
         </div>
+      </Modal>
+
+      {/* Lançamento do produto: abre ao escolher o item na lista */}
+      <Modal isOpen={!!launch} onClose={() => setLaunch(null)} title="Lançamento de Produto" size="lg"
+        footer={
+          <>
+            <button type="button" onClick={() => setLaunch(null)} className="btn-secondary">
+              <X size={15} /> Cancelar <span className="text-gray-400 ml-1">ESC</span>
+            </button>
+            <button type="button" onClick={() => commitLaunch(true)} className="btn-secondary"
+              title="Lança este item e continua no mesmo produto, para outra cor ou quantidade">
+              <Plus size={15} /> Acumular <span className="text-gray-400 ml-1">F3</span>
+            </button>
+            <button type="button" onClick={() => commitLaunch(false)} className="btn-primary">
+              <Check size={15} /> Confirmar <span className="text-white/60 ml-1">F2</span>
+            </button>
+          </>
+        }>
+        {launch && (
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Produto</label>
+              <div className="input bg-gray-50 flex items-center gap-2 text-sm">
+                {launch.variantCode && (
+                  <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{launch.variantCode}</span>
+                )}
+                <span className="font-medium text-gray-800 truncate">{launch.variantName || launch.product.name}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">Quantidade</label>
+                <input ref={qtyRef} type="number" min="1" step="1" className="input text-sm w-full"
+                  value={launch.qty} onChange={e => launchSetQty(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">Valor unitário</label>
+                <input type="text" inputMode="decimal" className="input text-sm w-full text-right"
+                  value={launch.priceStr}
+                  onChange={e => setLaunch(l => ({ ...l, priceStr: e.target.value.replace(/[^\d.,]/g, ''), priceTouched: true }))}
+                  onBlur={() => setLaunch(l => ({ ...l, priceStr: maskMoney(parseMoney(l.priceStr)) }))} />
+                {launch.product.price_tiers?.length > 0 && !launch.priceTouched && (
+                  <p className="text-[10px] text-blue-500 mt-0.5">faixa automática</p>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">Desconto %</label>
+                <input type="text" inputMode="decimal" className="input text-sm w-full text-right"
+                  value={launch.discPercent} onChange={e => launchSetPercent(e.target.value.replace(/[^\d.,]/g, ''))} />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">Desconto R$</label>
+                <input type="text" inputMode="decimal" className="input text-sm w-full text-right"
+                  value={launch.discStr}
+                  onChange={e => launchSetDisc(e.target.value.replace(/[^\d.,]/g, ''))}
+                  onBlur={() => setLaunch(l => ({ ...l, discStr: maskMoney(parseMoney(l.discStr)) }))} />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Cor da personalização</label>
+              <input type="text" className="input text-sm w-full" list="pdv-launch-colors"
+                placeholder="opcional — ex.: BRANCO, PRETO, DOURADO"
+                value={launch.color} onChange={e => setLaunch(l => ({ ...l, color: e.target.value }))} />
+              <datalist id="pdv-launch-colors">
+                {launchColorOptions.map(c => <option key={c} value={c} />)}
+              </datalist>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+              <div className="text-xs text-gray-400">
+                {fmt(lPrice)} × {lQty}{lDisc > 0 ? ` − ${fmt(lDisc)} de desconto` : ''}
+              </div>
+              <div className="text-lg font-bold text-gray-900">
+                Total líquido do item: <span className="text-primary-600">{fmt(lNet)}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Foto do orçamento gerada — visualizar e baixar */}
