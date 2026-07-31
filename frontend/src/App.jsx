@@ -1,4 +1,4 @@
-import { lazy } from 'react';
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
@@ -70,6 +70,15 @@ const HRFolha            = lazy(() => import('@/pages/HR/HRFolha'));
 const HRDocumentos       = lazy(() => import('@/pages/HR/HRDocumentos'));
 const HRConformidade     = lazy(() => import('@/pages/HR/HRConformidade'));
 
+// Fallback das rotas de tela cheia (fora do Layout, que tem o Suspense dele).
+function AppLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
+    </div>
+  );
+}
+
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return (
@@ -96,6 +105,12 @@ function AppRoutes() {
   const { user } = useAuth();
 
   return (
+    // Boundary de Suspense do app inteiro. As páginas dentro do Layout já
+    // têm o Suspense de lá (mais próximo, ganha). Este aqui cobre as rotas
+    // de tela cheia — /sales/new, /quotes/new — que ficam FORA do Layout:
+    // sem ele, o chunk lazy suspende no clique e o React quebra com o
+    // erro #426 ("suspended while responding to synchronous input").
+    <Suspense fallback={<AppLoading />}>
     <Routes>
       {/* Loja pública — sem login, fora do ERP */}
       <Route path="/loja/*" element={<StoreApp />} />
@@ -189,6 +204,7 @@ function AppRoutes() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 
