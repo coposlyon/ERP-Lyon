@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone, Trash2, Loader2, Instagram, Contact, ShieldCheck, AlertTriangle, CheckCircle2, Ban, RefreshCw } from 'lucide-react';
+import { Plus, Search, Edit2, Eye, Star, MessageCircle, Megaphone, Trash2, Loader2, Instagram, Contact, ShieldCheck, AlertTriangle, CheckCircle2, Ban, RefreshCw, Upload } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
@@ -69,6 +69,27 @@ export default function Customers() {
     onSuccess: (r) => { toast.success(`Estrelas recalculadas (${r.customers || 0} clientes)`); qc.invalidateQueries(['customers']); },
     onError: e => toast.error(e.error || 'Erro ao recalcular'),
   });
+  // Google Contatos: o botão só aparece se o servidor tem as credenciais.
+  const { data: googleStatus } = useQuery({
+    queryKey: ['google-contacts-status'],
+    queryFn: () => api.get('/customers/google-sync/status'),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const googleSyncMut = useMutation({
+    mutationFn: () => api.post('/customers/google-sync'),
+    onSuccess: (r) => {
+      const partes = [];
+      if (r.created) partes.push(`${r.created} criados`);
+      if (r.updated) partes.push(`${r.updated} atualizados`);
+      if (r.skipped) partes.push(`${r.skipped} sem telefone`);
+      toast.success(`Google Contatos: ${partes.join(', ') || 'nada a fazer'}`);
+      if (r.errors?.length) toast.error(r.errors[0]);
+      qc.invalidateQueries(['customers']);
+    },
+    onError: e => toast.error(e.error || 'Erro ao sincronizar com o Google'),
+  });
+
   function consultarScore(row) {
     setScoreCustomer(row);
     scoreMut.reset();
@@ -264,6 +285,12 @@ export default function Customers() {
             title="Baixa um arquivo .vcf com nome + código + telefone para importar no Google Contatos / celular">
             {exportingContacts ? <Loader2 size={16} className="animate-spin" /> : <Contact size={16} />} Exportar contatos
           </button>
+          {googleStatus?.configured && (
+            <button onClick={() => googleSyncMut.mutate()} disabled={googleSyncMut.isPending} className="btn-secondary disabled:opacity-50"
+              title="Envia todos os clientes ativos com telefone para o seu Google Contatos. Rodar de novo não duplica: atualiza o que já existe.">
+              {googleSyncMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} Sincronizar Google
+            </button>
+          )}
           <CopyLinkButton path="/cadastro" />
           <button onClick={openNew} className="btn-primary"><Plus size={16} /> Novo</button>
         </div>

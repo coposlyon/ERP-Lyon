@@ -159,6 +159,24 @@ router.get('/export-contacts', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Empurra TODOS os clientes ativos com telefone para o Google Contatos.
+// O sync automático só roda no cadastro/edição — quem já estava na base
+// antes da integração precisa desse empurrão (uma vez). Rodar de novo
+// não duplica: atualiza o que já existe.
+router.get('/google-sync/status', (req, res) => {
+  res.json({ configured: googleContacts.configured() });
+});
+
+router.post('/google-sync', async (req, res) => {
+  try {
+    const r = await googleContacts.syncAll(supabase, req.tenantId);
+    res.json({ ok: true, ...r });
+  } catch (err) {
+    const status = err.code === 'NOT_CONFIGURED' ? 400 : 500;
+    res.status(status).json({ error: err.message });
+  }
+});
+
 // ── E-mail em massa (marketing) pelo SMTP configurado ────────────────
 router.post('/marketing/email', async (req, res) => {
   const { subject, message, emails } = req.body;

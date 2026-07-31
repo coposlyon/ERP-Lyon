@@ -200,6 +200,29 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   atualiza o mesmo contato (não duplica). Se apagar o contato no Google,
   um novo é criado na próxima edição.
 
+### ATENÇÃO: modo "Teste" derruba a integração em 7 dias
+No modo **Teste** da tela de consentimento, o Google **expira o refresh
+token em 7 dias**. Depois disso todo sync falha em silêncio (o erro só
+aparece no log do servidor, `[googleContacts]`). Se os contatos pararam
+de aparecer no Google, é quase sempre isso.
+**Correção:** console.cloud.google.com → *Tela de consentimento OAuth* →
+**PUBLICAR APP** (status *Em produção*). O app fica como "não verificado"
+(aparece um aviso na hora de autorizar, é só clicar em avançado), mas o
+refresh token deixa de expirar. Depois de publicar, **gere um refresh
+token novo** (passo 4) e troque a variável `GOOGLE_REFRESH_TOKEN`.
+
+### Sincronizar a base inteira (backfill)
+O sync automático só dispara no **cadastro/edição** de um cliente. Quem
+já estava na base antes de ligar a integração nunca foi para o Google.
+Para empurrar todo mundo: **Clientes → Sincronizar Google**
+(`POST /api/customers/google-sync`). O botão só aparece quando as
+variáveis estão configuradas no servidor.
+- Manda todos os clientes **ativos, PF/PJ, com telefone**.
+- **Não duplica:** antes de criar, lê a agenda do Google e casa pelo
+  telefone. Contato que veio da importação do `.vcf` é atualizado e
+  vinculado ao cliente, não clonado.
+- Rodar de novo é seguro: o que já existe é só atualizado.
+
 ## 12. Erros em produção (Sentry) — opcional
 - `SENTRY_DSN` — DSN do projeto no sentry.io. Com isso, todo erro de servidor é
   reportado automaticamente.
