@@ -20,6 +20,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [ncm, setNcm] = useState('');
   const [cst, setCst] = useState('');
   const [cfop, setCfop] = useState('');
+  const [inkType, setInkType] = useState('');       // '' não altera | PP | PS | __none__ limpa
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);        // modal de apagar em massa
   const [delPassword, setDelPassword] = useState('');
@@ -74,6 +75,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
   if (ncm.trim()) fields.ncm = ncm.trim();
   if (cst.trim()) fields.cst = cst.trim();
   if (cfop.trim()) fields.cfop = cfop.trim();
+  if (inkType) fields.ink_type = inkType;   // 'PP' | 'PS' | '__none__' (limpa)
   const hasFields = Object.keys(fields).length > 0;
 
   // Apagar em massa (definitivo) — só nos selecionados e com senha da conta.
@@ -114,7 +116,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
     setApplyAll(false);
     setSupplierId('');
     setCostPrice('');
-    setNcm(''); setCst(''); setCfop('');
+    setNcm(''); setCst(''); setCfop(''); setInkType('');
     setConfirmOpen(false);
     setDelOpen(false); setDelPassword('');
     onClose();
@@ -248,6 +250,24 @@ export default function BulkEditModal({ isOpen, onClose }) {
               <label className="label">Custo de compra (R$)</label>
               <input className="input" type="number" step="0.01" value={costPrice} onChange={e => setCostPrice(e.target.value)} placeholder="—" />
             </div>
+          </div>
+        </div>
+
+        {/* Tinta do copo */}
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Tinta do copo</p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              ['', 'Não alterar'],
+              ['PP', 'PP'],
+              ['PS', 'PS'],
+              ['__none__', 'Limpar'],
+            ].map(([v, label]) => (
+              <button key={v || 'keep'} type="button" onClick={() => setInkType(v)}
+                className={`px-3 py-1.5 rounded-lg border text-sm font-medium ${inkType === v ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 

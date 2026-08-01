@@ -1,7 +1,9 @@
 import { X } from 'lucide-react';
 import { useEffect } from 'react';
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md', footer }) {
+// closeOnBackdrop={false} → clicar fora NÃO fecha. Use em formulário longo,
+// onde um clique fora por engano jogaria o preenchimento fora.
+export default function Modal({ isOpen, onClose, title, children, size = 'md', footer, closeOnBackdrop = true }) {
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = '';
@@ -44,7 +46,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={closeOnBackdrop ? onClose : undefined}
       />
       {/* No celular vira uma folha que sobe de baixo (mais fácil de alcançar) */}
       <div className={`relative bg-white rounded-t-2xl sm:rounded-xl shadow-2xl w-full ${sizes[size]} max-h-[92vh] sm:max-h-[90vh] flex flex-col`}>

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   Plus, Loader2, Pencil, Trash2, X, Save, Search, FlaskConical, Package,
   Users, LineChart, AlertTriangle, Clock, TrendingUp, TrendingDown, Star,
@@ -251,8 +251,39 @@ function HistoricoModal({ insumo, onClose }) {
 
 function InsumoModal({ open, initial, suppliers, products, onClose, onSaved }) {
   const isEdit = !!initial?.id;
+  const qc = useQueryClient();
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [manageCats, setManageCats] = useState(false); // painel de categorias
+  const [novaCat, setNovaCat] = useState('');
+
+  // Categorias da empresa (as padrão enquanto ninguém editar)
+  const { data: categories = CATEGORIES } = useQuery({
+    queryKey: ['insumo-categorias'],
+    queryFn: () => api.get('/insumos/categorias'),
+    enabled: open,
+  });
+
+  const salvarCats = useMutation({
+    mutationFn: (list) => api.put('/insumos/categorias', { categories: list }),
+    onSuccess: (list) => { qc.setQueryData(['insumo-categorias'], list); },
+    onError: (e) => toast.error(e.error || 'Erro ao salvar as categorias'),
+  });
+
+  function addCategoria() {
+    const c = novaCat.trim();
+    if (!c) return;
+    if (categories.some(x => x.toLowerCase() === c.toLowerCase())) { toast.error('Essa categoria já existe'); return; }
+    salvarCats.mutate([...categories, c]);
+    setNovaCat('');
+  }
+
+  function removeCategoria(c) {
+    if (categories.length <= 1) { toast.error('Deixe ao menos uma categoria'); return; }
+    if (!confirm(`Apagar a categoria "${c}"?\n\nOs insumos já cadastrados nela continuam como estão.`)) return;
+    salvarCats.mutate(categories.filter(x => x !== c));
+    if (f.category === c) set({ category: categories.find(x => x !== c) });
+  }
 
   const f = form || {
     category: initial?.category || 'Tintas',
@@ -309,15 +340,48 @@ function InsumoModal({ open, initial, suppliers, products, onClose, onSaved }) {
   }
 
   return (
-    <Modal isOpen={open} onClose={() => { setForm(null); onClose(); }}
+    <Modal isOpen={open} onClose={() => { setForm(null); onClose(); }} closeOnBackdrop={false}
       title={isEdit ? 'Editar insumo' : 'Novo insumo'} size="md">
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Categoria</label>
-            <select className="input" value={f.category} onChange={e => set({ category: e.target.value })}>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            {/* A última opção abre o painel de gerenciar (criar/apagar) */}
+            <select className="input" value={f.category}
+              onChange={e => {
+                if (e.target.value === '__manage__') { setManageCats(true); return; }
+                set({ category: e.target.value });
+              }}>
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              {!categories.includes(f.category) && <option value={f.category}>{f.category}</option>}
+              <option value="__manage__">＋ Nova / apagar categoria...</option>
             </select>
+            {manageCats && (
+              <div className="mt-2 border border-gray-200 rounded-lg p-2 bg-gray-50 space-y-2">
+                <div className="flex gap-1">
+                  <input className="input text-sm flex-1" placeholder="Nova categoria" value={novaCat}
+                    onChange={e => setNovaCat(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCategoria(); } }} />
+                  <button type="button" className="btn-primary px-2" onClick={addCategoria} disabled={salvarCats.isPending}>
+                    <Plus size={14} />
+                  </button>
+                </div>
+                <ul className="max-h-36 overflow-y-auto divide-y divide-gray-100 bg-white rounded-md border border-gray-100">
+                  {categories.map(c => (
+                    <li key={c} className="flex items-center justify-between px-2 py-1 text-sm">
+                      <span className="truncate">{c}</span>
+                      <button type="button" className="btn-ghost p-1 text-red-500" title="Apagar categoria"
+                        onClick={() => removeCategoria(c)} disabled={salvarCats.isPending}>
+                        <Trash2 size={13} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex justify-end">
+                  <button type="button" className="btn-secondary py-1 text-xs" onClick={() => setManageCats(false)}>Fechar</button>
+                </div>
+              </div>
+            )}
           </div>
           <div>
             <label className="label">Nome do insumo *</label>

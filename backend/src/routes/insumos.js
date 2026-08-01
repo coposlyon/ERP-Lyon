@@ -13,6 +13,57 @@ const { audit } = require('../lib/audit');
 const r6 = v => Math.round((Number(v) || 0) * 1e6) / 1e6;
 const r4 = v => Math.round((Number(v) || 0) * 1e4) / 1e4;
 
+// ── Categorias do insumo ────────────────────────────────────
+// Ficam em EMPRESAS.settings.insumo_categories (por empresa). Enquanto
+// ninguém mexer, valem as padrão. A lista salva é a lista inteira — é
+// assim que apagar uma categoria funciona.
+const CATEGORIAS_PADRAO = ['Tintas', 'Solventes', 'Thinner', 'Emulsão', 'Telas / Poliéster', 'Vegetal', 'Recuperador', 'Fita', 'Embalagem', 'Caixa', 'Rótulo', 'Outros'];
+
+async function lerSettings(tenantId) {
+  const { data, error } = await supabase.from('EMPRESAS').select('settings').eq('id', tenantId).single();
+  if (error) throw error;
+  return (data && data.settings) || {};
+}
+
+router.get('/categorias', async (req, res) => {
+  try {
+    const settings = await lerSettings(req.tenantId);
+    const list = settings.insumo_categories;
+    res.json(Array.isArray(list) && list.length ? list : CATEGORIAS_PADRAO);
+  } catch (err) {
+    // Sem a coluna settings (ou empresa sem registro), devolve o padrão.
+    res.json(CATEGORIAS_PADRAO);
+  }
+});
+
+router.put('/categorias', async (req, res) => {
+  const list = Array.isArray(req.body?.categories) ? req.body.categories : null;
+  if (!list) return res.status(400).json({ error: 'Envie a lista de categorias' });
+  // limpa, tira repetido (sem diferenciar maiúscula) e limita o tamanho
+  const seen = new Set();
+  const clean = [];
+  for (const raw of list) {
+    const c = String(raw || '').trim().slice(0, 60);
+    if (!c) continue;
+    const k = c.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    clean.push(c);
+    if (clean.length >= 100) break;
+  }
+  if (!clean.length) return res.status(400).json({ error: 'Deixe ao menos uma categoria' });
+  try {
+    const settings = await lerSettings(req.tenantId);
+    const { error } = await supabase.from('EMPRESAS')
+      .update({ settings: { ...settings, insumo_categories: clean } })
+      .eq('id', req.tenantId);
+    if (error) throw error;
+    res.json(clean);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Enriqumece um insumo com os custos derivados
 function withCost(i) {
   const qty = Number(i.package_qty) || 0;

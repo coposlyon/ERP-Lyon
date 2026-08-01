@@ -65,6 +65,32 @@ const volumeML = (name) => {
   return m ? parseInt(m[1]) : null;
 };
 
+// O que foi escolhido no lançamento vai junto do item da venda/orçamento.
+// null quando não há nada a guardar.
+function itemCustomization(i) {
+  const c = {
+    ...(i.variant_code ? { 'Código': i.variant_code } : {}),
+    ...(i.variant ? { 'Variação': i.variant } : {}),
+    ...(i.print_color ? { 'Cor da personalização': i.print_color } : {}),
+    ...(i.borda ? { 'Borda': i.borda } : {}),
+    ...(i.ink_type ? { 'Tinta': i.ink_type } : {}),
+    ...(i.acabamentos?.length ? { 'Acabamentos': i.acabamentos.join(', ') } : {}),
+  };
+  return Object.keys(c).length ? c : null;
+}
+
+// Acabamentos e técnicas marcáveis no lançamento do item. Todos opcionais.
+const ACABAMENTOS = ['Cor degradê', 'Cor bicolor', 'Jateado', 'Borda metalizada', 'Pintura', 'Laser', 'Transfer', 'DTF'];
+
+// O produto tem borda? Lê da variação escolhida e, se não disser, das
+// variações do produto. É só o palpite inicial: quem decide é o operador.
+function palpiteBorda(product, variantName) {
+  const v = (product && product.variations) || {};
+  const hay = [variantName, product?.name, ...(Array.isArray(v.borders) ? v.borders : []), ...(Array.isArray(v.items) ? v.items : [])]
+    .join(' ').toLowerCase();
+  return hay.includes('borda') ? 'Com borda' : 'Sem borda';
+}
+
 // Opção fixa do seletor de transportadora: o cliente retira na loja.
 const RETIRADA = '__retirada__';
 const RETIRADA_LABEL = 'Retirar em mãos';
@@ -401,8 +427,15 @@ export default function PDV({ onDone, mode = 'sale' }) {
       discPercent: '0',
       discStr: maskMoney(0),
       color: '',
+      borda: palpiteBorda(product, variantName),
+      ink: product.ink_type || '',
+      acab: [],
     });
     setTimeout(() => qtyRef.current?.select(), 40);
+  }
+
+  function toggleAcab(a) {
+    setLaunch(l => l && ({ ...l, acab: l.acab.includes(a) ? l.acab.filter(x => x !== a) : [...l.acab, a] }));
   }
 
   const lQty   = Math.max(1, parseFloat(String(launch?.qty ?? '1').replace(',', '.')) || 1);
@@ -452,16 +485,18 @@ export default function PDV({ onDone, mode = 'sale' }) {
     });
   }
 
-  // Joga o item lançado no pedido. Mesmo produto + mesma variação + mesma
-  // cor cai na mesma linha (soma quantidade e desconto).
+  // Joga o item lançado no pedido. Mesma combinação (produto + variação +
+  // cor + borda + tinta + acabamentos) cai na mesma linha.
   function pushLaunchItem(l, q, price, disc, color, priceTouched) {
     const product = l.product;
-    const key = `${product.id}__${l.variantName || ''}__${color || ''}`;
+    const acab = [...l.acab].sort().join('|');
+    const lineKey = i => [i.product_id, i.variant || '', i.print_color || '', i.borda || '', i.ink_type || '', [...(i.acabamentos || [])].sort().join('|')].join('__');
+    const key = [product.id, l.variantName || '', color || '', l.borda || '', l.ink || '', acab].join('__');
     setItems(prev => {
-      const existing = prev.find(i => `${i.product_id}__${i.variant || ''}__${i.print_color || ''}` === key);
+      const existing = prev.find(i => lineKey(i) === key);
       if (existing) {
         return prev.map(i => {
-          if (`${i.product_id}__${i.variant || ''}__${i.print_color || ''}` !== key) return i;
+          if (lineKey(i) !== key) return i;
           return { ...i, quantity: i.quantity + q, unit_price: price, discount: (i.discount || 0) + disc, priceTouched };
         });
       }
@@ -477,6 +512,9 @@ export default function PDV({ onDone, mode = 'sale' }) {
         quantity: q,
         discount: disc,
         print_color: color || null,
+        borda: l.borda || null,
+        ink_type: l.ink || null,
+        acabamentos: [...l.acab],
         priceTouched,
       }];
     });
@@ -487,6 +525,10 @@ export default function PDV({ onDone, mode = 'sale' }) {
   function commitLaunch(keepOpen) {
     if (!launch) return;
     const l = launch;
+    if (!String(l.color || '').trim()) {
+      toast.error('Informe a cor da personalização');
+      return;
+    }
     const q = Math.max(1, parseFloat(String(l.qty).replace(',', '.')) || 1);
     const price = parseMoney(l.priceStr);
     const gross = q * price;
@@ -495,7 +537,8 @@ export default function PDV({ onDone, mode = 'sale' }) {
     pushLaunchItem(l, q, price, disc, color, !!l.priceTouched);
     toast.success(`${l.variantName || l.product.name} adicionado`, { duration: 1200 });
     if (keepOpen) {
-      setLaunch(cur => cur && { ...cur, qty: '1', discPercent: '0', discStr: maskMoney(0), color: '' });
+      // mantém borda e tinta (são do copo) e limpa o resto para o próximo lançamento
+      setLaunch(cur => cur && { ...cur, qty: '1', discPercent: '0', discStr: maskMoney(0), color: '', acab: [] });
       setTimeout(() => qtyRef.current?.select(), 30);
     } else {
       setLaunch(null);
@@ -629,13 +672,7 @@ export default function PDV({ onDone, mode = 'sale' }) {
         unit_price: i.unit_price,
         discount: i.discount || 0,
         // guarda a variação escolhida (código + nome) e a cor da personalização
-        ...((i.variant || i.print_color) ? {
-          customization: {
-            ...(i.variant_code ? { 'Código': i.variant_code } : {}),
-            ...(i.variant ? { 'Variação': i.variant } : {}),
-            ...(i.print_color ? { 'Cor da personalização': i.print_color } : {}),
-          },
-        } : {}),
+        ...(itemCustomization(i) ? { customization: itemCustomization(i) } : {}),
       })),
       discount: discountValue + couponDiscount,
       coupon_code: coupon?.code || null,
@@ -668,13 +705,7 @@ export default function PDV({ onDone, mode = 'sale' }) {
         product_name: i.name,
         quantity: i.quantity,
         unit_price: i.unit_price,
-        ...((i.variant || i.print_color) ? {
-          customization: {
-            ...(i.variant_code ? { 'Código': i.variant_code } : {}),
-            ...(i.variant ? { 'Variação': i.variant } : {}),
-            ...(i.print_color ? { 'Cor da personalização': i.print_color } : {}),
-          },
-        } : {}),
+        ...(itemCustomization(i) ? { customization: itemCustomization(i) } : {}),
       })),
       // o orçamento não tem desconto por item: soma no desconto do total
       discount: discountValue + itemsDiscount,
@@ -1054,13 +1085,16 @@ export default function PDV({ onDone, mode = 'sale' }) {
                         {item.variant_code && <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{item.variant_code}</span>}
                         <span>{item.name}</span>
                       </p>
-                      {(item.print_color || item.discount > 0) && (
-                        <p className="text-[11px] text-gray-400 mt-0.5">
-                          {item.print_color && <>Personalização: {item.print_color}</>}
-                          {item.print_color && item.discount > 0 && ' · '}
-                          {item.discount > 0 && <>Desconto: {fmt(item.discount)}</>}
-                        </p>
-                      )}
+                      {(() => {
+                        const partes = [
+                          item.print_color && `Personalização: ${item.print_color}`,
+                          item.borda,
+                          item.ink_type,
+                          item.acabamentos?.length && item.acabamentos.join(', '),
+                          item.discount > 0 && `Desconto: ${fmt(item.discount)}`,
+                        ].filter(Boolean);
+                        return partes.length ? <p className="text-[11px] text-gray-400 mt-0.5">{partes.join(' · ')}</p> : null;
+                      })()}
                     </td>
                     <td className="px-4 py-2 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -1388,14 +1422,55 @@ export default function PDV({ onDone, mode = 'sale' }) {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">
+                  Cor da personalização <span className="text-red-500">*</span>
+                </label>
+                <input type="text" className="input text-sm w-full" list="pdv-launch-colors"
+                  placeholder="ex.: BRANCO, PRETO, DOURADO"
+                  value={launch.color} onChange={e => setLaunch(l => ({ ...l, color: e.target.value }))} />
+                <datalist id="pdv-launch-colors">
+                  {launchColorOptions.map(c => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">Borda</label>
+                <div className="flex gap-2">
+                  {['Com borda', 'Sem borda'].map(b => (
+                    <button key={b} type="button" onClick={() => setLaunch(l => ({ ...l, borda: b }))}
+                      className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium ${launch.borda === b ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                      {b}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Cor da personalização</label>
-              <input type="text" className="input text-sm w-full" list="pdv-launch-colors"
-                placeholder="opcional — ex.: BRANCO, PRETO, DOURADO"
-                value={launch.color} onChange={e => setLaunch(l => ({ ...l, color: e.target.value }))} />
-              <datalist id="pdv-launch-colors">
-                {launchColorOptions.map(c => <option key={c} value={c} />)}
-              </datalist>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Tinta <span className="text-gray-300">(opcional)</span></label>
+              <div className="flex gap-2">
+                {['PP', 'PS'].map(t => (
+                  <button key={t} type="button"
+                    onClick={() => setLaunch(l => ({ ...l, ink: l.ink === t ? '' : t }))}
+                    className={`px-4 py-1.5 rounded-lg border text-sm font-medium ${launch.ink === t ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Acabamentos <span className="text-gray-300">(opcionais)</span></label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {ACABAMENTOS.map(a => (
+                  <label key={a} className={`flex items-center gap-2 text-sm rounded-lg border px-2 py-1.5 cursor-pointer ${launch.acab.includes(a) ? 'border-primary-300 bg-primary-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <input type="checkbox" className="w-4 h-4 accent-primary-600"
+                      checked={launch.acab.includes(a)} onChange={() => toggleAcab(a)} />
+                    <span className="truncate">{a}</span>
+                  </label>
+                ))}
+              </div>
             </div>
 
             <div className="flex items-center justify-between border-t border-gray-100 pt-3">

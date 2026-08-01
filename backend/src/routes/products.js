@@ -142,6 +142,10 @@ router.patch('/bulk', async (req, res) => {
   if (fields.tipo_id !== undefined) patch.tipo_id = fields.tipo_id || null;
   // Fornecedor: '' / null = limpa; id = define
   if (fields.supplier_id !== undefined) patch.supplier_id = fields.supplier_id || null;
+  // Tinta do copo: 'PP' | 'PS' | '__none__' (limpa). '' = não altera.
+  if (fields.ink_type !== undefined && fields.ink_type !== '') {
+    patch.ink_type = fields.ink_type === '__none__' ? null : String(fields.ink_type).toUpperCase().slice(0, 10);
+  }
   // Visibilidade na loja (true/false). '' / undefined = não altera.
   if (fields.show_in_store !== undefined && fields.show_in_store !== '') {
     patch.show_in_store = fields.show_in_store === true || fields.show_in_store === 'true';
@@ -228,8 +232,8 @@ router.patch('/bulk', async (req, res) => {
   try {
     let { data, error } = await runUpdate(patch);
     // resiliência: se min_order_qty/print_pricing ainda não existem, aplica o resto
-    if (error && /print_pricing|min_order_qty|show_in_store|does not exist|column|42703/i.test(error.message || '')) {
-      const { print_pricing, min_order_qty, show_in_store, ...rest } = patch;
+    if (error && /print_pricing|min_order_qty|show_in_store|ink_type|does not exist|column|42703/i.test(error.message || '')) {
+      const { print_pricing, min_order_qty, show_in_store, ink_type, ...rest } = patch;
       ({ data, error } = await runUpdate(rest));
     }
     if (error) throw error;
