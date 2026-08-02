@@ -1447,18 +1447,8 @@ export default function PDV({ onDone, mode = 'sale' }) {
               </div>
             </div>
 
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Tinta <span className="text-gray-300">(opcional)</span></label>
-              <div className="flex gap-2">
-                {['PP', 'PS'].map(t => (
-                  <button key={t} type="button"
-                    onClick={() => setLaunch(l => ({ ...l, ink: l.ink === t ? '' : t }))}
-                    className={`px-4 py-1.5 rounded-lg border text-sm font-medium ${launch.ink === t ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Tinta (PP/PS) vem do cadastro do produto (product.ink_type) —
+                não se escolhe aqui. launch.ink já é inicializado a partir dele. */}
 
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Acabamentos <span className="text-gray-300">(opcionais)</span></label>
