@@ -209,14 +209,15 @@ export function buildModel(type) {
     mk(new THREE.CylinderGeometry(0.6, 0.64, 3.1, seg, 24, true), 0, bodyMeshes); // openEnded
     const bottom = mk(new THREE.CircleGeometry(0.64, seg), -1.55, bodyMeshes);
     bottom.rotation.x = -Math.PI / 2;
-    // alça: tubo em "D" conectado no corpo (cima e baixo)
+    // alça em "D" grande: encosta no corpo em cima e embaixo, com barriga
+    // bem aberta e mais grossa (a antiga era fininha e alta demais).
     const sCurve = new THREE.CubicBezierCurve3(
-      new THREE.Vector3(0.54, 1.20, 0),
-      new THREE.Vector3(1.18, 0.95, 0),
-      new THREE.Vector3(1.18, -0.25, 0),
-      new THREE.Vector3(0.54, 0.00, 0),
+      new THREE.Vector3(0.56, 1.15, 0),
+      new THREE.Vector3(1.52, 0.80, 0),
+      new THREE.Vector3(1.52, -0.60, 0),
+      new THREE.Vector3(0.60, -0.55, 0),
     );
-    mk(new THREE.TubeGeometry(sCurve, 64, 0.07, 16, false), 0, bodyMeshes);
+    mk(new THREE.TubeGeometry(sCurve, 90, 0.09, 20, false), 0, bodyMeshes);
   } else if (type === 'taca') {
     // taça: bojo (pintável) + haste + base
     mk(new THREE.CylinderGeometry(0.44, 0.13, 1.6, seg), 1.7, bodyMeshes);   // bojo (mainBody)
@@ -255,7 +256,13 @@ export function buildModel(type) {
     mk(new THREE.CylinderGeometry(0.1, 0.14, 0.5, 32), 2.18, capMeshes, { rotX: -0.5, z: 0.28 });
   }
 
-  group.position.y = -0.6;
+  // Assenta a base do copo exatamente sobre o plano de sombra (y = -1.62),
+  // seja qual for a altura do modelo. Antes o offset era fixo (-0.6): copos
+  // altos atravessavam o chão (faixa escura embaixo + sombra fora do lugar)
+  // e os baixos flutuavam.
+  group.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(group);
+  group.position.y = -1.62 - box.min.y;
   group.userData = { bodyMeshes, capMeshes, mainBody: bodyMeshes[0] };
   return group;
 }

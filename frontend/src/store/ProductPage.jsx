@@ -111,9 +111,11 @@ export default function ProductPage() {
   }, [product, qty, printMethod]); // eslint-disable-line
 
   const modelKey = modelKeyFor(product);
+  // cor da variante escolhida; se não houver grupo de cores, tenta pelo nome
+  // do produto (ex.: "... AZUL BIC ...") antes de cair no laranja padrão.
   const bodyHex = currentColor
     ? resolveColor({ name: currentColor.short, value: currentColor.short })
-    : '#F26522';
+    : resolveColor({ name: product?.color_label || product?.name, value: product?.color_label });
   // Semente estável do 3D (hook antes de qualquer return — regras de hooks).
   const initial3D = useMemo(
     () => ({ model: modelKey, color1: bodyHex, color2: '#0B1B4D', gradient, capColor: '#1A1A1A' }),
