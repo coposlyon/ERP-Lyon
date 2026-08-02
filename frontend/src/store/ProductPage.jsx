@@ -1,12 +1,26 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Check, ShoppingCart, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, Check, ShoppingCart, Minus, Plus, Box, Download, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import storeApi from './storeApi';
 import Bottle from './Bottle';
 import { useCart } from './CartContext';
+// three.js é pesado: só carrega quando o cliente abre a prévia 3D.
+const Studio3D = lazy(() => import('@/studio3d/Studio3D'));
 import { resolveColor, needsBorder } from './colors';
+
+// Descobre qual modelo 3D representa o produto (pelo nome/categoria/grupo).
+function modelKeyFor(product) {
+  const s = `${product?.name || ''} ${product?.category || ''} ${product?.group || ''}`.toLowerCase();
+  if (/twist/.test(s)) return 'twister';
+  if (/long\s*drink/.test(s)) return 'longdrink';
+  if (/slim/.test(s)) return 'slim';
+  if (/caneca/.test(s)) return 'caneca';
+  if (/ta[çc]a/.test(s)) return 'taca';
+  if (/garrafa/.test(s)) return 'garrafa';
+  return 'shaker';
+}
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
@@ -51,6 +65,7 @@ export default function ProductPage() {
   const [printMethod, setPrintMethod] = useState(null);
   const [qty, setQty] = useState(1);
   const [imgError, setImgError] = useState(false);
+  const [show3D, setShow3D] = useState(false);
 
   const { data: product, isLoading, isFetching, error } = useQuery({
     queryKey: ['store-product', id],
@@ -118,6 +133,35 @@ export default function ProductPage() {
     toast.success('Adicionado ao carrinho!');
   }
 
+  // Adiciona ao carrinho já com a personalização 3D (design + prévia).
+  function add3DToCart(a) {
+    const methodLabel = methods.find(m => m.key === printMethod)?.label;
+    add({
+      product_id: product.id,
+      product_name: product.name,
+      color: currentColor?.short || product.color_label || null,
+      print_method: printMethod || null,
+      print_name: methodLabel || null,
+      unit_price: unitPrice,
+      quantity: qty,
+      min_order_qty: minQty,
+      design: a.getDesign(),
+      preview: a.getThumb(),
+    });
+    toast.success('Personalização adicionada ao carrinho!');
+    setShow3D(false);
+    navigate('/loja/carrinho');
+  }
+
+  const modelKey = modelKeyFor(product);
+  const bodyHex = currentColor
+    ? resolveColor({ name: currentColor.short, value: currentColor.short })
+    : '#F26522';
+  // Semente estável: sem isso o Studio3D reinicia as cores a cada render.
+  const initial3D = useMemo(
+    () => ({ model: modelKey, color1: bodyHex, color2: '#0B1B4D', gradient, capColor: '#1A1A1A' }),
+    [modelKey, bodyHex, gradient]);
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <Link to="/loja" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-orange-600 mb-6">
@@ -134,11 +178,14 @@ export default function ProductPage() {
               className="relative z-10 max-h-[360px] w-auto object-contain drop-shadow-xl" />
           ) : (
             <div key={currentColor?.id || 'base'} className="relative st-color-in">
-              <Bottle
-                color={currentColor ? resolveColor({ name: currentColor.short, value: currentColor.short }) : '#F26522'}
-                gradient={gradient} size={240} />
+              <Bottle color={bodyHex} gradient={gradient} size={240} />
             </div>
           )}
+
+          <button onClick={() => setShow3D(true)}
+            className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5 bg-gray-900/90 hover:bg-gray-900 text-white text-sm font-semibold px-3.5 py-2 rounded-xl shadow-lg backdrop-blur transition-colors">
+            <Box size={16} /> Ver em 3D e personalizar
+          </button>
         </div>
 
         {/* Info */}
@@ -245,6 +292,47 @@ export default function ProductPage() {
           </p>
         </div>
       </div>
+
+      {/* Prévia 3D + personalização (cores, degradê, borda) do copo escolhido */}
+      {show3D && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start sm:items-center justify-center p-0 sm:p-6 overflow-y-auto"
+          onClick={() => setShow3D(false)}>
+          <div className="bg-white w-full sm:max-w-5xl sm:rounded-2xl shadow-2xl min-h-screen sm:min-h-0"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 sticky top-0 bg-white sm:rounded-t-2xl z-10">
+              <div className="flex items-center gap-2">
+                <Box size={18} className="text-orange-500" />
+                <h2 className="font-black text-lg">{product.name} · 3D</h2>
+              </div>
+              <button onClick={() => setShow3D(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4">
+              <p className="text-sm text-gray-500 mb-3">Gire o copo e ajuste as cores, o degradê e a borda. Depois é só adicionar ao carrinho.</p>
+              <Suspense fallback={<div className="h-[58vh] min-h-[360px] flex items-center justify-center text-gray-400">Carregando 3D…</div>}>
+              <Studio3D
+                simple
+                lockedModel={modelKey}
+                initialDesign={initial3D}
+                actions={(a) => (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => { const u = a.getPNG(); Object.assign(document.createElement('a'), { href: u, download: `${product.name}.png` }).click(); }}
+                      className="flex items-center justify-center gap-2 border border-gray-200 text-gray-700 font-semibold rounded-xl px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                      <Download size={15} /> Baixar imagem
+                    </button>
+                    <button onClick={() => add3DToCart(a)}
+                      className="bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl px-4 py-2.5 flex items-center justify-center gap-2 transition-colors">
+                      <ShoppingCart size={16} /> Adicionar ao carrinho
+                    </button>
+                  </div>
+                )}
+              />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

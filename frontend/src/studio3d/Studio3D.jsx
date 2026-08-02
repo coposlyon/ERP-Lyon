@@ -31,7 +31,7 @@ const DEFAULT = {
   finish: 'brilhante', capColor: '#1A1A1A', bg: 'studio', arts: [],
 };
 
-export default function Studio3D({ initialDesign, saved, onPickSaved, actions, aiSuggest }) {
+export default function Studio3D({ initialDesign, saved, onPickSaved, actions, aiSuggest, simple = false, lockedModel = null }) {
   const mountRef = useRef(null);
   const three = useRef({});
   const cfg = useRef({});
@@ -40,6 +40,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   const designRef = useRef({});
 
   const seed = { ...DEFAULT, ...(normalizeDesign(initialDesign) || {}) };
+  if (lockedModel) seed.model = lockedModel;
   const [model, setModel]       = useState(seed.model);
   const [color1, setColor1]     = useState(seed.color1);
   const [color2, setColor2]     = useState(seed.color2);
@@ -339,6 +340,56 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
     } catch (e) {
       setAiErr(e?.error || e?.response?.data?.error || 'IA não configurada. Defina ANTHROPIC_API_KEY no servidor.');
     } finally { setAiBusy(false); }
+  }
+
+  // Modo enxuto (loja): só girar e mexer em cor do corpo, degradê e borda.
+  // Sem modelos, artes, IA nem acabamento — o copo é o que o cliente escolheu.
+  if (simple) {
+    return (
+      <div className="grid lg:grid-cols-[1fr_300px] gap-4">
+        <div className="relative rounded-2xl overflow-hidden border border-gray-200" style={{ background: BACKGROUNDS[bg] }}>
+          <div ref={mountRef} style={{ width: '100%', height: '58vh', minHeight: 360 }} />
+          <div className="absolute top-3 left-3">
+            <button onClick={() => setAuto(v => !v)}
+              className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg backdrop-blur transition-colors ${autoRotate ? 'bg-orange-500 text-white' : 'bg-white/80 text-gray-700'}`}>
+              <Rotate3d size={14} /> {autoRotate ? 'Girando' : 'Girar'}
+            </button>
+          </div>
+          <p className="absolute bottom-3 left-3 text-xs text-gray-500 bg-white/70 backdrop-blur px-2 py-1 rounded">Arraste para girar · scroll p/ zoom</p>
+        </div>
+
+        <div className="space-y-3">
+          <Sec icon={Box} title="Personalizar">
+            <div className="flex gap-2 flex-wrap">
+              <PartBtn active={activePart === 'body'} onClick={() => setActive('body')} color={color1} label="Corpo" />
+              {gradient && <PartBtn active={activePart === 'body2'} onClick={() => setActive('body2')} color={color2} label="Cor 2" />}
+              {hasCap && <PartBtn active={activePart === 'cap'} onClick={() => setActive('cap')} color={capColor} label={capLabel} />}
+            </div>
+            <label className="flex items-center gap-2 mt-3 text-sm text-gray-600 cursor-pointer">
+              <input type="checkbox" checked={gradient} onChange={e => { setGradient(e.target.checked); if (!e.target.checked && activePart === 'body2') setActive('body'); }} className="w-4 h-4 accent-orange-500" />
+              Degradê (2 cores)
+            </label>
+          </Sec>
+
+          <Sec icon={Sparkles} title={`Cor — ${activePart === 'cap' ? capLabel : activePart === 'body2' ? 'Cor 2' : 'Corpo'}`}>
+            <div className="grid grid-cols-8 gap-1.5">
+              {PALETTE.map(([name, hex]) => (
+                <button key={hex} title={name} onClick={() => pickColor(hex)}
+                  className={`w-full aspect-square rounded-md transition-transform hover:scale-110 ${activeColor.toLowerCase() === hex.toLowerCase() ? 'ring-2 ring-orange-500 ring-offset-1' : ''}`}
+                  style={{ background: hex, border: '1px solid rgba(0,0,0,.12)' }} />
+              ))}
+            </div>
+            <label className="flex items-center gap-2 mt-3 text-sm text-gray-600">
+              Personalizada
+              <input type="color" value={activeColor} onChange={e => pickColor(e.target.value)} className="w-9 h-9 rounded cursor-pointer border border-gray-200" />
+              <span className="font-mono text-xs text-gray-400">{activeColor}</span>
+            </label>
+          </Sec>
+
+          <div className="pb-1">{actions?.({ getDesign, getThumb, getPNG, getPrintCanvas })}</div>
+        </div>
+      </div>
+    );
   }
 
   return (
