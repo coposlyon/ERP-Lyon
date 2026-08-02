@@ -110,6 +110,15 @@ export default function ProductPage() {
     return precoFaixa(table.tiers, table.base, qty);
   }, [product, qty, printMethod]); // eslint-disable-line
 
+  const modelKey = modelKeyFor(product);
+  const bodyHex = currentColor
+    ? resolveColor({ name: currentColor.short, value: currentColor.short })
+    : '#F26522';
+  // Semente estável do 3D (hook antes de qualquer return — regras de hooks).
+  const initial3D = useMemo(
+    () => ({ model: modelKey, color1: bodyHex, color2: '#0B1B4D', gradient, capColor: '#1A1A1A' }),
+    [modelKey, bodyHex, gradient]);
+
   if (isLoading) return <div className="max-w-6xl mx-auto px-4 py-16 text-center text-gray-400">Carregando...</div>;
   if (error || !product) return (
     <div className="max-w-6xl mx-auto px-4 py-16 text-center">
@@ -152,15 +161,6 @@ export default function ProductPage() {
     setShow3D(false);
     navigate('/loja/carrinho');
   }
-
-  const modelKey = modelKeyFor(product);
-  const bodyHex = currentColor
-    ? resolveColor({ name: currentColor.short, value: currentColor.short })
-    : '#F26522';
-  // Semente estável: sem isso o Studio3D reinicia as cores a cada render.
-  const initial3D = useMemo(
-    () => ({ model: modelKey, color1: bodyHex, color2: '#0B1B4D', gradient, capColor: '#1A1A1A' }),
-    [modelKey, bodyHex, gradient]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
