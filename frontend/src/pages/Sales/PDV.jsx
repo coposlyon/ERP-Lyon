@@ -235,6 +235,23 @@ export default function PDV({ onDone, mode = 'sale' }) {
   });
   const payTerms = payTermsData?.data || [];
 
+  // Catálogo de cores/bordas por acabamento (cadastrável no lançamento)
+  const { data: acabCatalog = {}, refetch: refetchAcab } = useQuery({
+    queryKey: ['acab-catalog'],
+    queryFn: () => api.get('/settings/acabamentos'),
+  });
+  // Cadastra uma cor/borda no catálogo e já seleciona no lançamento.
+  async function addAcabValor(chave, onPicked) {
+    const raw = window.prompt(`Cadastrar novo(a) para "${chave === '__borda' ? 'Borda' : chave}":`);
+    const valor = String(raw || '').trim().toUpperCase();
+    if (!valor) return;
+    try {
+      await api.post('/settings/acabamentos', { acabamento: chave, valor });
+      await refetchAcab();
+      onPicked?.(valor);
+    } catch (err) { toast.error(err.error || 'Erro ao cadastrar'); }
+  }
+
   const saleMutation = useMutation({
     mutationFn: (data) => api.post('/sales', data),
     onSuccess: async (sale) => {
@@ -428,15 +445,25 @@ export default function PDV({ onDone, mode = 'sale' }) {
       discStr: maskMoney(0),
       color: '',
       borda: palpiteBorda(product, variantName),
+      bordaTipo: '',              // qual borda (do catálogo) quando "Com borda"
       ink: product.ink_type || '',
       acab: [],
+      acabCor: {},                // { 'Cor degradê': 'AZUL/ROSA', ... }
     });
     setTimeout(() => qtyRef.current?.select(), 40);
   }
 
   function toggleAcab(a) {
-    setLaunch(l => l && ({ ...l, acab: l.acab.includes(a) ? l.acab.filter(x => x !== a) : [...l.acab, a] }));
+    setLaunch(l => {
+      if (!l) return l;
+      const on = l.acab.includes(a);
+      const acab = on ? l.acab.filter(x => x !== a) : [...l.acab, a];
+      const acabCor = { ...l.acabCor };
+      if (on) delete acabCor[a];   // desmarcou → limpa a cor escolhida
+      return { ...l, acab, acabCor };
+    });
   }
+  const setAcabCor = (a, cor) => setLaunch(l => l && ({ ...l, acabCor: { ...l.acabCor, [a]: cor } }));
 
   const lQty   = Math.max(1, parseFloat(String(launch?.qty ?? '1').replace(',', '.')) || 1);
   const lPrice = parseMoney(launch?.priceStr);
@@ -489,9 +516,12 @@ export default function PDV({ onDone, mode = 'sale' }) {
   // cor + borda + tinta + acabamentos) cai na mesma linha.
   function pushLaunchItem(l, q, price, disc, color, priceTouched) {
     const product = l.product;
-    const acab = [...l.acab].sort().join('|');
+    // acabamento vira "Tipo: COR"; borda vira "Com borda: TIPO"
+    const acabList = [...l.acab].map(a => l.acabCor?.[a] ? `${a}: ${l.acabCor[a]}` : a);
+    const bordaStr = l.borda === 'Com borda' && l.bordaTipo ? `Com borda: ${l.bordaTipo}` : l.borda;
+    const acab = [...acabList].sort().join('|');
     const lineKey = i => [i.product_id, i.variant || '', i.print_color || '', i.borda || '', i.ink_type || '', [...(i.acabamentos || [])].sort().join('|')].join('__');
-    const key = [product.id, l.variantName || '', color || '', l.borda || '', l.ink || '', acab].join('__');
+    const key = [product.id, l.variantName || '', color || '', bordaStr || '', l.ink || '', acab].join('__');
     setItems(prev => {
       const existing = prev.find(i => lineKey(i) === key);
       if (existing) {
@@ -512,9 +542,9 @@ export default function PDV({ onDone, mode = 'sale' }) {
         quantity: q,
         discount: disc,
         print_color: color || null,
-        borda: l.borda || null,
+        borda: bordaStr || null,
         ink_type: l.ink || null,
-        acabamentos: [...l.acab],
+        acabamentos: acabList,
         priceTouched,
       }];
     });
@@ -527,6 +557,15 @@ export default function PDV({ onDone, mode = 'sale' }) {
     const l = launch;
     if (!String(l.color || '').trim()) {
       toast.error('Informe a cor da personalização');
+      return;
+    }
+    if (l.borda === 'Com borda' && !String(l.bordaTipo || '').trim()) {
+      toast.error('Selecione a borda');
+      return;
+    }
+    const semCor = (l.acab || []).find(a => !String(l.acabCor?.[a] || '').trim());
+    if (semCor) {
+      toast.error(`Selecione a cor de: ${semCor}`);
       return;
     }
     const q = Math.max(1, parseFloat(String(l.qty).replace(',', '.')) || 1);
@@ -1438,12 +1477,24 @@ export default function PDV({ onDone, mode = 'sale' }) {
                 <label className="text-xs font-medium text-gray-500 block mb-1">Borda</label>
                 <div className="flex gap-2">
                   {['Com borda', 'Sem borda'].map(b => (
-                    <button key={b} type="button" onClick={() => setLaunch(l => ({ ...l, borda: b }))}
+                    <button key={b} type="button" onClick={() => setLaunch(l => ({ ...l, borda: b, bordaTipo: b === 'Com borda' ? l.bordaTipo : '' }))}
                       className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium ${launch.borda === b ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                       {b}
                     </button>
                   ))}
                 </div>
+                {launch.borda === 'Com borda' && (
+                  <div className="flex gap-2 mt-2">
+                    <select className="input text-sm flex-1" value={launch.bordaTipo}
+                      onChange={e => setLaunch(l => ({ ...l, bordaTipo: e.target.value }))}>
+                      <option value="">Selecione a borda…</option>
+                      {(acabCatalog['__borda'] || []).map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                    <button type="button" title="Cadastrar borda"
+                      onClick={() => addAcabValor('__borda', v => setLaunch(l => ({ ...l, bordaTipo: v })))}
+                      className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm">+</button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1461,6 +1512,23 @@ export default function PDV({ onDone, mode = 'sale' }) {
                   </label>
                 ))}
               </div>
+              {launch.acab.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  {launch.acab.map(a => (
+                    <div key={a} className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-32 shrink-0 truncate">{a} <span className="text-red-500">*</span></span>
+                      <select className="input text-sm flex-1" value={launch.acabCor?.[a] || ''}
+                        onChange={e => setAcabCor(a, e.target.value)}>
+                        <option value="">Selecione a cor…</option>
+                        {(acabCatalog[a] || []).map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                      <button type="button" title="Cadastrar cor"
+                        onClick={() => addAcabValor(a, v => setAcabCor(a, v))}
+                        className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm">+</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between border-t border-gray-100 pt-3">

@@ -72,6 +72,52 @@ router.put('/', async (req, res) => {
   }
 });
 
+// ── Catálogo de acabamentos (cores/bordas por acabamento) ──────────
+// Guardado em EMPRESAS.settings.acabamentos_catalog:
+//   { 'Cor degradê': ['AZUL/ROSA', ...], '__borda': ['HOLOGRÁFICA DOURADO', ...] }
+// Usado no Lançamento de Produto (PDV): ao marcar um acabamento, escolhe
+// a cor da lista; o botão "cadastrar" adiciona aqui (POST).
+router.get('/acabamentos', async (req, res) => {
+  try {
+    const { data } = await supabase.from('EMPRESAS').select('settings').eq('id', req.tenantId).maybeSingle();
+    res.json(data?.settings?.acabamentos_catalog || {});
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/acabamentos', async (req, res) => {
+  const acabamento = String(req.body.acabamento || '').trim();
+  const valor = String(req.body.valor || '').trim().toUpperCase();
+  if (!acabamento || !valor) return res.status(400).json({ error: 'Informe o acabamento e a cor/borda' });
+  try {
+    const { data: emp } = await supabase.from('EMPRESAS').select('settings').eq('id', req.tenantId).maybeSingle();
+    const settings = emp?.settings || {};
+    const catalog = { ...(settings.acabamentos_catalog || {}) };
+    const list = Array.isArray(catalog[acabamento]) ? [...catalog[acabamento]] : [];
+    if (!list.includes(valor)) list.push(valor);
+    catalog[acabamento] = list;
+    const { error } = await supabase.from('EMPRESAS')
+      .update({ settings: { ...settings, acabamentos_catalog: catalog } }).eq('id', req.tenantId);
+    if (error) throw error;
+    res.json(catalog);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/acabamentos', async (req, res) => {
+  const acabamento = String(req.query.acabamento || '').trim();
+  const valor = String(req.query.valor || '').trim().toUpperCase();
+  if (!acabamento || !valor) return res.status(400).json({ error: 'Informe o acabamento e a cor/borda' });
+  try {
+    const { data: emp } = await supabase.from('EMPRESAS').select('settings').eq('id', req.tenantId).maybeSingle();
+    const settings = emp?.settings || {};
+    const catalog = { ...(settings.acabamentos_catalog || {}) };
+    catalog[acabamento] = (catalog[acabamento] || []).filter(v => v !== valor);
+    const { error } = await supabase.from('EMPRESAS')
+      .update({ settings: { ...settings, acabamentos_catalog: catalog } }).eq('id', req.tenantId);
+    if (error) throw error;
+    res.json(catalog);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/users', async (req, res) => {
   try {
     const { data, error } = await supabase
