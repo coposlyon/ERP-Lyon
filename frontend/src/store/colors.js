@@ -49,6 +49,20 @@ export function resolveColor(variant) {
   return '#C9CDD3'; // cinza neutro
 }
 
+// Paleta oficial do sistema (mesmos hex do MAP acima, que o resolveColor usa
+// para pintar as bolinhas de cor na loja). É o que o 3D deve mostrar, para as
+// cores baterem exatamente com o que o cliente vê no site.
+export const STORE_PALETTE = [
+  ['Amarelo', '#FFD400'], ['Amarelo Limão', '#F2D600'], ['Amarelo Canário', '#F4D03F'], ['Amarelo Ouro', '#F5A623'],
+  ['Laranja', '#F26522'], ['Vermelho Ferrari', '#E11D22'], ['Vermelho Vivo', '#ED1C24'], ['Marsala', '#7B1E2B'],
+  ['Magenta', '#D6006E'], ['Pink', '#EC1C8E'], ['Rosa Bebê', '#F4B6C2'],
+  ['Roxo', '#7E3FF2'], ['Roxo Dark', '#4B2E83'], ['Violeta', '#8E44AD'],
+  ['Azul Bic', '#1746A2'], ['Azul Royal', '#1E4FD8'], ['Azul Médio', '#2D6FCB'], ['Azul Ultramar', '#1B2A8C'],
+  ['Azul Tiffany', '#2BB7B3'], ['Azul Bebê', '#9EC4E8'],
+  ['Verde Bandeira', '#0E6B4F'], ['Verde Folha', '#2E9E32'], ['Verde Militar', '#1F5C36'],
+  ['Preto', '#1A1A1A'], ['Branco', '#F4F4F4'], ['Palha', '#E3DCC4'], ['Marmorizado', '#E8E2D0'],
+];
+
 // branco/palha precisam de borda para aparecer no fundo claro
 export function needsBorder(hex) {
   if (!hex) return false;

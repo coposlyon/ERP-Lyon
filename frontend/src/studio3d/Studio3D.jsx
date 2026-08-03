@@ -31,7 +31,7 @@ const DEFAULT = {
   finish: 'brilhante', capColor: '#1A1A1A', bg: 'studio', arts: [],
 };
 
-export default function Studio3D({ initialDesign, saved, onPickSaved, actions, aiSuggest, simple = false, lockedModel = null }) {
+export default function Studio3D({ initialDesign, saved, onPickSaved, actions, aiSuggest, simple = false, lockedModel = null, palette = PALETTE }) {
   const mountRef = useRef(null);
   const three = useRef({});
   const cfg = useRef({});
@@ -51,6 +51,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   const [arts, setArts]         = useState(seed.arts);
   const [selId, setSelId]       = useState(seed.arts[0]?.id || null);
   const [activePart, setActive] = useState('body');
+  const [hasBorda, setHasBorda] = useState(false); // modo simples: borda off por padrão
   const [autoRotate, setAuto]   = useState(true);
   const [imgV, setImgV]         = useState(0);
   const [fontV, setFontV]       = useState(0);
@@ -61,8 +62,10 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   const [aiErr, setAiErr]       = useState('');
   const [aiOut, setAiOut]       = useState(null);
 
-  cfg.current = { color1, color2, gradient, finish, capColor };
-  designRef.current = { model, color1, color2, gradient, finish, capColor, bg,
+  // No modo simples, "sem borda" pinta a borda com a cor do corpo (some).
+  const effCapColor = simple && !hasBorda ? color1 : capColor;
+  cfg.current = { color1, color2, gradient, finish, capColor: effCapColor };
+  designRef.current = { model, color1, color2, gradient, finish, capColor: effCapColor, bg,
     arts: arts.map(({ _img, ...a }) => a) };
 
   const modelDef = MODELS.find(m => m.key === model);
@@ -221,7 +224,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   }, [model]);
 
   useEffect(() => { applyBody(); }, [color1, color2, gradient, finish, arts, imgV, fontV, applyBody]);
-  useEffect(() => { applyCap(); }, [capColor, applyCap]);
+  useEffect(() => { applyCap(); }, [capColor, hasBorda, color1, applyCap]);
   useEffect(() => { if (three.current.controls) three.current.controls.autoRotate = autoRotate; }, [autoRotate]);
 
   // Botão de Realidade Aumentada — só aparece em dispositivos compatíveis (Android/Chrome)
@@ -363,17 +366,25 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
             <div className="flex gap-2 flex-wrap">
               <PartBtn active={activePart === 'body'} onClick={() => setActive('body')} color={color1} label="Corpo" />
               {gradient && <PartBtn active={activePart === 'body2'} onClick={() => setActive('body2')} color={color2} label="Cor 2" />}
-              {hasCap && <PartBtn active={activePart === 'cap'} onClick={() => setActive('cap')} color={capColor} label={capLabel} />}
+              {hasCap && hasBorda && <PartBtn active={activePart === 'cap'} onClick={() => setActive('cap')} color={capColor} label={capLabel} />}
             </div>
             <label className="flex items-center gap-2 mt-3 text-sm text-gray-600 cursor-pointer">
               <input type="checkbox" checked={gradient} onChange={e => { setGradient(e.target.checked); if (!e.target.checked && activePart === 'body2') setActive('body'); }} className="w-4 h-4 accent-orange-500" />
               Degradê (2 cores)
             </label>
+            {hasCap && (
+              <label className="flex items-center gap-2 mt-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={hasBorda}
+                  onChange={e => { setHasBorda(e.target.checked); if (e.target.checked) setActive('cap'); else if (activePart === 'cap') setActive('body'); }}
+                  className="w-4 h-4 accent-orange-500" />
+                Com {capLabel.toLowerCase()}
+              </label>
+            )}
           </Sec>
 
           <Sec icon={Sparkles} title={`Cor — ${activePart === 'cap' ? capLabel : activePart === 'body2' ? 'Cor 2' : 'Corpo'}`}>
             <div className="grid grid-cols-8 gap-1.5">
-              {PALETTE.map(([name, hex]) => (
+              {palette.map(([name, hex]) => (
                 <button key={hex} title={name} onClick={() => pickColor(hex)}
                   className={`w-full aspect-square rounded-md transition-transform hover:scale-110 ${activeColor.toLowerCase() === hex.toLowerCase() ? 'ring-2 ring-orange-500 ring-offset-1' : ''}`}
                   style={{ background: hex, border: '1px solid rgba(0,0,0,.12)' }} />

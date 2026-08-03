@@ -8,7 +8,7 @@ import Bottle from './Bottle';
 import { useCart } from './CartContext';
 // three.js é pesado: só carrega quando o cliente abre a prévia 3D.
 const Studio3D = lazy(() => import('@/studio3d/Studio3D'));
-import { resolveColor, needsBorder } from './colors';
+import { resolveColor, needsBorder, STORE_PALETTE } from './colors';
 
 // Descobre qual modelo 3D representa o produto (pelo nome/categoria/grupo).
 function modelKeyFor(product) {
@@ -315,6 +315,7 @@ export default function ProductPage() {
               <Suspense fallback={<div className="h-[58vh] min-h-[360px] flex items-center justify-center text-gray-400">Carregando 3D…</div>}>
               <Studio3D
                 simple
+                palette={STORE_PALETTE}
                 lockedModel={modelKey}
                 initialDesign={initial3D}
                 actions={(a) => (
