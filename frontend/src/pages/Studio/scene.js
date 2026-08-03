@@ -18,10 +18,10 @@ export const PALETTE = [
 export const MODELS = [
   { key: 'shaker',    label: 'Acqua Plus 500ml',    spec: 'shaker · tampa flip', printW: 230, printH: 90 },
   { key: 'twister',   label: 'Copo Twister 400ml',  spec: 'acrílico · borda colorida', noCap: true, rim: true, defaultFinish: 'translucido', printW: 215, printH: 100 },
-  { key: 'longdrink', label: 'Long Drink 350ml',    spec: 'acrílico', noCap: true, defaultFinish: 'translucido', printW: 235, printH: 100 },
+  { key: 'longdrink', label: 'Long Drink 350ml',    spec: 'acrílico', noCap: true, rim: true, defaultFinish: 'translucido', printW: 235, printH: 100 },
   { key: 'caneca',    label: 'Caneca Alumínio 500ml', spec: 'alumínio · com alça', noCap: true, defaultFinish: 'metalico', printW: 250, printH: 100 },
-  { key: 'slim',      label: 'Caneca Slim 400ml',   spec: 'acrílico · com alça', noCap: true, defaultFinish: 'translucido', printW: 215, printH: 110 },
-  { key: 'taca',      label: 'Taça 180ml',          spec: 'taça com pé', noCap: true, defaultFinish: 'translucido', printW: 160, printH: 70 },
+  { key: 'slim',      label: 'Caneca Slim 400ml',   spec: 'acrílico · com alça', noCap: true, rim: true, defaultFinish: 'translucido', printW: 215, printH: 110 },
+  { key: 'taca',      label: 'Taça 180ml',          spec: 'taça com pé', noCap: true, rim: true, defaultFinish: 'translucido', printW: 160, printH: 70 },
   { key: 'garrafa',   label: 'Garrafa 700ml',       spec: 'tampa rosca', printW: 235, printH: 115 },
 ];
 
@@ -180,7 +180,8 @@ export function bodyMaterial(finish, { map = null, color = '#ffffff' } = {}) {
 }
 
 export function capMaterial(hex) {
-  return new THREE.MeshPhysicalMaterial({ color: hex, roughness: 0.38, metalness: 0.1, clearcoat: 0.45, clearcoatRoughness: 0.22, envMapIntensity: 1.2 });
+  // DoubleSide: as bordas retas (anéis abertos) precisam aparecer por dentro e por fora.
+  return new THREE.MeshPhysicalMaterial({ color: hex, roughness: 0.38, metalness: 0.1, clearcoat: 0.45, clearcoatRoughness: 0.22, envMapIntensity: 1.2, side: THREE.DoubleSide });
 }
 
 export function buildModel(type) {
@@ -199,16 +200,18 @@ export function buildModel(type) {
 
   if (type === 'longdrink') {
     mk(new THREE.CylinderGeometry(0.82, 0.66, 3.0, seg, 24), 0, bodyMeshes);
-    mk(new THREE.TorusGeometry(0.8, 0.05, 24, seg), 1.5, bodyMeshes, {}).rotation.x = Math.PI / 2;
+    // borda RETA no topo (faixa cilíndrica, não anel arredondado)
+    mk(new THREE.CylinderGeometry(0.835, 0.835, 0.22, seg, 1, true), 1.39, capMeshes);
   } else if (type === 'twister') {
-    // corpo cônico liso (acrílico) + BORDA colorida no topo (3ª cor / capColor)
+    // corpo cônico liso (acrílico) + BORDA reta colorida no topo (capColor)
     mk(new THREE.CylinderGeometry(0.78, 0.56, 2.9, seg, 24), 0, bodyMeshes);
-    mk(new THREE.TorusGeometry(0.78, 0.06, 24, seg), 1.45, capMeshes, {}).rotation.x = Math.PI / 2;
+    mk(new THREE.CylinderGeometry(0.795, 0.795, 0.2, seg, 1, true), 1.35, capMeshes);
   } else if (type === 'slim') {
     // caneca slim: tubo alto ABERTO no topo + fundo sólido + alça
     mk(new THREE.CylinderGeometry(0.6, 0.64, 3.1, seg, 24, true), 0, bodyMeshes); // openEnded
     const bottom = mk(new THREE.CircleGeometry(0.64, seg), -1.55, bodyMeshes);
     bottom.rotation.x = -Math.PI / 2;
+    mk(new THREE.CylinderGeometry(0.615, 0.615, 0.2, seg, 1, true), 1.46, capMeshes); // borda reta
     // alça em "D" grande: encosta no corpo em cima e embaixo, com barriga
     // bem aberta e mais grossa (a antiga era fininha e alta demais).
     const sCurve = new THREE.CubicBezierCurve3(
@@ -221,6 +224,7 @@ export function buildModel(type) {
   } else if (type === 'taca') {
     // taça: bojo (pintável) + haste + base
     mk(new THREE.CylinderGeometry(0.44, 0.13, 1.6, seg), 1.7, bodyMeshes);   // bojo (mainBody)
+    mk(new THREE.CylinderGeometry(0.455, 0.455, 0.16, seg, 1, true), 2.42, capMeshes); // borda reta
     mk(new THREE.CylinderGeometry(0.05, 0.05, 1.3, seg), 0.75, bodyMeshes);  // haste
     mk(new THREE.CylinderGeometry(0.3, 0.06, 0.12, seg), 0.18, bodyMeshes);  // cone da base
     mk(new THREE.CylinderGeometry(0.52, 0.52, 0.05, seg), 0.07, bodyMeshes); // base

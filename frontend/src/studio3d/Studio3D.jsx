@@ -62,15 +62,17 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   const [aiErr, setAiErr]       = useState('');
   const [aiOut, setAiOut]       = useState(null);
 
-  // No modo simples, "sem borda" pinta a borda com a cor do corpo (some).
-  const effCapColor = simple && !hasBorda ? color1 : capColor;
+  const modelDef = MODELS.find(m => m.key === model);
+  const isRim = !!modelDef?.rim;                      // copo de borda reta (twister/longdrink/slim/taça)
+  const hasCap = isRim || !modelDef?.noCap;           // rim conta como "borda" pintável
+  const capLabel = isRim ? 'Borda' : 'Tampa';
+
+  // Copos de borda: no modo simples ela vem DESLIGADA (funde no corpo). Só
+  // ligando "Com borda" é que ela ganha cor própria.
+  const effCapColor = simple && isRim && !hasBorda ? color1 : capColor;
   cfg.current = { color1, color2, gradient, finish, capColor: effCapColor };
   designRef.current = { model, color1, color2, gradient, finish, capColor: effCapColor, bg,
     arts: arts.map(({ _img, ...a }) => a) };
-
-  const modelDef = MODELS.find(m => m.key === model);
-  const hasCap = !!modelDef?.rim || !modelDef?.noCap; // rim conta como "tampa" pintável
-  const capLabel = modelDef?.rim ? 'Borda' : 'Tampa';
   const selArt = arts.find(a => a.id === selId) || null;
 
   // carrega imagens das artes que ainda não têm Image
@@ -109,7 +111,15 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   }, []);
   const applyCap = useCallback(() => {
     const m = three.current.model; if (!m) return;
-    m.userData.capMeshes.forEach(mesh => { const old = mesh.material; mesh.material = capMaterial(cfg.current.capColor); old?.dispose(); });
+    const C = cfg.current;
+    // Borda "desligada" (cor da borda == cor do corpo): usa o mesmo material do
+    // corpo para fundir de vez (some o anel opaco em copos translúcidos).
+    const noBorder = C.capColor === C.color1;
+    m.userData.capMeshes.forEach(mesh => {
+      const old = mesh.material;
+      mesh.material = noBorder ? bodyMaterial(C.finish, { color: C.color1 }) : capMaterial(C.capColor);
+      old?.dispose();
+    });
   }, []);
 
   // init three
@@ -224,7 +234,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   }, [model]);
 
   useEffect(() => { applyBody(); }, [color1, color2, gradient, finish, arts, imgV, fontV, applyBody]);
-  useEffect(() => { applyCap(); }, [capColor, hasBorda, color1, applyCap]);
+  useEffect(() => { applyCap(); }, [capColor, hasBorda, color1, finish, applyCap]);
   useEffect(() => { if (three.current.controls) three.current.controls.autoRotate = autoRotate; }, [autoRotate]);
 
   // Botão de Realidade Aumentada — só aparece em dispositivos compatíveis (Android/Chrome)
@@ -366,18 +376,18 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
             <div className="flex gap-2 flex-wrap">
               <PartBtn active={activePart === 'body'} onClick={() => setActive('body')} color={color1} label="Corpo" />
               {gradient && <PartBtn active={activePart === 'body2'} onClick={() => setActive('body2')} color={color2} label="Cor 2" />}
-              {hasCap && hasBorda && <PartBtn active={activePart === 'cap'} onClick={() => setActive('cap')} color={capColor} label={capLabel} />}
+              {hasCap && (isRim ? hasBorda : true) && <PartBtn active={activePart === 'cap'} onClick={() => setActive('cap')} color={capColor} label={capLabel} />}
             </div>
             <label className="flex items-center gap-2 mt-3 text-sm text-gray-600 cursor-pointer">
               <input type="checkbox" checked={gradient} onChange={e => { setGradient(e.target.checked); if (!e.target.checked && activePart === 'body2') setActive('body'); }} className="w-4 h-4 accent-orange-500" />
               Degradê (2 cores)
             </label>
-            {hasCap && (
+            {isRim && (
               <label className="flex items-center gap-2 mt-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" checked={hasBorda}
                   onChange={e => { setHasBorda(e.target.checked); if (e.target.checked) setActive('cap'); else if (activePart === 'cap') setActive('body'); }}
                   className="w-4 h-4 accent-orange-500" />
-                Com {capLabel.toLowerCase()}
+                Com borda
               </label>
             )}
           </Sec>
