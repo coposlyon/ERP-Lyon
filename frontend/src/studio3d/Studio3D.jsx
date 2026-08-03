@@ -373,39 +373,52 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
 
         <div className="space-y-3">
           <Sec icon={Box} title="Personalizar">
-            <div className="flex gap-2 flex-wrap">
-              <PartBtn active={activePart === 'body'} onClick={() => setActive('body')} color={color1} label="Corpo" />
+            <div className="flex gap-2 flex-wrap items-center">
+              {/* Corpo: TRAVADO na cor do produto — não se troca aqui */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-gray-200 bg-gray-50">
+                <span className="w-4 h-4 rounded-full" style={{ background: color1, border: '1px solid rgba(0,0,0,.15)' }} />
+                <span className="text-sm font-semibold text-gray-600">Corpo</span>
+                <span className="text-[11px] text-gray-400">cor do produto</span>
+              </div>
               {gradient && <PartBtn active={activePart === 'body2'} onClick={() => setActive('body2')} color={color2} label="Cor 2" />}
               {hasCap && (isRim ? hasBorda : true) && <PartBtn active={activePart === 'cap'} onClick={() => setActive('cap')} color={capColor} label={capLabel} />}
             </div>
             <label className="flex items-center gap-2 mt-3 text-sm text-gray-600 cursor-pointer">
-              <input type="checkbox" checked={gradient} onChange={e => { setGradient(e.target.checked); if (!e.target.checked && activePart === 'body2') setActive('body'); }} className="w-4 h-4 accent-orange-500" />
+              <input type="checkbox" checked={gradient}
+                onChange={e => { setGradient(e.target.checked); if (e.target.checked) setActive('body2'); else if (activePart === 'body2') setActive(hasBorda ? 'cap' : 'body'); }}
+                className="w-4 h-4 accent-orange-500" />
               Degradê (2 cores)
             </label>
             {isRim && (
               <label className="flex items-center gap-2 mt-2 text-sm text-gray-600 cursor-pointer">
                 <input type="checkbox" checked={hasBorda}
-                  onChange={e => { setHasBorda(e.target.checked); if (e.target.checked) setActive('cap'); else if (activePart === 'cap') setActive('body'); }}
+                  onChange={e => { setHasBorda(e.target.checked); if (e.target.checked) setActive('cap'); else if (activePart === 'cap') setActive(gradient ? 'body2' : 'body'); }}
                   className="w-4 h-4 accent-orange-500" />
                 Com borda
               </label>
             )}
           </Sec>
 
-          <Sec icon={Sparkles} title={`Cor — ${activePart === 'cap' ? capLabel : activePart === 'body2' ? 'Cor 2' : 'Corpo'}`}>
-            <div className="grid grid-cols-8 gap-1.5">
-              {palette.map(([name, hex]) => (
-                <button key={hex} title={name} onClick={() => pickColor(hex)}
-                  className={`w-full aspect-square rounded-md transition-transform hover:scale-110 ${activeColor.toLowerCase() === hex.toLowerCase() ? 'ring-2 ring-orange-500 ring-offset-1' : ''}`}
-                  style={{ background: hex, border: '1px solid rgba(0,0,0,.12)' }} />
-              ))}
-            </div>
-            <label className="flex items-center gap-2 mt-3 text-sm text-gray-600">
-              Personalizada
-              <input type="color" value={activeColor} onChange={e => pickColor(e.target.value)} className="w-9 h-9 rounded cursor-pointer border border-gray-200" />
-              <span className="font-mono text-xs text-gray-400">{activeColor}</span>
-            </label>
-          </Sec>
+          {(activePart === 'body2' || activePart === 'cap') ? (
+            <Sec icon={Sparkles} title={`Cor — ${activePart === 'cap' ? capLabel : 'Cor 2'}`}>
+              <div className="grid grid-cols-8 gap-1.5">
+                {palette.map(([name, hex]) => (
+                  <button key={hex} title={name} onClick={() => pickColor(hex)}
+                    className={`w-full aspect-square rounded-md transition-transform hover:scale-110 ${activeColor.toLowerCase() === hex.toLowerCase() ? 'ring-2 ring-orange-500 ring-offset-1' : ''}`}
+                    style={{ background: hex, border: '1px solid rgba(0,0,0,.12)' }} />
+                ))}
+              </div>
+              <label className="flex items-center gap-2 mt-3 text-sm text-gray-600">
+                Personalizada
+                <input type="color" value={activeColor} onChange={e => pickColor(e.target.value)} className="w-9 h-9 rounded cursor-pointer border border-gray-200" />
+                <span className="font-mono text-xs text-gray-400">{activeColor}</span>
+              </label>
+            </Sec>
+          ) : (
+            <Sec icon={Sparkles} title="Cores">
+              <p className="text-sm text-gray-400">A cor do copo é a do produto. Marque <b className="text-gray-500">Degradê</b> para uma 2ª cor{isRim ? <> ou <b className="text-gray-500">Com borda</b> para colorir a borda</> : null}.</p>
+            </Sec>
+          )}
 
           <div className="pb-1">{actions?.({ getDesign, getThumb, getPNG, getPrintCanvas })}</div>
         </div>
