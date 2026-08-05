@@ -16,6 +16,7 @@ const { calcularFrete, packItem } = require('../lib/frete');
 const { cotar, ufFromCep, getFreteConfig, jtCotar, jtReady } = require('../lib/shipping');
 const { braspressCotar, bpReady } = require('../lib/braspress');
 const { fetchInstagramMedia } = require('../lib/social');
+const { acharPorDocumento, criarSolicitacao } = require('../lib/cadastroSolicitacoes');
 
 // Loja pública: serve UM tenant (a empresa dona da loja).
 // Sem autenticação — montada antes do authMiddleware.
@@ -614,7 +615,7 @@ function validaCNPJ(v) {
 
 // ── Autocadastro de cliente (link público) ────────────────
 router.post('/cadastro', cadastroLimiter, async (req, res) => {
-  const { type, name, cpf_cnpj, email, phone, mobile, instagram, rg_ie, ie_isento, can_publish, address, birth_date, update } = req.body;
+  const { type, name, cpf_cnpj, email, phone, mobile, instagram, rg_ie, ie_isento, can_publish, address, birth_date } = req.body;
   const nm = String(name || '').trim();
   const ph = String(phone || '').trim();
   const em = String(email || '').trim();
@@ -663,21 +664,14 @@ router.post('/cadastro', cadastroLimiter, async (req, res) => {
       byDoc = data;
     }
 
-    // Existe e NÃO é uma atualização → avisa que já tem cadastro (não bloqueia seco)
-    if (byDoc && !update) {
-      return res.status(409).json({ error: `Este ${isPJ ? 'CNPJ' : 'CPF'} já está cadastrado.`, exists: true, customer_id: byDoc.id });
-    }
-
-    // Atualização dos dados de um cliente existente
-    if (byDoc && update) {
-      const updPayload = { ...payload, updated_at: new Date().toISOString() };
-      let { data: upd, error } = await supabase.from('CLIENTES').update(updPayload).eq('id', byDoc.id).eq('tenant_id', STORE_TENANT).select(sel).single();
-      if (error && /(birth_date|updated_at)/i.test(error.message || '')) {
-        delete updPayload.birth_date; delete updPayload.updated_at;
-        ({ data: upd, error } = await supabase.from('CLIENTES').update(updPayload).eq('id', byDoc.id).eq('tenant_id', STORE_TENANT).select(sel).single());
-      }
-      if (error) throw error;
-      return res.json({ success: true, updated: true, customer: upd });
+    // Já existe cadastro com este documento. O link público NUNCA grava por
+    // cima: a alteração vira um pedido que o administrador aprova no sistema
+    // (rota /solicitar-alteracao). Aqui só avisamos que existe.
+    if (byDoc) {
+      return res.status(409).json({
+        error: `Este ${isPJ ? 'CNPJ' : 'CPF'} já está cadastrado.`,
+        exists: true, needs_request: true,
+      });
     }
 
     // Novo cadastro
@@ -695,7 +689,9 @@ router.post('/cadastro', cadastroLimiter, async (req, res) => {
 // ── Autocadastro de FORNECEDORA (link público) ────────────
 // Recebe os dados + o Contrato Comercial assinado + a identificação de quem
 // envia, tudo via multipart. `address` chega como string JSON (multipart não
-// carrega objeto aninhado). O cadastro só é concluído com o contrato anexado.
+// carrega objeto aninhado). O cadastro NOVO só é concluído com o contrato
+// anexado; se o CNPJ já existir, o envio vira pedido de alteração (contrato
+// opcional) e nada é gravado até um administrador aprovar.
 router.post('/cadastro-fornecedor', cadastroLimiter,
   uploadDocs.single('contrato'),
   async (req, res) => {
@@ -724,18 +720,43 @@ router.post('/cadastro-fornecedor', cadastroLimiter,
   if (!validaCPF(responsible_cpf))
     return res.status(400).json({ error: 'CPF inválido. Confira os números digitados.' });
 
-  // Documento obrigatório
-  if (!contrato)
-    return res.status(400).json({ error: 'Anexe o Contrato Comercial assinado para finalizar o cadastro.' });
-
   const ig = String(instagram || '').trim()
     .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?].*$/, '').replace(/^@/, '') || null;
   try {
-    // Bloqueia se o CNPJ já existir
-    const { data: all } = await supabase.from('FORNECEDORES').select('id, cnpj').eq('tenant_id', STORE_TENANT).limit(5000);
-    if ((all || []).some(s => soDigitos(s.cnpj) === docDigits)) {
-      return res.status(409).json({ error: 'Este CNPJ já está cadastrado no nosso sistema.' });
+    const atual = await acharPorDocumento('fornecedor', STORE_TENANT, docDigits);
+
+    // CNPJ já cadastrado → não grava por cima: vira pedido de alteração para o
+    // administrador aprovar dentro do sistema. Aqui o contrato é opcional
+    // (quem só quer corrigir um telefone não precisa reenviar o contrato).
+    if (atual) {
+      const addrReq = address && typeof address === 'object' ? { ...address } : {};
+      if (String(nome_fantasia || '').trim()) addrReq.nome_fantasia = String(nome_fantasia).trim();
+      if (String(mobile || '').trim()) addrReq.mobile = String(mobile).trim();
+      if (ig) addrReq.instagram = ig;
+      const sol = await criarSolicitacao({
+        tenantId: STORE_TENANT, entity: 'fornecedor', atual,
+        payload: {
+          name: nm.toUpperCase(),
+          cnpj: String(cnpj || '').trim(),
+          ie: ie_isento ? 'ISENTO' : (String(ie || '').trim() || null),
+          email: em, phone: ph,
+          contact_name: String(contact_name || '').trim() || null,
+          address: addrReq,
+        },
+        files: contrato ? [{ kind: 'contrato', file: contrato }] : [],
+        requestedBy: {
+          name: String(responsible_name).trim(),
+          cpf: soDigitos(responsible_cpf),
+          cargo: String(responsible_cargo).trim(),
+        },
+        note: req.body.note,
+      });
+      return res.status(202).json({ success: true, pending: true, protocolo: String(sol.id).slice(0, 8).toUpperCase() });
     }
+
+    // Cadastro novo — contrato é obrigatório
+    if (!contrato)
+      return res.status(400).json({ error: 'Anexe o Contrato Comercial assinado para finalizar o cadastro.' });
 
     const addr = address && typeof address === 'object' ? { ...address } : {};
     if (String(nome_fantasia || '').trim()) addr.nome_fantasia = String(nome_fantasia).trim();
@@ -797,6 +818,8 @@ router.post('/cadastro-fornecedor', cadastroLimiter,
 // Recebe os dados + os 2 documentos obrigatórios (Contrato Comercial assinado e
 // Tabela de Preços vigente) + a identificação de quem envia, tudo via multipart.
 // Como multipart não carrega objeto aninhado, `address` chega como string JSON.
+// Se o CNPJ já existir, o envio vira pedido de alteração (documentos opcionais)
+// e nada é gravado até um administrador aprovar.
 router.post('/cadastro-transportadora', cadastroLimiter,
   uploadDocs.fields([{ name: 'contrato', maxCount: 1 }, { name: 'tabela', maxCount: 1 }]),
   async (req, res) => {
@@ -826,15 +849,42 @@ router.post('/cadastro-transportadora', cadastroLimiter,
   if (!validaCPF(responsible_cpf))
     return res.status(400).json({ error: 'CPF inválido. Confira os números digitados.' });
 
-  // Documentos obrigatórios
-  if (!contrato || !tabela)
-    return res.status(400).json({ error: 'Anexe o Contrato Comercial assinado e a Tabela de Preços vigente para finalizar o cadastro.' });
-
   try {
-    const { data: all } = await supabase.from('TRANSPORTADORAS').select('id, cnpj').eq('tenant_id', STORE_TENANT).limit(5000);
-    if ((all || []).some(s => soDigitos(s.cnpj) === docDigits)) {
-      return res.status(409).json({ error: 'Este CNPJ já está cadastrado no nosso sistema.' });
+    const atual = await acharPorDocumento('transportadora', STORE_TENANT, docDigits);
+
+    // CNPJ já cadastrado → pedido de alteração para o administrador aprovar.
+    // Os documentos são opcionais aqui (só reenvia quem quer atualizá-los).
+    if (atual) {
+      const enviados = [];
+      if (contrato) enviados.push({ kind: 'contrato', file: contrato });
+      if (tabela) enviados.push({ kind: 'tabela', file: tabela });
+      const sol = await criarSolicitacao({
+        tenantId: STORE_TENANT, entity: 'transportadora', atual,
+        payload: {
+          name: nm.toUpperCase(),
+          trade_name: String(trade_name || '').trim().toUpperCase() || null,
+          cnpj: String(cnpj || '').trim(),
+          ie: ie_isento ? 'ISENTO' : (String(ie || '').trim() || null),
+          email: em, phone: ph,
+          whatsapp: String(whatsapp || '').trim() || null,
+          contact_name: String(contact_name || '').trim() || null,
+          address: address && typeof address === 'object' ? address : {},
+        },
+        files: enviados,
+        requestedBy: {
+          name: String(responsible_name).trim(),
+          cpf: soDigitos(responsible_cpf),
+          cargo: String(responsible_cargo).trim(),
+        },
+        note: req.body.note,
+      });
+      return res.status(202).json({ success: true, pending: true, protocolo: String(sol.id).slice(0, 8).toUpperCase() });
     }
+
+    // Cadastro novo — os dois documentos são obrigatórios
+    if (!contrato || !tabela)
+      return res.status(400).json({ error: 'Anexe o Contrato Comercial assinado e a Tabela de Preços vigente para finalizar o cadastro.' });
+
     const payload = {
       tenant_id: STORE_TENANT,
       name: nm.toUpperCase(),
@@ -887,6 +937,88 @@ router.post('/cadastro-transportadora', cadastroLimiter,
 
     res.status(201).json({ success: true });
   } catch (err) { fail(res, err); }
+});
+
+// ── Fornecedora / transportadora: o CNPJ já tem cadastro? ──
+// Responde só sim/não. Nenhum dado do cadastro existente é devolvido.
+router.post('/check-doc-empresa', identityLimiter, async (req, res) => {
+  const entity = req.body.entity === 'transportadora' ? 'transportadora' : 'fornecedor';
+  const docDigits = soDigitos(req.body.cnpj || req.body.cpf_cnpj);
+  if (!docDigits || !validaCNPJ(docDigits)) return res.json({ exists: false });
+  try {
+    const atual = await acharPorDocumento(entity, STORE_TENANT, docDigits);
+    res.json({ exists: !!atual });
+  } catch (err) { fail(res, err, 'check-doc-empresa'); }
+});
+
+// ── Pedido de alteração de um cadastro de CLIENTE já existente ──
+// Fluxo às cegas: quem pede não vê nada do cadastro atual. Os dados
+// propostos e os documentos anexados ficam pendentes até um
+// administrador aprovar dentro do sistema (migration 062).
+// Campo em branco = "não mexer nesse dado".
+router.post('/solicitar-alteracao', cadastroLimiter,
+  uploadDocs.array('documentos', 6),
+  async (req, res) => {
+  const b = req.body;
+  const docDigits = soDigitos(b.cpf_cnpj);
+  const isPJ = b.type === 'PJ';
+
+  if (!docDigits) return res.status(400).json({ error: `Informe o ${isPJ ? 'CNPJ' : 'CPF'}` });
+  if (!(isPJ ? validaCNPJ(docDigits) : validaCPF(docDigits)))
+    return res.status(400).json({ error: `${isPJ ? 'CNPJ' : 'CPF'} inválido. Confira os números digitados.` });
+
+  // Quem está pedindo — identificação obrigatória, é o que o administrador
+  // usa para conferir se a alteração é legítima.
+  const reqName = String(b.requester_name || '').trim();
+  const reqCpf = soDigitos(b.requester_cpf);
+  if (!reqName) return res.status(400).json({ error: 'Informe o nome completo de quem está pedindo a alteração.' });
+  if (!validaCPF(reqCpf)) return res.status(400).json({ error: 'CPF de quem está pedindo é inválido. Confira os números.' });
+
+  let address = null;
+  try { address = b.address ? JSON.parse(b.address) : null; } catch { address = null; }
+  // Só mantém os campos de endereço realmente preenchidos
+  if (address && typeof address === 'object') {
+    address = Object.fromEntries(Object.entries(address).filter(([, v]) => String(v || '').trim()));
+    if (!Object.keys(address).length) address = null;
+  }
+
+  try {
+    const atual = await acharPorDocumento('cliente', STORE_TENANT, docDigits);
+    if (!atual) {
+      return res.status(404).json({ error: 'Não encontramos cadastro com esse documento. Faça o cadastro normalmente.' });
+    }
+
+    const ig = String(b.instagram || '').trim()
+      .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?].*$/, '').replace(/^@/, '');
+
+    // Campo vazio = não alterar. Por isso o payload só leva o que veio preenchido.
+    const payload = {};
+    const put = (k, v) => { if (String(v || '').trim()) payload[k] = String(v).trim(); };
+    put('name', String(b.name || '').toUpperCase());
+    put('email', b.email);
+    put('phone', b.phone);
+    put('mobile', b.mobile);
+    put('rg_ie', b.rg_ie);
+    if (ig) payload.instagram = ig;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(b.birth_date || '').trim())) payload.birth_date = b.birth_date.trim();
+    if (address) payload.address = address;
+    if (b.can_publish === 'sim' || b.can_publish === 'nao') {
+      payload.admission_data = { can_publish: b.can_publish === 'sim' };
+    }
+
+    const arquivos = (req.files || []).map(file => ({ kind: String(b.doc_kind || 'documento'), file }));
+    if (!Object.keys(payload).length && !arquivos.length) {
+      return res.status(400).json({ error: 'Preencha ao menos um dado para alterar ou anexe um documento.' });
+    }
+
+    const sol = await criarSolicitacao({
+      tenantId: STORE_TENANT, entity: 'cliente', atual, payload,
+      files: arquivos,
+      requestedBy: { name: reqName, cpf: reqCpf, cargo: String(b.requester_cargo || '').trim() || null },
+      note: b.note,
+    });
+    res.status(202).json({ success: true, pending: true, protocolo: String(sol.id).slice(0, 8).toUpperCase() });
+  } catch (err) { fail(res, err, 'solicitar-alteracao'); }
 });
 
 // ── Só verifica se o CPF/CNPJ já existe (sem expor os dados) ──

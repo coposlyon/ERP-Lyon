@@ -47,6 +47,7 @@ const Reports            = lazy(() => import('@/pages/Reports/Reports'));
 const Settings           = lazy(() => import('@/pages/Settings/Settings'));
 const Users              = lazy(() => import('@/pages/Settings/Users'));
 const Audit              = lazy(() => import('@/pages/Settings/Audit'));
+const CadastroAprovacoes = lazy(() => import('@/pages/Settings/CadastroAprovacoes'));
 const Feriados           = lazy(() => import('@/pages/Settings/Feriados'));
 const Quotes             = lazy(() => import('@/pages/Quotes/Quotes'));
 const QuoteForm          = lazy(() => import('@/pages/Quotes/QuoteForm'));
@@ -186,6 +187,8 @@ function AppRoutes() {
         <Route path="settings" element={<Mod m="settings"><Settings /></Mod>} />
         <Route path="users" element={<AdminOnly><Users /></AdminOnly>} />
         <Route path="audit" element={<AdminOnly><Audit /></AdminOnly>} />
+        {/* Aprovação das alterações pedidas pelos links públicos de cadastro */}
+        <Route path="cadastro-aprovacoes" element={<AdminOnly><CadastroAprovacoes /></AdminOnly>} />
         <Route path="feriados" element={<Mod m={['settings','hr']}><Feriados /></Mod>} />
         {/* Novos módulos */}
         <Route path="returns"  element={<Mod m="returns"><Returns /></Mod>}  />

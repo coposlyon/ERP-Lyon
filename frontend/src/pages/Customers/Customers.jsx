@@ -169,28 +169,26 @@ export default function Customers() {
     { key: 'type', label: 'Tipo', width: 65,
       render: v => <span className={`badge ${TYPE_BADGE[v] || 'badge-gray'}`}>{TYPE_LABELS[v] || v}</span>
     },
-    { key: 'name', label: 'Nome',
-      render: (v, row) => {
-        const primeiroNome = String(v || '').trim().split(/\s+/)[0] || v;
-        return (
-          <div>
-            <p title={v} className="font-medium text-gray-900 text-sm flex items-center gap-1.5 whitespace-nowrap">
-              {row.blocked && (
-                <span title={row.block_reason || 'Cliente bloqueado / com problemas'} className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 shrink-0">
-                  <Ban size={11} />
-                </span>
-              )}
-              {row.notes && String(row.notes).trim() && (
-                <span title={row.notes} className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 text-amber-600 shrink-0">
-                  <AlertTriangle size={11} />
-                </span>
-              )}
-              {primeiroNome}
-            </p>
-            {row.nome_fantasia && <p className="text-xs text-gray-400 whitespace-nowrap">{row.nome_fantasia}</p>}
-          </div>
-        );
-      }
+    { key: 'name', label: 'Nome', width: 260,
+      // Nome completo, sem cortar. Nomes longos quebram em mais de uma linha.
+      render: (v, row) => (
+        <div className="min-w-[200px]">
+          <p title={v} className="font-medium text-gray-900 text-sm flex items-start gap-1.5 break-words">
+            {row.blocked && (
+              <span title={row.block_reason || 'Cliente bloqueado / com problemas'} className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600 shrink-0 mt-0.5">
+                <Ban size={11} />
+              </span>
+            )}
+            {row.notes && String(row.notes).trim() && (
+              <span title={row.notes} className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 text-amber-600 shrink-0 mt-0.5">
+                <AlertTriangle size={11} />
+              </span>
+            )}
+            <span>{v || '—'}</span>
+          </p>
+          {row.nome_fantasia && <p className="text-xs text-gray-400 break-words">{row.nome_fantasia}</p>}
+        </div>
+      )
     },
     { key: 'credit_limit', label: 'Limite de Crédito', width: 140,
       render: v => v > 0

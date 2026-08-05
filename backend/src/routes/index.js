@@ -88,6 +88,7 @@ router.use('/situacoes', requireModules('hr','settings'), situacoesRoutes);
 router.use('/feriados',  requireModules('hr','settings'), feriadosRoutes);
 
 // Gestão de acessos/usuários e auditoria — somente administradores
+router.use('/cadastro-requests', requireRole(['admin']), require('./cadastro-requests'));
 router.use('/employees', requireRole(['admin']), employeesRoutes);
 router.use('/users',     requireRole(['admin']), usersRoutes);
 router.use('/audit',     requireRole(['admin']), auditRoutes);

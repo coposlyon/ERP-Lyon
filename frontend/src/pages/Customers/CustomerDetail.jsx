@@ -5,7 +5,7 @@ import {
   ArrowLeft, Phone, Mail, MapPin, Edit2, Instagram, Cake, Hash, IdCard,
   CalendarPlus, RefreshCw, History, User, ShieldCheck, Loader2, AlertTriangle,
   CheckCircle2, Star, Shield, Building2, UserCircle2, CalendarDays, Wallet,
-  TrendingUp, Sparkles,
+  TrendingUp, Sparkles, Paperclip, FileText, Trash2,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -86,6 +86,36 @@ export default function CustomerDetail() {
     onError: e => toast.error(e.error || 'Não foi possível consultar'),
   });
   const lastCredit = (creditHist?.data || [])[0];
+
+  // Documentos do cliente — os aprovados na fila de Aprovações de Cadastro
+  // caem aqui, junto com os que a equipe anexa manualmente.
+  const { data: docs = [] } = useQuery({
+    queryKey: ['customer-attachments', id],
+    queryFn: () => api.get(`/customers/${id}/attachments`),
+    enabled: !!id,
+  });
+  const [upLoading, setUpLoading] = useState(false);
+
+  async function subirDoc(file) {
+    if (!file) return;
+    setUpLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      await api.post(`/customers/${id}/attachments`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      qc.invalidateQueries(['customer-attachments', id]);
+      toast.success('Documento anexado!');
+    } catch (e) { toast.error(e.error || 'Erro ao anexar'); }
+    finally { setUpLoading(false); }
+  }
+
+  async function removerDoc(docId) {
+    try {
+      await api.delete(`/customers/${id}/attachments/${docId}`);
+      qc.invalidateQueries(['customer-attachments', id]);
+      toast.success('Documento removido');
+    } catch (e) { toast.error(e.error || 'Erro ao remover'); }
+  }
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -362,6 +392,7 @@ export default function CustomerDetail() {
             ['sales', `Histórico de Compras (${sales.length})`],
             ['fin', `Histórico Financeiro (${(receivables || []).length})`],
             ['prime', `Evolução Lyon Prime (${(prime?.historico || []).length})`],
+            ['docs', `Documentos (${docs.length})`],
             ['cadastro', 'Cadastro'],
           ].map(([k, label]) => (
             <button key={k} onClick={() => setTab(k)}
@@ -447,6 +478,43 @@ export default function CustomerDetail() {
                   </li>
                 ))}
               </ol>
+            )}
+          </div>
+        )}
+
+        {/* Documentos — anexos do cliente (inclui os aprovados na fila) */}
+        {tab === 'docs' && (
+          <div className="p-5 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-gray-500">
+                Contratos, comprovantes e documentos do cliente. Os enviados pelo link público aparecem aqui depois de aprovados.
+              </p>
+              <label className="shrink-0 btn-secondary cursor-pointer">
+                {upLoading ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={15} />} Anexar
+                <input type="file" className="hidden" disabled={upLoading}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  onChange={e => { subirDoc(e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+            </div>
+            {docs.length === 0 ? (
+              <p className="text-center text-gray-400 py-8 text-sm">Nenhum documento anexado.</p>
+            ) : (
+              <ul className="divide-y divide-gray-100 border border-gray-200 rounded-xl">
+                {docs.map(d => (
+                  <li key={d.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <FileText size={16} className="text-gray-400 shrink-0" />
+                    <a href={d.url} target="_blank" rel="noreferrer"
+                      className="text-sm text-primary-600 hover:underline truncate flex-1">{d.name}</a>
+                    <span className="text-xs text-gray-400 shrink-0 hidden sm:block">
+                      {d.kind ? `${d.kind} · ` : ''}{d.uploaded_at ? fmtDateBR(d.uploaded_at) : ''}
+                      {d.uploaded_by?.name ? ` · ${d.uploaded_by.name}` : ''}
+                    </span>
+                    <button onClick={() => removerDoc(d.id)} className="btn-ghost p-1.5 text-red-400 hover:text-red-600 shrink-0" title="Remover">
+                      <Trash2 size={14} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         )}

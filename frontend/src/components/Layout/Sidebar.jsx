@@ -1,5 +1,7 @@
 import { NavLink } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import api from '@/lib/api';
 import {
   LayoutDashboard, Package, Users, Truck, ShoppingCart,
   ShoppingBag, BarChart3, FileText, Settings,
@@ -41,6 +43,7 @@ const menuItems = [
     children: [
       { label: 'Produtos', path: '/products', icon: Package, module: 'products' },
       { label: 'Clientes', path: '/customers', icon: Users, module: 'customers' },
+      { label: 'Aprovações de Cadastro', path: '/cadastro-aprovacoes', icon: ShieldCheck, adminOnly: true },
       { label: 'Fornecedores', path: '/suppliers', icon: Truck, module: 'suppliers' },
       { label: 'Colaboradores', path: '/employees', icon: Briefcase, module: 'employees' },
       { label: 'Tabelas de Preço', path: '/price-tables', icon: Percent, module: 'price-tables' },
@@ -181,8 +184,20 @@ const menuItems = [
   },
 ];
 
-function SidebarGroup({ item, collapsed, onMobileClose }) {
+// Bolinha com o número de pendências ao lado do item do menu
+function Badge({ n }) {
+  if (!n) return null;
+  return (
+    <span className="ml-auto shrink-0 bg-amber-400 text-amber-950 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+      {n > 99 ? '99+' : n}
+    </span>
+  );
+}
+
+function SidebarGroup({ item, collapsed, onMobileClose, badges = {} }) {
   const [open, setOpen] = useState(false);
+  // Soma as pendências dos filhos p/ o grupo avisar mesmo fechado
+  const groupBadge = (item.children || []).reduce((s, c) => s + (badges[c.path] || 0), 0);
 
   if (!item.children) {
     return (
@@ -210,6 +225,7 @@ function SidebarGroup({ item, collapsed, onMobileClose }) {
         {!collapsed && (
           <>
             <span className="flex-1 text-left">{item.label}</span>
+            {!open && <Badge n={groupBadge} />}
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </>
         )}
@@ -228,6 +244,7 @@ function SidebarGroup({ item, collapsed, onMobileClose }) {
             >
               <child.icon size={15} />
               <span>{child.label}</span>
+              <Badge n={badges[child.path]} />
             </NavLink>
           ))}
         </div>
@@ -257,6 +274,16 @@ function filterMenu(items, hasModule, isAdmin) {
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
   const { hasModule, isAdmin } = useAuth();
   const visibleItems = filterMenu(menuItems, hasModule, isAdmin);
+
+  // Pedidos de alteração de cadastro esperando aprovação (só admin enxerga)
+  const { data: aprovacoes } = useQuery({
+    queryKey: ['cadastro-requests-count'],
+    queryFn: () => api.get('/cadastro-requests/count'),
+    enabled: !!isAdmin,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
+  });
+  const badges = { '/cadastro-aprovacoes': aprovacoes?.pendentes || 0 };
 
   return (
     <aside
@@ -307,6 +334,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               item={item}
               collapsed={collapsed}
               onMobileClose={onMobileClose}
+              badges={badges}
             />
             {/* Divisor após o Dashboard, separando-o dos módulos */}
             {idx === 0 && <div className="my-2 border-t border-indigo-800/60" />}

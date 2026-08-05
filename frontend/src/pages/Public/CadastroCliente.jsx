@@ -6,6 +6,7 @@ import { setStoreCustomer } from '@/store/StoreAuthContext';
 import '@/store/store.css';
 import toast from 'react-hot-toast';
 import CadastroDone from './CadastroDone';
+import SolicitarAlteracao from './SolicitarAlteracao';
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 const INPUT = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none text-sm transition';
@@ -87,7 +88,7 @@ export default function CadastroCliente() {
   const [addr, setAddr] = useState({ zip:'', street:'', number:'', complement:'', neighborhood:'', city:'', state:'' });
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
-  const [doneKind, setDoneKind] = useState('new'); // new | updated | login
+  const [doneKind, setDoneKind] = useState('new'); // new | requested | login
   const [welcomeName, setWelcomeName] = useState('');
   const [storeCfg, setStoreCfg] = useState(null);
 
@@ -96,8 +97,10 @@ export default function CadastroCliente() {
 
   // Detecção de cliente já cadastrado (ao preencher o CPF/CNPJ)
   const [existing, setExisting] = useState(null); // { first_name, type, has_birth }
-  const [editMode, setEditMode] = useState(false);
   const [checking, setChecking] = useState(false);
+  // Pedido de alteração — cadastro existente nunca é gravado por cima:
+  // vira um pedido que a equipe aprova no sistema.
+  const [pedido, setPedido] = useState(null); // { prefill } | {} enquanto aberto
   const [verifyDate, setVerifyDate] = useState(''); // data informada p/ comprovar identidade
   const [verifying, setVerifying] = useState(false);
   const [verifyErr, setVerifyErr] = useState('');
@@ -185,27 +188,39 @@ export default function CadastroCliente() {
   // Revisão: dados conferidos → entra na loja
   function okReview() { if (review) entrarLogado(review); }
 
-  // Revisão: quer corrigir → pré-preenche o formulário para edição
+  // Revisão: quer corrigir → abre o PEDIDO de alteração já preenchido com o
+  // que ele acabou de ver. Nada é gravado sem a aprovação da equipe.
   function editarReview() {
     const c = review;
-    setType(c.type === 'PJ' ? 'PJ' : 'PF');
-    setF({
-      name: (c.name || '').toUpperCase(),
-      cpf_cnpj: (c.type === 'PJ' ? maskCNPJ : maskCPF)(c.cpf_cnpj || ''),
-      ie: c.rg_ie && c.rg_ie !== 'ISENTO' ? c.rg_ie : '',
-      birth_date: isoToBR(c.birth_date),
-      email: c.email || '',
-      phone: maskPhone(c.phone || ''),
-      mobile: maskPhone(c.mobile || ''),
-      instagram: c.instagram || '',
-    });
-    setIeIsento(c.rg_ie === 'ISENTO' || !!c.admission_data?.ie_isento);
-    setCanPublish(c.admission_data?.can_publish === false ? 'nao' : 'sim');
     const a = c.address || {};
     const up = s => String(s || '').toUpperCase();
-    setAddr({ zip: maskCEP(a.zip || ''), street: up(a.street), number: up(a.number), complement: up(a.complement), neighborhood: up(a.neighborhood), city: up(a.city), state: up(a.state) });
-    setEditMode(true);
+    setType(c.type === 'PJ' ? 'PJ' : 'PF');
+    set('cpf_cnpj', (c.type === 'PJ' ? maskCNPJ : maskCPF)(c.cpf_cnpj || ''));
+    setPedido({
+      prefill: {
+        name: up(c.name),
+        rg_ie: c.rg_ie && c.rg_ie !== 'ISENTO' ? c.rg_ie : '',
+        birth_date: isoToBR(c.birth_date),
+        email: c.email || '',
+        phone: maskPhone(c.phone || ''),
+        mobile: maskPhone(c.mobile || ''),
+        instagram: c.instagram || '',
+        can_publish: c.admission_data?.can_publish === false ? 'nao' : 'sim',
+        address: {
+          zip: maskCEP(a.zip || ''), street: up(a.street), number: up(a.number),
+          complement: up(a.complement), neighborhood: up(a.neighborhood),
+          city: up(a.city), state: up(a.state),
+        },
+      },
+    });
     setReview(null); setExisting(null);
+  }
+
+  // Abre o pedido em branco — usado por quem não consegue comprovar a
+  // identidade: não vê nada do cadastro, só descreve o que quer mudar.
+  function abrirPedidoEmBranco() {
+    setPedido({ prefill: null });
+    setExisting(null); setReview(null); setVerifyDate(''); setVerifyErr('');
   }
 
   function cancelarExistente() {
@@ -279,7 +294,6 @@ export default function CadastroCliente() {
         birth_date: isPJ ? null : brToISO(f.birth_date),
         can_publish: canPublish === 'sim',
         address: addr,
-        update: editMode || undefined,
       });
       // Em modo manutenção NÃO loga na loja — só mostra o card de conclusão.
       if (!storeCfg?.maintenance && res?.customer) {
@@ -288,9 +302,15 @@ export default function CadastroCliente() {
       } else {
         setWelcomeName(f.name.trim().split(/\s+/)[0]);
       }
-      setDoneKind(editMode ? 'updated' : 'new');
+      setDoneKind('new');
       setDone(true);
     } catch (err) {
+      // Documento já cadastrado → não grava por cima, abre o pedido de alteração
+      if (err?.response?.data?.needs_request) {
+        toast('Esse documento já tem cadastro. Envie um pedido de alteração.', { icon: '🔒' });
+        abrirPedidoEmBranco();
+        return;
+      }
       toast.error(err?.response?.data?.error || 'Não foi possível enviar. Tente novamente.');
     } finally { setSending(false); }
   }
@@ -307,6 +327,12 @@ export default function CadastroCliente() {
 
   // Após FAZER/ATUALIZAR o cadastro → mostra "VOCÊ CONCLUIU O CADASTRO" e
   // volta para o WhatsApp (não entra na loja). Só quem fez login entra na loja.
+  if (done && doneKind === 'requested') {
+    return <CadastroDone whatsapp={storeCfg?.whatsapp}
+      title="PEDIDO ENVIADO PARA APROVAÇÃO"
+      message="Recebemos seu pedido de alteração. Nossa equipe confere e aprova — até lá, seu cadastro continua como está." />;
+  }
+
   if (done && doneKind !== 'login') {
     return <CadastroDone message={storeCfg?.message} whatsapp={storeCfg?.whatsapp} />;
   }
@@ -366,6 +392,17 @@ export default function CadastroCliente() {
 
       {phase === 'form' && (<>
       {Bg}
+
+      {/* Pedido de alteração de um cadastro existente (aprovação da equipe) */}
+      {pedido && (
+        <SolicitarAlteracao
+          doc={f.cpf_cnpj}
+          isPJ={isPJ}
+          prefill={pedido.prefill}
+          onCancel={() => setPedido(null)}
+          onDone={() => { setPedido(null); setDoneKind('requested'); setDone(true); }}
+        />
+      )}
 
       {/* Revisão dos dados — após comprovar identidade */}
       {review && (
@@ -437,6 +474,13 @@ export default function CadastroCliente() {
               </>
             )}
 
+            {/* Não consegue comprovar? Pode pedir a alteração assim mesmo —
+                sem ver nada do cadastro. A equipe confere e aprova. */}
+            <button onClick={abrirPedidoEmBranco}
+              className="w-full mt-3 border border-violet-200 text-violet-700 hover:bg-violet-50 font-semibold py-2.5 rounded-xl text-sm transition-colors">
+              Corrigir meus dados / enviar documentos
+            </button>
+
             <button onClick={cancelarExistente} className="text-xs text-gray-400 hover:text-gray-600 mt-4">
               Não sou eu / usar outro documento
             </button>
@@ -448,7 +492,7 @@ export default function CadastroCliente() {
         <div className="text-center mb-6">
           <img src="/lyon-logo.png" alt="Lyon Copos" className="h-28 sm:h-32 mx-auto mb-3 object-contain st-float drop-shadow-xl" onError={e => { e.target.style.display='none'; }} />
           <h1 className="text-2xl sm:text-3xl font-black leading-tight st-gradient-text">FAÇA O SEU CADASTRO NO NOSSO SISTEMA LYON COPOS!</h1>
-          <p className="text-gray-500 mt-2 text-sm">{editMode ? 'Atualize seus dados abaixo e salve. ✏️' : 'Preencha seus dados abaixo. Leva menos de 1 minuto.'}</p>
+          <p className="text-gray-500 mt-2 text-sm">Preencha seus dados abaixo. Leva menos de 1 minuto.</p>
         </div>
 
         <form onSubmit={submit} className="bg-white/90 backdrop-blur rounded-3xl shadow-xl p-6 sm:p-8 space-y-4">
@@ -553,7 +597,7 @@ export default function CadastroCliente() {
 
           <button type="submit" disabled={sending}
             className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-            {sending ? <><Loader2 size={18} className="animate-spin" /> {editMode ? 'Salvando...' : 'Enviando...'}</> : <><User size={18} /> {editMode ? 'Salvar alterações' : 'Enviar cadastro'}</>}
+            {sending ? <><Loader2 size={18} className="animate-spin" /> Enviando...</> : <><User size={18} /> Enviar cadastro</>}
           </button>
           <p className="text-xs text-gray-400 text-center">Seus dados são usados apenas para atendimento e pedidos.</p>
         </form>

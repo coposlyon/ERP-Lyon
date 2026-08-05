@@ -10,7 +10,7 @@ function waLink(whatsapp) {
   return `https://wa.me/${d}`;
 }
 
-export default function CadastroDone({ message, whatsapp }) {
+export default function CadastroDone({ message, whatsapp, title }) {
   const link = waLink(whatsapp);
   const [redirecting, setRedirecting] = useState(false);
 
@@ -32,7 +32,7 @@ export default function CadastroDone({ message, whatsapp }) {
           <CheckCircle2 size={36} className="text-green-600" />
         </div>
         <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">
-          VOCÊ CONCLUIU O CADASTRO
+          {title || 'VOCÊ CONCLUIU O CADASTRO'}
         </h1>
         <p className="text-gray-600 mt-2">
           {message || 'Você concluiu o cadastro! Volte para o WhatsApp.'}

@@ -64,6 +64,11 @@ export default function CadastroTransportadora() {
   const [contrato, setContrato] = useState(null);
   const [tabela, setTabela] = useState(null);
   const [resp, setResp] = useState({ name: '', cpf: '', cargo: '' });
+  const [note, setNote] = useState('');
+  // CNPJ já cadastrado → o envio vira PEDIDO de alteração, que só vale depois
+  // que a equipe da Lyon aprovar dentro do sistema.
+  const [jaCadastrado, setJaCadastrado] = useState(false);
+  const [pendente, setPendente] = useState(null); // protocolo do pedido enviado
 
   // Config do site (modo manutenção dos cadastros)
   useEffect(() => { storeApi.get('/store').then(d => setStoreCfg(d?.cadastro || null)).catch(() => {}); }, []);
@@ -99,6 +104,16 @@ export default function CadastroTransportadora() {
       const up = s => (s ? String(s).toUpperCase() : null);
       setAddr(p => ({ ...p, street:up(d.street)||p.street, neighborhood:up(d.neighborhood)||p.neighborhood, city:up(d.city)||p.city, state:d.state||p.state }));
     } catch {}
+  }
+
+  // O CNPJ já tem cadastro? Responde só sim/não — nenhum dado do cadastro
+  // existente é devolvido para o link público.
+  async function checkExistente(cnpjRaw) {
+    const digits = cnpjRaw.replace(/\D/g, ''); if (digits.length !== 14) return;
+    try {
+      const r = await storeApi.post('/check-doc-empresa', { entity: 'transportadora', cnpj: digits });
+      setJaCadastrado(!!r?.exists);
+    } catch { /* erro de rede → segue como cadastro novo */ }
   }
 
   async function lookupCnpj(cnpjRaw) {
@@ -144,7 +159,9 @@ export default function CadastroTransportadora() {
       return toast.error('Preencha o endereço completo (CEP, rua, número, bairro, cidade e estado)');
     if (!resp.name.trim() || !resp.cargo.trim()) return toast.error('Informe o nome completo e o cargo de quem está enviando o cadastro.');
     if (!validCPF(resp.cpf)) return toast.error('CPF inválido. Confira os números digitados.');
-    if (!contrato || !tabela) return toast.error('Anexe o Contrato Comercial assinado e a Tabela de Preços vigente para finalizar o cadastro.');
+    // No pedido de atualização os documentos são opcionais — só são
+    // obrigatórios no cadastro novo.
+    if (!jaCadastrado && (!contrato || !tabela)) return toast.error('Anexe o Contrato Comercial assinado e a Tabela de Preços vigente para finalizar o cadastro.');
     setSending(true);
     try {
       const fd = new FormData();
@@ -161,10 +178,12 @@ export default function CadastroTransportadora() {
       fd.append('responsible_name', resp.name.trim());
       fd.append('responsible_cpf', resp.cpf);
       fd.append('responsible_cargo', resp.cargo.trim());
-      fd.append('contrato', contrato);
-      fd.append('tabela', tabela);
-      await storeApi.post('/cadastro-transportadora', fd);
-      setDone(true);
+      fd.append('note', note.trim());
+      if (contrato) fd.append('contrato', contrato);
+      if (tabela) fd.append('tabela', tabela);
+      const res = await storeApi.post('/cadastro-transportadora', fd);
+      if (res?.pending) setPendente(res.protocolo || '—');
+      else setDone(true);
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Não foi possível enviar. Tente novamente.');
     } finally { setSending(false); }
@@ -178,6 +197,13 @@ export default function CadastroTransportadora() {
       <div className="fixed inset-0 bg-gradient-to-br from-white/60 via-white/40 to-fuchsia-50/50" style={{ zIndex: -1 }} />
     </>
   );
+
+  // Pedido de atualização enviado — nada mudou ainda no sistema.
+  if (pendente) {
+    return <CadastroDone whatsapp={storeCfg?.whatsapp}
+      title="PEDIDO ENVIADO PARA APROVAÇÃO"
+      message={`Recebemos seu pedido de atualização (protocolo ${pendente}). Nossa equipe confere e aprova — até lá o cadastro continua como está.`} />;
+  }
 
   // Modo manutenção: mostra só o card "VOCÊ CONCLUIU O CADASTRO"
   // Concluiu o cadastro → volta para o WhatsApp.
@@ -223,6 +249,20 @@ export default function CadastroTransportadora() {
         </div>
 
         <form onSubmit={submit} className="bg-white/90 backdrop-blur rounded-3xl shadow-xl p-6 sm:p-8 space-y-4">
+          {/* CNPJ já cadastrado → o envio é um pedido de alteração */}
+          {jaCadastrado && (
+            <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+              <span className="text-xl leading-none">🔒</span>
+              <div className="text-sm">
+                <p className="font-bold text-amber-900">Este CNPJ já está cadastrado</p>
+                <p className="text-amber-800 mt-0.5">
+                  Preencha os dados atualizados e, se quiser, anexe documentos. Por segurança, nada é alterado na hora:
+                  o pedido vai para a conferência da equipe Lyon e só vale depois de aprovado.
+                </p>
+              </div>
+            </div>
+          )}
+
           <Field label="Razão Social *">
             <input className={INPUT} value={f.name} onChange={e => set('name', e.target.value.toUpperCase())} />
           </Field>
@@ -234,7 +274,7 @@ export default function CadastroTransportadora() {
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="CNPJ *">
               <input className={INPUT} value={f.cnpj} placeholder="00.000.000/0000-00"
-                onChange={e => { const v = maskCNPJ(e.target.value); set('cnpj', v); const d = v.replace(/\D/g,''); if (d.length === 14 && validCNPJ(d)) lookupCnpj(v); }}
+                onChange={e => { const v = maskCNPJ(e.target.value); set('cnpj', v); const d = v.replace(/\D/g,''); if (d.length !== 14) setJaCadastrado(false); if (d.length === 14 && validCNPJ(d)) { checkExistente(v); lookupCnpj(v); } }}
                 onBlur={() => validCNPJ(f.cnpj) && lookupCnpj(f.cnpj)} />
               {cnpjLoading && <p className="text-xs text-violet-500 mt-1 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> buscando dados...</p>}
               {f.cnpj.replace(/\D/g,'').length === 14 && !validCNPJ(f.cnpj) && (
@@ -285,14 +325,18 @@ export default function CadastroTransportadora() {
 
           {/* Documentos obrigatórios + responsável */}
           <div className="border border-gray-200 rounded-2xl p-4 space-y-4">
-            <p className="text-sm font-semibold text-gray-700">Documentos obrigatórios e responsável</p>
+            <p className="text-sm font-semibold text-gray-700">
+              {jaCadastrado ? 'Documentos (opcionais) e responsável' : 'Documentos obrigatórios e responsável'}
+            </p>
             {[['contrato', 'Contrato Comercial assinado', contrato, setContrato],
               ['tabela', 'Tabela de Preços vigente', tabela, setTabela]].map(([key, label, file, setter]) => (
               <div key={key} className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-700">{label} *</p>
+                  <p className="text-sm font-medium text-gray-700">{label} {jaCadastrado ? '' : '*'}</p>
                   <p className={`text-xs truncate ${file ? 'text-green-600' : 'text-gray-400'}`}>
-                    {file ? file.name : 'Nenhum arquivo (PDF, imagem ou planilha)'}
+                    {file ? file.name
+                      : jaCadastrado ? 'Opcional — anexe só se quiser enviar uma versão nova'
+                      : 'Nenhum arquivo (PDF, imagem ou planilha)'}
                   </p>
                 </div>
                 <label className="shrink-0 inline-flex items-center gap-1.5 bg-violet-100 text-violet-700 hover:bg-violet-200 text-sm font-medium px-3 py-2 rounded-xl cursor-pointer transition">
@@ -316,13 +360,24 @@ export default function CadastroTransportadora() {
                   onChange={e => setResp(p => ({ ...p, cargo: e.target.value }))} />
               </Field>
             </div>
+            {jaCadastrado && (
+              <Field label="O que mudou? (ajuda a aprovar mais rápido)">
+                <textarea className={INPUT} rows={2} value={note} onChange={e => setNote(e.target.value)}
+                  placeholder="Ex: mudamos de endereço e atualizamos a tabela de preços" />
+              </Field>
+            )}
           </div>
 
           <button type="submit" disabled={sending}
             className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-            {sending ? <><Loader2 size={18} className="animate-spin" /> Enviando...</> : <><Truck size={18} /> Enviar cadastro</>}
+            {sending ? <><Loader2 size={18} className="animate-spin" /> Enviando...</>
+              : <><Truck size={18} /> {jaCadastrado ? 'Enviar pedido de atualização' : 'Enviar cadastro'}</>}
           </button>
-          <p className="text-xs text-gray-400 text-center">Seus dados são usados apenas para o cadastro de transportadoras.</p>
+          <p className="text-xs text-gray-400 text-center">
+            {jaCadastrado
+              ? 'A atualização só entra no sistema depois que nossa equipe aprovar.'
+              : 'Seus dados são usados apenas para o cadastro de transportadoras.'}
+          </p>
         </form>
       </div>
       </>)}
