@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Loader2, CheckCircle2, XCircle, MessageCircle, Phone, Mail, Upload, Paperclip, FileText } from 'lucide-react';
+import { Plus, Search, Edit2, Eye, Trash2, ShieldCheck, Loader2, CheckCircle2, XCircle, MessageCircle, Phone, Mail, Upload, Paperclip, FileText } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import CopyLinkButton from '@/components/UI/CopyLinkButton';
+import CreditCheckModal from '@/components/UI/CreditCheckModal';
+import DeletePasswordModal from '@/components/UI/DeletePasswordModal';
+import DetailModal from '@/components/UI/DetailModal';
+import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
@@ -367,7 +371,12 @@ export default function Suppliers() {
   const [searchInput, setSearchInput] = useState('');
   const [modalOpen, setModalOpen]     = useState(false);
   const [editing, setEditing]         = useState(null);
+  const [detail, setDetail]           = useState(null);   // ficha (olhinho)
+  const [scoreTarget, setScoreTarget] = useState(null);   // consulta de crédito
+  const [delTarget, setDelTarget]     = useState(null);   // exclusão definitiva
+  const [selectedId, setSelectedId]   = useState(null);   // linha marcada ao clicar
   const qc = useQueryClient();
+  const { isAdmin } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: ['suppliers', page, search],
@@ -375,7 +384,7 @@ export default function Suppliers() {
   });
 
   function openNew()  { setEditing(null); setModalOpen(true); }
-  function openEdit(s){ setEditing(s);    setModalOpen(true); }
+  function openEdit(s){ setDetail(null); setEditing(s); setModalOpen(true); }
   function close()    { setModalOpen(false); setEditing(null); }
   function onSaved()  { close(); qc.invalidateQueries(['suppliers']); }
 
@@ -423,11 +432,24 @@ export default function Suppliers() {
     { key: 'is_active', label: 'Status', width: 80,
       render: v => <span className={`badge ${v ? 'badge-green' : 'badge-gray'}`}>{v ? 'Ativo' : 'Inativo'}</span>
     },
-    { key: 'id', label: '', width: 50,
+    { key: 'id', label: '', width: 110,
       render: (_, row) => (
-        <button onClick={() => openEdit(row)} className="btn-ghost p-1.5" title="Editar">
-          <Edit2 size={14} />
-        </button>
+        <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+          <button onClick={() => setScoreTarget(row)} className="btn-ghost p-1.5 text-indigo-500 hover:text-indigo-700" title="Consultar score / crédito">
+            <ShieldCheck size={14} />
+          </button>
+          <button onClick={() => setDetail(row)} className="btn-ghost p-1.5" title="Ver detalhes">
+            <Eye size={14} />
+          </button>
+          <button onClick={() => openEdit(row)} className="btn-ghost p-1.5" title="Editar">
+            <Edit2 size={14} />
+          </button>
+          {isAdmin && (
+            <button onClick={() => setDelTarget(row)} className="btn-ghost p-1.5 text-red-400 hover:text-red-600" title="Excluir fornecedor">
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       )
     },
   ];
@@ -460,7 +482,11 @@ export default function Suppliers() {
           </form>
         </div>
 
-        <Table columns={columns} data={data?.data} loading={isLoading} />
+        <Table columns={columns} data={data?.data} loading={isLoading}
+          onRowClick={row => setSelectedId(prev => prev === row.id ? null : row.id)}
+          rowClassName={row => row.id === selectedId
+            ? '!bg-primary-50 shadow-[inset_3px_0_0_0_theme(colors.primary.600)]'
+            : ''} />
         <Pagination page={page} total={data?.total || 0} limit={20} onPageChange={setPage} />
       </div>
 
@@ -468,6 +494,44 @@ export default function Suppliers() {
         title={editing ? 'Editar Fornecedor' : 'Novo Fornecedor'} size="md">
         <SupplierForm supplier={editing} onSaved={onSaved} onCancel={close} />
       </Modal>
+
+      <DetailModal
+        target={detail}
+        onClose={() => setDetail(null)}
+        onEdit={openEdit}
+        title="Ficha do fornecedor"
+        fields={detail ? [
+          { label: 'Razão Social',  value: detail.name, wide: true },
+          { label: 'Nome Fantasia', value: detail.address?.nome_fantasia, wide: true },
+          { label: 'CNPJ',          value: detail.cnpj },
+          { label: 'Inscrição Estadual', value: detail.ie },
+          { label: 'Status',        value: detail.is_active ? 'Ativo' : 'Inativo' },
+          { label: 'Contato',       value: detail.contact_name },
+          { label: 'Telefone',      value: detail.phone },
+          { label: 'E-mail',        value: detail.email },
+          { label: 'Endereço',      value: [detail.address?.street, detail.address?.number, detail.address?.complement].filter(Boolean).join(', '), wide: true },
+          { label: 'Bairro',        value: detail.address?.neighborhood },
+          { label: 'Cidade/UF',     value: detail.address?.city ? `${detail.address.city}/${detail.address.state || ''}` : null },
+          { label: 'CEP',           value: detail.address?.zip },
+        ] : []}
+      />
+
+      <CreditCheckModal
+        target={scoreTarget}
+        onClose={() => setScoreTarget(null)}
+        path="/suppliers"
+        docKey="cnpj"
+        docLabel="sem CNPJ"
+      />
+
+      <DeletePasswordModal
+        target={delTarget}
+        onClose={() => setDelTarget(null)}
+        onDeleted={() => qc.invalidateQueries(['suppliers'])}
+        path="/suppliers"
+        title="Excluir fornecedor"
+        noun="Fornecedor"
+      />
     </div>
   );
 }

@@ -2,6 +2,9 @@ const express = require('express');
 const router  = express.Router();
 const multer  = require('multer');
 const supabase = require('../config/supabase');
+const { makeClient } = require('../config/supabase');
+const { audit } = require('../lib/audit');
+const { getCreditConfig, consultarCredito } = require('../lib/creditCheck');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -254,6 +257,60 @@ router.delete('/:id', async (req, res) => {
     res.json({ message: 'Transportadora desativada' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Excluir transportadora DE VERDADE — só admin e exige a senha de login.
+router.post('/:id/delete', async (req, res) => {
+  try {
+    if (req.userProfile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Apenas administradores podem excluir transportadoras.' });
+    }
+    const password = String(req.body?.password || '');
+    const email = req.user?.email;
+    if (!password) return res.status(400).json({ error: 'Digite sua senha para confirmar.' });
+    // Não usar 401 aqui: o interceptor do front trata QUALQUER 401 como sessão
+    // expirada e desloga. A senha de confirmação é outra coisa — usamos 403/502.
+    if (!email) return res.status(403).json({ error: 'Não consegui confirmar sua sessão. Recarregue a página e tente de novo.' });
+
+    // Reautentica para confirmar a senha (sem derrubar a sessão atual — client à parte)
+    const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { error: authErr } = await client.auth.signInWithPassword({ email, password });
+    if (authErr) {
+      const badPass = authErr.status === 400 || /invalid|credential|password|senha/i.test(authErr.message || '');
+      return res.status(badPass ? 403 : 502)
+        .json({ error: badPass ? 'Senha incorreta.' : `Não foi possível confirmar a senha: ${authErr.message}` });
+    }
+
+    const { error } = await supabase.from('TRANSPORTADORAS').delete()
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId);
+    if (error) {
+      if (/foreign key|violat|23503/i.test(error.message || '')) {
+        return res.status(409).json({ error: 'Não dá pra excluir: esta transportadora tem registros vinculados (pedidos, fretes, etc.). Use "Desativar".' });
+      }
+      throw error;
+    }
+    audit(req, 'delete', 'carrier', req.params.id, { hard: true });
+    res.json({ message: 'Transportadora excluída com sucesso' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Consulta de crédito pelo CNPJ da transportadora (mesma configuração dos clientes).
+// Não grava histórico: CONSULTAS_CREDITO é indexada por cliente.
+router.post('/:id/credit-check', async (req, res) => {
+  try {
+    const { data: carrier } = await supabase.from('TRANSPORTADORAS').select('id, name, cnpj')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!carrier) return res.status(404).json({ error: 'Transportadora não encontrada' });
+    const doc = soDigitos(carrier.cnpj);
+    if (!doc) return res.status(400).json({ error: 'Transportadora sem CNPJ cadastrado.' });
+
+    const cfg = await getCreditConfig(req.tenantId);
+    const r = await consultarCredito(doc, cfg);
+    audit(req, 'create', 'credit_check_carrier', carrier.id, { score: r.score, negativado: r.negativado });
+    res.json(r);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 

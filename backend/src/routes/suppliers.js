@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const supabase = require('../config/supabase');
+const { makeClient } = require('../config/supabase');
+const { audit } = require('../lib/audit');
+const { getCreditConfig, consultarCredito } = require('../lib/creditCheck');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -121,6 +124,60 @@ router.delete('/:id', async (req, res) => {
     res.json({ message: 'Fornecedor desativado com sucesso' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Excluir fornecedor DE VERDADE — só admin e exige a senha de login.
+router.post('/:id/delete', async (req, res) => {
+  try {
+    if (req.userProfile?.role !== 'admin') {
+      return res.status(403).json({ error: 'Apenas administradores podem excluir fornecedores.' });
+    }
+    const password = String(req.body?.password || '');
+    const email = req.user?.email;
+    if (!password) return res.status(400).json({ error: 'Digite sua senha para confirmar.' });
+    // Não usar 401 aqui: o interceptor do front trata QUALQUER 401 como sessão
+    // expirada e desloga. A senha de confirmação é outra coisa — usamos 403/502.
+    if (!email) return res.status(403).json({ error: 'Não consegui confirmar sua sessão. Recarregue a página e tente de novo.' });
+
+    // Reautentica para confirmar a senha (sem derrubar a sessão atual — client à parte)
+    const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { error: authErr } = await client.auth.signInWithPassword({ email, password });
+    if (authErr) {
+      const badPass = authErr.status === 400 || /invalid|credential|password|senha/i.test(authErr.message || '');
+      return res.status(badPass ? 403 : 502)
+        .json({ error: badPass ? 'Senha incorreta.' : `Não foi possível confirmar a senha: ${authErr.message}` });
+    }
+
+    const { error } = await supabase.from('FORNECEDORES').delete()
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId);
+    if (error) {
+      if (/foreign key|violat|23503/i.test(error.message || '')) {
+        return res.status(409).json({ error: 'Não dá pra excluir: este fornecedor tem registros vinculados (compras, insumos, etc.). Use "Desativar".' });
+      }
+      throw error;
+    }
+    audit(req, 'delete', 'supplier', req.params.id, { hard: true });
+    res.json({ message: 'Fornecedor excluído com sucesso' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Consulta de crédito pelo CNPJ do fornecedor (mesma configuração dos clientes).
+// Não grava histórico: CONSULTAS_CREDITO é indexada por cliente.
+router.post('/:id/credit-check', async (req, res) => {
+  try {
+    const { data: forn } = await supabase.from('FORNECEDORES').select('id, name, cnpj')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!forn) return res.status(404).json({ error: 'Fornecedor não encontrado' });
+    const doc = soDigitos(forn.cnpj);
+    if (!doc) return res.status(400).json({ error: 'Fornecedor sem CNPJ cadastrado.' });
+
+    const cfg = await getCreditConfig(req.tenantId);
+    const r = await consultarCredito(doc, cfg);
+    audit(req, 'create', 'credit_check_supplier', forn.id, { score: r.score, negativado: r.negativado });
+    res.json(r);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
