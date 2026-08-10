@@ -9,18 +9,7 @@ import { useCart } from './CartContext';
 // three.js é pesado: só carrega quando o cliente abre a prévia 3D.
 const Studio3D = lazy(() => import('@/studio3d/Studio3D'));
 import { resolveColor, needsBorder, STORE_PALETTE } from './colors';
-
-// Descobre qual modelo 3D representa o produto (pelo nome/categoria/grupo).
-function modelKeyFor(product) {
-  const s = `${product?.name || ''} ${product?.category || ''} ${product?.group || ''}`.toLowerCase();
-  if (/twist/.test(s)) return 'twister';
-  if (/long\s*drink/.test(s)) return 'longdrink';
-  if (/slim/.test(s)) return 'slim';
-  if (/caneca/.test(s)) return 'caneca';
-  if (/ta[çc]a/.test(s)) return 'taca';
-  if (/garrafa/.test(s)) return 'garrafa';
-  return 'shaker';
-}
+import { modelKeyFor, shortColor } from './productMeta';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
@@ -42,15 +31,6 @@ function methodTable(product, method) {
   }
   return { tiers: product?.price_tiers || [], base: product?.sale_price };
 }
-// Rótulo curto da cor: tira o nome do modelo e o volume do fim.
-// (quando store_color não está preenchido, o label vem como o nome inteiro)
-function shortColor(label, group) {
-  let s = String(label || '');
-  if (group && s.toUpperCase().startsWith(group.toUpperCase())) s = s.slice(group.length);
-  s = s.replace(/^[\s\-–—]+/, '').replace(/\s*\d+\s*ml\s*$/i, '').trim();
-  return s || String(label || '');
-}
-
 function availableMethods(product) {
   return (product?.print_methods || []).filter(m => {
     const d = product?.print_pricing?.[m.key];

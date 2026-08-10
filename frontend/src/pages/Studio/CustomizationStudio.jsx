@@ -98,7 +98,7 @@ export default function CustomizationStudio() {
 
       // título
       doc.setTextColor(20); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
-      doc.text(`Arte para produção — ${def?.label || design.model}`, pageW / 2, 8, { align: 'center' });
+      doc.text(`Arte para produção — ${design.product?.name || def?.label || design.model}`, pageW / 2, 8, { align: 'center' });
 
       // rodapé técnico
       const finishLabel = { opaco: 'Opaco', brilhante: 'Brilhante', metalico: 'Metálico', translucido: 'Translúcido' }[design.finish] || design.finish;

@@ -3,11 +3,13 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
   Box, Rotate3d, Layers, Sparkles, Wand2, Image as ImageIcon, Type, X, ArrowLeftRight, LayoutGrid,
+  ShoppingBag,
 } from 'lucide-react';
 import {
   PALETTE, MODELS, FINISHES, PRESETS, TEMPLATES, BACKGROUNDS, FONTS,
   buildModel, bodyMaterial, capMaterial, composeBodyTexture, composeBodyCanvas, disposeObject,
 } from '../pages/Studio/scene';
+import ProductPicker from './ProductPicker';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -55,6 +57,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   const [autoRotate, setAuto]   = useState(true);
   const [imgV, setImgV]         = useState(0);
   const [fontV, setFontV]       = useState(0);
+  const [product, setProduct]   = useState(seed.product || null); // produto do site escolhido
 
   // assistente de IA (sugestão de cores/acabamento)
   const [aiBrief, setAiBrief]   = useState('');
@@ -72,7 +75,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   const effCapColor = simple && isRim && !hasBorda ? color1 : capColor;
   cfg.current = { color1, color2, gradient, finish, capColor: effCapColor };
   designRef.current = { model, color1, color2, gradient, finish, capColor: effCapColor, bg,
-    arts: arts.map(({ _img, ...a }) => a) };
+    product, arts: arts.map(({ _img, ...a }) => a) };
   const selArt = arts.find(a => a.id === selId) || null;
 
   // carrega imagens das artes que ainda não têm Image
@@ -274,6 +277,7 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
     artImages.current = {};
     setModel(d.model); setColor1(d.color1); setColor2(d.color2); setGradient(d.gradient);
     setFinish(d.finish); setCapColor(d.capColor); setBg(d.bg); setArts(d.arts);
+    setProduct(d.product || null);
     setSelId(d.arts[0]?.id || null);
     setImgV(v => v + 1);
   }, [initialDesign]);
@@ -326,8 +330,17 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
   }
   function removeArt(id) { delete artImages.current[id]; setArts(a => a.filter(x => x.id !== id)); if (selId === id) setSelId(null); }
   function applyPreset(p) { setColor1(p.c1); setColor2(p.c2); setGradient(p.grad); setFinish(p.finish); }
+  // Produto escolhido no catálogo do site: a forma 3D e a cor do corpo passam a
+  // ser as do produto (trocar a cor no catálogo troca o produto e repinta aqui).
+  const pickProduct = useCallback(p => {
+    if (!p) return;
+    setProduct({ id: p.productId, name: p.name, category: p.category, color: p.colorLabel, image: p.image });
+    if (p.model) setModel(p.model);
+    if (p.hex) { setColor1(p.hex); setActive('body'); }
+  }, []);
   function applyTemplate(t) {
     artImages.current = {};
+    setProduct(null); // design pronto não corresponde mais a um produto do site
     setModel(t.model); setColor1(t.color1); setColor2(t.color2); setGradient(!!t.gradient);
     setFinish(t.finish); setCapColor(t.capColor || '#1A1A1A'); setBg(t.bg || 'studio');
     const next = (t.arts || []).map(a => ({ id: uid(), ...a }));
@@ -501,13 +514,19 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
           </div>
         </Sec>
 
-        <Sec icon={Layers} title="Modelo">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {MODELS.map(m => (
-              <button key={m.key} onClick={() => setModel(m.key)}
-                className={`px-2 py-2 rounded-xl text-xs font-semibold border-2 transition-colors ${model === m.key ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>{m.label}</button>
-            ))}
-          </div>
+        <Sec icon={ShoppingBag} title="Produtos do site">
+          <ProductPicker onPick={pickProduct} />
+          <details className="mt-3 group">
+            <summary className="text-[11px] font-bold text-gray-400 uppercase tracking-wide cursor-pointer flex items-center gap-1.5">
+              <Layers size={12} /> Forma 3D — {MODELS.find(m => m.key === model)?.label || model}
+            </summary>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+              {MODELS.map(m => (
+                <button key={m.key} onClick={() => setModel(m.key)}
+                  className={`px-2 py-2 rounded-xl text-xs font-semibold border-2 transition-colors ${model === m.key ? 'border-violet-500 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>{m.label}</button>
+              ))}
+            </div>
+          </details>
         </Sec>
 
         <Sec icon={Box} title="Pintar">
@@ -606,7 +625,8 @@ export default function Studio3D({ initialDesign, saved, onPickSaved, actions, a
 function normalizeDesign(d) {
   if (!d) return null;
   const base = { model: d.model || 'shaker', color1: d.color1 || '#1E4FD8', color2: d.color2 || '#0B1B4D',
-    gradient: !!d.gradient, finish: d.finish || 'brilhante', capColor: d.capColor || '#1A1A1A', bg: d.bg || 'studio' };
+    gradient: !!d.gradient, finish: d.finish || 'brilhante', capColor: d.capColor || '#1A1A1A', bg: d.bg || 'studio',
+    product: d.product || null };
   let arts = Array.isArray(d.arts) ? d.arts.map(a => ({ id: a.id || uid(), ...a })) : [];
   if (!arts.length && (d.logoDataUrl || d.text)) {
     if (d.logoDataUrl) arts.push({ id: uid(), kind: 'image', image: d.logoDataUrl, x: d.logoX ?? 0.5, y: d.logoY ?? 0.55, scale: d.logoScale ?? 0.7, rot: d.logoRot ?? 0 });
