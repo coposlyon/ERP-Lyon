@@ -32,6 +32,7 @@ const menuItems = [
     icon: ShoppingCart,
     children: [
       { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart, module: 'sales' },
+      { label: 'Pagamentos da Loja', path: '/store-payments', icon: Wallet, module: 'sales' },
       { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
       { label: 'Estúdio 3D', path: '/studio', icon: Box, module: 'customizations' },
       { label: 'Cupons de Desconto', path: '/coupons', icon: Tag, module: 'sales' },

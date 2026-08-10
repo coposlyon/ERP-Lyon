@@ -17,6 +17,11 @@ const { cotar, ufFromCep, getFreteConfig, jtCotar, jtReady } = require('../lib/s
 const { braspressCotar, bpReady } = require('../lib/braspress');
 const { fetchInstagramMedia } = require('../lib/social');
 const { acharPorDocumento, criarSolicitacao } = require('../lib/cadastroSolicitacoes');
+const { pixConfig, gerarCobrancaPix, qrBase64 } = require('../lib/pixCobranca');
+const { criarVendaDoPedido } = require('../lib/pedidoLoja');
+
+// Prazo que o pedido fica esperando o PIX antes de sair da fila.
+const PIX_VALIDADE_H = Number(process.env.STORE_PIX_VALIDADE_H) || 24;
 
 // Loja pública: serve UM tenant (a empresa dona da loja).
 // Sem autenticação — montada antes do authMiddleware.
@@ -546,54 +551,111 @@ router.post('/quote', async (req, res) => {
       customerId = novo.id;
     }
 
-    // Número da venda
-    let number = null;
-    try {
-      const { data: numData } = await supabase.rpc('proximo_numero_venda', { p_tenant_id: STORE_TENANT });
-      number = numData;
-    } catch { /* sem RPC: número fica nulo */ }
-
     const subtotal = orderItems.reduce((s, i) => s + i.quantity * i.unit_price, 0);
     const freightVal = Number(freight) || 0;
     const eventNote = eventDate ? `\nData do evento: ${eventDate.split('-').reverse().join('/')}` : '';
     const fullNotes = `PEDIDO PELO SITE — Contato: ${name} / ${phone}${email ? ' / ' + email : ''}${company ? ' / ' + company : ''}${eventNote}${notes ? `\nObs: ${notes}` : ''}`;
-
-    // Pedido do site → vira VENDA "Aguardando aprovação" (source=site, status=open)
-    const baseSale = {
-      tenant_id: STORE_TENANT, user_id: null, number,
-      customer_id: customerId, subtotal, discount: 0, freight: freightVal, total: subtotal + freightVal,
-      notes: fullNotes, status: 'iniciando_pedido',
-    };
-    const trySale = (extra) => supabase.from('VENDAS').insert({ ...baseSale, ...extra }).select('id, number').single();
-    let { data: sale, error: sErr } = await trySale({ source: 'site', event_date: eventDate });
-    if (sErr && /(source|event_date)/i.test(sErr.message || '')) {
-      ({ data: sale, error: sErr } = await trySale({ source: 'site' }));     // sem event_date
-      if (sErr && /source/i.test(sErr.message || '')) ({ data: sale, error: sErr } = await trySale({})); // sem source
-    }
-    if (sErr) throw sErr;
 
     // sobe os previews dos itens personalizados para o Storage (não no banco)
     for (const i of orderItems) {
       if (i.preview) i.preview = await uploadDataUrl(i.preview, 'pedidos');
     }
 
-    const saleItems = orderItems.map(i => ({
-      sale_id: sale.id, product_id: i.product_id, product_name: i.product_name,
-      quantity: i.quantity, unit_price: i.unit_price,
-      discount: 0, total: i.quantity * i.unit_price,
-      customization: {
-        ...(i.color ? { cor: i.color } : {}),
-        ...(i.border ? { borda: i.border } : {}),
-        ...(i.volume ? { volume: i.volume } : {}),
-        ...(i.print_name ? { impressao: i.print_name } : {}),
-        ...(i.design ? { design: i.design } : {}),
-        ...(i.preview ? { preview: i.preview } : {}),
-      },
-    }));
-    await supabase.from('VENDA_ITENS').insert(saleItems);
+    const pedido = {
+      tenant_id: STORE_TENANT,
+      customer_id: customerId,
+      customer: { name, phone, email: email || null, company: company || null },
+      items: orderItems,
+      subtotal, freight: freightVal, total: subtotal + freightVal,
+      notes: fullNotes, event_date: eventDate,
+    };
 
-    res.status(201).json({ success: true, number: sale.number, items: orderItems.length });
+    // Sem chave PIX configurada não dá para cobrar: mantém o comportamento
+    // antigo (pedido entra direto no Comercial) em vez de travar a loja.
+    const cfgPix = await pixConfig(STORE_TENANT);
+    if (!cfgPix.key) {
+      const sale = await criarVendaDoPedido(pedido);
+      return res.status(201).json({ success: true, mode: 'sale', number: sale.number, items: orderItems.length });
+    }
+
+    // Pedido fica na fila aguardando o PIX. Só vira venda quando confirmado.
+    const expiresAt = new Date(Date.now() + PIX_VALIDADE_H * 3600 * 1000).toISOString();
+    const { data: ped, error: pedErr } = await supabase.from('PEDIDOS_LOJA').insert({
+      ...pedido, status: 'aguardando_pagamento', expires_at: expiresAt,
+    }).select('id').single();
+    if (pedErr) {
+      // Migration 063 ainda não rodou: em vez de derrubar o checkout, volta ao
+      // comportamento antigo (pedido entra direto) e avisa no log.
+      const semTabela = /PEDIDOS_LOJA/i.test(pedErr.message || '')
+        && /(does not exist|schema cache|42P01|PGRST205)/i.test(`${pedErr.message} ${pedErr.code || ''}`);
+      if (!semTabela) throw pedErr;
+      console.error('[public-store:quote] PEDIDOS_LOJA ausente — rode a migration 063. Pedido entrou sem cobrança.');
+      const sale = await criarVendaDoPedido(pedido);
+      return res.status(201).json({ success: true, mode: 'sale', number: sale.number, items: orderItems.length });
+    }
+
+    // txid = id do pedido: amarra a cobrança ao pedido na hora de conferir
+    const cobranca = await gerarCobrancaPix({ amount: pedido.total, txid: ped.id, cfg: cfgPix });
+    await supabase.from('PEDIDOS_LOJA').update({
+      pix_key: cobranca.key, pix_copy_paste: cobranca.copy_paste, pix_txid: cobranca.txid,
+    }).eq('id', ped.id);
+
+    res.status(201).json({
+      success: true, mode: 'payment',
+      order_id: ped.id, total: pedido.total, expires_at: expiresAt,
+      pix: { copy_paste: cobranca.copy_paste, qr_base64: cobranca.qr_base64, merchant: cobranca.name || null },
+      items: orderItems.length,
+    });
   } catch (err) { fail(res, err); }
+});
+
+// ── Pedido aguardando pagamento (loja) ────────────────────
+// A loja consulta para saber se o pagamento já foi confirmado no ERP.
+// Devolve o mínimo: nada de dados do cliente ou de outros pedidos.
+router.get('/pedido/:id', async (req, res) => {
+  try {
+    const { data: ped } = await supabase.from('PEDIDOS_LOJA')
+      .select('id, status, total, expires_at, sale_id, pix_copy_paste')
+      .eq('tenant_id', STORE_TENANT).eq('id', req.params.id).maybeSingle();
+    if (!ped) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    let number = null;
+    if (ped.sale_id) {
+      const { data: sale } = await supabase.from('VENDAS').select('number')
+        .eq('tenant_id', STORE_TENANT).eq('id', ped.sale_id).maybeSingle();
+      number = sale?.number ?? null;
+    }
+    const pendente = ped.status === 'aguardando_pagamento';
+    res.json({
+      id: ped.id, status: ped.status, total: Number(ped.total) || 0,
+      expires_at: ped.expires_at, number,
+      pix_copy_paste: pendente ? ped.pix_copy_paste : null,
+      // QR refeito na hora a partir do copia-e-cola (não ocupa espaço no banco)
+      pix_qr_base64: pendente && ped.pix_copy_paste ? await qrBase64(ped.pix_copy_paste) : null,
+    });
+  } catch (err) { fail(res, err, 'pedido'); }
+});
+
+// Cliente avisa que pagou (opcionalmente anexando o comprovante). Não
+// libera nada — só sinaliza a fila para alguém conferir no banco.
+router.post('/pedido/:id/paguei', cadastroLimiter, async (req, res) => {
+  try {
+    const { data: ped } = await supabase.from('PEDIDOS_LOJA')
+      .select('id, status').eq('tenant_id', STORE_TENANT).eq('id', req.params.id).maybeSingle();
+    if (!ped) return res.status(404).json({ error: 'Pedido não encontrado' });
+    if (ped.status !== 'aguardando_pagamento') return res.json({ ok: true, status: ped.status });
+
+    let receiptUrl = null;
+    const receipt = req.body?.receipt;
+    if (typeof receipt === 'string' && receipt.startsWith('data:')) {
+      receiptUrl = await uploadDataUrl(receipt, 'comprovantes');
+    }
+    await supabase.from('PEDIDOS_LOJA').update({
+      paid_notified_at: new Date().toISOString(),
+      ...(receiptUrl ? { receipt_url: receiptUrl } : {}),
+    }).eq('id', ped.id);
+    res.json({ ok: true, status: 'aguardando_pagamento' });
+  } catch (err) { fail(res, err, 'paguei'); }
 });
 
 // ── Validação de CPF/CNPJ (dígitos verificadores) ─────────
@@ -1235,7 +1297,31 @@ router.get('/my-orders', async (req, res) => {
         preview: it.customization?.preview || null,
       })),
     }));
-    res.json({ orders });
+
+    // Pedidos ainda não pagos não são VENDAS — vêm da fila da loja para o
+    // cliente conseguir voltar e pagar (ou ver que o PIX venceu).
+    let pendentes = [];
+    try {
+      const { data: peds } = await supabase.from('PEDIDOS_LOJA')
+        .select('id, total, created_at, event_date, items, expires_at')
+        .eq('tenant_id', STORE_TENANT).eq('customer_id', cid)
+        .eq('status', 'aguardando_pagamento')
+        .order('created_at', { ascending: false }).limit(20);
+      pendentes = (peds || []).map(p => ({
+        id: p.id, number: null, created_at: p.created_at,
+        event_date: p.event_date || null, ship_date: null, max_delivery_date: null,
+        total: p.total,
+        status: { key: 'payment', label: 'Aguardando pagamento' },
+        pending_payment: true,
+        expires_at: p.expires_at,
+        photos: [],
+        items: (Array.isArray(p.items) ? p.items : []).map(it => ({
+          name: it.product_name, quantity: it.quantity, preview: it.preview || null,
+        })),
+      }));
+    } catch { /* tabela ainda não criada (migration 063) → segue sem pendentes */ }
+
+    res.json({ orders: [...pendentes, ...orders] });
   } catch (err) { fail(res, err); }
 });
 

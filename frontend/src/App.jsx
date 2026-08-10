@@ -22,6 +22,7 @@ const Suppliers          = lazy(() => import('@/pages/Suppliers/Suppliers'));
 const Sales              = lazy(() => import('@/pages/Sales/Sales'));
 const SaleForm           = lazy(() => import('@/pages/Sales/SaleForm'));
 const NewSale            = lazy(() => import('@/pages/Sales/NewSale'));
+const StorePayments      = lazy(() => import('@/pages/Sales/StorePayments'));
 const Purchases          = lazy(() => import('@/pages/Purchases/Purchases'));
 const PurchaseForm       = lazy(() => import('@/pages/Purchases/PurchaseForm'));
 const Forecast           = lazy(() => import('@/pages/Forecast/Forecast'));
@@ -143,6 +144,7 @@ function AppRoutes() {
         {/* Vendas */}
         <Route path="sales" element={<Mod m="sales"><Sales /></Mod>} />
         <Route path="sales/:id" element={<Mod m="sales"><SaleForm /></Mod>} />
+        <Route path="store-payments" element={<Mod m="sales"><StorePayments /></Mod>} />
         {/* Orçamentos */}
         <Route path="quotes" element={<Mod m="quotes"><Quotes /></Mod>} />
         <Route path="quotes/:id" element={<Mod m="quotes"><QuoteForm /></Mod>} />

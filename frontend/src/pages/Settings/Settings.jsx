@@ -396,7 +396,11 @@ export default function Settings() {
                   <input className="input" value={form.settings?.pix?.city || ''} onChange={e => setPix('city', e.target.value)} placeholder="ANDIRA" disabled={!isAdmin} />
                 </div>
               </div>
-              <p className="text-xs text-gray-400 mt-2">A <b>baixa automática</b> desse PIX é feita pela conciliação Open Finance (Pluggy) — configurada à parte.</p>
+              <p className="text-xs text-gray-400 mt-2">
+                Com a chave preenchida, o pedido do site passa a exigir pagamento: ele fica em
+                <b> Comercial → Pagamentos da Loja</b> e só vira Pedido de Venda quando alguém confirmar
+                que o PIX caiu na conta. Em branco, o pedido entra direto, sem cobrança.
+              </p>
             </div>
 
             {isAdmin && (

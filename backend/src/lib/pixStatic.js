@@ -55,4 +55,4 @@ function pixCopyPaste({ key, name, city, amount, txid }) {
   return payload + crc16(payload);
 }
 
-module.exports = { pixCopyPaste, crc16 };
+module.exports = { pixCopyPaste, crc16, txidValue };

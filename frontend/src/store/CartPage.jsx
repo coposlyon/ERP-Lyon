@@ -7,6 +7,7 @@ import Bottle from './Bottle';
 import { resolveColor } from './colors';
 import { useCart } from './CartContext';
 import { useStoreAuth } from './StoreAuthContext';
+import PixPayment from './PixPayment';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 const INPUT = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none text-sm';
@@ -94,7 +95,10 @@ export default function CartPage() {
     } finally { setSending(false); }
   }
 
-  // ── Painel do orçamento (tela automática após solicitar) ──
+  // ── Pagamento PIX: o pedido só vai para a produção depois de pago ──
+  if (done?.mode === 'payment') return <PixPayment order={done} snapshot={done} />;
+
+  // ── Painel do orçamento (loja sem chave PIX configurada) ──
   if (done) {
     const total = (done.subtotal || 0) + (done.freightQuote ? 0 : (done.freightPrice || 0));
     return (

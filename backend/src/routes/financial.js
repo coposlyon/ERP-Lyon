@@ -3,24 +3,10 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { createPix } = require('../lib/pix');
-const { pixCopyPaste } = require('../lib/pixStatic');
-const QRCode = require('qrcode');
-
 // Config de recebimento PIX: chave estática (ex.: Nubank) em EMPRESAS.settings.pix,
 // com fallback nas env PIX_*. Se houver chave, usa PIX estático (dinheiro direto
 // na conta, sem retenção); senão cai no Mercado Pago (createPix).
-async function pixConfig(tenantId) {
-  let s = {};
-  try {
-    const { data } = await supabase.from('EMPRESAS').select('settings').eq('id', tenantId).maybeSingle();
-    s = (data?.settings && data.settings.pix) || {};
-  } catch { s = {}; }
-  return {
-    key:  String(s.key || process.env.PIX_KEY || '').trim(),
-    name: s.name || process.env.PIX_MERCHANT_NAME || '',
-    city: s.city || process.env.PIX_MERCHANT_CITY || '',
-  };
-}
+const { gerarCobrancaPix } = require('../lib/pixCobranca');
 
 router.get('/receivables', async (req, res) => {
   const { page = 1, limit = 50, status, start_date, end_date } = req.query;
@@ -230,16 +216,13 @@ router.post('/:id/pix', async (req, res) => {
     if (remaining <= 0) return res.status(400).json({ error: 'Lançamento já está quitado' });
 
     // 1) PIX estático (chave própria — ex.: Nubank), se configurado
-    const cfg = await pixConfig(req.tenantId);
-    if (cfg.key) {
-      const copy = pixCopyPaste({ key: cfg.key, name: cfg.name, city: cfg.city, amount: remaining, txid: lanc.id });
-      let qrb64 = null;
-      try { qrb64 = (await QRCode.toDataURL(copy, { margin: 1, width: 320 })).split(',')[1] || null; } catch { /* segue sem imagem */ }
+    const cobranca = await gerarCobrancaPix({ tenantId: req.tenantId, amount: remaining, txid: lanc.id });
+    if (cobranca) {
       await supabase.from('LANCAMENTOS').update({
-        gateway_payment_id: null, pix_qr: qrb64, pix_copy_paste: copy,
+        gateway_payment_id: null, pix_qr: cobranca.qr_base64, pix_copy_paste: cobranca.copy_paste,
       }).eq('id', lanc.id);
       audit(req, 'pix', 'financial', lanc.id, { amount: remaining, provider: 'static' });
-      return res.json({ qr_code_base64: qrb64, copy_paste: copy });
+      return res.json({ qr_code_base64: cobranca.qr_base64, copy_paste: cobranca.copy_paste });
     }
 
     // 2) Fallback: Mercado Pago (createPix)

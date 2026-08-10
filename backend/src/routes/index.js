@@ -58,6 +58,8 @@ router.use('/products',  requireModules('products','sales','pdv','quotes','purch
 router.use('/customers', requireModules('customers','sales','pdv','quotes','crm','customizations','employees','hr','returns'), customersRoutes);
 router.use('/suppliers', requireModules('suppliers','purchases','logistics'), suppliersRoutes);
 router.use('/sales',     requireModules('sales','pdv','returns'), salesRoutes);
+// Fila de pedidos do site aguardando o PIX (vira venda ao confirmar)
+router.use('/store-payments', requireModules('sales'), require('./store-payments'));
 router.use('/purchases', requireModules('purchases'), purchasesRoutes);
 router.use('/stock',     requireModules('stock','purchases'), stockRoutes);
 router.use('/financial', requireModules('financial'), financialRoutes);

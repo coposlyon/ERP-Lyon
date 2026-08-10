@@ -10,6 +10,7 @@ import BorderPage from './BorderPage';
 import CartPage from './CartPage';
 import StoreLogin from './StoreLogin';
 import StoreOrders from './StoreOrders';
+import PayOrder from './PayOrder';
 import StoreProfile from './StoreProfile';
 
 const StoreStudio = lazy(() => import('./StoreStudio'));
@@ -34,6 +35,7 @@ export default function StoreApp() {
             <Route path="borda" element={<BorderPage />} />
             <Route path="personalizar" element={<Suspense fallback={<StudioFallback />}><StoreStudio /></Suspense>} />
             <Route path="carrinho" element={<CartPage />} />
+            <Route path="pagar/:id" element={<PayOrder />} />
             <Route path="login" element={<StoreLogin />} />
             <Route path="pedidos" element={<StoreOrders />} />
             <Route path="perfil" element={<StoreProfile />} />

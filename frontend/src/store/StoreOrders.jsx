@@ -16,6 +16,7 @@ const STATUS_STYLE = {
   producing: 'bg-orange-100 text-orange-700',
   ready:     'bg-green-100 text-green-700',
   done:      'bg-emerald-100 text-emerald-700',
+  payment:   'bg-amber-100 text-amber-700',
 };
 
 const STEPS = [
@@ -82,8 +83,21 @@ export default function StoreOrders() {
                   <span className={`text-xs font-bold px-3 py-1 rounded-full ${stStyle}`}>{o.status?.label || '—'}</span>
                 </div>
 
+                {/* Ainda não pago: o pedido só entra em produção depois do PIX */}
+                {o.pending_payment && (
+                  <div className="px-5 py-3 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-sm text-amber-800">
+                      Falta pagar <b>{fmt(o.total)}</b> para liberar a produção.
+                    </p>
+                    <Link to={`/loja/pagar/${o.id}`}
+                      className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors">
+                      Pagar com PIX
+                    </Link>
+                  </div>
+                )}
+
                 {/* Linha do tempo */}
-                {o.status?.key !== 'rejected' && (
+                {o.status?.key !== 'rejected' && !o.pending_payment && (
                   <div className="px-5 pt-4">
                     <div className="flex items-center">
                       {STEPS.map((s, i) => (
