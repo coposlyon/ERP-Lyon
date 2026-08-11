@@ -47,12 +47,13 @@ async function getAccessToken() {
   return data.access_token;
 }
 
-// Monta o corpo do contato (nome "NOME #0004", telefones, e-mail, ORG).
+// Monta o corpo do contato (nome "0004 Nome de Cadastro", telefones, e-mail, ORG).
 // Retorna null se o cliente não tem telefone (contato sem telefone é inútil).
 function buildContact(c) {
   const phones = [...new Set([e164(c.phone), e164(c.mobile)].filter(Boolean))];
   if (!phones.length) return null;
-  const fn = `${c.name}${c.display_id != null ? ` #${code4(c.display_id)}` : ''}`;
+  // Código (0013) na frente + nome de cadastro → "0013 Regina Santos de Oliveira"
+  const fn = `${c.display_id != null ? code4(c.display_id) + ' ' : ''}${c.name}`;
   return {
     names:        [{ givenName: fn }],
     phoneNumbers: phones.map(p => ({ value: p })),
