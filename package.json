@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "build": "bash build.sh"
+    "build": "bash build.sh",
+    "migrate": "node backend/scripts/migrate.js"
   },
   "engines": {
     "node": ">=18.0.0"
