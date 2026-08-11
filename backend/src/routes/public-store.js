@@ -243,6 +243,9 @@ router.get('/types', async (req, res) => {
 // ── Catálogo ──────────────────────────────────────────────
 router.get('/products', async (req, res) => {
   const { search, category, type } = req.query;
+  // expand=1: não colapsa o modelo em 1 card — cada cor vira seu próprio card.
+  // É o que a loja usa ao entrar numa categoria (o cliente quer ver as cores).
+  const expand = req.query.expand === '1' || req.query.expand === 'true';
   // full=false é o fallback caso colunas novas ainda não existam (migrations 016/021)
   const build = (full) => {
     let q = supabase
@@ -277,9 +280,10 @@ router.get('/products', async (req, res) => {
     for (const p of (products || [])) (parseBorda(p.name) ? bordaProds : normalProds).push(p);
 
     // Agrupa o resto por modelo (store_group). Cada grupo vira 1 card; cores dentro.
+    // No modo expandido a chave é o próprio produto — 1 card por cor.
     const groups = new Map();
     for (const p of normalProds) {
-      const key = (p.store_group && p.store_group.trim()) || p.name;
+      const key = expand ? p.id : ((p.store_group && p.store_group.trim()) || p.name);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(p);
     }
@@ -289,7 +293,11 @@ router.get('/products', async (req, res) => {
       // cores: nº de variações (modelo único) ou nº de produtos-irmãos (modelo antigo)
       const varColors = items.reduce((n, p) => n + ((p.variations?.colors?.length) || 0), 0);
       return {
-        id: rep.id, name: key, code: rep.code, unit: rep.unit,
+        // expandido: o título é a cor (o modelo já está no filtro/categoria)
+        id: rep.id, name: expand ? ((rep.store_color && rep.store_color.trim()) || rep.name) : key,
+        full_name: rep.name,
+        color_label: rep.store_color || null,
+        code: rep.code, unit: rep.unit,
         description: rep.description,
         category: rep.CATEGORIAS?.name || null,
         image_url: items.map(firstImg).find(Boolean) || null,

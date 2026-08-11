@@ -15,6 +15,9 @@ export const SITE_DEFAULTS = {
   studio_subtitle: 'Escolha o modelo, pinte cada parte, aplique sua logo e veja girando em tempo real. Depois é só pedir o orçamento.',
   catalog_badge: 'NOSSOS PRODUTOS',
   catalog_title: 'Monte seu pedido',
+  promos_badge: 'OFERTAS',
+  promos_title: 'Promoções do mês',
+  promos_subtitle: 'Condições especiais enquanto durar. Toda promoção tem prazo — aproveite.',
   benefit_1_title: 'Parcelamento',
   benefit_1_text: 'Em até 10X',
   benefit_2_title: 'Pagamento à Vista',
@@ -84,6 +87,7 @@ export const DEFAULT_STATS = [
 export const SECTION_LABELS = {
   marquee:  'Faixa de diferenciais',
   benefits: 'Benefícios (parcelamento / PIX / envio)',
+  promos:   'Promoções (artes com validade)',
   stats:    'Números (estatísticas)',
   pillars:  'Pilares (por que comprar)',
   colors:   'Mural de cores',
@@ -92,11 +96,13 @@ export const SECTION_LABELS = {
   social:   'Redes sociais',
   cta:      'Chamada final (CTA)',
 };
-export const SECTION_ORDER = ['marquee', 'benefits', 'stats', 'pillars', 'colors', 'studio', 'catalog', 'social', 'cta'];
+export const SECTION_ORDER = ['marquee', 'benefits', 'promos', 'stats', 'pillars', 'colors', 'studio', 'catalog', 'social', 'cta'];
 export const DEFAULT_SECTIONS = SECTION_ORDER.map(key => ({ key, visible: true }));
 
 // Normaliza a config de seções: mantém a ordem salva e garante que toda seção
-// conhecida apareça (novas seções entram no fim), ignorando chaves desconhecidas.
+// conhecida apareça, ignorando chaves desconhecidas. Seção NOVA (criada depois
+// que o lojista já salvou a ordem) entra no lugar de projeto — logo após a
+// seção anterior a ela que já está salva — em vez de cair no fim da página.
 export function resolveSections(saved) {
   const known = new Set(SECTION_ORDER);
   const seen = new Set();
@@ -104,8 +110,28 @@ export function resolveSections(saved) {
   for (const s of (Array.isArray(saved) ? saved : [])) {
     if (s && known.has(s.key) && !seen.has(s.key)) { out.push({ key: s.key, visible: s.visible !== false }); seen.add(s.key); }
   }
-  for (const key of SECTION_ORDER) if (!seen.has(key)) out.push({ key, visible: true });
+  for (let i = 0; i < SECTION_ORDER.length; i++) {
+    const key = SECTION_ORDER[i];
+    if (seen.has(key)) continue;
+    let at = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      const anterior = out.findIndex(x => x.key === SECTION_ORDER[j]);
+      if (anterior >= 0) { at = anterior + 1; break; }
+    }
+    out.splice(at, 0, { key, visible: true });
+    seen.add(key);
+  }
   return out;
+}
+
+// ── Promoções ────────────────────────────────────────────────────────────
+// Cada item: { image_url, title?, badge?, link?, until?, visible? }.
+// `until` (YYYY-MM-DD) é o último dia no ar — passou disso, some sozinha, que
+// é o ponto: promoção acaba e ninguém precisa lembrar de tirar do site.
+export function activePromos(promos) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  return (Array.isArray(promos) ? promos : []).filter(p =>
+    p && (p.image_url || p.image) && p.visible !== false && (!p.until || p.until >= hoje));
 }
 
 // Campos editáveis na tela de Configurações (label + tipo)
@@ -123,6 +149,9 @@ export const SITE_FIELDS = [
   ['studio_subtitle', 'Descrição do banner 3D', 'textarea'],
   ['catalog_badge', 'Selo do catálogo', 'text'],
   ['catalog_title', 'Título do catálogo', 'text'],
+  ['promos_badge', 'Promoções — selo', 'text'],
+  ['promos_title', 'Promoções — título', 'text'],
+  ['promos_subtitle', 'Promoções — descrição', 'textarea'],
   ['benefit_1_title', 'Benefício 1 — título', 'text'],
   ['benefit_1_text', 'Benefício 1 — descrição', 'text'],
   ['benefit_2_title', 'Benefício 2 — título', 'text'],

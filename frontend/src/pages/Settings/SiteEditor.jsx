@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Image as ImageIcon, Trash2, Plus, GripVertical, ArrowUp, ArrowDown, Eye, EyeOff,
-  Layout, Star, ListChecks, Type, Share2, Upload, PanelBottom,
+  Layout, Star, ListChecks, Type, Share2, Upload, PanelBottom, Tag,
 } from 'lucide-react';
 import { SITE_ICONS, SITE_ICON_KEYS, siteIcon } from '@/store/siteIcons';
 import {
@@ -71,9 +71,28 @@ function resizeToDataUrl(file, max, cb) {
   rd.readAsDataURL(file);
 }
 
+// Arte de promoção: só reduz e comprime. Aqui o fundo FAZ PARTE da arte (ao
+// contrário da foto do copo), então nada de remover branco nem recortar.
+function artToDataUrl(file, max, cb) {
+  const img = new Image();
+  const rd = new FileReader();
+  rd.onload = () => { img.src = rd.result; };
+  img.onload = () => {
+    const scale = Math.min(1, max / Math.max(img.width, img.height));
+    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);   // PNG com transparência → fundo branco
+    ctx.drawImage(img, 0, 0, w, h);
+    cb(c.toDataURL('image/jpeg', 0.82));
+  };
+  rd.readAsDataURL(file);
+}
+
 const SUBS = [
   ['hero', 'Topo (Hero)', Layout],
   ['sections', 'Seções', GripVertical],
+  ['promos', 'Promoções', Tag],
   ['lists', 'Blocos', ListChecks],
   ['texts', 'Textos', Type],
   ['footer', 'Rodapé', PanelBottom],
@@ -103,6 +122,15 @@ export default function SiteEditor({ site = {}, setSite, isAdmin }) {
 
   const setBottles = (arr) => setSite('hero_bottles', arr);
   const editBottle = (i, val) => setBottles(bottles.map((b, j) => j === i ? val : b));
+
+  // Promoções: lista vazia é o padrão (sem promoção, a seção some da loja)
+  const promos = Array.isArray(s.promos) ? s.promos : [];
+  const setPromos = (arr) => setSite('promos', arr);
+  const editPromo = (i, val) => setPromos(promos.map((p, j) => j === i ? val : p));
+  const movePromo = (i, dir) => {
+    const j = i + dir; if (j < 0 || j >= promos.length) return;
+    const arr = [...promos];[arr[i], arr[j]] = [arr[j], arr[i]]; setPromos(arr);
+  };
 
   const moveSection = (i, dir) => {
     const j = i + dir; if (j < 0 || j >= sections.length) return;
@@ -190,6 +218,81 @@ export default function SiteEditor({ site = {}, setSite, isAdmin }) {
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── PROMOÇÕES ── */}
+      {sub === 'promos' && (
+        <div className="space-y-5">
+          <p className="text-sm text-gray-500">
+            As artes de promoção que aparecem na loja. Envie a imagem pronta (a mesma que você
+            publica no Instagram) — preço e condições já vêm nela. Preencha a <b>validade</b> e a
+            promoção <b>sai do ar sozinha</b> no dia seguinte, sem você precisar lembrar.
+            A seção só aparece na loja quando existe promoção no ar.
+          </p>
+
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div><label className="label">Selo da seção</label><input className="input" value={s.promos_badge ?? ''} onChange={e => setSite('promos_badge', e.target.value)} placeholder={SITE_DEFAULTS.promos_badge} disabled={!isAdmin} /></div>
+            <div><label className="label">Título</label><input className="input" value={s.promos_title ?? ''} onChange={e => setSite('promos_title', e.target.value)} placeholder={SITE_DEFAULTS.promos_title} disabled={!isAdmin} /></div>
+            <div><label className="label">Descrição</label><input className="input" value={s.promos_subtitle ?? ''} onChange={e => setSite('promos_subtitle', e.target.value)} placeholder={SITE_DEFAULTS.promos_subtitle} disabled={!isAdmin} /></div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-gray-800">Artes ({promos.length})</h4>
+            {isAdmin && (
+              <button type="button" onClick={() => setPromos([...promos, { title: '', badge: '', link: '', until: '', visible: true }])}
+                className="text-sm font-semibold text-orange-600 hover:text-orange-700 flex items-center gap-1"><Plus size={15} /> Adicionar promoção</button>
+            )}
+          </div>
+
+          {promos.length === 0 && (
+            <p className="text-sm text-gray-400 border border-dashed border-gray-200 rounded-xl p-6 text-center">
+              Nenhuma promoção cadastrada — clique em "Adicionar promoção" e envie a arte.
+            </p>
+          )}
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {promos.map((p, i) => {
+              const src = p.image_url || p.image;
+              const vencida = p.until && p.until < new Date().toISOString().slice(0, 10);
+              return (
+                <div key={i} className={`rounded-2xl border p-3 space-y-2 ${p.visible === false || vencida ? 'border-gray-100 bg-gray-50 opacity-70' : 'border-gray-200 bg-white'}`}>
+                  <div className="h-40 rounded-xl bg-gray-50 flex items-center justify-center overflow-hidden">
+                    {src
+                      ? <img src={src} alt="" className="max-h-full max-w-full object-contain" />
+                      : <ImageIcon size={28} className="text-gray-300" />}
+                  </div>
+
+                  <label className={`w-full text-center text-xs font-semibold rounded-lg py-1.5 cursor-pointer flex items-center justify-center gap-1 ${isAdmin ? 'bg-orange-50 text-orange-600 hover:bg-orange-100' : 'bg-gray-100 text-gray-400'}`}>
+                    <Upload size={12} /> {src ? 'Trocar arte' : 'Enviar arte'}
+                    <input type="file" accept="image/*" className="hidden" disabled={!isAdmin}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) artToDataUrl(f, 1000, url => editPromo(i, { ...p, image: url, image_url: undefined })); e.target.value = ''; }} />
+                  </label>
+
+                  <input className="input" placeholder="Título (opcional)" value={p.title || ''} onChange={e => editPromo(i, { ...p, title: e.target.value })} disabled={!isAdmin} />
+                  <input className="input" placeholder='Selo — ex.: "10% no PIX"' value={p.badge || ''} onChange={e => editPromo(i, { ...p, badge: e.target.value })} disabled={!isAdmin} />
+                  <input className="input" placeholder="Link ao clicar (opcional)" value={p.link || ''} onChange={e => editPromo(i, { ...p, link: e.target.value })} disabled={!isAdmin} />
+                  <div>
+                    <label className="label">Válida até</label>
+                    <input type="date" className="input" value={p.until || ''} onChange={e => editPromo(i, { ...p, until: e.target.value })} disabled={!isAdmin} />
+                    {vencida && <p className="text-xs text-amber-600 mt-1">Vencida — já não aparece na loja.</p>}
+                  </div>
+
+                  {isAdmin && (
+                    <div className="flex items-center gap-1 pt-1">
+                      <button type="button" onClick={() => movePromo(i, -1)} disabled={i === 0} className="text-gray-400 hover:text-gray-700 disabled:opacity-30 p-1"><ArrowUp size={15} /></button>
+                      <button type="button" onClick={() => movePromo(i, 1)} disabled={i === promos.length - 1} className="text-gray-400 hover:text-gray-700 disabled:opacity-30 p-1"><ArrowDown size={15} /></button>
+                      <button type="button" onClick={() => editPromo(i, { ...p, visible: p.visible === false })}
+                        className={`flex-1 flex items-center justify-center gap-1 text-xs font-semibold px-2 py-1.5 rounded-lg ${p.visible === false ? 'bg-gray-200 text-gray-500' : 'bg-green-50 text-green-600'}`}>
+                        {p.visible === false ? <><EyeOff size={13} /> Oculta</> : <><Eye size={13} /> No ar</>}
+                      </button>
+                      <button type="button" onClick={() => setPromos(promos.filter((_, j) => j !== i))} className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={16} /></button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

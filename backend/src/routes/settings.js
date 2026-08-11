@@ -5,9 +5,9 @@ const { uploadDataUrl } = require('../lib/storage');
 
 // Sobe as fotos do hero (data URLs) para o Storage e troca por URLs públicas.
 // Mantém garrafas coloridas (sem foto) intactas. Nunca lança.
-async function processSiteImages(settings) {
+async function processHeroBottles(settings) {
   const bottles = settings?.site?.hero_bottles;
-  if (!Array.isArray(bottles)) return settings;
+  if (!Array.isArray(bottles)) return;
   const out = [];
   for (const b of bottles) {
     if (b && typeof b.image === 'string' && /^data:/.test(b.image)) {
@@ -20,6 +20,31 @@ async function processSiteImages(settings) {
     }
   }
   settings.site.hero_bottles = out;
+}
+
+// Mesma ideia para as artes de promoção. Se o upload falhar, a arte fica no
+// próprio settings (data URL) em vez de sumir: pesa mais, mas a promoção que o
+// lojista acabou de cadastrar não some sem explicação.
+async function processPromos(settings) {
+  const promos = settings?.site?.promos;
+  if (!Array.isArray(promos)) return;
+  const out = [];
+  for (const p of promos) {
+    if (!p) continue;
+    const { image, ...rest } = p;
+    if (typeof image === 'string' && /^data:/.test(image)) {
+      const url = await uploadDataUrl(image, 'site-promos');
+      out.push({ ...rest, image_url: url || image });
+    } else {
+      out.push(rest);
+    }
+  }
+  settings.site.promos = out;
+}
+
+async function processSiteImages(settings) {
+  await processHeroBottles(settings);
+  await processPromos(settings);
   return settings;
 }
 

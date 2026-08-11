@@ -3,16 +3,17 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Search, Palette, Sparkles, ArrowRight, ChevronDown, ChevronLeft,
-  Wand2, Star, X, Instagram,
+  Wand2, Star, X, Instagram, Tag, Clock,
 } from 'lucide-react';
 import storeApi from './storeApi';
 import Bottle from './Bottle';
 import { Reveal, CountUp } from './Reveal';
 import { RawEmbed, FacebookPage } from './SocialEmbeds';
 import { siteIcon } from './siteIcons';
+import { resolveColor } from './colors';
 import {
   SITE_DEFAULTS, DEFAULT_HERO_BOTTLES, DEFAULT_MARQUEE, DEFAULT_BENEFITS,
-  DEFAULT_PILLARS, DEFAULT_STATS, resolveSections,
+  DEFAULT_PILLARS, DEFAULT_STATS, resolveSections, activePromos,
 } from './siteDefaults';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -58,6 +59,7 @@ export default function StoreHome() {
   const pillars  = Array.isArray(S.pillars)  && S.pillars.length  ? S.pillars  : DEFAULT_PILLARS;
   const stats    = Array.isArray(S.stats)    && S.stats.length    ? S.stats    : DEFAULT_STATS;
   const sections = resolveSections(S.sections);
+  const promos   = activePromos(S.promos);   // fora do ar quando a validade passa
 
   const { data: instagram } = useQuery({ queryKey: ['store-instagram'], queryFn: () => storeApi.get('/instagram'), staleTime: 10 * 60 * 1000 });
   const igPosts = instagram?.ok ? (instagram.posts || []) : [];
@@ -71,7 +73,9 @@ export default function StoreHome() {
     queryKey: ['store-products', search, category, tipo],
     queryFn: () => storeApi.get(`/products?${new URLSearchParams({
       ...(search ? { search } : {}),
-      ...(category ? { category } : {}),
+      // dentro de uma categoria, o card é por COR (expand=1) — quem entrou em
+      // "LONG DRINK TRADICIONAL" quer ver os 24 copos, não um card só.
+      ...(category ? { category, expand: '1' } : {}),
       ...(tipo ? { type: tipo } : {}),
     })}`),
   });
@@ -86,6 +90,7 @@ export default function StoreHome() {
     return m;
   }, [products]);
   const showCategoryCards = !category && !search && chipCats.length > 0;
+  const filtering = !!(category || tipo || search);   // cliente está garimpando produto
 
   useEffect(() => {
     if (tipo || category) document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' });
@@ -183,6 +188,23 @@ export default function StoreHome() {
       </section>
     ),
 
+    // Artes de promoção enviadas em Configurações → Site → Promoções.
+    // Sem promoção no ar (ou todas vencidas), a seção simplesmente não existe.
+    promos: () => promos.length ? (
+      <section key="promos" id="promocoes" className="max-w-6xl mx-auto px-4 py-16 scroll-mt-32">
+        <div className="text-center mb-10">
+          <Reveal as="span" className="inline-flex items-center gap-1.5 bg-orange-50 text-orange-600 font-bold text-xs px-4 py-1.5 rounded-full tracking-wide">
+            <Tag size={13} /> {S.promos_badge}
+          </Reveal>
+          <Reveal as="h2" delay={60} className="text-3xl sm:text-4xl font-black mt-3">{S.promos_title}</Reveal>
+          <Reveal as="p" delay={120} className="text-gray-500 mt-2 max-w-lg mx-auto">{S.promos_subtitle}</Reveal>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {promos.map((p, i) => <PromoCard key={i} promo={p} delay={(i % 3) * 100} />)}
+        </div>
+      </section>
+    ) : null,
+
     studio: () => show3d ? (
       <section key="studio" className="max-w-6xl mx-auto px-4 pt-16">
         <Reveal scale className="relative rounded-[2rem] overflow-hidden bg-gray-900 text-white grid md:grid-cols-2 items-center">
@@ -274,7 +296,9 @@ export default function StoreHome() {
                       <img src={p.image_url} alt={p.name} className="relative max-h-44 w-auto object-contain group-hover:scale-110 transition-transform duration-500" />
                     ) : (
                       <div className="relative group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-500">
-                        <Bottle color={CARD_COLORS[idx % CARD_COLORS.length]} gradient={/degrad/i.test(p.name)} size={130} />
+                        {/* sem foto: pinta a garrafa com a cor real do produto (card por cor) */}
+                        <Bottle color={p.color_label ? resolveColor({ name: p.color_label }) : CARD_COLORS[idx % CARD_COLORS.length]}
+                          gradient={/degrad/i.test(p.full_name || p.name)} size={130} />
                       </div>
                     )}
                     {p.colors > 0 && <span className="absolute top-4 right-4 bg-gray-900 text-white text-xs font-bold px-3 py-1 rounded-full">{p.colors} {p.colors === 1 ? 'cor' : 'cores'}</span>}
@@ -402,11 +426,59 @@ export default function StoreHome() {
         <a href="#catalogo" className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/60 st-bob"><ChevronDown size={26} /></a>
       </section>
 
-      {/* seções ordenáveis/ocultáveis pela config */}
-      {sections.filter(s => s.visible !== false).map(s => (
-        <Fragment key={s.key}>{RENDERERS[s.key] ? RENDERERS[s.key]() : null}</Fragment>
-      ))}
+      {/* seções ordenáveis/ocultáveis pela config. Filtrando (tipo, categoria ou
+          busca) o mural de cores sai da frente: ele fica logo acima do catálogo
+          e parece um seletor de cor do que foi filtrado, mas é só decoração. */}
+      {sections
+        .filter(s => s.visible !== false)
+        .filter(s => !(filtering && s.key === 'colors'))
+        .map(s => <Fragment key={s.key}>{RENDERERS[s.key] ? RENDERERS[s.key]() : null}</Fragment>)}
     </div>
+  );
+}
+
+// Card de promoção: a arte é o conteúdo (preço e condições já vêm na imagem).
+// O link é opcional — sem ele o card não é clicável.
+function PromoCard({ promo, delay = 0 }) {
+  const src = promo.image_url || promo.image;
+  const link = String(promo.link || '').trim();
+  const interno = link.startsWith('/');
+  const ate = promo.until ? new Date(promo.until + 'T12:00:00').toLocaleDateString('pt-BR') : null;
+
+  const conteudo = (
+    <>
+      <div className="relative bg-gray-50 overflow-hidden">
+        <img src={src} alt={promo.title || 'Promoção'} loading="lazy"
+          className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-700" />
+        {promo.badge && (
+          <span className="absolute top-4 left-4 bg-orange-500 text-white text-xs font-black px-3 py-1.5 rounded-full shadow-lg uppercase tracking-wide">
+            {promo.badge}
+          </span>
+        )}
+      </div>
+      {(promo.title || ate || link) && (
+        <div className="p-5 flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            {promo.title && <h3 className="font-extrabold text-gray-900 leading-tight truncate group-hover:text-orange-600 transition-colors">{promo.title}</h3>}
+            {ate && <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1"><Clock size={12} /> válida até {ate}</p>}
+          </div>
+          {link && (
+            <span className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-12 transition-transform">
+              <ArrowRight size={18} />
+            </span>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const classe = 'st-card group block bg-white rounded-3xl border border-gray-100 overflow-hidden h-full';
+  return (
+    <Reveal delay={delay} scale>
+      {!link ? <div className={classe}>{conteudo}</div>
+        : interno ? <Link to={link} className={classe}>{conteudo}</Link>
+        : <a href={link} target="_blank" rel="noopener noreferrer" className={classe}>{conteudo}</a>}
+    </Reveal>
   );
 }
 
