@@ -20,6 +20,13 @@ import {
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
 const CARD_COLORS = ['#F26522', '#1E4FD8', '#2BB7B3', '#EC1C8E', '#2E9E32', '#7E3FF2', '#FFD400', '#E11D22'];
+
+// Caixa de cada copo do topo, em arco (o do meio é o maior). Largura fixa por
+// slot é o que impede a caneca de roubar o espaço dos vizinhos. Os números
+// cabem na coluna do hero no lg (~476px); no xl a fileira inteira é ampliada.
+const HERO_BOX = [
+  { w: 70, h: 190 }, { w: 84, h: 228 }, { w: 100, h: 272 }, { w: 84, h: 228 }, { w: 70, h: 190 },
+];
 const PALETTE = [
   ['Amarelo', '#FFD400'], ['Laranja', '#F26522'], ['Vermelho', '#E11D22'], ['Magenta', '#D6006E'],
   ['Pink', '#EC1C8E'], ['Rosa Bebê', '#F4B6C2'], ['Roxo', '#7E3FF2'], ['Violeta', '#8E44AD'],
@@ -424,8 +431,6 @@ export default function StoreHome() {
     ),
   };
 
-  const mid = Math.floor((heroBottles.length - 1) / 2);
-
   return (
     <div className="overflow-x-hidden">
       {/* ══ HERO (fixo no topo) ══ */}
@@ -454,21 +459,19 @@ export default function StoreHome() {
 
           {/* Copos do topo: fotos configuradas em Configurações → Site vencem;
               sem elas, 5 copos reais do catálogo se revezando (cores sorteadas
-              sem repetir); sem catálogo com foto, as garrafinhas SVG. */}
-          <div className="hidden lg:flex justify-center items-end gap-2 relative">
-            <div className="absolute w-72 h-72 rounded-full bg-white/5 blur-2xl st-pulse" />
+              sem repetir); sem catálogo com foto, as garrafinhas SVG.
+              Cada copo tem sua própria caixa: caneca (larga) e long drink
+              (estreito) convivem sem um esmagar o outro. */}
+          <div className="hidden lg:flex justify-center items-end gap-3 xl:gap-4 relative xl:scale-[1.16] origin-bottom">
+            <div className="absolute w-80 h-80 rounded-full bg-white/5 blur-3xl st-pulse" />
             {heroSlots.map((b, i) => {
-              const size = i === mid ? 150 : 108;
+              const box = HERO_BOX[i] || HERO_BOX[0];
               const foto = b.image_url || b.image;
-              return (
-                <div key={i} className="st-float relative" style={{ animationDelay: `${i * 0.5}s`, transform: `translateY(${Math.abs(i - mid) * 14}px)` }}>
-                  {/* clarão por copo: branco, pérola e transparente precisam
-                      de um fundo pra não sumir no gradiente escuro do hero */}
-                  {foto && <div className="absolute inset-x-0 bottom-2 top-8 rounded-full bg-white/10 blur-2xl" />}
-                  {foto
-                    ? <CupPhoto key={foto} src={foto} alt={b.label || ''} style={{ height: size * 1.7, width: 'auto' }}
-                        className="relative object-contain drop-shadow-2xl st-open" />
-                    : <Bottle color={b.color || '#F26522'} gradient={b.gradient !== false} size={size} />}
+              return foto ? (
+                <CupSlot key={i} src={foto} alt={b.label || ''} box={box} delay={i * 90} float={i * 0.5} />
+              ) : (
+                <div key={i} className="st-float shrink-0 flex items-end justify-center" style={{ animationDelay: `${i * 0.5}s`, height: box.h }}>
+                  <Bottle color={b.color || '#F26522'} gradient={b.gradient !== false} size={Math.round(box.h * 0.62)} />
                 </div>
               );
             })}
@@ -485,6 +488,37 @@ export default function StoreHome() {
         .filter(s => s.visible !== false)
         .filter(s => !(filtering && s.key === 'colors'))
         .map(s => <Fragment key={s.key}>{RENDERERS[s.key] ? RENDERERS[s.key]() : null}</Fragment>)}
+    </div>
+  );
+}
+
+// Um copo do topo. Na troca, o copo que sai continua na tela subindo e se
+// dissolvendo enquanto o novo sobe do chão — os dois ao mesmo tempo, senão a
+// troca vira um pisca.
+function CupSlot({ src, alt, box, delay = 0, float = 0 }) {
+  const [atual, setAtual] = useState(src);
+  const [saindo, setSaindo] = useState(null);
+  // O primeiro copo entra já visível: st-cup-in começa em opacity 0 com
+  // fill "both", e animação parada (aba em segundo plano) deixaria o topo vazio.
+  const [trocou, setTrocou] = useState(false);
+
+  useEffect(() => {
+    if (src === atual) return;
+    setSaindo(atual);
+    setAtual(src);
+    setTrocou(true);
+    const t = setTimeout(() => setSaindo(null), 900);   // > duração do st-cup-out
+    return () => clearTimeout(t);
+  }, [src]);                                            // só reage à troca vinda de fora
+
+  const foto = 'absolute inset-0 w-full h-full object-contain drop-shadow-2xl';
+  const pos = { animationDelay: `${delay}ms`, objectPosition: 'bottom' };
+  return (
+    <div className="st-float relative shrink-0" style={{ width: box.w, height: box.h, animationDelay: `${float}s` }}>
+      {/* clarão atrás: branco, pérola e transparente sumiriam no fundo escuro */}
+      <div className="absolute inset-x-0 bottom-0 top-10 rounded-full bg-white/10 blur-2xl" />
+      {saindo && <CupPhoto key={saindo} src={saindo} className={`${foto} st-cup-out`} style={pos} />}
+      <CupPhoto key={atual} src={atual} alt={alt} className={`${foto}${trocou ? ' st-cup-in' : ''}`} style={pos} />
     </div>
   );
 }

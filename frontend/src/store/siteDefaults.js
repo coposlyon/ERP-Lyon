@@ -97,7 +97,13 @@ export const SECTION_LABELS = {
   cta:      'Chamada final (CTA)',
 };
 export const SECTION_ORDER = ['marquee', 'benefits', 'promos', 'stats', 'pillars', 'colors', 'studio', 'catalog', 'social', 'cta'];
-export const DEFAULT_SECTIONS = SECTION_ORDER.map(key => ({ key, visible: true }));
+
+// Nascem desligadas — continuam disponíveis em Configurações → Site → Seções,
+// é só clicar no olho. A faixa que passa de lado polui o topo.
+const OCULTAS_POR_PADRAO = new Set(['marquee']);
+const padraoVisivel = key => !OCULTAS_POR_PADRAO.has(key);
+
+export const DEFAULT_SECTIONS = SECTION_ORDER.map(key => ({ key, visible: padraoVisivel(key) }));
 
 // Normaliza a config de seções: mantém a ordem salva e garante que toda seção
 // conhecida apareça, ignorando chaves desconhecidas. Seção NOVA (criada depois
@@ -118,7 +124,7 @@ export function resolveSections(saved) {
       const anterior = out.findIndex(x => x.key === SECTION_ORDER[j]);
       if (anterior >= 0) { at = anterior + 1; break; }
     }
-    out.splice(at, 0, { key, visible: true });
+    out.splice(at, 0, { key, visible: padraoVisivel(key) });
     seen.add(key);
   }
   return out;
