@@ -131,6 +131,20 @@ function parseBorda(rawName) {
 }
 const bordaKey = (type, border) => `${type} :: ${border}`;
 
+// A cor mora no NOME ("MODELO - COR - 350 ML"): store_color só existe em parte
+// do catálogo e ainda vem com o volume junto. O volume ora vem colado na cor
+// ("- PRETO 350 ML"), ora separado por hífen — o traço é opcional nos dois.
+const semVolume = s => String(s || '').replace(/\s*[-–]?\s*\d{2,4}\s*ML\s*$/i, '').trim();
+
+function corDoProduto(p) {
+  const borda = parseBorda(p.name);
+  if (borda) return borda.cup.toUpperCase();
+  const parts = semVolume(p.name).split(/\s+-\s+/).map(x => x.trim()).filter(Boolean);
+  if (parts.length >= 2) return parts.slice(1).join(' - ').toUpperCase();
+  const sc = semVolume(p.store_color);
+  return sc ? sc.toUpperCase() : null;
+}
+
 // Carrega os produtos visíveis da loja (com fallback p/ colunas novas ausentes)
 async function loadVisibleProducts() {
   const sel = full => `id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, print_pricing, pricing_sheet_id, store_group, store_color, variations, image_url, variation_images, show_in_store' : ''}, category_id, CATEGORIAS(name)`;
@@ -192,6 +206,39 @@ router.get('/instagram', async (req, res) => {
     console.error('[public-store:instagram]', err.message || err);
     res.json({ ok: false, posts: [] });
   }
+});
+
+// ── Vitrine de cores (paleta e garrafas do topo) ──────────
+// Uma foto REAL por cor, sem repetir cor. Começa pelo modelo que tem mais cores
+// fotografadas (paleta sai visualmente uniforme) e completa com os outros.
+router.get('/showcase', async (req, res) => {
+  try {
+    const products = (await loadVisibleProducts()).filter(firstImg);
+
+    const porModelo = new Map();
+    for (const p of products) {
+      const modelo = p.CATEGORIAS?.name || '(sem categoria)';
+      if (!porModelo.has(modelo)) porModelo.set(modelo, []);
+      porModelo.get(modelo).push(p);
+    }
+    const modelos = [...porModelo.entries()].sort((a, b) => {
+      const cores = list => new Set(list.map(corDoProduto).filter(Boolean)).size;
+      return cores(b[1]) - cores(a[1]);
+    });
+
+    const vistas = new Set();
+    const out = [];
+    for (const [modelo, list] of modelos) {
+      for (const p of list) {
+        const cor = corDoProduto(p);
+        if (!cor || vistas.has(cor)) continue;
+        vistas.add(cor);
+        out.push({ id: p.id, color: cor, model: modelo, name: p.name, image_url: firstImg(p) });
+      }
+    }
+    out.sort((a, b) => a.color.localeCompare(b.color, 'pt-BR'));
+    res.json(out);
+  } catch (err) { fail(res, err, 'showcase'); }
 });
 
 // ── Categorias com contagem ───────────────────────────────
@@ -294,9 +341,9 @@ router.get('/products', async (req, res) => {
       const varColors = items.reduce((n, p) => n + ((p.variations?.colors?.length) || 0), 0);
       return {
         // expandido: o título é a cor (o modelo já está no filtro/categoria)
-        id: rep.id, name: expand ? ((rep.store_color && rep.store_color.trim()) || rep.name) : key,
+        id: rep.id, name: expand ? (corDoProduto(rep) || rep.name) : key,
         full_name: rep.name,
-        color_label: rep.store_color || null,
+        color_label: corDoProduto(rep),
         code: rep.code, unit: rep.unit,
         description: rep.description,
         category: rep.CATEGORIAS?.name || null,

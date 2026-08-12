@@ -11,6 +11,7 @@ import { Reveal, CountUp } from './Reveal';
 import { RawEmbed, FacebookPage } from './SocialEmbeds';
 import { siteIcon } from './siteIcons';
 import { resolveColor } from './colors';
+import CupPhoto from './CupPhoto';
 import {
   SITE_DEFAULTS, DEFAULT_HERO_BOTTLES, DEFAULT_MARQUEE, DEFAULT_BENEFITS,
   DEFAULT_PILLARS, DEFAULT_STATS, resolveSections, activePromos,
@@ -60,6 +61,34 @@ export default function StoreHome() {
   const stats    = Array.isArray(S.stats)    && S.stats.length    ? S.stats    : DEFAULT_STATS;
   const sections = resolveSections(S.sections);
   const promos   = activePromos(S.promos);   // fora do ar quando a validade passa
+
+  // Uma foto real por cor do catálogo (o backend já garante "sem repetir cor")
+  const { data: showcase = [] } = useQuery({
+    queryKey: ['store-showcase'], queryFn: () => storeApi.get('/showcase'), staleTime: 10 * 60 * 1000,
+  });
+
+  // Baralho embaralhado uma vez por visita: o topo anda de 5 em 5, então os 5
+  // copos em cena nunca repetem cor entre si.
+  const deck = useMemo(() => {
+    const a = [...showcase];
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }, [showcase]);
+
+  const heroConfigurado = heroBottles.some(b => b.image_url || b.image);
+  const [passo, setPasso] = useState(0);
+  useEffect(() => {
+    if (heroConfigurado || deck.length <= 5) return;   // nada pra revezar
+    const iv = setInterval(() => setPasso(p => p + 1), 5000);
+    return () => clearInterval(iv);
+  }, [heroConfigurado, deck.length]);
+
+  const heroSlots = (heroConfigurado || deck.length < 5)
+    ? heroBottles
+    : Array.from({ length: 5 }, (_, i) => {
+        const p = deck[(passo * 5 + i) % deck.length];
+        return { image_url: p.image_url, label: p.color };
+      });
 
   const { data: instagram } = useQuery({ queryKey: ['store-instagram'], queryFn: () => storeApi.get('/instagram'), staleTime: 10 * 60 * 1000 });
   const igPosts = instagram?.ok ? (instagram.posts || []) : [];
@@ -166,6 +195,8 @@ export default function StoreHome() {
       </section>
     ),
 
+    // Paleta com FOTO REAL de cada cor (uma por cor, sem repetir). Sem fotos
+    // no catálogo, cai nas garrafinhas SVG de sempre.
     colors: () => (
       <section key="colors" id="cores" className="bg-gray-900 text-white py-20 mt-12 relative overflow-hidden">
         <div className="st-blob" style={{ width: 300, height: 300, background: '#7E3FF2', top: '10%', left: '-5%', opacity: .3 }} />
@@ -173,9 +204,23 @@ export default function StoreHome() {
         <div className="relative max-w-6xl mx-auto px-4">
           <Reveal as="span" className="inline-block bg-white/10 text-xs font-bold px-4 py-1.5 rounded-full mb-4">PALETA</Reveal>
           <Reveal as="h2" delay={60} className="text-3xl sm:text-5xl font-black mb-3 st-gradient-text">{S.colors_title}</Reveal>
-          <Reveal as="p" delay={120} className="text-white/60 mb-10 max-w-lg">{S.colors_subtitle}</Reveal>
-          <div className="grid grid-cols-4 sm:grid-cols-8 gap-4 sm:gap-6">
-            {PALETTE.map(([name, hex], i) => (
+          <Reveal as="p" delay={120} className="text-white/60 mb-10 max-w-lg">
+            {S.colors_subtitle}{showcase.length > 0 && <span className="text-white/40"> · {showcase.length} cores em estoque</span>}
+          </Reveal>
+          <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-4 sm:gap-6">
+            {showcase.length > 0 ? showcase.map((p, i) => (
+              <Reveal key={p.id} delay={i * 35} scale>
+                <Link to={`/loja/produto/${p.id}`} className="flex flex-col items-center gap-2 group">
+                  {/* clarão atrás: copo branco/pérola/transparente não some no fundo escuro */}
+                  <div className="relative h-24 w-full flex items-end justify-center st-float" style={{ animationDelay: `${(i % 6) * 0.4}s` }}>
+                    <div className="absolute inset-x-2 bottom-0 h-20 rounded-full bg-white/10 blur-xl group-hover:bg-white/20 transition-colors" />
+                    <CupPhoto src={p.image_url} alt={p.color}
+                      className="relative max-h-24 w-auto object-contain drop-shadow-xl group-hover:scale-110 transition-transform duration-500" />
+                  </div>
+                  <span className="text-[11px] text-white/55 group-hover:text-white transition-colors text-center font-medium leading-tight">{p.color}</span>
+                </Link>
+              </Reveal>
+            )) : PALETTE.map(([name, hex], i) => (
               <Reveal key={name} delay={i * 45} scale className="flex flex-col items-center gap-2 group cursor-default">
                 <div className="st-float" style={{ animationDelay: `${(i % 6) * 0.4}s` }}>
                   <Bottle color={hex} gradient={i % 3 === 0} size={70} />
@@ -407,15 +452,22 @@ export default function StoreHome() {
             </Reveal>
           </div>
 
-          {/* garrafas do hero — foto enviada (image_url) ou garrafa SVG colorida */}
+          {/* Copos do topo: fotos configuradas em Configurações → Site vencem;
+              sem elas, 5 copos reais do catálogo se revezando (cores sorteadas
+              sem repetir); sem catálogo com foto, as garrafinhas SVG. */}
           <div className="hidden lg:flex justify-center items-end gap-2 relative">
             <div className="absolute w-72 h-72 rounded-full bg-white/5 blur-2xl st-pulse" />
-            {heroBottles.map((b, i) => {
+            {heroSlots.map((b, i) => {
               const size = i === mid ? 150 : 108;
+              const foto = b.image_url || b.image;
               return (
-                <div key={i} className="st-float" style={{ animationDelay: `${i * 0.5}s`, transform: `translateY(${Math.abs(i - mid) * 14}px)` }}>
-                  {(b.image_url || b.image)
-                    ? <img src={b.image_url || b.image} alt="" style={{ height: size * 1.7, width: 'auto' }} className="object-contain drop-shadow-2xl" />
+                <div key={i} className="st-float relative" style={{ animationDelay: `${i * 0.5}s`, transform: `translateY(${Math.abs(i - mid) * 14}px)` }}>
+                  {/* clarão por copo: branco, pérola e transparente precisam
+                      de um fundo pra não sumir no gradiente escuro do hero */}
+                  {foto && <div className="absolute inset-x-0 bottom-2 top-8 rounded-full bg-white/10 blur-2xl" />}
+                  {foto
+                    ? <CupPhoto key={foto} src={foto} alt={b.label || ''} style={{ height: size * 1.7, width: 'auto' }}
+                        className="relative object-contain drop-shadow-2xl st-open" />
                     : <Bottle color={b.color || '#F26522'} gradient={b.gradient !== false} size={size} />}
                 </div>
               );
