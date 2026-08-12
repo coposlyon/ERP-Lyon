@@ -40,7 +40,9 @@ export default function PromoWall({ badge, title, subtitle }) {
   if (!promos.length) return null;
 
   return (
-    <section id="promocoes" className="max-w-6xl mx-auto px-4 py-16 scroll-mt-32">
+    // Mais larga que o resto da página de propósito: aqui a arte é o produto,
+    // e no max-w-6xl das outras seções ela ficava pequena com folga sobrando.
+    <section id="promocoes" className="max-w-[1500px] mx-auto px-4 sm:px-8 py-16 scroll-mt-32">
       <div className="text-center mb-10">
         <Reveal as="span" className="inline-flex items-center gap-1.5 bg-orange-50 text-orange-600 font-bold text-xs px-4 py-1.5 rounded-full tracking-wide">
           <Heart size={13} className="fill-orange-500 text-orange-500" /> {badge}
@@ -49,7 +51,7 @@ export default function PromoWall({ badge, title, subtitle }) {
         <Reveal as="p" delay={120} className="text-gray-500 mt-2 max-w-lg mx-auto">{subtitle}</Reveal>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
         {promos.map((p, i) => (
           <PromoCard key={p.id} promo={p} delay={(i % 3) * 100}
             onCurtir={() => curtir(p)}
