@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 const { uploadDataUrl } = require('../lib/storage');
+const { randomUUID } = require('crypto');
 
 // Sobe as fotos do hero (data URLs) para o Storage e troca por URLs públicas.
 // Mantém garrafas coloridas (sem foto) intactas. Nunca lança.
@@ -25,6 +26,10 @@ async function processHeroBottles(settings) {
 // Mesma ideia para as artes de promoção. Se o upload falhar, a arte fica no
 // próprio settings (data URL) em vez de sumir: pesa mais, mas a promoção que o
 // lojista acabou de cadastrar não some sem explicação.
+//
+// Cada promoção ganha um id fixo aqui. É por ele que as curtidas se penduram
+// (PROMO_CURTIDAS) — usar a posição no array perderia as curtidas toda vez que
+// o lojista reordenasse ou apagasse uma promoção.
 async function processPromos(settings) {
   const promos = settings?.site?.promos;
   if (!Array.isArray(promos)) return;
@@ -32,6 +37,7 @@ async function processPromos(settings) {
   for (const p of promos) {
     if (!p) continue;
     const { image, ...rest } = p;
+    rest.id = rest.id || randomUUID();
     if (typeof image === 'string' && /^data:/.test(image)) {
       const url = await uploadDataUrl(image, 'site-promos');
       out.push({ ...rest, image_url: url || image });

@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Search, Palette, Sparkles, ArrowRight, ChevronDown, ChevronLeft,
-  Wand2, Star, X, Instagram, Tag, Clock,
+  Search, Palette, Sparkles, ArrowRight, ChevronDown, ChevronUp, ChevronLeft,
+  Wand2, Star, X, Instagram,
 } from 'lucide-react';
 import storeApi from './storeApi';
 import Bottle from './Bottle';
@@ -12,14 +12,17 @@ import { RawEmbed, FacebookPage } from './SocialEmbeds';
 import { siteIcon } from './siteIcons';
 import { resolveColor } from './colors';
 import CupPhoto from './CupPhoto';
+import PromoWall from './PromoWall';
 import {
   SITE_DEFAULTS, DEFAULT_HERO_BOTTLES, DEFAULT_MARQUEE, DEFAULT_BENEFITS,
-  DEFAULT_PILLARS, DEFAULT_STATS, resolveSections, activePromos,
+  DEFAULT_PILLARS, DEFAULT_STATS, resolveSections,
 } from './siteDefaults';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
 const CARD_COLORS = ['#F26522', '#1E4FD8', '#2BB7B3', '#EC1C8E', '#2E9E32', '#7E3FF2', '#FFD400', '#E11D22'];
+
+const CORES_VISIVEIS = 16;   // 2 fileiras de 8 no desktop
 
 // Caixa de cada copo do topo, em arco (o do meio é o maior). Largura fixa por
 // slot é o que impede a caneca de roubar o espaço dos vizinhos. Os números
@@ -67,7 +70,6 @@ export default function StoreHome() {
   const pillars  = Array.isArray(S.pillars)  && S.pillars.length  ? S.pillars  : DEFAULT_PILLARS;
   const stats    = Array.isArray(S.stats)    && S.stats.length    ? S.stats    : DEFAULT_STATS;
   const sections = resolveSections(S.sections);
-  const promos   = activePromos(S.promos);   // fora do ar quando a validade passa
 
   // Uma foto real por cor do catálogo (o backend já garante "sem repetir cor")
   const { data: showcase = [] } = useQuery({
@@ -81,6 +83,11 @@ export default function StoreHome() {
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
     return a;
   }, [showcase]);
+
+  // A paleta abre com 2 fileiras (8 por fileira no desktop); o resto fica atrás
+  // de um botão pra seção não virar um paredão de 25 copos.
+  const [todasAsCores, setTodasAsCores] = useState(false);
+  const coresVisiveis = todasAsCores ? showcase : showcase.slice(0, CORES_VISIVEIS);
 
   const heroConfigurado = heroBottles.some(b => b.image_url || b.image);
   const [passo, setPasso] = useState(0);
@@ -215,7 +222,7 @@ export default function StoreHome() {
             {S.colors_subtitle}{showcase.length > 0 && <span className="text-white/40"> · {showcase.length} cores em estoque</span>}
           </Reveal>
           <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-4 sm:gap-6">
-            {showcase.length > 0 ? showcase.map((p, i) => (
+            {showcase.length > 0 ? coresVisiveis.map((p, i) => (
               <Reveal key={p.id} delay={i * 35} scale>
                 <Link to={`/loja/produto/${p.id}`} className="flex flex-col items-center gap-2 group">
                   {/* clarão atrás: copo branco/pérola/transparente não some no fundo escuro */}
@@ -236,26 +243,21 @@ export default function StoreHome() {
               </Reveal>
             ))}
           </div>
+          {showcase.length > CORES_VISIVEIS && (
+            <button type="button" onClick={() => setTodasAsCores(v => !v)}
+              className="mx-auto mt-10 flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/15 px-6 py-3 rounded-2xl font-bold text-sm transition-colors">
+              {todasAsCores
+                ? <>Mostrar menos <ChevronUp size={16} /></>
+                : <>Ver as {showcase.length} cores <ChevronDown size={16} /></>}
+            </button>
+          )}
         </div>
       </section>
     ),
 
     // Artes de promoção enviadas em Configurações → Site → Promoções.
     // Sem promoção no ar (ou todas vencidas), a seção simplesmente não existe.
-    promos: () => promos.length ? (
-      <section key="promos" id="promocoes" className="max-w-6xl mx-auto px-4 py-16 scroll-mt-32">
-        <div className="text-center mb-10">
-          <Reveal as="span" className="inline-flex items-center gap-1.5 bg-orange-50 text-orange-600 font-bold text-xs px-4 py-1.5 rounded-full tracking-wide">
-            <Tag size={13} /> {S.promos_badge}
-          </Reveal>
-          <Reveal as="h2" delay={60} className="text-3xl sm:text-4xl font-black mt-3">{S.promos_title}</Reveal>
-          <Reveal as="p" delay={120} className="text-gray-500 mt-2 max-w-lg mx-auto">{S.promos_subtitle}</Reveal>
-        </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {promos.map((p, i) => <PromoCard key={i} promo={p} delay={(i % 3) * 100} />)}
-        </div>
-      </section>
-    ) : null,
+    promos: () => <PromoWall key="promos" badge={S.promos_badge} title={S.promos_title} subtitle={S.promos_subtitle} />,
 
     studio: () => show3d ? (
       <section key="studio" className="max-w-6xl mx-auto px-4 pt-16">
@@ -520,51 +522,6 @@ function CupSlot({ src, alt, box, delay = 0, float = 0 }) {
       {saindo && <CupPhoto key={saindo} src={saindo} className={`${foto} st-cup-out`} style={pos} />}
       <CupPhoto key={atual} src={atual} alt={alt} className={`${foto}${trocou ? ' st-cup-in' : ''}`} style={pos} />
     </div>
-  );
-}
-
-// Card de promoção: a arte é o conteúdo (preço e condições já vêm na imagem).
-// O link é opcional — sem ele o card não é clicável.
-function PromoCard({ promo, delay = 0 }) {
-  const src = promo.image_url || promo.image;
-  const link = String(promo.link || '').trim();
-  const interno = link.startsWith('/');
-  const ate = promo.until ? new Date(promo.until + 'T12:00:00').toLocaleDateString('pt-BR') : null;
-
-  const conteudo = (
-    <>
-      <div className="relative bg-gray-50 overflow-hidden">
-        <img src={src} alt={promo.title || 'Promoção'} loading="lazy"
-          className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-700" />
-        {promo.badge && (
-          <span className="absolute top-4 left-4 bg-orange-500 text-white text-xs font-black px-3 py-1.5 rounded-full shadow-lg uppercase tracking-wide">
-            {promo.badge}
-          </span>
-        )}
-      </div>
-      {(promo.title || ate || link) && (
-        <div className="p-5 flex items-center gap-3">
-          <div className="min-w-0 flex-1">
-            {promo.title && <h3 className="font-extrabold text-gray-900 leading-tight truncate group-hover:text-orange-600 transition-colors">{promo.title}</h3>}
-            {ate && <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1"><Clock size={12} /> válida até {ate}</p>}
-          </div>
-          {link && (
-            <span className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-12 transition-transform">
-              <ArrowRight size={18} />
-            </span>
-          )}
-        </div>
-      )}
-    </>
-  );
-
-  const classe = 'st-card group block bg-white rounded-3xl border border-gray-100 overflow-hidden h-full';
-  return (
-    <Reveal delay={delay} scale>
-      {!link ? <div className={classe}>{conteudo}</div>
-        : interno ? <Link to={link} className={classe}>{conteudo}</Link>
-        : <a href={link} target="_blank" rel="noopener noreferrer" className={classe}>{conteudo}</a>}
-    </Reveal>
   );
 }
 

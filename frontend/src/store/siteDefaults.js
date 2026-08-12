@@ -131,14 +131,13 @@ export function resolveSections(saved) {
 }
 
 // ── Promoções ────────────────────────────────────────────────────────────
-// Cada item: { image_url, title?, badge?, link?, until?, visible? }.
+// Cada item: { id, image_url, title?, badge?, link?, until?, visible? }.
 // `until` (YYYY-MM-DD) é o último dia no ar — passou disso, some sozinha, que
 // é o ponto: promoção acaba e ninguém precisa lembrar de tirar do site.
-export function activePromos(promos) {
-  const hoje = new Date().toISOString().slice(0, 10);
-  return (Array.isArray(promos) ? promos : []).filter(p =>
-    p && (p.image_url || p.image) && p.visible !== false && (!p.until || p.until >= hoje));
-}
+//
+// Quem decide o que está no ar é o backend (GET /promos), que já devolve as
+// promoções junto das curtidas. A loja não filtra por conta própria: a regra
+// mora num lugar só. Aqui ficam só os textos da seção.
 
 // Campos editáveis na tela de Configurações (label + tipo)
 export const SITE_FIELDS = [

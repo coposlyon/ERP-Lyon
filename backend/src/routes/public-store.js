@@ -47,6 +47,11 @@ const aiLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, max: 10,
   message: { error: 'Limite de sugestões de IA atingido. Tente novamente mais tarde.' },
 });
+// Curtir é 1 clique; o teto só existe pra script não inflar o contador.
+const curtidaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 120,
+  message: { error: 'Muitas curtidas seguidas. Aguarde um instante.' },
+});
 
 // preço "a partir de": menor entre sale_price e as faixas
 function fromPrice(p) {
@@ -206,6 +211,72 @@ router.get('/instagram', async (req, res) => {
     console.error('[public-store:instagram]', err.message || err);
     res.json({ ok: false, posts: [] });
   }
+});
+
+// ── Promoções da loja (com curtidas) ──────────────────────
+// As promoções moram em EMPRESAS.settings.site.promos; as curtidas, em
+// PROMO_CURTIDAS (migration 064). Aqui os dois se juntam.
+async function promosAtivas() {
+  const { data } = await supabase.from('EMPRESAS').select('settings').eq('id', STORE_TENANT).maybeSingle();
+  const hoje = new Date().toISOString().slice(0, 10);
+  return (data?.settings?.site?.promos || []).filter(p =>
+    p && p.id && p.image_url && p.visible !== false && (!p.until || p.until >= hoje));
+}
+
+router.get('/promos', async (req, res) => {
+  const visitor = String(req.query.visitor || '').slice(0, 64);
+  try {
+    const promos = await promosAtivas();
+    if (!promos.length) return res.json([]);
+
+    // Uma leitura só: conta por promoção e marca o que este visitante curtiu.
+    let curtidas = [];
+    try {
+      const { data } = await supabase.from('PROMO_CURTIDAS')
+        .select('promo_id, visitor_id')
+        .eq('tenant_id', STORE_TENANT)
+        .in('promo_id', promos.map(p => p.id));
+      curtidas = data || [];
+    } catch { /* tabela ainda não existe → tudo com 0 curtida */ }
+
+    const total = new Map(), meus = new Set();
+    for (const c of curtidas) {
+      total.set(c.promo_id, (total.get(c.promo_id) || 0) + 1);
+      if (visitor && c.visitor_id === visitor) meus.add(c.promo_id);
+    }
+    res.json(promos.map(p => ({
+      id: p.id, image_url: p.image_url, title: p.title || null, badge: p.badge || null,
+      link: p.link || null, until: p.until || null,
+      likes: total.get(p.id) || 0, liked: meus.has(p.id),
+    })));
+  } catch (err) { fail(res, err, 'promos'); }
+});
+
+// Curtir/descurtir — sem login: a identidade é o visitor_id do navegador.
+router.post('/promos/:id/curtir', curtidaLimiter, async (req, res) => {
+  const visitor = String(req.body?.visitor || '').trim().slice(0, 64);
+  const curtir = req.body?.liked !== false;
+  if (!visitor) return res.status(400).json({ error: 'Visitante não identificado.' });
+  try {
+    const promos = await promosAtivas();
+    // só aceita id de promoção que existe e está no ar (senão vira lixo na tabela)
+    if (!promos.some(p => p.id === req.params.id)) return res.status(404).json({ error: 'Promoção não encontrada.' });
+
+    if (curtir) {
+      // clique repetido não pode dar erro: a UNIQUE já garante 1 por visitante
+      await supabase.from('PROMO_CURTIDAS')
+        .upsert({ tenant_id: STORE_TENANT, promo_id: req.params.id, visitor_id: visitor },
+                { onConflict: 'tenant_id,promo_id,visitor_id', ignoreDuplicates: true });
+    } else {
+      await supabase.from('PROMO_CURTIDAS').delete()
+        .eq('tenant_id', STORE_TENANT).eq('promo_id', req.params.id).eq('visitor_id', visitor);
+    }
+
+    const { count } = await supabase.from('PROMO_CURTIDAS')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', STORE_TENANT).eq('promo_id', req.params.id);
+    res.json({ ok: true, likes: count || 0, liked: curtir });
+  } catch (err) { fail(res, err, 'curtir'); }
 });
 
 // ── Vitrine de cores (paleta e garrafas do topo) ──────────
