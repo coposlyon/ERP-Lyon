@@ -144,8 +144,13 @@
    MOBILE  —  ajustes globais (valem para todas as telas)
    ═══════════════════════════════════════════════════════ */
 
-/* Nunca deixa a página inteira rolar de lado */
-html, body { max-width: 100%; overflow-x: hidden; }
+/* Nunca deixa a página inteira rolar de lado.
+   `clip` e não `hidden`: hidden transforma o elemento em contêiner de rolagem,
+   e aí todo `position: sticky` de dentro passa a grudar nele em vez de na
+   janela — o que deixava o desfile da loja com 2340px de tela em branco.
+   `clip` corta igual, sem criar contêiner. */
+html, body { max-width: 100%; overflow-x: clip; }
+@supports not (overflow: clip) { html, body { overflow-x: hidden; } }
 
 @media (max-width: 640px) {
   /* iOS dá zoom automático em campo com fonte < 16px. Isso é o que

@@ -213,7 +213,7 @@ export default function StoreHome() {
   };
 
   return (
-    <div className="lj overflow-x-hidden">
+    <div className="lj">
       <Heroi S={S} show3d={show3d} heroSlots={heroSlots} />
 
       {/* seções ordenáveis/ocultáveis pela config. Filtrando (tipo, categoria ou

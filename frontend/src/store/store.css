@@ -10,6 +10,9 @@
   --sec:clamp(46px,5.5vw,92px); --pad:clamp(20px,5vw,56px);
   background:var(--creme); color:var(--carvao);
   font-family:'Poppins','Inter',system-ui,sans-serif; line-height:1.6;
+  /* clip, nunca hidden: hidden viraria contêiner de rolagem e mataria o
+     sticky do desfile, dos passos e das cartas que empilham. */
+  overflow-x:clip;
 }
 .lj h1,.lj h2,.lj h3,.lj h4{font-weight:700;line-height:1.02;letter-spacing:-.042em;text-wrap:balance}
 .lj-env{max-width:1200px;margin:0 auto;padding-inline:var(--pad)}
