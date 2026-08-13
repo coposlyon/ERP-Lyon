@@ -1,32 +1,30 @@
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Search, Palette, Sparkles, ArrowRight, ChevronDown, ChevronUp, ChevronLeft,
-  Wand2, Star, X, Instagram,
+  Search, Sparkles, ArrowRight, ChevronDown, ChevronUp, ChevronLeft,
+  Wand2, X, Instagram, CreditCard, Truck, Palette as PaletteIcon,
 } from 'lucide-react';
 import storeApi from './storeApi';
 import Bottle from './Bottle';
-import { Reveal, CountUp } from './Reveal';
+import { CountUp } from './Reveal';
 import { RawEmbed, FacebookPage } from './SocialEmbeds';
 import { siteIcon } from './siteIcons';
 import { resolveColor } from './colors';
 import CupPhoto from './CupPhoto';
 import PromoWall from './PromoWall';
+import { useReveal, Mascara } from './revelar';
 import {
   SITE_DEFAULTS, DEFAULT_HERO_BOTTLES, DEFAULT_MARQUEE, DEFAULT_BENEFITS,
   DEFAULT_PILLARS, DEFAULT_STATS, resolveSections,
 } from './siteDefaults';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
-
 const CARD_COLORS = ['#F26522', '#1E4FD8', '#2BB7B3', '#EC1C8E', '#2E9E32', '#7E3FF2', '#FFD400', '#E11D22'];
-
 const CORES_VISIVEIS = 16;   // 2 fileiras de 8 no desktop
 
 // Caixa de cada copo do topo, em arco (o do meio é o maior). Largura fixa por
-// slot é o que impede a caneca de roubar o espaço dos vizinhos. Os números
-// cabem na coluna do hero no lg (~476px); no xl a fileira inteira é ampliada.
+// slot é o que impede a caneca de roubar o espaço dos vizinhos.
 const HERO_BOX = [
   { w: 70, h: 190 }, { w: 84, h: 228 }, { w: 100, h: 272 }, { w: 84, h: 228 }, { w: 70, h: 190 },
 ];
@@ -142,7 +140,7 @@ export default function StoreHome() {
   // ── Seções da home (renderizadas por ordem/visibilidade da config) ──
   const RENDERERS = {
     marquee: () => (
-      <div key="marquee" className="text-white overflow-hidden border-y border-white/10 shadow-sm"
+      <div key="marquee" className="text-white overflow-hidden border-y border-white/10"
         style={{ background: 'linear-gradient(100deg,#ff7a18,#ff2d75 48%,#8a2be2 96%)' }}>
         <div className="st-marquee-track py-2.5">
           {[...marquee, ...marquee, ...marquee, ...marquee].map((t, i) => (
@@ -155,154 +153,406 @@ export default function StoreHome() {
       </div>
     ),
 
-    benefits: () => (
-      <section key="benefits" className="bg-white border-b border-gray-100">
-        <div className="max-w-6xl mx-auto px-4 py-8 grid sm:grid-cols-3 gap-6">
-          {benefits.map((b, i) => {
-            const Icon = siteIcon(b.icon, 'star');
-            return (
-              <Reveal key={i} delay={i * 90} className="flex items-center gap-3 justify-center sm:justify-start">
-                <span className="w-11 h-11 rounded-xl bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
-                  <Icon size={22} />
-                </span>
-                <span>
-                  <p className="font-extrabold text-gray-900 leading-tight">{b.title}</p>
-                  <p className="text-sm text-gray-500">{b.text}</p>
-                </span>
-              </Reveal>
-            );
-          })}
-        </div>
-      </section>
-    ),
+    benefits: () => <Confia key="benefits" itens={benefits} />,
 
-    stats: () => (
-      <section key="stats" className="max-w-6xl mx-auto px-4 py-16 grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">
-        {stats.map((s, i) => (
-          <Reveal key={i} delay={i * 90} className="bg-white rounded-3xl border border-gray-100 py-8 st-card">
-            <p className="text-4xl font-black st-gradient-text"><StatValue value={s.value} /></p>
-            <p className="text-sm text-gray-500 mt-1 font-medium">{s.label}</p>
-          </Reveal>
-        ))}
-      </section>
-    ),
-
-    pillars: () => (
-      <section key="pillars" className="max-w-6xl mx-auto px-4 pb-8 pt-8">
-        <Reveal as="h2" className="text-3xl sm:text-4xl font-black text-center mb-3">{S.pillars_title}</Reveal>
-        <Reveal as="p" delay={80} className="text-gray-500 text-center mb-10 max-w-xl mx-auto">{S.pillars_subtitle}</Reveal>
-        <div className="grid md:grid-cols-3 gap-6">
-          {pillars.map((p, i) => {
-            const Icon = siteIcon(p.icon, 'star');
-            const color = p.color || '#F26522';
-            return (
-              <Reveal key={i} delay={i * 120} scale className="bg-white rounded-3xl border border-gray-100 p-8 st-card text-center">
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 st-pulse" style={{ background: color + '1a', color }}>
-                  <Icon size={28} />
-                </div>
-                <h3 className="text-xl font-extrabold">{p.title}</h3>
-                <p className="text-gray-500 mt-2 text-sm leading-relaxed">{p.text}</p>
-              </Reveal>
-            );
-          })}
-        </div>
-      </section>
-    ),
-
-    // Paleta com FOTO REAL de cada cor (uma por cor, sem repetir). Sem fotos
-    // no catálogo, cai nas garrafinhas SVG de sempre.
-    colors: () => (
-      <section key="colors" id="cores" className="bg-gray-900 text-white py-20 mt-12 relative overflow-hidden">
-        <div className="st-blob" style={{ width: 300, height: 300, background: '#7E3FF2', top: '10%', left: '-5%', opacity: .3 }} />
-        <div className="st-blob" style={{ width: 260, height: 260, background: '#2BB7B3', bottom: '0%', right: '0%', opacity: .25, animationDelay: '4s' }} />
-        <div className="relative max-w-6xl mx-auto px-4">
-          <Reveal as="span" className="inline-block bg-white/10 text-xs font-bold px-4 py-1.5 rounded-full mb-4">PALETA</Reveal>
-          <Reveal as="h2" delay={60} className="text-3xl sm:text-5xl font-black mb-3 st-gradient-text">{S.colors_title}</Reveal>
-          <Reveal as="p" delay={120} className="text-white/60 mb-10 max-w-lg">
-            {S.colors_subtitle}{showcase.length > 0 && <span className="text-white/40"> · {showcase.length} cores em estoque</span>}
-          </Reveal>
-          <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-4 sm:gap-6">
-            {showcase.length > 0 ? coresVisiveis.map((p, i) => (
-              <Reveal key={p.id} delay={i * 35} scale>
-                <Link to={`/loja/produto/${p.id}`} className="flex flex-col items-center gap-2 group">
-                  {/* clarão atrás: copo branco/pérola/transparente não some no fundo escuro */}
-                  <div className="relative h-24 w-full flex items-end justify-center st-float" style={{ animationDelay: `${(i % 6) * 0.4}s` }}>
-                    <div className="absolute inset-x-2 bottom-0 h-20 rounded-full bg-white/10 blur-xl group-hover:bg-white/20 transition-colors" />
-                    <CupPhoto src={p.image_url} alt={p.color}
-                      className="relative max-h-24 w-auto object-contain drop-shadow-xl group-hover:scale-110 transition-transform duration-500" />
-                  </div>
-                  <span className="text-[11px] text-white/55 group-hover:text-white transition-colors text-center font-medium leading-tight">{p.color}</span>
-                </Link>
-              </Reveal>
-            )) : PALETTE.map(([name, hex], i) => (
-              <Reveal key={name} delay={i * 45} scale className="flex flex-col items-center gap-2 group cursor-default">
-                <div className="st-float" style={{ animationDelay: `${(i % 6) * 0.4}s` }}>
-                  <Bottle color={hex} gradient={i % 3 === 0} size={70} />
-                </div>
-                <span className="text-[11px] text-white/55 group-hover:text-white transition-colors text-center font-medium">{name}</span>
-              </Reveal>
-            ))}
-          </div>
-          {showcase.length > CORES_VISIVEIS && (
-            <button type="button" onClick={() => setTodasAsCores(v => !v)}
-              className="mx-auto mt-10 flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/15 px-6 py-3 rounded-2xl font-bold text-sm transition-colors">
-              {todasAsCores
-                ? <>Mostrar menos <ChevronUp size={16} /></>
-                : <>Ver as {showcase.length} cores <ChevronDown size={16} /></>}
-            </button>
-          )}
-        </div>
-      </section>
-    ),
-
-    // Artes de promoção enviadas em Configurações → Site → Promoções.
-    // Sem promoção no ar (ou todas vencidas), a seção simplesmente não existe.
     promos: () => <PromoWall key="promos" badge={S.promos_badge} title={S.promos_title} subtitle={S.promos_subtitle} />,
 
+    passos: () => <Passos key="passos" showcase={showcase} titulo={S.passos_title} />,
+
+    stats: () => <Estatisticas key="stats" stats={stats} />,
+
+    pillars: () => <Pilares key="pillars" pillars={pillars} titulo={S.pillars_title} sub={S.pillars_subtitle} />,
+
+    colors: () => (
+      <Cores key="colors" showcase={showcase} visiveis={coresVisiveis} todas={todasAsCores}
+        onAlternar={() => setTodasAsCores(v => !v)} titulo={S.colors_title} sub={S.colors_subtitle} />
+    ),
+
+    personalizar: () => <Personalizar key="personalizar" showcase={showcase} titulo={S.pers_title} sub={S.pers_subtitle} />,
+
+    numeros: () => <Numeros key="numeros" cores={showcase.length} site={S} />,
+
     studio: () => show3d ? (
-      <section key="studio" className="max-w-6xl mx-auto px-4 pt-16">
-        <Reveal scale className="relative rounded-[2rem] overflow-hidden bg-gray-900 text-white grid md:grid-cols-2 items-center">
-          <div className="st-blob" style={{ width: 280, height: 280, background: '#7E3FF2', top: '-10%', left: '20%', opacity: .35 }} />
-          <div className="relative p-8 sm:p-12">
-            <span className="inline-block bg-orange-500 text-xs font-bold px-3 py-1 rounded-full mb-4">NOVO · 3D</span>
-            <h2 className="text-3xl sm:text-4xl font-black leading-tight st-gradient-text">{S.studio_title}</h2>
-            <p className="text-white/70 mt-3 max-w-sm">{S.studio_subtitle}</p>
-            <Link to="/loja/personalizar" className="inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-600 transition-all px-6 py-3.5 rounded-2xl font-bold mt-6 hover:scale-105">
-              <Wand2 size={18} /> Abrir estúdio 3D <ArrowRight size={18} />
-            </Link>
-          </div>
-          <div className="relative flex justify-center items-center gap-2 pb-8 md:pb-0 md:pr-8">
-            {[['#F26522', true], ['#1E4FD8', false], ['#EC1C8E', true]].map(([c, g], i) => (
-              <div key={i} className="st-float" style={{ animationDelay: `${i * 0.5}s` }}>
-                <Bottle color={c} gradient={g} size={i === 1 ? 150 : 110} />
-              </div>
-            ))}
-          </div>
-        </Reveal>
+      <section key="studio" className="lj-sec">
+        <div className="lj-env">
+          <Reveal className="relative rounded-[26px] overflow-hidden bg-[var(--carvao)] text-[var(--creme)] grid md:grid-cols-2 items-center">
+            <div className="relative p-8 sm:p-14">
+              <p className="lj-olho claro lj-an">Novo · 3D</p>
+              <h2 className="lj-an d1 mt-3" style={{ fontSize: 'clamp(24px,3.6vw,42px)' }}>{S.studio_title}</h2>
+              <p className="lj-sub lj-an d2 mt-4" style={{ color: 'var(--cinza2)' }}>{S.studio_subtitle}</p>
+              <Link to="/loja/personalizar" className="lj-btn laranja lj-an d3 mt-7">
+                <Wand2 size={17} /> Abrir estúdio 3D <ArrowRight size={16} />
+              </Link>
+            </div>
+            <div className="relative flex justify-center items-end gap-3 pb-8 md:pb-0 md:pr-8">
+              {showcase.slice(0, 3).map((p, i) => (
+                <CupPhoto key={p.id} src={p.image_url} alt={p.color}
+                  className="lj-an object-contain drop-shadow-2xl"
+                  style={{ height: i === 1 ? 210 : 160, transitionDelay: `${i * 90}ms` }} />
+              ))}
+            </div>
+          </Reveal>
+        </div>
       </section>
     ) : null,
 
     catalog: () => (
-      <section key="catalog" id="catalogo" className="max-w-6xl mx-auto px-4 py-16 scroll-mt-32">
-        <div className="flex items-end justify-between gap-4 flex-wrap mb-8">
-          <div>
-            <Reveal as="span" className="text-orange-500 font-bold text-sm tracking-wide">{S.catalog_badge}</Reveal>
-            <Reveal as="h2" delay={60} className="text-3xl sm:text-4xl font-black">{activeTipo ? activeTipo.name : S.catalog_title}</Reveal>
+      <Catalogo key="catalog" {...{
+        S, activeTipo, search, setSearch, showCategoryCards, isLoading, chipCats, productsByCategory,
+        setCategory, setFilters, category, products,
+      }} />
+    ),
+
+    social: () => (S.instagram_embed || igPosts.length > 0 || S.facebook_page_url) ? (
+      <Social key="social" S={S} instagram={instagram} igPosts={igPosts} />
+    ) : null,
+
+    cta: () => <Cartas key="cta" showcase={showcase} S={S} />,
+  };
+
+  return (
+    <div className="lj overflow-x-hidden">
+      <Heroi S={S} show3d={show3d} heroSlots={heroSlots} />
+
+      {/* seções ordenáveis/ocultáveis pela config. Filtrando (tipo, categoria ou
+          busca) a paleta sai da frente: ela fica logo acima do catálogo e parece
+          um seletor de cor do que foi filtrado, mas é só vitrine. */}
+      {sections
+        .filter(s => s.visible !== false)
+        .filter(s => !(filtering && (s.key === 'colors' || s.key === 'passos' || s.key === 'personalizar')))
+        .map(s => <Fragment key={s.key}>{RENDERERS[s.key] ? RENDERERS[s.key]() : null}</Fragment>)}
+    </div>
+  );
+}
+
+/* Bloco genérico que revela o conteúdo ao entrar em cena. */
+function Reveal({ children, className = '', as: Tag = 'div', umaVez = true, ...resto }) {
+  const ref = useReveal({ umaVez });
+  return <Tag ref={ref} className={className} {...resto}>{children}</Tag>;
+}
+
+/* ── TOPO ───────────────────────────────────────────────── */
+function Heroi({ S, show3d, heroSlots }) {
+  const ref = useReveal();
+  const linhas = String(S.hero_title || '').split('\n').filter(Boolean);
+  return (
+    <section ref={ref} className="lj-heroi">
+      <div className="lj-env">
+        <p className="lj-olho lj-an">{S.hero_badge}</p>
+        <h1 className="mt-5">
+          {linhas.length > 1
+            ? <Mascara linhas={linhas} />
+            : <span className="lj-masc"><span>{S.hero_title}</span></span>}
+        </h1>
+        <p className="lj-sub lj-an d3 mt-6" style={{ fontSize: 'clamp(15px,1.4vw,18px)' }}>{S.hero_subtitle}</p>
+        <div className="flex flex-wrap gap-3 mt-8 lj-an d4">
+          <a href="#catalogo" className="lj-btn">{S.btn_catalog} <ArrowRight size={16} /></a>
+          {show3d && <Link to="/loja/personalizar" className="lj-btn vazio"><Wand2 size={16} /> {S.btn_3d}</Link>}
+        </div>
+      </div>
+      <div className="lj-prateleira lj-env">
+        {heroSlots.map((b, i) => {
+          const foto = b.image_url || b.image;
+          const box = HERO_BOX[i] || HERO_BOX[0];
+          return (
+            <span key={i} className="lj-copo">
+              {foto
+                ? <CupPhoto key={foto} src={foto} alt={b.label || ''} />
+                : <Bottle color={b.color || '#F26522'} gradient={b.gradient !== false} size={Math.round(box.h * 0.6)} />}
+            </span>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* ── FAIXA DE CONFIANÇA ─────────────────────────────────── */
+function Confia({ itens }) {
+  const ref = useReveal();
+  return (
+    <section ref={ref} className="lj-confia">
+      <div className="lj-env">
+        {itens.slice(0, 3).map((b, i) => {
+          const Icon = siteIcon(b.icon, 'star');
+          return (
+            <div key={i} className={`it lj-an d${i}`}>
+              <span className="ic"><Icon size={18} /></span>
+              <span><b>{b.title}</b><span>{b.text}</span></span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* ── COMO FUNCIONA (copo fixo, texto passando) ──────────── */
+const PASSOS = [
+  { n: '01 · A COR', h: 'Comece escolhendo', p: 'Cores em estoque, do neon ao translúcido. Todas com o mesmo prazo de entrega.', cor: '#00B7C7' },
+  { n: '02 · A ARTE', h: 'Mande a sua', p: 'Ou peça pra gente criar — está incluso. Você aprova a prova digital antes de qualquer impressão.', cor: '#E5348F' },
+  { n: '03 · A ENTREGA', h: 'Chega antes', p: 'Seis dias úteis de produção. A gente conta de trás pra frente a partir da data da sua festa.', cor: '#FFCA1D' },
+];
+
+function Passos({ showcase, titulo }) {
+  const ref = useReveal();
+  const [ativo, setAtivo] = useState(0);
+  const fotos = showcase.slice(0, 3);
+
+  useEffect(() => {
+    if (fotos.length < 1) return;
+    const els = [...document.querySelectorAll('.lj-passos .p')];
+    if (!els.length) return;
+    const io = new IntersectionObserver(es => {
+      es.forEach(e => { if (e.intersectionRatio > 0.45) setAtivo(Number(e.target.dataset.p)); });
+    }, { threshold: [0, .45, .8] });
+    els.forEach(e => io.observe(e));
+    return () => io.disconnect();
+  }, [fotos.length]);
+
+  if (fotos.length < 1) return null;
+
+  return (
+    <section className="lj-sec" id="como-funciona">
+      <div className="lj-env">
+        <div ref={ref} className="lj-cab">
+          <p className="lj-olho lj-an">Como funciona</p>
+          <h2><Mascara linhas={(titulo || 'Três passos até\na sua festa.').split('\n')} /></h2>
+        </div>
+      </div>
+      <div className="lj-env lj-passos">
+        <div className="palco">
+          <i className="halo" style={{ background: PASSOS[ativo].cor }} />
+          {fotos.map((p, i) => (
+            <CupPhoto key={p.id} src={p.image_url} alt={p.color} className={i === ativo ? 'on' : ''} />
+          ))}
+        </div>
+        <div className="lista">
+          {PASSOS.slice(0, fotos.length).map((s, i) => (
+            <Reveal key={i} className="p" data-p={i}>
+              <span className="lj-olho lj-an">{s.n}</span>
+              <h3 className="lj-an d1">{s.h}</h3>
+              <p className="lj-an d2">{s.p}</p>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── PALETA DE CORES ────────────────────────────────────── */
+function Cores({ showcase, visiveis, todas, onAlternar, titulo, sub }) {
+  const ref = useReveal();
+  return (
+    <section className="lj-sec alt" id="cores">
+      <div ref={ref} className="lj-env">
+        <div className="lj-cab">
+          <p className="lj-olho lj-an">A paleta</p>
+          <h2><Mascara linhas={(titulo || 'Escolha a sua cor').split('\n')} /></h2>
+          <p className="lj-sub lj-an d3 mt-4">
+            {sub}{showcase.length > 0 && <> Foto real de cada uma — <b>{showcase.length} cores</b> em estoque.</>}
+          </p>
+        </div>
+        <div className="lj-paleta">
+          {showcase.length > 0 ? visiveis.map((p, i) => (
+            <Link key={p.id} to={`/loja/produto/${p.id}`} className="lj-cor"
+              style={{ transitionDelay: `${Math.min(i, 15) * 34}ms` }}>
+              <span className="caixa"><CupPhoto src={p.image_url} alt={p.color} /></span>
+              <b>{p.color}</b>
+            </Link>
+          )) : PALETTE.map(([name, hex], i) => (
+            <span key={name} className="lj-cor" style={{ transitionDelay: `${i * 34}ms` }}>
+              <span className="caixa"><Bottle color={hex} gradient={i % 3 === 0} size={70} /></span>
+              <b>{name}</b>
+            </span>
+          ))}
+        </div>
+        {showcase.length > CORES_VISIVEIS && (
+          <div className="flex justify-center mt-10">
+            <button type="button" onClick={onAlternar} className="lj-btn vazio">
+              {todas ? <>Mostrar menos <ChevronUp size={16} /></> : <>Ver as {showcase.length} cores <ChevronDown size={16} /></>}
+            </button>
           </div>
-          <div className="relative w-full sm:w-72">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className="w-full pl-9 pr-3 py-3 rounded-2xl border border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 outline-none text-sm"
+        )}
+      </div>
+    </section>
+  );
+}
+
+/* ── PERSONALIZADOR (o nome aparece no copo) ────────────── */
+function Personalizar({ showcase, titulo, sub }) {
+  const ref = useReveal();
+  const [nome, setNome] = useState('Ágatha');
+  const [linha2, setLinha2] = useState('3 aninhos · #EuFui');
+  const [cor, setCor] = useState(0);
+  const tons = showcase.slice(0, 8);
+  if (tons.length < 3) return null;
+
+  return (
+    <section ref={ref} className="lj-sec escura" id="personalizar">
+      <div className="lj-env lj-pers">
+        <div className="palco2 lj-an">
+          <CupPhoto src={tons[cor]?.image_url} alt={tons[cor]?.color || ''} />
+          <div className="arte">
+            <div className="nm">{nome.trim() || 'Seu nome'}</div>
+            <div className="sb">{linha2}</div>
+          </div>
+        </div>
+        <div>
+          <p className="lj-olho claro lj-an">Prévia ao vivo</p>
+          <h2 className="lj-an d1 mt-3" style={{ fontSize: 'clamp(25px,3.8vw,46px)' }}>{titulo}</h2>
+          <p className="lj-sub lj-an d2 mt-4">{sub}</p>
+          <div className="lj-campo lj-an d3 mt-6">
+            <label htmlFor="lj-nome">Nome ou frase</label>
+            <input id="lj-nome" value={nome} maxLength={18} onChange={e => setNome(e.target.value)} />
+          </div>
+          <div className="lj-campo lj-an d3 mt-4">
+            <label htmlFor="lj-linha2">Linha de baixo</label>
+            <input id="lj-linha2" value={linha2} maxLength={26} onChange={e => setLinha2(e.target.value)} />
+          </div>
+          <div className="lj-campo lj-an d4 mt-4">
+            <label>Cor do copo</label>
+            <div className="lj-tons">
+              {tons.map((p, i) => (
+                <button key={p.id} type="button" aria-label={`Copo ${p.color}`} title={p.color}
+                  aria-pressed={i === cor} onClick={() => setCor(i)}
+                  style={{ background: resolveColor({ name: p.color }) }} />
+              ))}
+            </div>
+          </div>
+          <div className="lj-an d5 mt-7">
+            <Link to={`/loja/produto/${tons[cor]?.id}`} className="lj-btn laranja">
+              Pedir este copo <ArrowRight size={16} />
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── NÚMEROS (contam do zero) ───────────────────────────── */
+function Numeros({ cores, site }) {
+  const [contar, setContar] = useState(false);
+  const ref = useReveal({ aoEntrar: useCallback(() => setContar(true), []) });
+  useEffect(() => { const t = setTimeout(() => setContar(true), 1600); return () => clearTimeout(t); }, []);
+
+  const dados = [
+    { ate: Number(site.num_copos) || 100000, mil: true, t: 'copos entregues', d: 'Para todo o Brasil, desde 2010.', w: '100%' },
+    { ate: cores || 25, t: 'cores em estoque', d: 'Pronta entrega, sem espera de fábrica.', w: '62%' },
+    { ate: Number(site.num_dias) || 6, t: 'dias de produção', d: 'Da prova aprovada até a transportadora.', w: '40%' },
+    { ate: Number(site.num_anos) || 16, suf: 'anos', t: 'no mesmo endereço', d: 'Cambé, Paraná. Sempre a mesma equipe.', w: '78%' },
+  ];
+
+  return (
+    <section ref={ref} className="lj-sec escura" id="numeros">
+      <div className="lj-env">
+        <div className="lj-cab">
+          <p className="lj-olho claro lj-an">Em números</p>
+          <h2><Mascara linhas={['O tamanho de uma', 'fábrica pequena.']} /></h2>
+        </div>
+      </div>
+      <div className="lj-env">
+        <div className="lj-nums">
+          {dados.map((d, i) => (
+            <div key={i} className="c">
+              <div className="v">
+                {contar
+                  ? <CountUp to={d.mil ? Math.round(d.ate / 1000) : d.ate} suffix={d.mil ? '' : ''} />
+                  : 0}
+                {d.mil && <small> mil</small>}
+                {d.suf && <small> {d.suf}</small>}
+              </div>
+              <div className="t">{d.t}</div>
+              <p className="d">{d.d}</p>
+              <div className="bp"><i style={{ width: contar ? d.w : 0 }} /></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── ESTATÍSTICAS (bloco editável antigo, no visual novo) ── */
+function Estatisticas({ stats }) {
+  const ref = useReveal();
+  return (
+    <section ref={ref} className="lj-sec">
+      <div className="lj-env grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">
+        {stats.map((s, i) => (
+          <div key={i} className={`lj-an d${i} py-6`}>
+            <p className="font-bold" style={{ fontSize: 'clamp(30px,4.4vw,52px)', letterSpacing: '-.05em' }}>
+              <StatValue value={s.value} />
+            </p>
+            <p className="lj-mono mt-2" style={{ fontSize: 10.5, letterSpacing: '.16em', textTransform: 'uppercase', color: 'var(--cinza)' }}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ── PILARES ────────────────────────────────────────────── */
+function Pilares({ pillars, titulo, sub }) {
+  const ref = useReveal();
+  return (
+    <section ref={ref} className="lj-sec alt">
+      <div className="lj-env">
+        <div className="lj-cab">
+          <p className="lj-olho lj-an">Por que a Lyon</p>
+          <h2><Mascara linhas={String(titulo || '').split('\n')} /></h2>
+          <p className="lj-sub lj-an d3 mt-4">{sub}</p>
+        </div>
+        <div className="grid md:grid-cols-3 gap-6">
+          {pillars.map((p, i) => {
+            const Icon = siteIcon(p.icon, 'star');
+            return (
+              <div key={i} className={`lj-an d${i + 1} rounded-3xl p-8`}
+                style={{ background: 'var(--creme)', border: '1px solid var(--linha)' }}>
+                <span className="w-12 h-12 rounded-2xl flex items-center justify-center mb-5"
+                  style={{ background: 'rgba(242,101,34,.12)', color: 'var(--laranja)' }}><Icon size={22} /></span>
+                <h3 style={{ fontSize: 20 }}>{p.title}</h3>
+                <p className="lj-sub mt-2" style={{ fontSize: 13.5 }}>{p.text}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── CATÁLOGO (busca, categorias e produtos — a parte funcional) ── */
+function Catalogo({ S, activeTipo, search, setSearch, showCategoryCards, isLoading, chipCats,
+                    productsByCategory, setCategory, setFilters, category, products }) {
+  const ref = useReveal();
+  return (
+    <section className="lj-sec" id="catalogo" style={{ scrollMarginTop: 120 }}>
+      <div ref={ref} className="lj-env">
+        <div className="flex items-end justify-between gap-4 flex-wrap mb-10">
+          <div className="lj-cab" style={{ marginBottom: 0 }}>
+            <p className="lj-olho lj-an">{S.catalog_badge}</p>
+            <h2 className="lj-an d1">{activeTipo ? activeTipo.name : S.catalog_title}</h2>
+          </div>
+          <div className="relative w-full sm:w-72 lj-an d2">
+            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--cinza)' }} />
+            <input className="w-full pl-11 pr-4 py-3.5 rounded-2xl outline-none text-sm"
+              style={{ background: 'var(--creme2)', border: '1.4px solid var(--linha)' }}
               placeholder="Buscar produto..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
 
         {showCategoryCards && (
           isLoading ? (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-4">
-              {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-80 bg-white rounded-3xl animate-pulse" />)}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-80 rounded-3xl animate-pulse" style={{ background: 'var(--creme2)' }} />
+              ))}
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-4">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {chipCats.map((c, idx) => (
                 <CategoryCard key={c.id} cat={c} delay={(idx % 3) * 100} color={CARD_COLORS[idx % CARD_COLORS.length]}
                   items={productsByCategory.get(c.name) || []} onClick={() => setCategory(c.id)} />
@@ -312,224 +562,150 @@ export default function StoreHome() {
         )}
 
         {!showCategoryCards && (chipCats.length > 0 || activeTipo) && (
-          <div className="flex gap-2 flex-wrap items-center mb-8">
+          <div className="flex gap-2 flex-wrap items-center mb-10">
             {category && (
-              <button onClick={() => setCategory('')} className="px-4 py-2 rounded-full text-sm font-bold bg-white border border-gray-200 text-gray-700 flex items-center gap-1 hover:border-orange-300 hover:text-orange-600 transition-all">
-                <ChevronLeft size={16} /> Categorias
+              <button onClick={() => setCategory('')} className="lj-btn vazio" style={{ padding: '10px 18px', fontSize: 13 }}>
+                <ChevronLeft size={15} /> Categorias
               </button>
             )}
             {activeTipo && (
-              <button onClick={() => setFilters({ tipo: '', cat: '' })} className="px-4 py-2 rounded-full text-sm font-bold bg-orange-500 text-white flex items-center gap-1.5 hover:bg-orange-600 transition-all" title="Limpar filtro de tipo">
+              <button onClick={() => setFilters({ tipo: '', cat: '' })} className="lj-btn laranja"
+                style={{ padding: '10px 18px', fontSize: 13 }} title="Limpar filtro de tipo">
                 {activeTipo.name} <X size={14} />
               </button>
             )}
-            <button onClick={() => setCategory('')} className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${!category ? 'bg-gray-900 text-white scale-105' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}>Todos</button>
+            <button onClick={() => setCategory('')} className={category ? 'lj-btn vazio' : 'lj-btn'}
+              style={{ padding: '10px 20px', fontSize: 13 }}>Todos</button>
             {chipCats.map(c => (
-              <button key={c.id} onClick={() => setCategory(c.id)} className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${category === c.id ? 'bg-gray-900 text-white scale-105' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}>{c.name}</button>
+              <button key={c.id} onClick={() => setCategory(c.id)} className={category === c.id ? 'lj-btn' : 'lj-btn vazio'}
+                style={{ padding: '10px 20px', fontSize: 13 }}>{c.name}</button>
             ))}
           </div>
         )}
 
         {showCategoryCards ? null : isLoading ? (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-72 bg-white rounded-3xl animate-pulse" />)}
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-72 rounded-3xl animate-pulse" style={{ background: 'var(--creme2)' }} />
+            ))}
           </div>
         ) : products.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">Nenhum produto encontrado. {search && 'Tente outra busca.'}</div>
+          <div className="text-center py-20" style={{ color: 'var(--cinza)' }}>
+            Nenhum produto encontrado. {search && 'Tente outra busca.'}
+          </div>
         ) : (
-          <div key={category || 'all'} className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div key={category || 'all'} className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {products.map((p, idx) => (
-              <div key={p.id} className="st-open h-full" style={{ animationDelay: `${(idx % 9) * 60}ms` }}>
-                <Link to={p.kind === 'border'
-                    ? `/loja/borda?type=${encodeURIComponent(p.type)}&border=${encodeURIComponent(p.border)}`
-                    : `/loja/produto/${p.id}`}
-                  className="st-card group bg-white rounded-3xl border border-gray-100 overflow-hidden flex flex-col h-full">
-                  <div className="bg-gradient-to-b from-gray-50 to-white flex items-center justify-center py-8 relative overflow-hidden h-52">
-                    <div className="absolute w-40 h-40 rounded-full bg-orange-100/40 blur-2xl group-hover:bg-orange-200/50 transition-colors" />
-                    {p.image_url ? (
-                      <img src={p.image_url} alt={p.name} className="relative max-h-44 w-auto object-contain group-hover:scale-110 transition-transform duration-500" />
-                    ) : (
-                      <div className="relative group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-500">
-                        {/* sem foto: pinta a garrafa com a cor real do produto (card por cor) */}
-                        <Bottle color={p.color_label ? resolveColor({ name: p.color_label }) : CARD_COLORS[idx % CARD_COLORS.length]}
-                          gradient={/degrad/i.test(p.full_name || p.name)} size={130} />
-                      </div>
-                    )}
-                    {p.colors > 0 && <span className="absolute top-4 right-4 bg-gray-900 text-white text-xs font-bold px-3 py-1 rounded-full">{p.colors} {p.colors === 1 ? 'cor' : 'cores'}</span>}
-                  </div>
-                  <div className="p-5 flex-1 flex flex-col">
-                    {p.category && <span className="text-xs text-orange-500 font-bold uppercase tracking-wide">{p.category}</span>}
-                    <h3 className="font-extrabold text-gray-900 leading-tight mt-1 group-hover:text-orange-600 transition-colors">{p.name}</h3>
-                    <div className="mt-auto pt-4 flex items-end justify-between">
-                      <div>
-                        <p className="text-xs text-gray-400">{p.has_tiers ? 'a partir de' : 'unidade'}</p>
-                        <p className="text-xl font-black text-gray-900">{fmt(p.from_price)}</p>
-                      </div>
-                      <span className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center group-hover:scale-110 group-hover:rotate-12 transition-transform">
-                        <ArrowRight size={18} />
-                      </span>
+              <Link key={p.id} to={p.kind === 'border'
+                  ? `/loja/borda?type=${encodeURIComponent(p.type)}&border=${encodeURIComponent(p.border)}`
+                  : `/loja/produto/${p.id}`}
+                className="st-open group rounded-3xl overflow-hidden flex flex-col h-full"
+                style={{ background: 'var(--creme)', border: '1px solid var(--linha)', animationDelay: `${(idx % 9) * 55}ms` }}>
+                <div className="flex items-end justify-center pt-8 pb-6 relative" style={{ background: 'var(--creme2)', minHeight: 210 }}>
+                  {p.image_url
+                    ? <CupPhoto src={p.image_url} alt={p.name}
+                        className="max-h-44 w-auto object-contain group-hover:-translate-y-2 transition-transform duration-500" />
+                    : <Bottle color={p.color_label ? resolveColor({ name: p.color_label }) : CARD_COLORS[idx % CARD_COLORS.length]}
+                        gradient={/degrad/i.test(p.full_name || p.name)} size={130} />}
+                  {p.colors > 0 && (
+                    <span className="absolute top-4 right-4 lj-mono text-white px-3 py-1 rounded-full"
+                      style={{ background: 'var(--carvao)', fontSize: 10, letterSpacing: '.1em' }}>
+                      {p.colors} CORES
+                    </span>
+                  )}
+                </div>
+                <div className="p-5 flex-1 flex flex-col">
+                  {p.category && <span className="lj-olho" style={{ fontSize: 9.5 }}>{p.category}</span>}
+                  <h3 className="mt-2 leading-tight group-hover:text-[var(--laranja)] transition-colors" style={{ fontSize: 15 }}>{p.name}</h3>
+                  <div className="mt-auto pt-4 flex items-end justify-between">
+                    <div>
+                      <p className="lj-mono" style={{ fontSize: 9.5, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--cinza)' }}>
+                        {p.has_tiers ? 'a partir de' : 'unidade'}
+                      </p>
+                      <p className="font-bold" style={{ fontSize: 19, letterSpacing: '-.03em' }}>{fmt(p.from_price)}</p>
                     </div>
+                    <span className="w-9 h-9 rounded-full flex items-center justify-center transition-transform group-hover:translate-x-1"
+                      style={{ background: 'var(--laranja)', color: '#fff' }}><ArrowRight size={16} /></span>
                   </div>
-                </Link>
-              </div>
+                </div>
+              </Link>
             ))}
           </div>
         )}
-      </section>
-    ),
+      </div>
+    </section>
+  );
+}
 
-    social: () => (S.instagram_embed || igPosts.length > 0 || S.facebook_page_url) ? (
-      <section key="social" className="max-w-6xl mx-auto px-4 pb-4 pt-8">
-        <div className="flex items-end justify-between gap-4 flex-wrap mb-8">
+/* ── REDES SOCIAIS ──────────────────────────────────────── */
+function Social({ S, instagram, igPosts }) {
+  const ref = useReveal();
+  return (
+    <section ref={ref} className="lj-sec alt">
+      <div className="lj-env">
+        <div className="flex items-end justify-between gap-4 flex-wrap mb-10">
           <div>
-            <Reveal as="span" className="inline-flex items-center gap-1.5 text-orange-500 font-bold text-sm tracking-wide"><Instagram size={16} /> REDES SOCIAIS</Reveal>
-            <Reveal as="h2" delay={60} className="text-3xl sm:text-4xl font-black">Siga a gente</Reveal>
+            <p className="lj-olho lj-an"><Instagram size={12} className="inline mr-1.5 -mt-0.5" /> Redes sociais</p>
+            <h2 className="lj-an d1 mt-3">Siga a gente</h2>
           </div>
           {instagram?.username && !S.instagram_embed && (
-            <a href={`https://instagram.com/${instagram.username}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-gray-900 text-white font-bold px-5 py-3 rounded-2xl hover:scale-105 transition-transform">
-              <Instagram size={18} /> @{instagram.username}
+            <a href={`https://instagram.com/${instagram.username}`} target="_blank" rel="noopener noreferrer" className="lj-btn lj-an d2">
+              <Instagram size={17} /> @{instagram.username}
             </a>
           )}
         </div>
         {S.instagram_embed ? (
-          <Reveal><RawEmbed html={S.instagram_embed} className="ig-embed" /></Reveal>
+          <RawEmbed html={S.instagram_embed} className="ig-embed" />
         ) : igPosts.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {igPosts.map((post, idx) => (
-              <Reveal key={post.id} delay={(idx % 4) * 80} scale>
-                <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="st-card group relative block aspect-square rounded-2xl overflow-hidden bg-gray-100">
-                  <img src={post.image} alt={post.caption?.slice(0, 80) || 'Post do Instagram'} loading="lazy" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
-                    {post.caption && <p className="text-white text-xs line-clamp-3 leading-snug">{post.caption}</p>}
-                  </div>
-                  <span className="absolute top-2.5 right-2.5 text-white/90 drop-shadow opacity-0 group-hover:opacity-100 transition-opacity"><Instagram size={18} /></span>
-                </a>
-              </Reveal>
+              <a key={post.id} href={post.permalink} target="_blank" rel="noopener noreferrer"
+                className="lj-an group relative block aspect-square rounded-2xl overflow-hidden"
+                style={{ background: 'var(--creme)', transitionDelay: `${(idx % 4) * 80}ms` }}>
+                <img src={post.image} alt={post.caption?.slice(0, 80) || 'Post do Instagram'} loading="lazy"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+              </a>
             ))}
           </div>
         ) : null}
-        {S.facebook_page_url && (
-          <Reveal className={S.instagram_embed || igPosts.length > 0 ? 'mt-10' : ''}><FacebookPage url={S.facebook_page_url} /></Reveal>
-        )}
-      </section>
-    ) : null,
-
-    cta: () => (
-      <section key="cta" className="max-w-6xl mx-auto px-4 py-20">
-        <Reveal scale className="relative rounded-[2rem] overflow-hidden st-animated-gradient text-white text-center px-6 py-16"
-          style={{ background: 'linear-gradient(120deg,#ff7a18,#ff2d75,#8a2be2)' }}>
-          <Sparkles size={32} className="mx-auto mb-4 st-pulse" />
-          <h2 className="text-3xl sm:text-5xl font-black max-w-2xl mx-auto leading-tight">{S.cta_title}</h2>
-          <p className="text-white/85 mt-4 max-w-md mx-auto">{S.cta_subtitle}</p>
-          <a href="#catalogo" className="inline-flex items-center gap-2 bg-white text-gray-900 font-bold px-8 py-4 rounded-2xl mt-8 hover:scale-105 transition-transform shadow-2xl">
-            {S.cta_button} <ArrowRight size={18} />
-          </a>
-          <div className="flex items-center justify-center gap-1 mt-6 text-white/80 text-sm">
-            {Array.from({ length: 5 }).map((_, i) => <Star key={i} size={15} className="fill-white" />)}
-            <span className="ml-2">Qualidade que vira recompra</span>
-          </div>
-        </Reveal>
-      </section>
-    ),
-  };
-
-  return (
-    <div className="overflow-x-hidden">
-      {/* ══ HERO (fixo no topo) ══ */}
-      <section className="relative min-h-[92vh] flex items-center overflow-hidden">
-        <div className="absolute inset-0 st-animated-gradient" style={{ background: 'linear-gradient(120deg,#1a1130,#2a1530,#3a1020,#1a1130)' }} />
-        <div className="st-blob" style={{ width: 420, height: 420, background: '#ff7a18', top: '-6%', left: '-6%', opacity: .45 }} />
-        <div className="st-blob" style={{ width: 380, height: 380, background: '#ff2d75', bottom: '-10%', right: '4%', opacity: .4, animationDelay: '3s' }} />
-        <div className="st-blob" style={{ width: 320, height: 320, background: '#8a2be2', top: '30%', right: '30%', opacity: .35, animationDelay: '6s' }} />
-
-        <div className="relative max-w-6xl mx-auto px-4 grid lg:grid-cols-2 gap-10 items-center py-20 text-white">
-          <div>
-            <Reveal as="span" className="inline-block bg-white/10 backdrop-blur border border-white/15 text-xs font-bold px-4 py-1.5 rounded-full mb-5 tracking-wide">{S.hero_badge}</Reveal>
-            <Reveal as="h1" delay={80} className="text-5xl sm:text-6xl xl:text-7xl font-black leading-[0.95] tracking-tight st-gradient-text">{S.hero_title}</Reveal>
-            <Reveal as="p" delay={160} className="text-lg text-white/70 mt-6 max-w-md">{S.hero_subtitle}</Reveal>
-            <Reveal delay={240} className="flex flex-wrap gap-3 mt-8">
-              {show3d && (
-                <Link to="/loja/personalizar" className="group bg-orange-500 hover:bg-orange-600 transition-all px-7 py-3.5 rounded-2xl font-bold flex items-center gap-2 shadow-xl shadow-orange-500/30 hover:scale-105">
-                  <Wand2 size={18} /> {S.btn_3d} <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                </Link>
-              )}
-              <a href="#catalogo" className="bg-white/10 backdrop-blur border border-white/20 hover:bg-white/20 transition-colors px-7 py-3.5 rounded-2xl font-bold flex items-center gap-2">
-                <Palette size={18} /> {S.btn_catalog}
-              </a>
-            </Reveal>
-          </div>
-
-          {/* Copos do topo: fotos configuradas em Configurações → Site vencem;
-              sem elas, 5 copos reais do catálogo se revezando (cores sorteadas
-              sem repetir); sem catálogo com foto, as garrafinhas SVG.
-              Cada copo tem sua própria caixa: caneca (larga) e long drink
-              (estreito) convivem sem um esmagar o outro. */}
-          <div className="hidden lg:flex justify-center items-end gap-3 xl:gap-4 relative xl:scale-[1.16] origin-bottom">
-            <div className="absolute w-80 h-80 rounded-full bg-white/5 blur-3xl st-pulse" />
-            {heroSlots.map((b, i) => {
-              const box = HERO_BOX[i] || HERO_BOX[0];
-              const foto = b.image_url || b.image;
-              return foto ? (
-                <CupSlot key={i} src={foto} alt={b.label || ''} box={box} delay={i * 90} float={i * 0.5} />
-              ) : (
-                <div key={i} className="st-float shrink-0 flex items-end justify-center" style={{ animationDelay: `${i * 0.5}s`, height: box.h }}>
-                  <Bottle color={b.color || '#F26522'} gradient={b.gradient !== false} size={Math.round(box.h * 0.62)} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <a href="#catalogo" className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/60 st-bob"><ChevronDown size={26} /></a>
-      </section>
-
-      {/* seções ordenáveis/ocultáveis pela config. Filtrando (tipo, categoria ou
-          busca) o mural de cores sai da frente: ele fica logo acima do catálogo
-          e parece um seletor de cor do que foi filtrado, mas é só decoração. */}
-      {sections
-        .filter(s => s.visible !== false)
-        .filter(s => !(filtering && s.key === 'colors'))
-        .map(s => <Fragment key={s.key}>{RENDERERS[s.key] ? RENDERERS[s.key]() : null}</Fragment>)}
-    </div>
+        {S.facebook_page_url && <div className="mt-10"><FacebookPage url={S.facebook_page_url} /></div>}
+      </div>
+    </section>
   );
 }
 
-// Um copo do topo. Na troca, o copo que sai continua na tela subindo e se
-// dissolvendo enquanto o novo sobe do chão — os dois ao mesmo tempo, senão a
-// troca vira um pisca.
-function CupSlot({ src, alt, box, delay = 0, float = 0 }) {
-  const [atual, setAtual] = useState(src);
-  const [saindo, setSaindo] = useState(null);
-  // O primeiro copo entra já visível: st-cup-in começa em opacity 0 com
-  // fill "both", e animação parada (aba em segundo plano) deixaria o topo vazio.
-  const [trocou, setTrocou] = useState(false);
-
-  useEffect(() => {
-    if (src === atual) return;
-    setSaindo(atual);
-    setAtual(src);
-    setTrocou(true);
-    const t = setTimeout(() => setSaindo(null), 900);   // > duração do st-cup-out
-    return () => clearTimeout(t);
-  }, [src]);                                            // só reage à troca vinda de fora
-
-  const foto = 'absolute inset-0 w-full h-full object-contain drop-shadow-2xl';
-  const pos = { animationDelay: `${delay}ms`, objectPosition: 'bottom' };
+/* ── FECHO EM CAMADAS ───────────────────────────────────── */
+function Cartas({ showcase, S }) {
+  const fotos = showcase.slice(0, 3);
+  const cartas = [
+    { olho: 'Para eventos grandes', h: 'Volume alto com data marcada', p: 'Impressão própria, sem terceirizar. É o que a gente mais faz.', btn: 'Falar sobre volume', href: '#catalogo', classe: 'lj-btn' },
+    { olho: 'Para a sua festa', h: S.cta_title, p: S.cta_subtitle, btn: S.cta_button, href: '#catalogo', classe: 'lj-btn vazio' },
+    { olho: 'Ainda com dúvida?', h: 'Fala com a gente', p: 'Resposta em até 48h úteis — normalmente no mesmo dia.', btn: 'Chamar no WhatsApp', href: '#catalogo', classe: 'lj-btn laranja' },
+  ];
   return (
-    <div className="st-float relative shrink-0" style={{ width: box.w, height: box.h, animationDelay: `${float}s` }}>
-      {/* clarão atrás: branco, pérola e transparente sumiriam no fundo escuro */}
-      <div className="absolute inset-x-0 bottom-0 top-10 rounded-full bg-white/10 blur-2xl" />
-      {saindo && <CupPhoto key={saindo} src={saindo} className={`${foto} st-cup-out`} style={pos} />}
-      <CupPhoto key={atual} src={atual} alt={alt} className={`${foto}${trocou ? ' st-cup-in' : ''}`} style={pos} />
-    </div>
+    <section className="lj-sec alt">
+      <div className="lj-env lj-cartas">
+        {cartas.map((c, i) => (
+          <Reveal key={i} className="lj-carta">
+            <p className={`lj-olho lj-an${i === 1 ? '' : i === 2 ? ' claro' : ''}`}
+              style={i === 1 ? { color: 'rgba(255,255,255,.85)' } : undefined}>{c.olho}</p>
+            <h3 className="lj-an d1">{c.h}</h3>
+            <p className="lj-an d2">{c.p}</p>
+            <a href={c.href} className={`${c.classe} lj-an d3`}
+              style={i === 1 ? { color: '#fff', boxShadow: 'inset 0 0 0 1.4px rgba(255,255,255,.5)' } : undefined}>{c.btn}</a>
+            {fotos[i] && <CupPhoto src={fotos[i].image_url} alt={fotos[i].color} />}
+          </Reveal>
+        ))}
+      </div>
+    </section>
   );
 }
 
-// Card grande de categoria: passa (crossfade) as fotos dos produtos da categoria
-// e, ao clicar, abre todos os produtos daquela categoria.
+/* ── Card de categoria (crossfade das fotos) ────────────── */
 function CategoryCard({ cat, items, color, onClick, delay = 0 }) {
   const slides = (items.length ? items : [{ id: cat.id, image_url: null, name: cat.name }]).slice(0, 6);
   const [i, setI] = useState(0);
+  const ref = useReveal();
 
   useEffect(() => {
     if (slides.length <= 1) return;
@@ -539,38 +715,30 @@ function CategoryCard({ cat, items, color, onClick, delay = 0 }) {
   }, [slides.length, delay]);
 
   return (
-    <Reveal delay={delay}>
-      <button type="button" onClick={onClick} className="st-card group w-full text-left bg-white rounded-3xl border border-gray-100 overflow-hidden flex flex-col h-full">
-        <div className="relative h-64 bg-gradient-to-b from-gray-50 to-white overflow-hidden flex items-center justify-center">
-          <div className="absolute w-52 h-52 rounded-full blur-3xl transition-colors group-hover:scale-110" style={{ background: color + '2e' }} />
-          {slides.map((p, idx) => (
-            <div key={(p.id || idx) + '-' + idx} className={`st-slide absolute inset-0 flex items-center justify-center ${idx === i ? 'st-slide-on' : ''}`}>
-              {p.image_url
-                ? <img src={p.image_url} alt="" loading="lazy" className="max-h-52 w-auto object-contain group-hover:scale-105 transition-transform duration-700" />
-                : <Bottle color={color} gradient={/degrad/i.test(p.name || '')} size={150} />}
-            </div>
-          ))}
-          <span className="absolute top-4 left-4 bg-white/85 backdrop-blur text-gray-700 text-xs font-bold px-3 py-1 rounded-full shadow-sm">
-            {items.length} {items.length === 1 ? 'modelo' : 'modelos'}
-          </span>
-          {slides.length > 1 && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
-              {slides.map((_, idx) => (
-                <span key={idx} className={`h-1.5 rounded-full transition-all duration-500 ${idx === i ? 'w-5 bg-orange-500' : 'w-1.5 bg-gray-300'}`} />
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="p-6 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="text-lg font-black text-gray-900 leading-tight truncate group-hover:text-orange-600 transition-colors">{cat.name}</h3>
-            <p className="text-sm text-gray-400 mt-0.5">Ver todos os modelos</p>
+    <button ref={ref} type="button" onClick={onClick}
+      className="lj-an group w-full text-left rounded-3xl overflow-hidden flex flex-col h-full"
+      style={{ background: 'var(--creme)', border: '1px solid var(--linha)', transitionDelay: `${delay}ms` }}>
+      <div className="relative h-64 overflow-hidden flex items-end justify-center" style={{ background: 'var(--creme2)' }}>
+        {slides.map((p, idx) => (
+          <div key={(p.id || idx) + '-' + idx} className={`st-slide absolute inset-0 flex items-end justify-center pb-4 ${idx === i ? 'st-slide-on' : ''}`}>
+            {p.image_url
+              ? <CupPhoto src={p.image_url} alt="" className="max-h-52 w-auto object-contain" />
+              : <Bottle color={color} gradient={/degrad/i.test(p.name || '')} size={150} />}
           </div>
-          <span className="w-11 h-11 rounded-full bg-orange-500 text-white flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:translate-x-0.5 transition-transform">
-            <ArrowRight size={18} />
-          </span>
+        ))}
+        <span className="absolute top-4 left-4 lj-mono px-3 py-1 rounded-full"
+          style={{ background: 'rgba(255,249,245,.9)', color: 'var(--cinza)', fontSize: 10, letterSpacing: '.1em' }}>
+          {items.length} {items.length === 1 ? 'MODELO' : 'MODELOS'}
+        </span>
+      </div>
+      <div className="p-6 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate group-hover:text-[var(--laranja)] transition-colors" style={{ fontSize: 17 }}>{cat.name}</h3>
+          <p className="lj-sub mt-1" style={{ fontSize: 13 }}>Ver todos os modelos</p>
         </div>
-      </button>
-    </Reveal>
+        <span className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 transition-transform group-hover:translate-x-1"
+          style={{ background: 'var(--laranja)', color: '#fff' }}><ArrowRight size={17} /></span>
+      </div>
+    </button>
   );
 }

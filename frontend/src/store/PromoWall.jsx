@@ -41,22 +41,22 @@ export default function PromoWall({ badge, title, subtitle }) {
 
   return (
     // Mais larga que o resto da página de propósito: aqui a arte é o produto,
-    // e no max-w-6xl das outras seções ela ficava pequena com folga sobrando.
-    <section id="promocoes" className="max-w-[1500px] mx-auto px-4 sm:px-8 py-16 scroll-mt-32">
-      <div className="text-center mb-10">
-        <Reveal as="span" className="inline-flex items-center gap-1.5 bg-orange-50 text-orange-600 font-bold text-xs px-4 py-1.5 rounded-full tracking-wide">
-          <Heart size={13} className="fill-orange-500 text-orange-500" /> {badge}
-        </Reveal>
-        <Reveal as="h2" delay={60} className="text-3xl sm:text-4xl font-black mt-3">{title}</Reveal>
-        <Reveal as="p" delay={120} className="text-gray-500 mt-2 max-w-lg mx-auto">{subtitle}</Reveal>
-      </div>
+    // e no contêiner padrão ela ficava pequena com folga branca sobrando.
+    <section id="promocoes" className="lj-sec" style={{ scrollMarginTop: 120 }}>
+      <div className="lj-env" style={{ maxWidth: 1500 }}>
+        <div className="lj-cab">
+          <p className="lj-olho">{badge}</p>
+          <h2>{title}</h2>
+          <p className="lj-sub mt-4">{subtitle}</p>
+        </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-        {promos.map((p, i) => (
-          <PromoCard key={p.id} promo={p} delay={(i % 3) * 100}
-            onCurtir={() => curtir(p)}
-            onAbrir={(origem) => setAberta({ id: p.id, origem })} />
-        ))}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+          {promos.map((p, i) => (
+            <PromoCard key={p.id} promo={p} delay={(i % 3) * 100}
+              onCurtir={() => curtir(p)}
+              onAbrir={(origem) => setAberta({ id: p.id, origem })} />
+          ))}
+        </div>
       </div>
 
       {emFoco && (

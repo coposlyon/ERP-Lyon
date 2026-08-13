@@ -49,9 +49,10 @@ export default function StoreLayout({ children }) {
   const solid = scrolled || !isHome;
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 text-gray-900">
-      {/* Header */}
-      <header className={`fixed top-0 inset-x-0 z-40 transition-all duration-300 ${solid ? 'bg-white/90 backdrop-blur shadow-sm text-gray-900' : 'bg-transparent text-white'}`}>
+    <div className="lj min-h-screen flex flex-col">
+      {/* Header — creme translúcido sobre o herói, sólido depois de rolar */}
+      <header className={`fixed top-0 inset-x-0 z-40 transition-all duration-300 ${solid ? 'backdrop-blur' : ''}`}
+        style={solid ? { background: 'rgba(255,249,245,.9)', boxShadow: '0 1px 0 var(--linha)' } : undefined}>
         <div className="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between">
           <Link to="/loja" className="flex items-center gap-3 font-black text-lg tracking-tight">
             <img src="/lyon-logo.png" alt={store?.name || 'Lyon Copos'} className="h-14 sm:h-16 w-auto object-contain drop-shadow"
@@ -63,35 +64,36 @@ export default function StoreLayout({ children }) {
             {customer ? (
               <div className="flex items-center gap-1 sm:gap-2">
                 <button onClick={() => navigate('/loja/pedidos')}
-                  className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-semibold transition-colors ${solid ? 'text-gray-700 hover:bg-gray-100' : 'text-white hover:bg-white/10'}`}>
+                  className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-semibold transition-colors hover:bg-black/5`}>
                   <Package size={15} className="text-orange-500" />
                   <span className="hidden sm:inline">Meus Pedidos</span>
                 </button>
                 <button onClick={() => navigate('/loja/perfil')} title="Meu perfil"
-                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm font-bold transition-colors ${solid ? 'text-gray-800 hover:bg-gray-100' : 'text-white hover:bg-white/10'}`}>
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm font-semibold transition-colors hover:bg-black/5">
                   {customer.avatar_url
                     ? <img src={customer.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover ring-2 ring-orange-300" />
                     : <span className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center"><User size={15} className="text-orange-500" /></span>}
                   <span className="hidden md:inline">Olá, {firstName}</span>
                 </button>
                 <button onClick={() => { logout(); navigate('/loja'); }} title="Sair"
-                  className={`p-2 rounded-lg transition-colors ${solid ? 'hover:bg-gray-100 text-gray-500' : 'hover:bg-white/10 text-white/80'}`}>
+                  className="p-2 rounded-lg transition-colors hover:bg-black/5" style={{ color: 'var(--cinza)' }}>
                   <LogOut size={17} />
                 </button>
               </div>
             ) : (
               <button onClick={() => navigate('/loja/login')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-sm transition-all hover:scale-105 ${solid ? 'text-gray-700 hover:bg-gray-100' : 'text-white hover:bg-white/10'}`}>
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-sm transition-all hover:scale-105 hover:bg-black/5`}>
                 <User size={16} />
                 <span className="hidden sm:inline">Entrar</span>
               </button>
             )}
-            <button onClick={() => navigate('/loja/carrinho')}
-              className="relative flex items-center gap-2 bg-orange-500 hover:bg-orange-600 transition-all hover:scale-105 px-4 py-2 rounded-xl font-bold text-sm text-white shadow-lg shadow-orange-500/25">
-              <ShoppingCart size={17} />
+            <button onClick={() => navigate('/loja/carrinho')} className="lj-btn laranja relative"
+              style={{ padding: '11px 20px', fontSize: 13.5 }}>
+              <ShoppingCart size={16} />
               <span className="hidden sm:inline">Carrinho</span>
               {count > 0 && (
-                <span className="absolute -top-2 -right-2 bg-white text-orange-600 text-xs font-black w-5 h-5 rounded-full flex items-center justify-center animate-bounce">
+                <span className="absolute -top-2 -right-2 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center"
+                  style={{ background: 'var(--carvao)', color: 'var(--creme)' }}>
                   {count}
                 </span>
               )}
@@ -101,7 +103,7 @@ export default function StoreLayout({ children }) {
 
         {/* Menu de tipos de produto (COPOS, CANECAS...) com dropdown de categorias */}
         {navTypes.length > 0 && (
-          <nav className="bg-gray-900 text-white">
+          <nav className="text-[var(--creme)]" style={{ background: 'var(--carvao)' }}>
             <div className="max-w-6xl mx-auto px-4 h-11 flex items-center gap-1 overflow-x-auto md:overflow-visible">
               {navTypes.map(t => (
                 <div key={t.id} className="relative group h-full flex items-center shrink-0">
@@ -141,7 +143,7 @@ export default function StoreLayout({ children }) {
       <main className="flex-1">{children}</main>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-gray-300">
+      <footer className="text-[var(--cinza2)]" style={{ background: 'var(--carvao)' }}>
         <div className="max-w-6xl mx-auto px-4 py-12 grid sm:grid-cols-3 gap-8">
           <div>
             <div className="flex items-center gap-2.5 font-black text-white text-lg">

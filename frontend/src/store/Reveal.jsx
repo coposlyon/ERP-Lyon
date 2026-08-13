@@ -46,7 +46,11 @@ export function CountUp({ to = 0, suffix = '', prefix = '', duration = 1600, cla
       }
     }, { threshold: 0.4 });
     io.observe(el);
-    return () => io.disconnect();
+
+    // Rede de segurança: sem quadros (aba em segundo plano) o requestAnimationFrame
+    // nunca roda e o número ficaria travado em zero — pior que não animar.
+    const rede = setTimeout(() => setVal(v => (v === 0 && to !== 0 ? to : v)), duration + 900);
+    return () => { io.disconnect(); clearTimeout(rede); };
   }, [to, duration]);
 
   return <span ref={ref} className={className}>{prefix}{val}{suffix}</span>;

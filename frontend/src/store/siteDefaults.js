@@ -18,6 +18,14 @@ export const SITE_DEFAULTS = {
   promos_badge: 'OFERTAS',
   promos_title: 'Promoções do mês',
   promos_subtitle: 'Condições especiais enquanto durar. Toda promoção tem prazo — aproveite.',
+  // Seção "como funciona" — o título quebra por linha (cada uma sobe de máscara)
+  passos_title: 'Três passos até\na sua festa.',
+  pers_title: 'Escreva e veja no copo',
+  pers_subtitle: 'Sem cadastro, sem esperar retorno. Digite o nome, escolha a cor e peça.',
+  // Números da seção de prova — os que não saem do catálogo sozinhos
+  num_copos: '100000',
+  num_dias: '6',
+  num_anos: '16',
   benefit_1_title: 'Parcelamento',
   benefit_1_text: 'Em até 10X',
   benefit_2_title: 'Pagamento à Vista',
@@ -87,20 +95,26 @@ export const DEFAULT_STATS = [
 export const SECTION_LABELS = {
   marquee:  'Faixa de diferenciais',
   benefits: 'Benefícios (parcelamento / PIX / envio)',
+  passos:   'Como funciona (copo fixo em 3 passos)',
   promos:   'Promoções (artes com validade)',
+  catalog:  'Catálogo de produtos',
+  colors:   'Paleta de cores',
+  personalizar: 'Personalizador (nome no copo)',
   stats:    'Números (estatísticas)',
   pillars:  'Pilares (por que comprar)',
-  colors:   'Mural de cores',
+  numeros:  'Números da fábrica (contadores)',
   studio:   'Banner do Estúdio 3D',
-  catalog:  'Catálogo de produtos',
   social:   'Redes sociais',
-  cta:      'Chamada final (CTA)',
+  cta:      'Chamada final (cartas empilhando)',
 };
-export const SECTION_ORDER = ['marquee', 'benefits', 'promos', 'stats', 'pillars', 'colors', 'studio', 'catalog', 'social', 'cta'];
+export const SECTION_ORDER = ['marquee', 'benefits', 'passos', 'promos', 'catalog', 'colors',
+  'personalizar', 'stats', 'pillars', 'numeros', 'studio', 'social', 'cta'];
 
 // Nascem desligadas — continuam disponíveis em Configurações → Site → Seções,
-// é só clicar no olho. A faixa que passa de lado polui o topo.
-const OCULTAS_POR_PADRAO = new Set(['marquee']);
+// é só clicar no olho. A faixa que passa de lado polui o topo; "stats" e
+// "pillars" foram absorvidos por "numeros" e pela faixa de benefícios, mas
+// seguem editáveis pra quem quiser os três.
+const OCULTAS_POR_PADRAO = new Set(['marquee', 'stats', 'pillars']);
 const padraoVisivel = key => !OCULTAS_POR_PADRAO.has(key);
 
 export const DEFAULT_SECTIONS = SECTION_ORDER.map(key => ({ key, visible: padraoVisivel(key) }));
