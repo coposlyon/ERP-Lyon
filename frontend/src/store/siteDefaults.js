@@ -96,6 +96,7 @@ export const SECTION_LABELS = {
   marquee:  'Faixa de diferenciais',
   benefits: 'Benefícios (parcelamento / PIX / envio)',
   passos:   'Como funciona (copo fixo em 3 passos)',
+  desfile:  'Desfile do catálogo (rola para o lado)',
   promos:   'Promoções (artes com validade)',
   catalog:  'Catálogo de produtos',
   colors:   'Paleta de cores',
@@ -107,7 +108,7 @@ export const SECTION_LABELS = {
   social:   'Redes sociais',
   cta:      'Chamada final (cartas empilhando)',
 };
-export const SECTION_ORDER = ['marquee', 'benefits', 'passos', 'promos', 'catalog', 'colors',
+export const SECTION_ORDER = ['marquee', 'benefits', 'passos', 'desfile', 'promos', 'catalog', 'colors',
   'personalizar', 'stats', 'pillars', 'numeros', 'studio', 'social', 'cta'];
 
 // Nascem desligadas — continuam disponíveis em Configurações → Site → Seções,

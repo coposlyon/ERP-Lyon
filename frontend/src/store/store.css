@@ -7,7 +7,7 @@
   --cinza:#7C7269; --cinza2:#A99E93;
   --linha:rgba(26,22,20,.10); --linha-esc:rgba(255,249,245,.14);
   --laranja:#F26522; --laranja-esc:#D8501A;
-  --sec:clamp(56px,7.5vw,120px); --pad:clamp(20px,5vw,56px);
+  --sec:clamp(46px,5.5vw,92px); --pad:clamp(20px,5vw,56px);
   background:var(--creme); color:var(--carvao);
   font-family:'Poppins','Inter',system-ui,sans-serif; line-height:1.6;
 }
@@ -51,14 +51,20 @@
 .lj-vis .lj-masc>span{transform:none}
 .lj-masc.m2>span{transition-delay:.1s}.lj-masc.m3>span{transition-delay:.2s}
 
-/* ── topo (herói) ── */
-.lj-heroi{position:relative;overflow:hidden;padding:clamp(30px,5vw,70px) 0 clamp(36px,5vw,72px)}
+/* ── topo (herói) ──
+   Duas colunas no desktop: o texto ocupa a esquerda e os copos a direita, os
+   dois na mesma dobra. Empilhado, o topo virava meia tela de texto e meia de
+   vazio antes dos copos aparecerem. O padding de cima precisa passar por baixo
+   do header, que é fixo. */
+.lj-heroi{position:relative;overflow:hidden;padding:clamp(104px,13vw,168px) 0 clamp(34px,4.5vw,64px)}
 .lj-heroi::before{content:"";position:absolute;width:min(680px,90vw);aspect-ratio:1;right:-14%;top:-26%;
   background:radial-gradient(circle,rgba(242,101,34,.14),transparent 66%);pointer-events:none}
-.lj-heroi h1{font-size:clamp(38px,7.2vw,92px);line-height:.94;letter-spacing:-.05em;max-width:13ch}
+.lj-heroi .duas{display:grid;grid-template-columns:1fr;gap:clamp(28px,4vw,48px);align-items:center}
+@media(min-width:1000px){.lj-heroi .duas{grid-template-columns:1.02fr .98fr}}
+.lj-heroi h1{font-size:clamp(36px,5.6vw,74px);line-height:.96;letter-spacing:-.05em;max-width:12ch}
 .lj-heroi h1 i{font-style:normal;color:var(--laranja)}
-.lj-prateleira{display:flex;align-items:flex-end;justify-content:center;gap:clamp(10px,2.4vw,34px);
-  margin-top:clamp(36px,5.5vw,68px);position:relative}
+.lj-prateleira{display:flex;align-items:flex-end;justify-content:center;gap:clamp(8px,1.6vw,22px);
+  position:relative}
 .lj-prateleira::after{content:"";position:absolute;left:50%;bottom:-1px;width:min(760px,94%);height:1px;
   transform:translateX(-50%);
   background:linear-gradient(90deg,transparent,var(--linha) 18%,var(--linha) 82%,transparent)}
@@ -69,9 +75,9 @@
 .lj-copo:nth-child(3){transition-delay:.3s}.lj-copo:nth-child(4){transition-delay:.4s}
 .lj-copo:nth-child(5){transition-delay:.5s}
 .lj-copo img{width:auto;filter:drop-shadow(0 22px 26px rgba(26,22,20,.17))}
-.lj-copo:nth-child(odd) img{height:clamp(112px,16vw,206px)}
-.lj-copo:nth-child(even) img{height:clamp(132px,19vw,244px)}
-.lj-copo:nth-child(3) img{height:clamp(158px,23vw,292px)}
+.lj-copo:nth-child(odd) img{height:clamp(104px,11vw,182px)}
+.lj-copo:nth-child(even) img{height:clamp(124px,13vw,216px)}
+.lj-copo:nth-child(3) img{height:clamp(150px,16vw,262px)}
 
 /* ── faixa de confiança ── */
 .lj-confia{border-block:1px solid var(--linha);background:var(--creme2)}
@@ -86,26 +92,31 @@
 
 /* ── passos com o copo fixo ── */
 .lj-passos{position:relative}
-.lj-passos .palco{position:sticky;top:clamp(96px,15vh,150px);height:clamp(230px,30vw,340px);
+.lj-passos .palco{position:sticky;top:clamp(96px,15vh,150px);height:clamp(200px,24vw,280px);
   display:flex;align-items:center;justify-content:center;z-index:1;pointer-events:none}
-.lj-passos .palco img{position:absolute;height:clamp(170px,23vw,300px);width:auto;opacity:0;
+.lj-passos .palco img{position:absolute;height:clamp(150px,19vw,246px);width:auto;opacity:0;
   transform:translateY(16px) scale(.95);filter:drop-shadow(0 24px 30px rgba(26,22,20,.2));
   transition:opacity .55s ease,transform .9s cubic-bezier(.22,1,.36,1)}
 .lj-passos .palco img.on{opacity:1;transform:none}
 .lj-passos .halo{position:absolute;width:min(52%,300px);aspect-ratio:1;border-radius:50%;
   filter:blur(52px);opacity:.42;transition:background .8s ease}
-.lj-passos .lista{position:relative;z-index:2;margin-top:calc(-1 * clamp(230px,30vw,340px))}
-.lj-passos .p{min-height:clamp(290px,38vw,420px);display:flex;flex-direction:column;
-  justify-content:center;max-width:min(46%,400px)}
+.lj-passos .lista{position:relative;z-index:2;margin-top:calc(-1 * clamp(200px,24vw,280px))}
+.lj-passos .p{min-height:clamp(230px,26vw,300px);display:flex;flex-direction:column;
+  justify-content:center;max-width:min(42%,360px)}
 .lj-passos .p:nth-child(even){margin-left:auto;text-align:right;align-items:flex-end}
 @media(max-width:700px){.lj-passos .p,.lj-passos .p:nth-child(even){max-width:100%;text-align:left;align-items:flex-start}}
 .lj-passos h3{font-size:clamp(21px,3.2vw,38px);margin-top:11px;line-height:1}
 .lj-passos .p p{margin-top:12px;font-size:14px;color:var(--cinza);max-width:34ch}
 
-/* ── desfile lateral ── */
-.lj-desfile{position:relative;height:280vh}
+/* ── desfile lateral: rolar pra baixo anda com o catálogo pro lado ── */
+.lj-desfile{position:relative;height:260vh}
 .lj-desfile .cola{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;
-  justify-content:center;overflow:hidden}
+  justify-content:center;overflow:hidden;background:var(--creme2)}
+.lj-desfile .cab2{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;
+  max-width:1200px;margin:0 auto clamp(22px,3.4vw,42px);padding-inline:var(--pad);width:100%}
+.lj-desfile .cab2 h2{font-size:clamp(26px,4vw,50px);line-height:1;margin-top:12px}
+.lj-desfile .cont{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--cinza);
+  font-variant-numeric:tabular-nums}
 .lj-trilho{display:flex;align-items:flex-end;gap:clamp(18px,3.2vw,48px);padding-inline:var(--pad);will-change:transform}
 .lj-pe{flex:none;width:clamp(116px,14vw,182px);display:flex;flex-direction:column;align-items:center;gap:13px}
 .lj-pe img{height:clamp(142px,18vw,236px);width:auto;filter:drop-shadow(0 18px 22px rgba(26,22,20,.15))}

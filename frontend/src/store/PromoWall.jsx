@@ -79,31 +79,36 @@ function PromoCard({ promo, delay, onCurtir, onAbrir }) {
 
   return (
     <Reveal delay={delay} scale>
-      <article className="st-card group bg-white rounded-3xl border border-gray-100 overflow-hidden h-full flex flex-col">
+      <article className="st-card group rounded-3xl overflow-hidden h-full flex flex-col"
+        style={{ background: 'var(--creme)', border: '1px solid var(--linha)' }}>
         <button type="button" onClick={() => onAbrir(imgRef.current?.getBoundingClientRect())}
-          className="relative block bg-gray-50 overflow-hidden cursor-zoom-in"
+          className="relative block overflow-hidden cursor-zoom-in" style={{ background: 'var(--creme2)' }}
           aria-label={`Ampliar ${promo.title || 'promoção'}`}>
           <img ref={imgRef} src={promo.image_url} alt={promo.title || 'Promoção'} loading="lazy"
             className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-700" />
           {promo.badge && (
-            <span className="absolute top-4 left-4 bg-orange-500 text-white text-xs font-black px-3 py-1.5 rounded-full shadow-lg uppercase tracking-wide">
+            <span className="absolute top-4 left-4 text-white text-xs font-semibold px-3 py-1.5 rounded-full"
+              style={{ background: 'var(--laranja)' }}>
               {promo.badge}
             </span>
           )}
         </button>
 
-        <div className="p-4 flex flex-col gap-3 flex-1">
+        <div className="p-5 flex flex-col gap-3 flex-1">
           <div className="flex items-center gap-3">
             <BotaoCurtir promo={promo} pulo={pulo} onClick={curtiu} />
             {promo.until && (
-              <span className="text-xs text-gray-400 flex items-center gap-1 ml-auto">
-                <Clock size={12} /> até {dataBR(promo.until)}
+              <span className="lj-mono flex items-center gap-1 ml-auto"
+                style={{ fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--cinza)' }}>
+                <Clock size={11} /> até {dataBR(promo.until)}
               </span>
             )}
           </div>
-          {promo.title && <h3 className="font-extrabold text-gray-900 leading-tight">{promo.title}</h3>}
+          {promo.title && <h3 style={{ fontSize: 15.5, letterSpacing: '-.025em' }}>{promo.title}</h3>}
           {promo.link && (
-            <LinkPromo link={promo.link} className="mt-auto inline-flex items-center gap-1.5 text-sm font-bold text-orange-600 hover:text-orange-700">
+            <LinkPromo link={promo.link}
+              className="mt-auto inline-flex items-center gap-1.5 text-sm font-semibold"
+              style={{ color: 'var(--laranja)' }}>
               Ver produto <ArrowRight size={15} />
             </LinkPromo>
           )}
@@ -127,10 +132,10 @@ function BotaoCurtir({ promo, pulo, onClick, grande = false, claro = false }) {
 }
 
 // Link interno vira navegação de SPA; externo abre em outra aba.
-function LinkPromo({ link, className, children }) {
+function LinkPromo({ link, className, style, children }) {
   const l = String(link || '').trim();
-  if (l.startsWith('/')) return <Link to={l} className={className}>{children}</Link>;
-  return <a href={l} target="_blank" rel="noopener noreferrer" className={className}>{children}</a>;
+  if (l.startsWith('/')) return <Link to={l} className={className} style={style}>{children}</Link>;
+  return <a href={l} target="_blank" rel="noopener noreferrer" className={className} style={style}>{children}</a>;
 }
 
 /**

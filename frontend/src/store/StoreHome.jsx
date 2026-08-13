@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -159,6 +159,8 @@ export default function StoreHome() {
 
     passos: () => <Passos key="passos" showcase={showcase} titulo={S.passos_title} />,
 
+    desfile: () => <Desfile key="desfile" showcase={showcase} />,
+
     stats: () => <Estatisticas key="stats" stats={stats} />,
 
     pillars: () => <Pilares key="pillars" pillars={pillars} titulo={S.pillars_title} sub={S.pillars_subtitle} />,
@@ -234,34 +236,43 @@ function Reveal({ children, className = '', as: Tag = 'div', umaVez = true, ...r
 /* ── TOPO ───────────────────────────────────────────────── */
 function Heroi({ S, show3d, heroSlots }) {
   const ref = useReveal();
-  const linhas = String(S.hero_title || '').split('\n').filter(Boolean);
+  // Quebra o título em linhas para cada uma subir de dentro da máscara. Sem
+  // quebra manual, corta nos espaços em até 3 linhas — título de uma linha só
+  // ficaria gigante e sem o efeito.
+  const linhas = useMemo(() => {
+    const t = String(S.hero_title || '').trim();
+    if (t.includes('\n')) return t.split('\n').filter(Boolean);
+    const palavras = t.split(/\s+/);
+    if (palavras.length < 4) return [t];
+    const porLinha = Math.ceil(palavras.length / 3);
+    return [0, 1, 2].map(i => palavras.slice(i * porLinha, (i + 1) * porLinha).join(' ')).filter(Boolean);
+  }, [S.hero_title]);
+
   return (
     <section ref={ref} className="lj-heroi">
-      <div className="lj-env">
-        <p className="lj-olho lj-an">{S.hero_badge}</p>
-        <h1 className="mt-5">
-          {linhas.length > 1
-            ? <Mascara linhas={linhas} />
-            : <span className="lj-masc"><span>{S.hero_title}</span></span>}
-        </h1>
-        <p className="lj-sub lj-an d3 mt-6" style={{ fontSize: 'clamp(15px,1.4vw,18px)' }}>{S.hero_subtitle}</p>
-        <div className="flex flex-wrap gap-3 mt-8 lj-an d4">
-          <a href="#catalogo" className="lj-btn">{S.btn_catalog} <ArrowRight size={16} /></a>
-          {show3d && <Link to="/loja/personalizar" className="lj-btn vazio"><Wand2 size={16} /> {S.btn_3d}</Link>}
+      <div className="lj-env duas">
+        <div>
+          <p className="lj-olho lj-an">{S.hero_badge}</p>
+          <h1 className="mt-5"><Mascara linhas={linhas} /></h1>
+          <p className="lj-sub lj-an d3 mt-6" style={{ fontSize: 'clamp(15px,1.35vw,17.5px)' }}>{S.hero_subtitle}</p>
+          <div className="flex flex-wrap gap-3 mt-7 lj-an d4">
+            <a href="#catalogo" className="lj-btn">{S.btn_catalog} <ArrowRight size={16} /></a>
+            {show3d && <Link to="/loja/personalizar" className="lj-btn vazio"><Wand2 size={16} /> {S.btn_3d}</Link>}
+          </div>
         </div>
-      </div>
-      <div className="lj-prateleira lj-env">
-        {heroSlots.map((b, i) => {
-          const foto = b.image_url || b.image;
-          const box = HERO_BOX[i] || HERO_BOX[0];
-          return (
-            <span key={i} className="lj-copo">
-              {foto
-                ? <CupPhoto key={foto} src={foto} alt={b.label || ''} />
-                : <Bottle color={b.color || '#F26522'} gradient={b.gradient !== false} size={Math.round(box.h * 0.6)} />}
-            </span>
-          );
-        })}
+        <div className="lj-prateleira">
+          {heroSlots.map((b, i) => {
+            const foto = b.image_url || b.image;
+            const box = HERO_BOX[i] || HERO_BOX[0];
+            return (
+              <span key={i} className="lj-copo">
+                {foto
+                  ? <CupPhoto key={foto} src={foto} alt={b.label || ''} />
+                  : <Bottle color={b.color || '#F26522'} gradient={b.gradient !== false} size={Math.round(box.h * 0.55)} />}
+              </span>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
@@ -336,6 +347,59 @@ function Passos({ showcase, titulo }) {
             </Reveal>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── DESFILE: a rolagem vertical anda com o catálogo pro lado ── */
+function Desfile({ showcase }) {
+  const secRef = useRef(null);
+  const trilhoRef = useRef(null);
+  const [pos, setPos] = useState(1);
+  const pecas = showcase.slice(0, 10);
+
+  useEffect(() => {
+    const sec = secRef.current, trilho = trilhoRef.current;
+    if (!sec || !trilho || !pecas.length) return;
+    const andar = () => {
+      const total = sec.offsetHeight - window.innerHeight;
+      const t = total > 0 ? Math.min(1, Math.max(0, -sec.getBoundingClientRect().top / total)) : 0;
+      const percorrer = Math.max(0, trilho.scrollWidth - window.innerWidth + 40);
+      trilho.style.transform = `translateX(${-t * percorrer}px)`;
+      const barra = sec.querySelector('.lj-prog i');
+      if (barra) barra.style.setProperty('--p', (t * 100).toFixed(1) + '%');
+      setPos(Math.min(pecas.length, Math.floor(t * pecas.length) + 1));
+    };
+    window.addEventListener('scroll', andar, { passive: true });
+    window.addEventListener('resize', andar);
+    andar();
+    return () => { window.removeEventListener('scroll', andar); window.removeEventListener('resize', andar); };
+  }, [pecas.length]);
+
+  if (pecas.length < 4) return null;
+  const dois = n => String(n).padStart(2, '0');
+
+  return (
+    <section ref={secRef} className="lj-desfile" id="desfile">
+      <div className="cola">
+        <div className="cab2">
+          <div>
+            <p className="lj-olho">O catálogo</p>
+            <h2>Passe os olhos</h2>
+          </div>
+          <span className="cont">{dois(pos)} / {dois(pecas.length)}</span>
+        </div>
+        <div ref={trilhoRef} className="lj-trilho">
+          {pecas.map(p => (
+            <Link key={p.id} to={`/loja/produto/${p.id}`} className="lj-pe">
+              <CupPhoto src={p.image_url} alt={p.color} />
+              <b>{p.color}</b>
+              <span>{p.model}</span>
+            </Link>
+          ))}
+        </div>
+        <div className="lj-prog"><i /></div>
       </div>
     </section>
   );
