@@ -122,7 +122,8 @@
   font-variant-numeric:tabular-nums}
 .lj-trilho{display:flex;align-items:flex-end;gap:clamp(18px,3.2vw,48px);padding-inline:var(--pad);will-change:transform}
 .lj-pe{flex:none;width:clamp(116px,14vw,182px);display:flex;flex-direction:column;align-items:center;gap:13px}
-.lj-pe img{height:clamp(142px,18vw,236px);width:auto;filter:drop-shadow(0 18px 22px rgba(26,22,20,.15))}
+.lj-pe img{height:clamp(142px,18vw,236px);width:100%;object-fit:contain;object-position:center bottom;
+  filter:drop-shadow(0 18px 22px rgba(26,22,20,.15))}
 .lj-pe b{font-size:14px;font-weight:600;letter-spacing:-.02em;text-align:center;line-height:1.25}
 .lj-pe span{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;
   text-transform:uppercase;color:var(--cinza)}
@@ -139,12 +140,19 @@
   opacity:0;transform:translateY(24px) scale(.94);
   transition:opacity .6s ease,transform .7s cubic-bezier(.22,1,.36,1)}
 .lj-vis .lj-cor{opacity:1;transform:none}
-.lj-cor .caixa{position:relative;width:100%;aspect-ratio:.62;display:flex;align-items:flex-end;justify-content:center}
+/* Altura em pixel, não aspect-ratio: como o rótulo de algumas cores quebra em
+   duas linhas, a linha da grade esticava e a caixa junto — cada copo saía com
+   uma altura. Caixa fixa deixa todos do mesmo tamanho. */
+.lj-cor .caixa{position:relative;width:100%;height:clamp(150px,17vw,232px);flex:none;
+  display:flex;align-items:flex-end;justify-content:center}
 .lj-cor .caixa::before{content:"";position:absolute;inset:auto 8% 0;height:78%;border-radius:12px;
   background:var(--creme2);transition:transform .4s cubic-bezier(.22,1,.36,1)}
 .lj-sec.escura .lj-cor .caixa::before{background:rgba(255,249,245,.07)}
 .lj-cor:hover .caixa::before{transform:scale(1.05)}
-.lj-cor img{position:relative;height:96%;width:auto;transition:transform .45s cubic-bezier(.22,1,.36,1)}
+/* Caixa fixa + object-fit: sem isso, foto mais larga batia no max-width:100%
+   global e era encolhida, ficando mais baixa que as vizinhas. */
+.lj-cor img{position:relative;height:100%;width:100%;object-fit:contain;object-position:center bottom;
+  transition:transform .45s cubic-bezier(.22,1,.36,1)}
 .lj-cor:hover img{transform:translateY(-6px)}
 .lj-cor b{font-size:10.5px;font-weight:500;color:var(--cinza);text-align:center;line-height:1.3}
 .lj-sec.escura .lj-cor b{color:var(--cinza2)}

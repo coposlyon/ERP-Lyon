@@ -280,9 +280,18 @@ router.post('/promos/:id/curtir', curtidaLimiter, async (req, res) => {
 });
 
 // ── Vitrine de cores (paleta e garrafas do topo) ──────────
-// Uma foto REAL por cor, sem repetir cor. Começa pelo modelo que tem mais cores
-// fotografadas (paleta sai visualmente uniforme) e completa com os outros.
+// Uma foto REAL por cor, sem repetir cor, TODAS do mesmo modelo.
+//
+// Antes a lista começava pelo modelo com mais cores fotografadas e completava
+// as que faltavam com outros modelos. Isso trazia dois problemas: a paleta
+// ficava torta (um copo baixo e largo no meio de long drinks) e — pior —
+// sugeria que aquela cor existe naquele modelo, o que nem sempre é verdade.
+//
+// Agora só entra o modelo campeão. Ele perde uma cor ou outra que só existe em
+// outra linha, mas a paleta passa a dizer a verdade: "estas são as cores DESTE
+// copo". `?todos=1` volta ao comportamento antigo, se algum dia fizer falta.
 router.get('/showcase', async (req, res) => {
+  const misturar = req.query.todos === '1';
   try {
     const products = (await loadVisibleProducts()).filter(firstImg);
 
@@ -292,10 +301,12 @@ router.get('/showcase', async (req, res) => {
       if (!porModelo.has(modelo)) porModelo.set(modelo, []);
       porModelo.get(modelo).push(p);
     }
-    const modelos = [...porModelo.entries()].sort((a, b) => {
-      const cores = list => new Set(list.map(corDoProduto).filter(Boolean)).size;
-      return cores(b[1]) - cores(a[1]);
-    });
+    const cores = list => new Set(list.map(corDoProduto).filter(Boolean)).size;
+    let modelos = [...porModelo.entries()].sort((a, b) => cores(b[1]) - cores(a[1]));
+
+    // Só vale restringir se o campeão tiver paleta de verdade; com poucas cores
+    // é melhor mostrar tudo do que uma vitrine de três copos.
+    if (!misturar && modelos.length && cores(modelos[0][1]) >= 8) modelos = [modelos[0]];
 
     const vistas = new Set();
     const out = [];
