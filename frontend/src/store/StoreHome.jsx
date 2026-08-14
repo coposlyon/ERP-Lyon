@@ -457,11 +457,15 @@ function Personalizar({ showcase, titulo, sub }) {
     <section ref={ref} className="lj-sec escura" id="personalizar">
       <div className="lj-env lj-pers">
         <div className="palco2 lj-an">
-          <CupPhoto src={tons[cor]?.image_url} alt={tons[cor]?.color || ''} />
-          <div className="arte">
-            <div className="nm">{nome.trim() || 'Seu nome'}</div>
-            <div className="sb">{linha2}</div>
-          </div>
+          {/* a estampa precisa acompanhar a LARGURA DA FOTO, não a da caixa:
+              medindo pela caixa, o texto vazava pelas laterais do copo */}
+          <span className="copo">
+            <CupPhoto src={tons[cor]?.image_url} alt={tons[cor]?.color || ''} />
+            <span className="arte">
+              <span className="nm">{nome.trim() || 'Seu nome'}</span>
+              {linha2.trim() && <span className="sb">{linha2}</span>}
+            </span>
+          </span>
         </div>
         <div>
           <p className="lj-olho claro lj-an">Prévia ao vivo</p>
