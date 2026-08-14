@@ -53,7 +53,7 @@ export default function StoreLayout({ children }) {
       {/* Header — creme translúcido sobre o herói, sólido depois de rolar */}
       <header className={`fixed top-0 inset-x-0 z-40 transition-all duration-300 ${solid ? 'backdrop-blur' : ''}`}
         style={solid ? { background: 'rgba(255,249,245,.9)', boxShadow: '0 1px 0 var(--linha)' } : undefined}>
-        <div className="max-w-6xl mx-auto px-4 h-20 flex items-center justify-between">
+        <div className="lj-env h-20 flex items-center justify-between">
           <Link to="/loja" className="flex items-center gap-3 font-black text-lg tracking-tight">
             <img src="/lyon-logo.png" alt={store?.name || 'Lyon Copos'} className="h-14 sm:h-16 w-auto object-contain drop-shadow"
               onError={e => { e.currentTarget.style.display = 'none'; }} />
@@ -104,7 +104,7 @@ export default function StoreLayout({ children }) {
         {/* Menu de tipos de produto (COPOS, CANECAS...) com dropdown de categorias */}
         {navTypes.length > 0 && (
           <nav className="text-[var(--creme)]" style={{ background: 'var(--carvao)' }}>
-            <div className="max-w-6xl mx-auto px-4 h-11 flex items-center gap-1 overflow-x-auto md:overflow-visible">
+            <div className="lj-env h-11 flex items-center gap-1 overflow-x-auto md:overflow-visible">
               {navTypes.map(t => (
                 <div key={t.id} className="relative group h-full flex items-center shrink-0">
                   <button onClick={() => navigate(`/loja?tipo=${t.id}#catalogo`)}
@@ -144,7 +144,7 @@ export default function StoreLayout({ children }) {
 
       {/* Footer */}
       <footer className="text-[var(--cinza2)]" style={{ background: 'var(--carvao)' }}>
-        <div className="max-w-6xl mx-auto px-4 py-12 grid sm:grid-cols-3 gap-8">
+        <div className="lj-env py-12 grid sm:grid-cols-3 gap-8">
           <div>
             <div className="flex items-center gap-2.5 font-black text-white text-lg">
               <img src="/lyon-logo.png" alt={store?.name || 'Lyon Copos'} className="h-9 w-auto object-contain"
@@ -191,7 +191,7 @@ export default function StoreLayout({ children }) {
           </div>
         </div>
         <div className="border-t border-white/10">
-          <div className="max-w-6xl mx-auto px-4 py-4 text-xs text-gray-500 text-center">
+          <div className="lj-env py-4 text-xs text-gray-500 text-center">
             © {new Date().getFullYear()} {store?.name || 'Loja'}. Todos os direitos reservados.
           </div>
         </div>
