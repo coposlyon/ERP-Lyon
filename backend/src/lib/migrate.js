@@ -72,7 +72,15 @@ async function rodarMigracoes({ dry = false, alvo = null, log = console.log } = 
   }
 
   // Supabase exige SSL; o certificado é da cadeia deles, não da máquina.
-  const client = new Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
+  // Os timeouts não são detalhe: sem eles, um host que não alcança o
+  // Postgres direto (porta 5432 bloqueada, por exemplo) fica pendurado
+  // no connect e o servidor nunca chega ao listen — 503 permanente.
+  const client = new Client({
+    connectionString: url,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 15000,
+    statement_timeout: 120000,
+  });
   const aplicadas = [];
 
   try {

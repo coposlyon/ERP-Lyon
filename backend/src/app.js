@@ -130,10 +130,24 @@ app.use((err, req, res, next) => {
  *
  * AUTO_MIGRATE=false desliga, para quem preferir aplicar à mão.
  */
+// Teto de tempo para a etapa de migração na subida. Uma migração pesada
+// pode passar disso e continua rodando até o fim — o que este prazo faz
+// é liberar o listen em vez de deixar o ERP fora do ar esperando.
+const MIGRACAO_TIMEOUT_MS = Number(process.env.MIGRATE_BOOT_TIMEOUT_MS) || 90000;
+
 async function iniciar() {
   if (process.env.AUTO_MIGRATE !== 'false') {
     try {
-      const r = await rodarMigracoes();
+      // Nada aqui pode segurar o servidor para sempre: um Postgres
+      // inalcançável travaria o boot e o 503 viraria permanente. Passado
+      // o prazo, sobe assim mesmo e o estado fica em /health.
+      const r = await Promise.race([
+        rodarMigracoes(),
+        new Promise(resolve => setTimeout(
+          () => resolve({ estado: 'demorou_demais', aplicadas: [], pendentes: [],
+                          erro: `migração passou de ${MIGRACAO_TIMEOUT_MS}ms — servidor subiu sem esperar` }),
+          MIGRACAO_TIMEOUT_MS)),
+      ]);
       if (r.erro) console.error(`[migrate] ${r.estado}: ${r.erro}`);
     } catch (err) {
       console.error('[migrate] erro inesperado:', err.message);
