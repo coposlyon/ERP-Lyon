@@ -61,6 +61,12 @@ router.use('/sales',     requireModules('sales','pdv','returns'), salesRoutes);
 // Painel do Vendedor — quem vende entra pelo módulo 'vendedor'; gerente
 // e admin também chegam pelos módulos comerciais que já têm.
 router.use('/vendedor',  requireModules('vendedor','sales','pdv','crm'), require('./vendedor'));
+// Área do vendedor: carteira de pedidos, agenda, comunicação com o
+// gerente e o alerta que os outros setores também enxergam.
+router.use('/area-vendedor', requireModules('pedidos-vendedor','agenda','comunicacao','vendedor','sales'), require('./area-vendedor'));
+// Permissões por setor — leitura para todo usuário logado (a tela precisa
+// saber o próprio layout); escrita só para admin, travada lá dentro.
+router.use('/setores', require('./setores'));
 // Fila de pedidos do site aguardando o PIX (vira venda ao confirmar)
 router.use('/store-payments', requireModules('sales'), require('./store-payments'));
 router.use('/purchases', requireModules('purchases'), purchasesRoutes);

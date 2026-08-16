@@ -25,6 +25,13 @@ const NewSale            = lazy(() => import('@/pages/Sales/NewSale'));
 const StorePayments      = lazy(() => import('@/pages/Sales/StorePayments'));
 const VendedorDashboard  = lazy(() => import('@/pages/Vendedor/VendedorDashboard'));
 const VendedorConfig     = lazy(() => import('@/pages/Vendedor/VendedorConfig'));
+const PedidosVendedor    = lazy(() => import('@/pages/Vendedor/PedidosVendedor'));
+const PedidoDetalhe      = lazy(() => import('@/pages/Vendedor/PedidoDetalhe'));
+const Catalogo           = lazy(() => import('@/pages/Vendedor/Catalogo'));
+const AgendaVendedor     = lazy(() => import('@/pages/Vendedor/Agenda'));
+const Comunicacao        = lazy(() => import('@/pages/Vendedor/Comunicacao'));
+const DadosVendedor      = lazy(() => import('@/pages/Vendedor/DadosVendedor'));
+const Permissoes         = lazy(() => import('@/pages/Settings/Permissoes'));
 const Purchases          = lazy(() => import('@/pages/Purchases/Purchases'));
 const PurchaseForm       = lazy(() => import('@/pages/Purchases/PurchaseForm'));
 const Forecast           = lazy(() => import('@/pages/Forecast/Forecast'));
@@ -107,12 +114,21 @@ function AdminOnly({ children }) {
 
 // Gerente também administra (metas e território de vendedor são decisão dele)
 function ManagerOnly({ children }) {
-  const { user } = useAuth();
-  return ['admin', 'manager'].includes(user?.role) ? children : <Navigate to="/" replace />;
+  const { user, homePath } = useAuth();
+  return ['admin', 'manager'].includes(user?.role) ? children : <Navigate to={homePath} replace />;
+}
+
+// A raiz "/" não é a mesma tela para todo mundo. Quem está na área do
+// vendedor cai no painel dele — deixar o Dashboard geral abrir aqui
+// mostraria contas a receber e contas vencidas a quem não deve ver.
+function HomeRoute() {
+  const { layout, homePath } = useAuth();
+  if (layout === 'vendedor' && homePath !== '/') return <Navigate to={homePath} replace />;
+  return <Dashboard />;
 }
 
 function AppRoutes() {
-  const { user } = useAuth();
+  const { user, homePath } = useAuth();
 
   return (
     // Boundary de Suspense do app inteiro. As páginas dentro do Layout já
@@ -130,7 +146,7 @@ function AppRoutes() {
       <Route path="/cadastro-fornecedor" element={<CadastroFornecedor />} />
       {/* Autocadastro de transportadora — link público p/ enviar à transportadora */}
       <Route path="/cadastro-transportadora" element={<CadastroTransportadora />} />
-      <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/login" element={user ? <Navigate to={homePath} replace /> : <Login />} />
       {/* App de marcação de ponto — tela cheia, todo colaborador acessa */}
       <Route path="/marcacao" element={<PrivateRoute><MarcacaoPonto /></PrivateRoute>} />
       {/* Novo pedido de venda — tela cheia (fora do layout com sidebar) */}
@@ -138,7 +154,7 @@ function AppRoutes() {
       {/* Novo orçamento — tela cheia, salva histórico + gera foto PNG */}
       <Route path="/quotes/new" element={<PrivateRoute><Mod m="quotes"><NewQuote /></Mod></PrivateRoute>} />
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-        <Route index element={<Dashboard />} />
+        <Route index element={<HomeRoute />} />
         {/* Produtos / Clientes / Fornecedores */}
         <Route path="products" element={<Mod m="products"><Products /></Mod>} />
         <Route path="customers" element={<Mod m="customers"><Customers /></Mod>} />
@@ -156,6 +172,15 @@ function AppRoutes() {
         {/* Painel do Vendedor — a configuração (meta, território, promoções) é só de gestor */}
         <Route path="vendedor" element={<Mod m={['vendedor','sales','pdv','crm']}><VendedorDashboard /></Mod>} />
         <Route path="vendedor/config" element={<ManagerOnly><VendedorConfig /></ManagerOnly>} />
+        {/* Área do vendedor — os cinco itens do menu enxuto */}
+        <Route path="vendedor/pedidos" element={<Mod m={['pedidos-vendedor','vendedor','sales']}><PedidosVendedor /></Mod>} />
+        <Route path="vendedor/catalogo" element={<Mod m={['catalogo','vendedor','sales']}><Catalogo /></Mod>} />
+        <Route path="vendedor/agenda" element={<Mod m={['agenda','vendedor','sales']}><AgendaVendedor /></Mod>} />
+        <Route path="vendedor/comunicacao" element={<Mod m={['comunicacao','vendedor','sales']}><Comunicacao /></Mod>} />
+        <Route path="vendedor/perfil" element={<Mod m={['vendedor','pedidos-vendedor','sales']}><DadosVendedor /></Mod>} />
+        {/* Detalhe do pedido. A Tela 2 completa ainda será especificada;
+            esta versão sustenta o "Visualizar detalhes" sem expor custo. */}
+        <Route path="vendedor/pedidos/:id" element={<Mod m={['pedidos-vendedor','vendedor','sales']}><PedidoDetalhe /></Mod>} />
         {/* Orçamentos */}
         <Route path="quotes" element={<Mod m="quotes"><Quotes /></Mod>} />
         <Route path="quotes/:id" element={<Mod m="quotes"><QuoteForm /></Mod>} />
@@ -199,6 +224,8 @@ function AppRoutes() {
         {/* Config */}
         <Route path="settings" element={<Mod m="settings"><Settings /></Mod>} />
         <Route path="users" element={<AdminOnly><Users /></AdminOnly>} />
+        {/* Matriz setor × módulo — quem enxerga o quê no ERP */}
+        <Route path="permissoes" element={<Mod m="settings"><Permissoes /></Mod>} />
         <Route path="audit" element={<AdminOnly><Audit /></AdminOnly>} />
         {/* Aprovação das alterações pedidas pelos links públicos de cadastro */}
         <Route path="cadastro-aprovacoes" element={<AdminOnly><CadastroAprovacoes /></AdminOnly>} />

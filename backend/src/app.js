@@ -9,6 +9,7 @@ const fs      = require('fs');
 
 const routes = require('./routes');
 const { captureError } = require('./lib/observability');
+const { rodarMigracoes, estadoMigracoes } = require('./lib/migrate');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -80,7 +81,13 @@ app.use('/api', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    // Como o schema ficou na última subida. Se uma migração falhou, é
+    // aqui que se descobre sem abrir o log do host.
+    migrations: estadoMigracoes(),
+  });
 });
 
 // ── Serve frontend buildado (produção / Discloud) ─────────────────
@@ -113,8 +120,33 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Dator ERP Backend running on port ${PORT}`);
-});
+/**
+ * Sobe o servidor depois de acertar o schema.
+ *
+ * As migrações rodam ANTES do listen: subir aceitando requisição com o
+ * banco meio migrado é o pior dos mundos. Se elas falharem, o servidor
+ * sobe assim mesmo, com o schema anterior — que funcionava até o deploy
+ * de agora. O erro fica no log e em /api/health.
+ *
+ * AUTO_MIGRATE=false desliga, para quem preferir aplicar à mão.
+ */
+async function iniciar() {
+  if (process.env.AUTO_MIGRATE !== 'false') {
+    try {
+      const r = await rodarMigracoes();
+      if (r.erro) console.error(`[migrate] ${r.estado}: ${r.erro}`);
+    } catch (err) {
+      console.error('[migrate] erro inesperado:', err.message);
+    }
+  } else {
+    console.log('[migrate] AUTO_MIGRATE=false — migrações não foram aplicadas.');
+  }
+
+  app.listen(PORT, () => {
+    console.log(`Dator ERP Backend running on port ${PORT}`);
+  });
+}
+
+iniciar();
 
 module.exports = app;

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 const { makeClient } = require('../config/supabase');
+const { loadSetor, resolverAcesso } = require('../lib/setores');
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
@@ -75,6 +76,12 @@ router.post('/login', async (req, res) => {
       }
     }
 
+    // O setor manda no acesso quando existir; sem setor, vale o que foi
+    // resolvido acima (regra antiga). É a mesma função do middleware —
+    // servidor e tela não podem discordar sobre quem pode o quê.
+    const setor  = await loadSetor(userProfile?.tenant_id, userProfile?.sector_key);
+    const acesso = resolverAcesso({ ...userProfile, allowed_modules: allowedModules }, setor);
+
     res.json({
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
@@ -84,7 +91,12 @@ router.post('/login', async (req, res) => {
         name: userProfile?.name,
         role: userProfile?.role,
         tenant: userProfile?.EMPRESAS,
-        allowed_modules: allowedModules,
+        allowed_modules: acesso.modules,
+        // Qual ERP esta pessoa vê: 'erp' inteiro ou a área enxuta do vendedor
+        layout: acesso.layout,
+        home_path: acesso.home,
+        sector_key: acesso.setor,
+        sector_name: acesso.setorName,
       },
     });
   } catch (err) {

@@ -11,6 +11,7 @@ import {
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory, ShieldCheck,
   Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark, Star,
+  MessageSquare, LogOut,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -179,12 +180,83 @@ const menuItems = [
     icon: Settings,
     children: [
       { label: 'Geral',     path: '/settings', icon: Settings,     module: 'settings' },
+      { label: 'Permissões por setor', path: '/permissoes', icon: ShieldCheck, module: 'settings' },
       { label: 'Feriados',  path: '/feriados', icon: CalendarDays, module: 'settings' },
       { label: 'Usuários',  path: '/users',    icon: Users,        adminOnly: true },
       { label: 'Auditoria', path: '/audit',    icon: ScrollText,   adminOnly: true },
     ],
   },
 ];
+
+// ── Área do vendedor ─────────────────────────────────────────
+// Cinco itens e mais nada. O princípio é o vendedor entrar no sistema
+// para vender, acompanhar a carteira e avisar de problema — sem
+// esbarrar em estoque, produção, financeiro ou logística. Por isso este
+// menu é uma lista fixa, e não o menu do ERP filtrado: filtro deixa
+// buraco quando alguém acrescenta um módulo novo sem pensar nele.
+const menuVendedor = [
+  { label: 'Dashboard',        sub: 'Acompanhar metas etc.',        path: '/vendedor',          icon: LayoutDashboard, exact: true },
+  { label: 'Pedidos de Venda', sub: 'Controle do fluxo dos clientes', path: '/vendedor/pedidos', icon: ClipboardList },
+  { label: 'Site / Catálogo',  sub: 'Enviar link para clientes',    path: '/vendedor/catalogo', icon: Box },
+  { label: 'Agenda',           sub: 'Anotações e compromissos',     path: '/vendedor/agenda',   icon: CalendarDays },
+  { label: 'Comunicação',      sub: 'Mensagens com o gerente',      path: '/vendedor/comunicacao', icon: MessageSquare },
+];
+
+function SidebarVendedor({ onMobileClose }) {
+  const { user, logout, sectorName } = useAuth();
+  const [menuAberto, setMenuAberto] = useState(false);
+
+  return (
+    <>
+      <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
+        {menuVendedor.map(item => (
+          <NavLink key={item.path} to={item.path} end={item.exact} onClick={onMobileClose}
+            className={({ isActive }) => `sidebar-item items-start ${isActive ? 'active' : ''}`}>
+            <item.icon size={18} className="mt-0.5 shrink-0" />
+            <span className="min-w-0">
+              <span className="block truncate">{item.label}</span>
+              <span className="block text-[10px] font-normal opacity-60 truncate">{item.sub}</span>
+            </span>
+          </NavLink>
+        ))}
+      </nav>
+
+      {/* Usuário logado. Clicar abre só Dados do vendedor e Sair — não
+          existe "Perfil" no menu para não duplicar a mesma informação. */}
+      <div className="px-2 pb-3 space-y-1">
+        {menuAberto && (
+          <>
+            <NavLink to="/vendedor/perfil" onClick={() => { setMenuAberto(false); onMobileClose?.(); }}
+              className={({ isActive }) => `sidebar-item text-xs ${isActive ? 'active' : ''}`}>
+              <UserCog size={15} /> <span>Dados do vendedor</span>
+            </NavLink>
+            <button onClick={logout} className="sidebar-item text-xs w-full">
+              <LogOut size={15} /> <span>Sair</span>
+            </button>
+          </>
+        )}
+
+        <button onClick={() => setMenuAberto(v => !v)}
+          className="sidebar-item w-full items-center rounded-xl"
+          style={{ background: 'rgba(255,255,255,0.05)' }}>
+          <span className="w-9 h-9 rounded-full bg-primary-600 text-white flex items-center justify-center font-bold shrink-0">
+            {(user?.name || '?').charAt(0).toUpperCase()}
+          </span>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block truncate">{user?.name}</span>
+            <span className="block text-[10px] font-normal text-primary-300 truncate">
+              {sectorName || 'Vendedor'}
+            </span>
+            <span className="block text-[10px] font-normal opacity-60 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" /> Online
+            </span>
+          </span>
+          {menuAberto ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+      </div>
+    </>
+  );
+}
 
 // Bolinha com o número de pendências ao lado do item do menu
 function Badge({ n }) {
@@ -274,8 +346,9 @@ function filterMenu(items, hasModule, isAdmin) {
 }
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
-  const { hasModule, isAdmin } = useAuth();
-  const visibleItems = filterMenu(menuItems, hasModule, isAdmin);
+  const { hasModule, isAdmin, layout } = useAuth();
+  const ehVendedor = layout === 'vendedor';
+  const visibleItems = ehVendedor ? [] : filterMenu(menuItems, hasModule, isAdmin);
 
   // Pedidos de alteração de cadastro esperando aprovação (só admin enxerga)
   const { data: aprovacoes } = useQuery({
@@ -329,20 +402,24 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
       </div>
 
       {/* Navegação */}
-      <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
-        {visibleItems.map((item, idx) => (
-          <div key={item.label}>
-            <SidebarGroup
-              item={item}
-              collapsed={collapsed}
-              onMobileClose={onMobileClose}
-              badges={badges}
-            />
-            {/* Divisor após o Dashboard, separando-o dos módulos */}
-            {idx === 0 && <div className="my-2 border-t border-indigo-800/60" />}
-          </div>
-        ))}
-      </nav>
+      {ehVendedor ? (
+        <SidebarVendedor onMobileClose={onMobileClose} />
+      ) : (
+        <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
+          {visibleItems.map((item, idx) => (
+            <div key={item.label}>
+              <SidebarGroup
+                item={item}
+                collapsed={collapsed}
+                onMobileClose={onMobileClose}
+                badges={badges}
+              />
+              {/* Divisor após o Dashboard, separando-o dos módulos */}
+              {idx === 0 && <div className="my-2 border-t border-indigo-800/60" />}
+            </div>
+          ))}
+        </nav>
+      )}
 
     </aside>
   );

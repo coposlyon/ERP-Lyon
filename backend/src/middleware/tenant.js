@@ -1,4 +1,5 @@
 const supabase = require('../config/supabase');
+const { loadSetor, resolverAcesso } = require('../lib/setores');
 
 async function tenantMiddleware(req, res, next) {
   if (!req.user) {
@@ -26,6 +27,12 @@ async function tenantMiddleware(req, res, next) {
 
     req.userProfile = userProfile;
     req.tenantId = userProfile.tenant_id;
+
+    // O acesso efetivo (setor + extras do usuário) resolvido uma vez por
+    // requisição. É o que o requireModules consulta logo adiante.
+    const setor = await loadSetor(userProfile.tenant_id, userProfile.sector_key);
+    req.acesso = resolverAcesso(userProfile, setor);
+
     next();
   } catch (err) {
     return res.status(500).json({ error: 'Falha ao carregar perfil do usuário' });

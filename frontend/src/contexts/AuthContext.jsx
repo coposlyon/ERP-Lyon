@@ -12,8 +12,21 @@ export function AuthProvider({ children }) {
     const stored = localStorage.getItem('user');
     const storedTenant = localStorage.getItem('tenant');
     if (stored) {
-      setUser(JSON.parse(stored));
+      const u = JSON.parse(stored);
+      setUser(u);
       if (storedTenant) setTenant(JSON.parse(storedTenant));
+
+      // O login guardou um retrato; o acesso pode ter mudado desde então
+      // (o admin mexeu no setor, alguém trocou de área). Sem esta
+      // conferência, a permissão nova só valeria depois de um logout —
+      // e ninguém faz logout.
+      api.get('/setores/meu-acesso')
+        .then(a => {
+          const atualizado = { ...u, ...a };
+          setUser(atualizado);
+          localStorage.setItem('user', JSON.stringify(atualizado));
+        })
+        .catch(() => { /* offline ou sessão velha: segue com o retrato */ });
     }
     setLoading(false);
   }, []);
@@ -47,9 +60,19 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   const isAdmin = user?.role === 'admin';
+  const isManager = ['admin', 'manager'].includes(user?.role);
+
+  // Qual ERP esta pessoa vê. Vem do setor dela (Configurações →
+  // Permissões por setor): 'erp' é o sistema inteiro, 'vendedor' é a
+  // área enxuta de cinco itens. Admin sempre vê o sistema inteiro.
+  const layout = isAdmin ? 'erp' : (user?.layout === 'vendedor' ? 'vendedor' : 'erp');
+  const homePath = user?.home_path || '/';
 
   return (
-    <AuthContext.Provider value={{ user, tenant, loading, login, logout, hasModule, isAdmin }}>
+    <AuthContext.Provider value={{
+      user, tenant, loading, login, logout, hasModule, isAdmin, isManager,
+      layout, homePath, sector: user?.sector_key || null, sectorName: user?.sector_name || null,
+    }}>
       {children}
     </AuthContext.Provider>
   );
