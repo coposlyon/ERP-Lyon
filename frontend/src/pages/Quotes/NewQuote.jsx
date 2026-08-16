@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import PDV from '@/pages/Sales/PDV';
@@ -9,6 +9,8 @@ import PDV from '@/pages/Sales/PDV';
 export default function NewQuote() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  // ?customer_id= — chega assim da carteira de clientes do vendedor
+  const [params] = useSearchParams();
 
   function close() {
     qc.invalidateQueries(['quotes']);
@@ -34,7 +36,7 @@ export default function NewQuote() {
         <button onClick={close} className="btn-ghost p-1.5" title="Fechar (ESC)"><X size={20} /></button>
       </div>
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-        <PDV mode="quote" onDone={close} />
+        <PDV mode="quote" customerId={params.get('customer_id')} onDone={close} />
       </div>
     </div>
   );

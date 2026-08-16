@@ -31,6 +31,7 @@ const menuItems = [
     label: 'Comercial',
     icon: ShoppingCart,
     children: [
+      { label: 'Painel do Vendedor', path: '/vendedor', icon: Target, module: 'vendedor' },
       { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart, module: 'sales' },
       { label: 'Pagamentos da Loja', path: '/store-payments', icon: Wallet, module: 'sales' },
       { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },

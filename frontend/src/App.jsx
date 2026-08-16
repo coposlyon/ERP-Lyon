@@ -23,6 +23,8 @@ const Sales              = lazy(() => import('@/pages/Sales/Sales'));
 const SaleForm           = lazy(() => import('@/pages/Sales/SaleForm'));
 const NewSale            = lazy(() => import('@/pages/Sales/NewSale'));
 const StorePayments      = lazy(() => import('@/pages/Sales/StorePayments'));
+const VendedorDashboard  = lazy(() => import('@/pages/Vendedor/VendedorDashboard'));
+const VendedorConfig     = lazy(() => import('@/pages/Vendedor/VendedorConfig'));
 const Purchases          = lazy(() => import('@/pages/Purchases/Purchases'));
 const PurchaseForm       = lazy(() => import('@/pages/Purchases/PurchaseForm'));
 const Forecast           = lazy(() => import('@/pages/Forecast/Forecast'));
@@ -103,6 +105,12 @@ function AdminOnly({ children }) {
   return isAdmin ? children : <Navigate to="/" replace />;
 }
 
+// Gerente também administra (metas e território de vendedor são decisão dele)
+function ManagerOnly({ children }) {
+  const { user } = useAuth();
+  return ['admin', 'manager'].includes(user?.role) ? children : <Navigate to="/" replace />;
+}
+
 function AppRoutes() {
   const { user } = useAuth();
 
@@ -145,6 +153,9 @@ function AppRoutes() {
         <Route path="sales" element={<Mod m="sales"><Sales /></Mod>} />
         <Route path="sales/:id" element={<Mod m="sales"><SaleForm /></Mod>} />
         <Route path="store-payments" element={<Mod m="sales"><StorePayments /></Mod>} />
+        {/* Painel do Vendedor — a configuração (meta, território, promoções) é só de gestor */}
+        <Route path="vendedor" element={<Mod m={['vendedor','sales','pdv','crm']}><VendedorDashboard /></Mod>} />
+        <Route path="vendedor/config" element={<ManagerOnly><VendedorConfig /></ManagerOnly>} />
         {/* Orçamentos */}
         <Route path="quotes" element={<Mod m="quotes"><Quotes /></Mod>} />
         <Route path="quotes/:id" element={<Mod m="quotes"><QuoteForm /></Mod>} />

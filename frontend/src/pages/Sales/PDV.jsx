@@ -96,7 +96,9 @@ const RETIRADA = '__retirada__';
 const RETIRADA_LABEL = 'Retirar em mãos';
 
 // mode: 'sale' (pedido de venda) | 'quote' (orçamento — salva e gera a foto PNG)
-export default function PDV({ onDone, mode = 'sale' }) {
+// customerId: abre já com este cliente escolhido (a carteira do vendedor
+// manda o cliente pela URL ao clicar na flecha de orçamento)
+export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const inModal = typeof onDone === 'function';
   const isQuote = mode === 'quote';
   const [items, setItems] = useState([]);
@@ -202,6 +204,17 @@ export default function PDV({ onDone, mode = 'sale' }) {
     queryFn: () => api.get(`/customers?search=${encodeURIComponent(customerSearch.trim())}&limit=8&is_active=true`),
     enabled: customerSearch.trim().length >= 1,
   });
+
+  // Cliente que veio pronto pela URL. Só preenche o campo vazio: se o
+  // operador já trocou de cliente na tela, a escolha dele é que vale.
+  const { data: preloadCustomer } = useQuery({
+    queryKey: ['pdv-customer-preload', customerId],
+    queryFn: () => api.get(`/customers/${customerId}`),
+    enabled: !!customerId,
+  });
+  useEffect(() => {
+    if (preloadCustomer?.id) setSelectedCustomer(c => c || preloadCustomer);
+  }, [preloadCustomer]);
 
   // Últimos 50 clientes cadastrados — aparecem ao clicar no campo (sem digitar)
   const [custFocus, setCustFocus] = useState(false);
