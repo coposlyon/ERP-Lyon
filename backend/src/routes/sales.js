@@ -6,6 +6,7 @@ const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
 const { recomputeRating } = require('../lib/customerRating');
+const { ORIGENS, normalizarOrigem } = require('../lib/origens');
 
 const saleSchema = Joi.object({
   items: Joi.array().min(1).items(
@@ -30,6 +31,9 @@ router.get('/payment-terms', async (req, res) => {
   } catch (err) { res.json({ data: [] }); }
 });
 
+// O vocabulário de origem que a tela desenha no seletor e na coluna.
+router.get('/origens', (req, res) => res.json(ORIGENS));
+
 const isISODate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
 
 router.get('/', async (req, res) => {
@@ -42,15 +46,22 @@ router.get('/', async (req, res) => {
   const end_date   = isISODate(req.query.end_date)   ? req.query.end_date   : null;
 
   try {
-    // If searching by customer name, first resolve matching customer IDs
+    // Busca do topo da tela. Só dígitos = código do cliente (o número
+    // permanente que ele recebeu no primeiro cadastro, com ou sem os
+    // zeros à esquerda); qualquer outra coisa = nome. Duas buscas numa
+    // caixa só porque é assim que o operador pensa: ou ele sabe o código,
+    // ou ele lembra o nome.
     let customerIds = null;
     if (search) {
-      const { data: customers } = await supabase
-        .from('CLIENTES')
-        .select('id')
-        .eq('tenant_id', req.tenantId)
-        .ilike('name', `%${search}%`)
-        .limit(200);
+      const termo = String(search).trim();
+      const soDigitos = /^\d+$/.test(termo);
+
+      let q = supabase.from('CLIENTES').select('id').eq('tenant_id', req.tenantId).limit(200);
+      q = soDigitos
+        ? q.eq('display_id', parseInt(termo, 10))
+        : q.ilike('name', `%${termo}%`);
+
+      const { data: customers } = await q;
       customerIds = (customers || []).map(c => c.id);
       if (customerIds.length === 0) {
         return res.json({ data: [], total: 0, page: Number(page), limit: Number(limit) });
@@ -119,6 +130,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
     artwork_url, artwork_notes, payment_method, installments, first_due_date,
     operation_date, event_date, ship_date, max_delivery_date, order_key, freight, payment_adjustment, carrier_id,
     billing_company_id, receiving_account_id, // Contábil: empresa faturadora + conta de destino (migração 043)
+    origin, // de onde veio o cliente (Shopee, WhatsApp, Site...) — migração 067
   } = req.body;
 
   if (!items || items.length === 0) {
@@ -169,6 +181,11 @@ router.post('/', validate(saleSchema), async (req, res) => {
       if (max_delivery_date) patch.max_delivery_date = max_delivery_date;
       if (order_key) patch.order_key = order_key;
       if (carrier_id) patch.carrier_id = carrier_id;
+      // De onde veio o cliente. Fora do vocabulário vira null em vez de
+      // entrar torta — "ML", "mercado livre" e "Mercado Livre" não
+      // agrupariam em relatório nenhum.
+      const origemOk = normalizarOrigem(origin);
+      if (origemOk) patch.origin = origemOk;
       if (billing_company_id) patch.billing_company_id = billing_company_id;
       if (receiving_account_id) patch.receiving_account_id = receiving_account_id;
       // Frete + ajuste por condição de pagamento (juros/desconto): somam no total da venda
@@ -381,6 +398,32 @@ router.patch('/:id/shipping', async (req, res) => {
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     if (error) throw error;
     audit(req, 'update', 'sale', req.params.id, { action: 'shipping', tracking_code: patch.tracking_code });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * Corrigir a origem de um pedido já gravado.
+ *
+ * Os pedidos manuais antigos ficaram sem origem (a migração 069 não
+ * chutou nenhuma), e quem lançou sem escolher também. É por aqui que o
+ * Administrativo acerta um a um — e fica na auditoria, porque origem
+ * alimenta relatório de canal e não pode mudar sem rastro.
+ */
+router.patch('/:id/origin', async (req, res) => {
+  const origem = normalizarOrigem(req.body?.origin);
+  if (req.body?.origin && !origem) {
+    return res.status(400).json({ error: 'Origem não reconhecida. Use uma das opções da lista.' });
+  }
+  try {
+    const { data: antes } = await supabase.from('VENDAS')
+      .select('origin').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+
+    const { data, error } = await supabase.from('VENDAS').update({ origin: origem })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
+    if (error) throw error;
+
+    audit(req, 'update', 'sale', req.params.id, { action: 'origin', de: antes?.origin || null, para: origem });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

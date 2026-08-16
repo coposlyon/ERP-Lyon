@@ -1,51 +1,44 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Globe, Loader2, ChevronRight, ChevronLeft, Truck, Save, MapPin, Package, Printer, Ban, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Loader2, ChevronRight, ChevronLeft, Truck, Save, MapPin, Package, Printer, Ban, AlertTriangle, Eye, Send, CheckCircle2, Siren, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
-import { id4 } from '@/lib/ids';
-import { SALE_STATUSES, SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
+import { useVend, fmtBRL } from '@/components/UI/theme';
+import { iconeOrigem, corStatus, NIVEL_ATENCAO, CSS_ATENCAO, codigoPedido, codigoCliente } from '@/lib/pedidoUi';
+import { SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 
-const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+const fmt = fmtBRL;
 const d  = iso => { if (!iso) return ''; try { return format(parseISO(iso), 'dd/MM/yyyy'); } catch { return iso; } };
 const dt = iso => { if (!iso) return ''; try { return format(parseISO(iso), 'dd/MM/yyyy HH:mm:ss'); } catch { return iso; } };
+const dataHora = iso => { if (!iso) return '—'; try { return format(parseISO(iso), 'dd/MM/yyyy HH:mm'); } catch { return iso; } };
 
-const statusFilterOptions = [{ value: '', label: 'Todos os Status' }, ...SALE_STATUSES.map(s => ({ value: s.key, label: s.label }))];
+const POR_PAGINA = [10, 25, 50, 100];
 
-// Botão da barra de ferramentas (estilo Delphi)
+// Botão da barra de ferramentas (mantém os atalhos F2..F6 de sempre)
 function TBtn({ icon: Icon, label, sub, onClick, disabled, danger }) {
+  const v = useVend();
   return (
     <button onClick={onClick} disabled={disabled} type="button"
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed ${danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-primary-50'}`}>
-      <Icon size={15} className={danger ? 'text-red-500' : 'text-primary-600'} /> {label}
-      {sub && <span className="text-[10px] text-gray-400 font-normal">{sub}</span>}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-80"
+      style={{ color: danger ? '#f87171' : v.textPrimary }}>
+      <Icon size={15} style={{ color: danger ? '#f87171' : '#60a5fa' }} /> {label}
+      {sub && <span className="text-[10px] font-normal" style={{ color: v.textSubtle }}>{sub}</span>}
     </button>
   );
 }
 
-const GRID_COLS = [
-  { key: 'number',   label: 'Chave',               w: 78,  align: 'left' },
-  { key: 'data',     label: 'Data',                w: 92,  align: 'left' },
-  { key: 'evento',   label: 'Data do Evento',      w: 112, align: 'left' },
-  { key: 'saida',    label: 'Data da Saída',       w: 110, align: 'left' },
-  { key: 'entrega',  label: 'Previsão de Entrega', w: 132, align: 'left' },
-  { key: 'cod',      label: 'Cód. Cliente',        w: 92,  align: 'left' },
-  { key: 'cliente',  label: 'Cliente',             w: 0,   align: 'left' },
-  { key: 'total',    label: 'Vr. Total',           w: 110, align: 'right' },
-  { key: 'frete',    label: 'Vr. Frete',           w: 100, align: 'right' },
-  { key: 'status',   label: 'Status',              w: 210, align: 'left' },
-];
-
 export default function Sales() {
+  const v = useVend();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [finalizados, setFinalizados] = useState(false);
+  const [porPagina, setPorPagina] = useState(10);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -57,10 +50,23 @@ export default function Sales() {
   const qc = useQueryClient();
   const searchRef = useRef();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['sales', page, status, search, startDate, endDate],
+  // O fluxo (label, cor e quem responde por cada etapa) vem do servidor —
+  // a mesma fonte que a carteira do vendedor lê, para as duas telas nunca
+  // discordarem sobre o que é "Aguardando estoque".
+  const { data: statusList = [] } = useQuery({
+    queryKey: ['fluxo-status'],
+    queryFn: () => api.get('/area-vendedor/status'),
+    staleTime: Infinity,
+  });
+  const statusInfo = useMemo(
+    () => Object.fromEntries(statusList.map(s => [s.key, s])),
+    [statusList],
+  );
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ['sales', page, status, search, startDate, endDate, porPagina],
     queryFn: () => {
-      let url = `/sales?page=${page}&limit=20`;
+      let url = `/sales?page=${page}&limit=${porPagina}`;
       if (status) url += `&status=${status}`;
       if (search) url += `&search=${encodeURIComponent(search)}`;
       if (startDate) url += `&start_date=${startDate}`;
@@ -69,10 +75,15 @@ export default function Sales() {
     },
   });
 
-  const rows = data?.data || [];
+  const todas = data?.data || [];
+  // Pedido concluído sai da lista por padrão: quem abre a tela quer ver o
+  // que está acontecendo. O botão Finalizados traz o histórico de volta,
+  // que é o caminho da recompra.
+  const rows = finalizados ? todas : todas.filter(r => !ehFinal(r.status));
   const selected = rows.find(r => r.id === selectedId) || null;
   const pageTotal  = rows.reduce((s, r) => s + (r.total || 0), 0);
   const pageFreight = rows.reduce((s, r) => s + (r.freight || 0), 0);
+  const totalPaginas = Math.max(1, Math.ceil((data?.total || 0) / porPagina));
 
   const deleteSale = useMutation({
     mutationFn: () => api.post(`/sales/${delTarget.id}/delete`, { password: delPassword }),
@@ -80,9 +91,12 @@ export default function Sales() {
     onError: (e) => toast.error(e.error || 'Não foi possível excluir'),
   });
 
-  function handleSearch(e) { e.preventDefault(); setSearch(searchInput); setPage(1); }
-  function clearFilters() { setSearch(''); setSearchInput(''); setStatus(''); setStartDate(''); setEndDate(''); setPage(1); }
-  const hasFilters = search || status || startDate || endDate;
+  function handleSearch(e) { e?.preventDefault?.(); setSearch(searchInput); setPage(1); }
+  function clearFilters() {
+    setSearch(''); setSearchInput(''); setStatus(''); setStartDate(''); setEndDate('');
+    setFinalizados(false); setPage(1);
+  }
+  const hasFilters = search || status || startDate || endDate || finalizados;
 
   function openDelete() { if (selected) { setDelTarget(selected); setDelPassword(''); } }
   function alterar() { if (selectedId) navigate(`/sales/${selectedId}`); }
@@ -96,137 +110,237 @@ export default function Sales() {
       else if (e.key === 'F4') { if (selectedId && isAdmin) { e.preventDefault(); openDelete(); } }
       else if (e.key === 'F5') { e.preventDefault(); qc.invalidateQueries(['sales']); }
       else if (e.key === 'F6') { e.preventDefault(); navigate('/quotes'); }
-      else if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); setShowFilters(true); setTimeout(() => searchRef.current?.focus(), 50); }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); searchRef.current?.focus(); }
       else if (e.key === 'Escape') { const a = document.activeElement; if (!a || !/INPUT|SELECT|TEXTAREA/.test(a.tagName)) navigate('/'); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedId, isAdmin, delTarget]); // eslint-disable-line
 
-  function cellValue(col, row) {
-    switch (col.key) {
-      case 'number': return (
-        <span className="flex items-center gap-1">
-          <b className="font-mono">{row.number}</b>
-          {row.source === 'site' && <Globe size={10} className="text-violet-500" title="Pedido pelo site" />}
-        </span>
-      );
-      case 'data':    return d(row.operation_date || row.created_at);
-      case 'evento':  return d(row.event_date) || <span className="text-gray-300">—</span>;
-      case 'saida':   return d(row.ship_date) || <span className="text-gray-300">—</span>;
-      case 'entrega': return d(row.delivery_date || row.max_delivery_date) || <span className="text-gray-300">—</span>;
-      case 'cod':     return row.CLIENTES?.display_id != null ? <span className="font-mono">{id4(row.CLIENTES.display_id)}</span> : <span className="text-gray-300">—</span>;
-      case 'cliente': return <span className="font-medium">{row.CLIENTES?.name || 'Consumidor Final'}</span>;
-      case 'total':   return <b>{fmt(row.total)}</b>;
-      case 'frete':   return row.freight > 0 ? fmt(row.freight) : <span className="text-gray-300">—</span>;
-      case 'status':  return <span className={`badge ${saleStatusClass(row.status)} text-[10px]`}>{saleStatusLabel(row.status)}</span>;
-      default: return '';
-    }
-  }
+  const th = 'text-[11px] font-semibold uppercase tracking-wider';
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h1 className="page-title">Pedido de Venda</h1>
-        <p className="text-sm text-gray-500">{data?.total || 0} pedidos{hasFilters ? ' (filtrado)' : ''}</p>
+    <div className="space-y-4">
+      <style>{CSS_ATENCAO}</style>
+
+      {/* ── Cabeçalho ─────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: v.textPrimary }}>Pedidos de Venda</h1>
+          <p className="text-sm mt-0.5" style={{ color: v.textSubtle }}>
+            Gerencie e acompanhe o fluxo de todos os pedidos
+            {hasFilters && ' · filtrado'}
+          </p>
+        </div>
+        <button onClick={() => navigate('/sales/new')} className="btn-primary">
+          <Plus size={16} /> Novo Pedido
+        </button>
       </div>
 
-      {/* Barra de ferramentas (estilo Delphi) */}
-      <div className="card flex items-center gap-1 px-2 py-1.5 flex-wrap">
-        <TBtn icon={Plus}      label="Incluir"   sub="F2" onClick={() => navigate('/sales/new')} />
-        <TBtn icon={Pencil}    label="Alterar"   sub="F3" onClick={alterar} disabled={!selectedId} />
-        <TBtn icon={Trash2}    label="Excluir"   sub="F4" onClick={openDelete} disabled={!selectedId || !isAdmin} danger />
-        <TBtn icon={RefreshCw} label="Atualizar" sub="F5" onClick={() => qc.invalidateQueries(['sales'])} />
-        <span className="w-px h-5 bg-gray-200 mx-1" />
-        <TBtn icon={Filter}    label="Filtros"   onClick={() => setShowFilters(v => !v)} />
-        <TBtn icon={Search}    label="Pesquisar" sub="Ctrl+F" onClick={() => { setShowFilters(true); setTimeout(() => searchRef.current?.focus(), 50); }} />
-        <TBtn icon={FileInput} label="Importar Orçamento" sub="F6" onClick={() => navigate('/quotes')} />
-        <TBtn icon={FileText}  label="Relatórios" onClick={() => window.print()} />
-        <span className="w-px h-5 bg-gray-200 mx-1" />
-        <TBtn icon={X}         label="Fechar"    sub="ESC" onClick={() => navigate('/')} />
+      {/* ── Filtros ───────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-3">
+        <form onSubmit={handleSearch} className="relative flex-1 min-w-[220px]">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: v.textSubtle }} />
+          <input ref={searchRef} value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            placeholder="Buscar por código do cliente..."
+            title="Digite o código do cliente (ex.: 0234) ou parte do nome"
+            style={{ ...v.control, width: '100%', padding: '0.7rem 0.75rem 0.7rem 2.4rem' }} />
+        </form>
+
+        <button onClick={() => { setFinalizados(f => !f); setPage(1); }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-[0.6rem] text-sm"
+          title="Inclui os pedidos já concluídos/entregues — é por aqui que se consulta a compra anterior para a recompra"
+          style={finalizados
+            ? { background: '#2563eb', color: 'white', border: '1px solid #2563eb' }
+            : { background: v.control.background, color: v.textPrimary, border: v.control.border }}>
+          <Filter size={15} /> {finalizados ? 'Mostrando finalizados' : 'Finalizados'}
+        </button>
+
+        <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}
+          style={{ ...v.control, padding: '0.7rem 0.75rem', minWidth: 190 }}>
+          <option value="">Status: Todos</option>
+          {statusList.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+        </select>
+
+        <button onClick={clearFilters}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-[0.6rem] text-sm"
+          style={{ background: v.control.background, color: v.textPrimary, border: v.control.border }}>
+          <RotateCcw size={15} /> Limpar filtros
+        </button>
+
+        <button onClick={() => setShowFilters(x => !x)}
+          className="flex items-center gap-2 px-3 py-2.5 rounded-[0.6rem] text-sm"
+          title="Filtro por período e ferramentas do pedido"
+          style={{ background: v.control.background, color: v.textMuted, border: v.control.border }}>
+          <ChevronRight size={15} style={{ transform: showFilters ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+        </button>
       </div>
 
-      {/* Filtros (abrem/fecham) */}
+      {/* Ferramentas e período — recolhido por padrão para não competir
+          com a tabela, mas com os atalhos de sempre funcionando */}
       {showFilters && (
-        <div className="card p-3">
-          <form onSubmit={handleSearch} className="flex gap-3 flex-wrap items-end">
-            <div className="flex-1 min-w-[200px]">
-              <label className="label">Buscar cliente</label>
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input ref={searchRef} type="text" placeholder="Nome do cliente..." value={searchInput}
-                  onChange={e => setSearchInput(e.target.value)} className="input pl-8 text-sm" />
-              </div>
+        <div style={{ ...v.card, padding: '0.75rem 1rem' }} className="space-y-3">
+          <div className="flex items-center gap-1 flex-wrap">
+            <TBtn icon={Plus}      label="Incluir"   sub="F2" onClick={() => navigate('/sales/new')} />
+            <TBtn icon={Pencil}    label="Alterar"   sub="F3" onClick={alterar} disabled={!selectedId} />
+            <TBtn icon={Trash2}    label="Excluir"   sub="F4" onClick={openDelete} disabled={!selectedId || !isAdmin} danger />
+            <TBtn icon={RefreshCw} label="Atualizar" sub="F5" onClick={() => qc.invalidateQueries(['sales'])} />
+            <span className="w-px h-5 mx-1" style={{ background: v.divider }} />
+            <TBtn icon={FileInput} label="Importar Orçamento" sub="F6" onClick={() => navigate('/quotes')} />
+            <TBtn icon={FileText}  label="Relatórios" onClick={() => window.print()} />
+            <TBtn icon={X}         label="Fechar"    sub="ESC" onClick={() => navigate('/')} />
+          </div>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: v.textSubtle }}>De</label>
+              <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} style={v.control} />
             </div>
             <div>
-              <label className="label">Status</label>
-              <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }} className="input w-56 text-sm">
-                {statusFilterOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
+              <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: v.textSubtle }}>Até</label>
+              <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} style={v.control} />
             </div>
-            <div>
-              <label className="label">De</label>
-              <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} className="input w-36 text-sm" />
-            </div>
-            <div>
-              <label className="label">Até</label>
-              <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} className="input w-36 text-sm" />
-            </div>
-            <div className="flex gap-2">
-              <button type="submit" className="btn-secondary text-sm">Buscar</button>
-              {hasFilters && <button type="button" onClick={clearFilters} className="btn-ghost text-sm text-red-500">Limpar</button>}
-            </div>
-          </form>
+            <button onClick={handleSearch} className="btn-secondary btn-sm">Aplicar busca</button>
+          </div>
         </div>
       )}
 
-      {/* Grade dos pedidos */}
-      <div className="card overflow-hidden">
+      {/* ── Tabela ────────────────────────────────────────────── */}
+      <div style={v.card}>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-blue-50 text-gray-700">
-                {GRID_COLS.map(c => (
-                  <th key={c.key} style={c.w ? { width: c.w } : undefined}
-                    className={`px-2 py-2 font-bold border-b border-blue-100 ${c.align === 'right' ? 'text-right' : 'text-left'}`}>
-                    {c.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr><td colSpan={GRID_COLS.length} className="text-center py-10 text-gray-400"><Loader2 size={20} className="animate-spin inline" /></td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={GRID_COLS.length} className="text-center py-10 text-gray-400">Nenhum pedido encontrado</td></tr>
-              ) : rows.map(row => {
-                const sel = row.id === selectedId;
-                return (
-                  <tr key={row.id} onClick={() => setSelectedId(row.id)} onDoubleClick={() => navigate(`/sales/${row.id}`)}
-                    className={`cursor-pointer border-b border-gray-50 ${sel ? 'bg-blue-200/70' : 'hover:bg-blue-50/50'}`}>
-                    {GRID_COLS.map(c => (
-                      <td key={c.key} className={`px-2 py-1.5 whitespace-nowrap ${c.align === 'right' ? 'text-right' : 'text-left'} ${c.key === 'cliente' ? 'max-w-[260px] truncate' : ''}`}>
-                        {cellValue(c, row)}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-            </tbody>
-            {/* Rodapé com contagem + soma (estilo Delphi) */}
+          <div style={{ minWidth: 1120 }}>
+            <div className="flex items-center gap-3 px-4 py-3"
+              style={{ borderBottom: `1px solid ${v.divider}`, color: v.textMuted }}>
+              <span className={`${th} w-24 shrink-0`}>Pedido</span>
+              <span className={`${th} w-36 shrink-0`}>Data / Hora</span>
+              <span className={`${th} w-36 shrink-0`}>Origem</span>
+              <span className={`${th} w-28 shrink-0`}>Cód. Cliente</span>
+              <span className={`${th} flex-1 min-w-0`}>Cliente</span>
+              <span className={`${th} w-28 shrink-0 text-right`}>Valor Total</span>
+              <span className={`${th} w-24 shrink-0 text-right`}>Frete</span>
+              <span className={`${th} w-52 shrink-0 text-center`}>Status</span>
+              <span className={`${th} w-20 shrink-0 text-center`}>Atenção</span>
+              <span className={`${th} w-28 shrink-0 text-center`}>Ações</span>
+            </div>
+
+            {isLoading ? (
+              <div className="flex items-center justify-center h-40">
+                <Loader2 size={22} className="animate-spin" style={{ color: v.textMuted }} />
+              </div>
+            ) : rows.length === 0 ? (
+              <p className="text-center py-14 text-sm" style={{ color: v.empty }}>
+                {hasFilters
+                  ? 'Nenhum pedido com esses filtros.'
+                  : 'Nenhum pedido em andamento. Ligue o filtro Finalizados para ver o histórico.'}
+              </p>
+            ) : rows.map(row => {
+              const info = statusInfo[row.status];
+              const sel = row.id === selectedId;
+              const atencao = calcularAtencao(row, info);
+              return (
+                <div key={row.id}
+                  onClick={() => setSelectedId(row.id)}
+                  onDoubleClick={() => navigate(`/sales/${row.id}`)}
+                  className="flex items-center gap-3 px-4 py-3 text-sm cursor-pointer"
+                  style={{ borderBottom: `1px solid ${v.divider}`,
+                           background: sel ? 'rgba(37,99,235,0.14)' : 'transparent' }}>
+                  <span className="w-24 shrink-0 font-semibold" style={{ color: '#60a5fa' }}>
+                    {codigoPedido(row.number)}
+                  </span>
+                  <span className="w-36 shrink-0" style={{ color: v.textMuted }}>
+                    {dataHora(row.operation_date ? `${row.operation_date}T12:00:00` : row.created_at)}
+                  </span>
+                  <span className="w-36 shrink-0 flex items-center gap-1.5 truncate"
+                    style={{ color: row.origin ? v.textPrimary : v.textSubtle }}
+                    title={row.origin
+                      ? `${row.origin}${row.source === 'site' ? ' — pedido feito pelo próprio cliente' : ' — lançado no ERP'}`
+                      : 'Origem não informada neste pedido'}>
+                    <span>{row.origin ? iconeOrigem(row.origin) : '—'}</span>
+                    <span className="truncate">{row.origin || 'não informado'}</span>
+                  </span>
+                  <span className="w-28 shrink-0 font-mono" style={{ color: v.textMuted }}>
+                    {codigoCliente(row.CLIENTES?.display_id) || '—'}
+                  </span>
+                  <span className="flex-1 min-w-0 truncate" style={{ color: v.textPrimary }}>
+                    {row.CLIENTES?.name || 'Consumidor Final'}
+                  </span>
+                  <span className="w-28 shrink-0 text-right font-semibold" style={{ color: '#22d3ee' }}>
+                    {fmt(row.total)}
+                  </span>
+                  <span className="w-24 shrink-0 text-right" style={{ color: v.textMuted }}>
+                    {row.freight > 0 ? fmt(row.freight) : '—'}
+                  </span>
+                  <span className="w-52 shrink-0 flex justify-center">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] text-center leading-tight"
+                      style={{ border: `1px solid ${corStatus(info?.cor)}55`, color: corStatus(info?.cor) }}>
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: corStatus(info?.cor) }} />
+                      {info?.label || saleStatusLabel(row.status)}
+                    </span>
+                  </span>
+                  <span className="w-20 shrink-0 flex justify-center">
+                    <SinalAtencao atencao={atencao} />
+                  </span>
+                  <span className="w-28 shrink-0 flex justify-center gap-1.5"
+                    onClick={e => e.stopPropagation()}>
+                    <Acao titulo="Visualizar detalhes" cor="#3b82f6" Icon={Eye}
+                      onClick={() => setSelectedId(row.id)} />
+                    <Acao titulo="Gerar comprovante do pedido (não é nota fiscal)" cor="#3b82f6" Icon={FileText}
+                      onClick={() => navigate(`/sales/${row.id}`)} />
+                    <Acao titulo="Enviar ao cliente" cor="#16a34a" Icon={Send}
+                      onClick={() => toast('O envio ao cliente será uma tela própria, ainda em definição.', { icon: '🚧' })} />
+                  </span>
+                </div>
+              );
+            })}
+
+            {/* Soma da página — o rodapé de sempre, só que sem a cara Delphi */}
             {rows.length > 0 && (
-              <tfoot>
-                <tr className="bg-yellow-50 font-bold text-gray-700 border-t-2 border-yellow-200">
-                  <td className="px-2 py-1.5" colSpan={6}>{rows.length} pedido{rows.length !== 1 ? 's' : ''} nesta página</td>
-                  <td className="px-2 py-1.5 text-right">{fmt(pageTotal)}</td>
-                  <td className="px-2 py-1.5 text-right">{pageFreight > 0 ? fmt(pageFreight) : ''}</td>
-                  <td></td>
-                </tr>
-              </tfoot>
+              <div className="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold"
+                style={{ borderTop: `1px solid ${v.divider}`, color: v.textMuted }}>
+                <span className="flex-1">{rows.length} pedido{rows.length !== 1 ? 's' : ''} nesta página</span>
+                <span className="w-28 text-right" style={{ color: '#22d3ee' }}>{fmt(pageTotal)}</span>
+                <span className="w-24 text-right">{pageFreight > 0 ? fmt(pageFreight) : ''}</span>
+                <span className="w-52" /><span className="w-20" /><span className="w-28" />
+              </div>
             )}
-          </table>
+          </div>
         </div>
-        <Pagination page={page} total={data?.total || 0} limit={20} onPageChange={p => { setPage(p); setSelectedId(null); }} />
+
+        {/* Paginação */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+          style={{ borderTop: `1px solid ${v.divider}`, color: v.textMuted }}>
+          <span className="text-sm">
+            Mostrando {rows.length ? (page - 1) * porPagina + 1 : 0} a {(page - 1) * porPagina + rows.length} de {data?.total || 0} pedidos
+            {isFetching && <span className="ml-2 text-xs opacity-60">atualizando…</span>}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => { setPage(p => Math.max(1, p - 1)); setSelectedId(null); }} disabled={page === 1}
+              className="p-1.5 rounded-lg disabled:opacity-30" style={{ border: v.control.border }}>
+              <ChevronLeft size={15} />
+            </button>
+            <span className="px-3 py-1 rounded-lg text-sm font-semibold" style={{ background: '#2563eb', color: 'white' }}>{page}</span>
+            <button onClick={() => { setPage(p => Math.min(totalPaginas, p + 1)); setSelectedId(null); }} disabled={page >= totalPaginas}
+              className="p-1.5 rounded-lg disabled:opacity-30" style={{ border: v.control.border }}>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+          <label className="text-sm flex items-center gap-2">
+            Itens por página:
+            <select value={porPagina} onChange={e => { setPorPagina(Number(e.target.value)); setPage(1); }}
+              style={{ ...v.control, padding: '0.3rem 0.5rem' }}>
+              {POR_PAGINA.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {/* Legenda */}
+      <div style={{ ...v.card, padding: '0.85rem 1rem' }}
+        className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm">
+        <span style={{ color: v.textMuted }}>Legenda de ações:</span>
+        <Legenda Icon={Eye}      cor="#3b82f6" texto="Visualizar detalhes" />
+        <Legenda Icon={FileText} cor="#3b82f6" texto="Gerar comprovante" />
+        <Legenda Icon={Send}     cor="#16a34a" texto="Enviar ao cliente" />
       </div>
 
       {/* Painel master-detail (abas) */}
@@ -258,6 +372,85 @@ export default function Sales() {
         </div>
       </Modal>
     </div>
+  );
+}
+
+// ── Coluna Atenção ───────────────────────────────────────────────────
+// Os status que encerram o pedido — some da lista até ligar Finalizados.
+const STATUS_FINAIS = new Set(['entregue', 'pedido_finalizado', 'delivered', 'completed', 'cancelled']);
+const ehFinal = s => STATUS_FINAIS.has(s);
+
+/**
+ * O nível de atenção do pedido, pela mesma régua do painel do vendedor:
+ * verde sem pendência, amarelo a 2 dias da saída, sirene a 1 dia ou já
+ * atrasado. Conta em dias de calendário e não em horas — quem diz
+ * "faltam 2 dias" na segunda está falando de quarta.
+ *
+ * O que é "pendência" vem do servidor, no campo `aguardando` de cada
+ * status: assim as duas telas não divergem sobre o que conta como
+ * pedido parado esperando alguém.
+ */
+function calcularAtencao(row, info) {
+  if (ehFinal(row.status)) return { level: 'normal', motivo: 'Pedido concluído' };
+
+  const prazo = row.ship_date || row.delivery_date || row.max_delivery_date;
+  const pendencia = !!info?.aguardando;
+  if (!pendencia) return { level: 'normal', motivo: 'Sem pendências', prazo };
+
+  if (!prazo) {
+    return { level: 'atencao', prazo: null,
+             motivo: `Parado em ${info?.area || 'processo'} · sem prazo de saída cadastrado` };
+  }
+
+  const hoje = new Date();
+  const [y, m, dd] = String(prazo).slice(0, 10).split('-').map(Number);
+  const dias = Math.round(
+    (Date.UTC(y, m - 1, dd) - Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())) / 864e5
+  );
+  const motivo = `Parado em ${info?.area || 'processo'} · ${dias < 0 ? `atrasado ${Math.abs(dias)} dia(s)` : `${dias} dia(s) para a saída`}`;
+
+  if (dias <= 1) return { level: 'critico', dias, prazo, motivo };
+  if (dias <= 2) return { level: 'atencao', dias, prazo, motivo };
+  return { level: 'normal', dias, prazo, motivo };
+}
+
+function SinalAtencao({ atencao }) {
+  const nivel = atencao?.level || 'normal';
+  const cfg = NIVEL_ATENCAO[nivel];
+  const titulo = `${cfg.titulo}${atencao?.motivo ? ` — ${atencao.motivo}` : ''}`;
+  return (
+    <span title={titulo} className="p-1 inline-flex">
+      {nivel === 'normal' && <CheckCircle2 size={22} style={{ color: cfg.cor }} />}
+      {nivel === 'atencao' && (
+        <AlertTriangle size={22} style={{ color: cfg.cor, animation: 'atencaoPisca 1s ease-in-out infinite' }} />
+      )}
+      {nivel === 'critico' && (
+        <Siren size={22} style={{ color: cfg.cor, animation: 'atencaoSirene 1.1s linear infinite' }} />
+      )}
+    </span>
+  );
+}
+
+function Acao({ titulo, cor, Icon, onClick }) {
+  return (
+    <button onClick={onClick} title={titulo}
+      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+      style={{ background: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}>
+      <Icon size={15} />
+    </button>
+  );
+}
+
+function Legenda({ Icon, cor, texto }) {
+  const v = useVend();
+  return (
+    <span className="flex items-center gap-2">
+      <span className="w-7 h-7 rounded-lg flex items-center justify-center"
+        style={{ background: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}>
+        <Icon size={14} />
+      </span>
+      <span style={{ color: v.textPrimary }}>{texto}</span>
+    </span>
   );
 }
 

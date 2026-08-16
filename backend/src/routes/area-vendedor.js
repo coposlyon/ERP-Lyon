@@ -10,6 +10,7 @@ const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
 const A        = require('../lib/atencao');
+const { ORIGENS } = require('../lib/origens');
 const { audit } = require('../lib/audit');
 
 const isManager = req => ['admin', 'manager'].includes(req.userProfile?.role);
@@ -19,12 +20,8 @@ const tabelaAusente = err =>
 // ── Vocabulário do fluxo (o filtro de Status lê daqui) ───────
 router.get('/status', (req, res) => res.json(A.listaStatus()));
 
-// As origens que o ERP reconhece. Marketplace novo entra aqui.
-const ORIGENS = [
-  'Site', 'WhatsApp', 'Instagram', 'Facebook', 'TikTok',
-  'Shopee', 'Mercado Livre', 'Amazon', 'Magalu',
-  'Presencial', 'Telefone', 'Indicação', 'Outro',
-];
+// O vocabulário de origem mora em lib/origens.js — a mesma lista que o
+// módulo de Vendas usa. Duas listas seriam duas verdades.
 router.get('/origens', (req, res) => res.json(ORIGENS));
 
 // ============================================================

@@ -43,9 +43,12 @@ async function criarVendaDoPedido(pedido, actor = {}) {
 
   // source/event_date podem não existir em bases antigas (migrations 029/…)
   const trySale = (extra) => supabase.from('VENDAS').insert({ ...baseSale, ...extra }).select('id, number').single();
-  let { data: sale, error } = await trySale({ source: 'site', event_date: pedido.event_date || null });
-  if (error && /(source|event_date)/i.test(error.message || '')) {
-    ({ data: sale, error } = await trySale({ source: 'site' }));
+  // origin='Site' porque foi o próprio cliente quem montou o pedido na
+  // loja — é o único caso em que o ERP sabe a origem sem perguntar.
+  let { data: sale, error } = await trySale({ source: 'site', origin: 'Site', event_date: pedido.event_date || null });
+  if (error && /(source|origin|event_date)/i.test(error.message || '')) {
+    ({ data: sale, error } = await trySale({ source: 'site', origin: 'Site' }));
+    if (error && /origin/i.test(error.message || '')) ({ data: sale, error } = await trySale({ source: 'site' }));
     if (error && /source/i.test(error.message || '')) ({ data: sale, error } = await trySale({}));
   }
   if (error) throw error;

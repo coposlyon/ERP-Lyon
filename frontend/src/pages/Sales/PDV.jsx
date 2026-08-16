@@ -131,6 +131,9 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [receivedAmount, setReceivedAmount] = useState('');
   const [installments, setInstallments] = useState(1);
   const [operationDate, setOperationDate] = useState(todayISO);
+  // De onde veio o cliente (Shopee, WhatsApp, Site...). Começa vazio de
+  // propósito: um padrão chutado enche o relatório de canal de mentira.
+  const [origem, setOrigem] = useState('');
   // As demais datas já nascem com a data da operação — assim o ano (e o dd/mm)
   // vêm preenchidos e o operador só ajusta o dia/mês que precisar.
   const [eventDate, setEventDate] = useState(todayISO);
@@ -215,6 +218,15 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   useEffect(() => {
     if (preloadCustomer?.id) setSelectedCustomer(c => c || preloadCustomer);
   }, [preloadCustomer]);
+
+  // O vocabulário de origem vem do servidor — marketplace novo aparece
+  // aqui sem mexer nesta tela.
+  const { data: origens = [] } = useQuery({
+    queryKey: ['origens-venda'],
+    queryFn: () => api.get('/sales/origens'),
+    staleTime: Infinity,
+    enabled: !isQuote,
+  });
 
   // Últimos 50 clientes cadastrados — aparecem ao clicar no campo (sem digitar)
   const [custFocus, setCustFocus] = useState(false);
@@ -714,6 +726,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       customer_id: selectedCustomer.id,
       type: 'sale',
       operation_date: operationDate || null,
+      origin: origem || null,
       event_date: evD || null,
       ship_date: shD || null,
       delivery_date: dlD || null,
@@ -877,10 +890,28 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       {/* Linha compacta — data da operação, cliente, transportadora e frete */}
       <div className="card p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[170px_minmax(0,1.1fr)_minmax(0,0.8fr)_130px_minmax(0,0.7fr)] gap-3 items-start">
-          {/* Data da operação / do orçamento */}
-          <div>
-            <label className="text-xs font-medium text-gray-500 block mb-1">{isQuote ? 'Data do orçamento *' : 'Data da operação *'}</label>
-            <input type="date" className="input text-sm w-full" value={operationDate} onChange={e => changeOperationDate(e.target.value)} />
+          {/* Data da operação / do orçamento + de onde veio o cliente */}
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">{isQuote ? 'Data do orçamento *' : 'Data da operação *'}</label>
+              <input type="date" className="input text-sm w-full" value={operationDate} onChange={e => changeOperationDate(e.target.value)} />
+            </div>
+            {!isQuote && (
+              <div>
+                {/* Sem isto a coluna Origem nasce vazia. É a pergunta que
+                    responde "de onde vieram nossas vendas" — e a mesma
+                    que a integração do Mercado Livre vai preencher
+                    sozinha quando entrar. */}
+                <label className="text-xs font-medium text-gray-500 block mb-1">Origem da venda</label>
+                <select className="input text-sm w-full" value={origem} onChange={e => setOrigem(e.target.value)}
+                  title="De onde este cliente veio. Fica gravado no pedido e alimenta o relatório de canal.">
+                  <option value="">— não informar —</option>
+                  {(origens || []).map(o => (
+                    <option key={o.key} value={o.key}>{o.icone} {o.key}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Cliente */}
