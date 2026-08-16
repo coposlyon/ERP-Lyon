@@ -9,6 +9,8 @@
 // no `pt()` logo abaixo.
 // ============================================================
 
+import { nivelDe } from './ui';
+
 // Projeção equiretangular. Nesta latitude ela alarga o Brasil de leve
 // no sentido leste-oeste — o mesmo desvio de qualquer mapa escolar.
 const X0 = -74.2, Y0 = 5.6, SCALE = 25;
@@ -48,33 +50,33 @@ const UF_SHAPES = {
 export const UF_LIST = Object.keys(UF_SHAPES).sort();
 
 /**
- * @param territory  UFs atendidas pelo vendedor (azul cheio)
- * @param leader     UF líder em compradores no mês (verde)
+ * @param territory  UFs atendidas pelo vendedor
+ * @param levels     { PR: 'alto', SC: 'medio', RS: 'baixo' } — o semáforo
+ *                   de desempenho, calculado no servidor sobre o período
+ *                   escolhido. UF atendida sem compra fica neutra.
  * @param onSelect   clique numa UF atendida
  */
-export default function BrasilMap({ territory = [], leader = null, onSelect, height = 220 }) {
+export default function BrasilMap({ territory = [], levels = {}, onSelect, height = 220 }) {
   const atendidos = new Set(territory);
 
   return (
     <svg viewBox="0 0 1000 1000" style={{ width: '100%', height, display: 'block' }}
-      role="img" aria-label="Mapa do Brasil com o território atendido">
+      role="img" aria-label="Mapa do Brasil com o desempenho por estado atendido">
       {Object.entries(UF_SHAPES).map(([uf, pts]) => {
         const atende = atendidos.has(uf);
-        const lider  = atende && uf === leader;
-        const fill   = lider ? '#22c55e' : atende ? '#2563eb' : 'rgba(37,99,235,0.13)';
-        const stroke = lider ? '#4ade80' : atende ? '#60a5fa' : 'rgba(96,165,250,0.35)';
+        const nivel  = atende ? nivelDe(levels[uf]) : null;
         return (
           <polygon
             key={uf}
             points={poly(pts)}
-            fill={fill}
-            stroke={stroke}
-            strokeWidth={lider ? 4 : 2}
+            fill={atende ? nivel.fill : 'rgba(37,99,235,0.10)'}
+            stroke={atende ? nivel.stroke : 'rgba(96,165,250,0.30)'}
+            strokeWidth={atende && levels[uf] === 'alto' ? 4 : 2}
             strokeLinejoin="round"
             onClick={atende && onSelect ? () => onSelect(uf) : undefined}
             style={{ cursor: atende && onSelect ? 'pointer' : 'default', transition: 'fill .2s' }}
           >
-            <title>{uf}{lider ? ' — estado líder' : atende ? ' — território atendido' : ''}</title>
+            <title>{uf}{atende ? ` — ${nivel.label}` : ''}</title>
           </polygon>
         );
       })}

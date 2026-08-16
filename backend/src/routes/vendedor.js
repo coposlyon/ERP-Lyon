@@ -20,7 +20,7 @@ const router   = express.Router();
 const supabase = require('../config/supabase');
 const V        = require('../lib/vendedor');
 const { askClaude } = require('../lib/ai');
-const { sendWhatsApp } = require('../lib/whatsapp');
+const { sendWhatsApp, sendWhatsAppImage } = require('../lib/whatsapp');
 const { uploadDataUrl } = require('../lib/storage');
 const { audit } = require('../lib/audit');
 
@@ -243,6 +243,64 @@ router.get('/promocoes', async (req, res) => {
   }
 });
 
+// ── Tela 4: artes aprovadas ──────────────────────────────────
+/**
+ * A biblioteca de artes que o vendedor pode anexar. Três fontes, todas
+ * passando pelo Administrativo:
+ *
+ *   - ARTES_PROMOCIONAIS  arte solta subida pelo Admin
+ *   - PROMOCOES_VENDEDOR  a arte da própria promoção
+ *   - CAMPANHAS_MKT       campanha oficial já publicada no Marketing
+ *
+ * O vendedor não escolhe arquivo do computador dele: `enviar` recusa
+ * qualquer URL que não esteja nesta lista.
+ */
+async function artesAprovadas(tenantId) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const [artes, promos, campanhas] = await Promise.all([
+    supabase.from('ARTES_PROMOCIONAIS')
+      .select('id, title, image_url, product_id')
+      .eq('tenant_id', tenantId).eq('is_active', true)
+      .order('created_at', { ascending: false }),
+    supabase.from('PROMOCOES_VENDEDOR')
+      .select('id, title, image_url, product_id, valid_until, PRODUTOS ( name )')
+      .eq('tenant_id', tenantId).eq('is_active', true)
+      .not('image_url', 'is', null),
+    supabase.from('CAMPANHAS_MKT')
+      .select('id, title, image_url, created_at')
+      .eq('tenant_id', tenantId).not('image_url', 'is', null)
+      .order('created_at', { ascending: false }).limit(30),
+  ]);
+
+  const out = [];
+  (artes.data || []).forEach(a => out.push({
+    id: `arte:${a.id}`, title: a.title || 'Arte promocional',
+    image_url: a.image_url, product_id: a.product_id, origem: 'Administrativo',
+  }));
+  (promos.data || []).filter(p => !p.valid_until || p.valid_until >= hoje).forEach(p => out.push({
+    id: `promo:${p.id}`, title: p.title || p.PRODUTOS?.name || 'Promoção',
+    image_url: p.image_url, product_id: p.product_id, origem: 'Promoção liberada',
+  }));
+  (campanhas.data || []).forEach(c => out.push({
+    id: `campanha:${c.id}`, title: c.title || 'Campanha de Marketing',
+    image_url: c.image_url, product_id: null, origem: 'Marketing',
+  }));
+
+  // A mesma arte pode aparecer na promoção e na campanha — uma linha só.
+  const vistas = new Set();
+  return out.filter(a => a.image_url && !vistas.has(a.image_url) && vistas.add(a.image_url));
+}
+
+router.get('/artes', async (req, res) => {
+  try {
+    res.json(await artesAprovadas(req.tenantId));
+  } catch (err) {
+    // Migração 066 pendente: sem biblioteca, e a tela já sabe dizer isso.
+    if (V.tabelaAusente(err)) return res.json([]);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Tela 4: a IA escreve o texto ─────────────────────────────
 // Ela não envia nada e não decide preço: pega o rascunho do vendedor e
 // devolve escrito direito, para ele editar antes de disparar.
@@ -273,10 +331,25 @@ router.post('/oferta/texto', async (req, res) => {
 });
 
 // ── Tela 4: disparo ──────────────────────────────────────────
-// Uma mensagem por cliente, com o nome dele dentro. Casas do Tur recebe
-// a dela; Mariana recebe a dela.
+/**
+ * Uma mensagem por cliente, com o nome dele dentro: Casas do Tur recebe
+ * a dela, Mariana recebe a dela.
+ *
+ * Duas coisas acontecem antes de qualquer mensagem sair:
+ *
+ * 1. A arte é conferida contra a biblioteca aprovada. URL de fora —
+ *    inclusive base64 subido pelo vendedor — é recusada. Arte comercial
+ *    é decisão do Administrativo, não de quem está com o celular na mão.
+ * 2. A campanha e uma linha POR DESTINATÁRIO são gravadas ANTES do
+ *    disparo. Se o processo cair no meio, fica registrado quem já tinha
+ *    recebido e quem ficou pendente — sem isso, uma queda no meio de 200
+ *    clientes viraria um disparo cego.
+ */
 router.post('/oferta/enviar', async (req, res) => {
-  const { customers = [], message, promo_id = null, product_id = null, image = null, personalize = true } = req.body;
+  const {
+    customers = [], message, promo_id = null, product_id = null,
+    product_name = null, image_url = null, personalize = true,
+  } = req.body;
 
   if (!Array.isArray(customers) || customers.length === 0) {
     return res.status(400).json({ error: 'Selecione ao menos um cliente' });
@@ -286,19 +359,90 @@ router.post('/oferta/enviar', async (req, res) => {
   }
 
   try {
-    let imageUrl = null;
-    if (image) imageUrl = await uploadDataUrl(image, 'ofertas');
+    // 1. A arte tem que estar na biblioteca aprovada
+    let arte = null;
+    if (image_url) {
+      const aprovadas = await artesAprovadas(req.tenantId);
+      arte = aprovadas.find(a => a.image_url === image_url)?.image_url || null;
+      if (!arte) {
+        return res.status(400).json({
+          error: 'Esta arte não está liberada. Use uma das artes aprovadas pelo Administrativo.',
+        });
+      }
+    }
 
-    const alvos = customers.filter(c => String(c.phone || '').replace(/\D/g, '').length >= 10);
-    const semTelefone = customers.length - alvos.length;
+    const vendedor = req.userProfile?.name || req.user?.email || null;
 
-    let sent = 0, failed = 0, firstError = null;
-    for (const c of alvos) {
-      const texto = personalize
-        ? String(message).replace(/\{nome do cliente\}/gi, c.name || '')
-        : String(message);
-      const r = await sendWhatsApp(c.phone, texto);
+    // 2. Cabeçalho da campanha
+    let oferta = null;
+    try {
+      const { data } = await supabase.from('OFERTAS_VENDEDOR').insert({
+        tenant_id: req.tenantId,
+        user_id: req.user.id,
+        promo_id: promo_id || null,
+        product_id: product_id || null,
+        customers: customers.map(c => ({ id: c.customer_id || c.id || null, name: c.name, phone: c.phone })),
+        message,
+        image_url: arte,
+        results: {},
+        status: 'sending',
+      }).select().single();
+      oferta = data;
+    } catch { /* migração pendente: segue sem cabeçalho */ }
+
+    // 3. Uma linha por destinatário, antes de qualquer disparo
+    const linhas = customers.map(c => {
+      const digits = String(c.phone || '').replace(/\D/g, '');
+      return {
+        tenant_id: req.tenantId,
+        oferta_id: oferta?.id || null,
+        user_id: req.user.id,
+        user_name: vendedor,
+        customer_id: c.customer_id || c.id || null,
+        customer_name: c.name || null,
+        phone: c.phone || null,
+        phone_digits: digits.length <= 11 ? `55${digits}` : digits,
+        promo_id: promo_id || null,
+        product_id: product_id || null,
+        product_name: product_name || null,
+        // O texto que ESTE cliente recebe, já com o nome dele dentro
+        message: personalize
+          ? String(message).replace(/\{nome do cliente\}/gi, c.name || '')
+          : String(message),
+        image_url: arte,
+        status: digits.length >= 10 ? 'pending' : 'no_phone',
+      };
+    });
+
+    let registros = [];
+    try {
+      const { data } = await supabase.from('OFERTAS_ENVIOS').insert(linhas).select();
+      registros = data || [];
+    } catch { /* migração 066 pendente: dispara sem registro individual */ }
+
+    // 4. Disparo, atualizando cada linha com o que aconteceu
+    let sent = 0, failed = 0, semTelefone = 0, firstError = null;
+
+    for (let i = 0; i < linhas.length; i++) {
+      const linha = linhas[i];
+      const registro = registros[i] || null;
+
+      if (linha.status === 'no_phone') { semTelefone++; continue; }
+
+      const r = arte
+        ? await sendWhatsAppImage(linha.phone, arte, linha.message)
+        : await sendWhatsApp(linha.phone, linha.message);
+
       if (r.ok) sent++; else { failed++; if (!firstError) firstError = r.error; }
+
+      if (registro) {
+        await supabase.from('OFERTAS_ENVIOS').update({
+          status: r.ok ? 'sent' : 'failed',
+          provider_message_id: r.id || null,
+          error: r.ok ? null : (r.error || 'falha no envio'),
+          sent_at: r.ok ? new Date().toISOString() : null,
+        }).eq('id', registro.id);
+      }
     }
 
     const results = {
@@ -309,27 +453,42 @@ router.post('/oferta/enviar', async (req, res) => {
       ...(sent === 0 && firstError ? { error: firstError } : {}),
     };
 
-    let oferta = null;
-    try {
-      const { data } = await supabase.from('OFERTAS_VENDEDOR').insert({
-        tenant_id: req.tenantId,
-        user_id: req.user.id,
-        promo_id: promo_id || null,
-        product_id: product_id || null,
-        customers: customers.map(c => ({ id: c.customer_id || c.id || null, name: c.name, phone: c.phone })),
-        message,
-        image_url: imageUrl,
-        results,
-        status: sent > 0 ? 'sent' : 'failed',
-      }).select().single();
-      oferta = data;
-    } catch { /* tabela ausente: o disparo já aconteceu, não desfaz */ }
+    if (oferta) {
+      await supabase.from('OFERTAS_VENDEDOR')
+        .update({ results, status: sent > 0 ? 'sent' : 'failed' })
+        .eq('id', oferta.id);
+    }
 
-    audit(req, 'create', 'oferta', oferta?.id || null, { results, promo_id });
-    res.json({ results, oferta });
+    audit(req, 'create', 'oferta', oferta?.id || null, { results, promo_id, arte: !!arte });
+    res.json({ results, oferta_id: oferta?.id || null, oferta });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Registro individual dos envios ───────────────────────────
+// É o que responde "o que foi enviado para a Casas do Tur no dia 14, por
+// quem, com qual produto, e o que ela respondeu".
+router.get('/envios', async (req, res) => {
+  try {
+    let q = supabase.from('OFERTAS_ENVIOS')
+      .select('*')
+      .eq('tenant_id', req.tenantId)
+      .order('created_at', { ascending: false })
+      .limit(Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 1000));
+
+    // Vendedor vê os próprios envios; gestor vê os de todo mundo.
+    if (!isManager(req)) q = q.eq('user_id', req.user.id);
+    else if (req.query.user_id) q = q.eq('user_id', String(req.query.user_id));
+
+    if (req.query.oferta_id)   q = q.eq('oferta_id', String(req.query.oferta_id));
+    if (req.query.customer_id) q = q.eq('customer_id', String(req.query.customer_id));
+    if (req.query.status)      q = q.eq('status', String(req.query.status));
+
+    const { data, error } = await q;
+    if (error) { if (V.tabelaAusente(error)) return res.json([]); throw error; }
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.get('/ofertas', async (req, res) => {
@@ -480,9 +639,63 @@ router.get('/promocoes-admin', requireManager, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-function promoPayload(req) {
+// ── Artes aprovadas (cadastro) ───────────────────────────────
+router.get('/artes-admin', requireManager, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('ARTES_PROMOCIONAIS')
+      .select('*, PRODUTOS ( id, name )')
+      .eq('tenant_id', req.tenantId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (V.tabelaAusente(error)) {
+        return res.status(503).json({ error: 'Rode a migração 066_vendedor_artes_envios.sql no Supabase.' });
+      }
+      throw error;
+    }
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/artes-admin', requireManager, async (req, res) => {
+  const { image, title = null, product_id = null } = req.body || {};
+  if (!image) return res.status(400).json({ error: 'Envie a imagem da arte' });
+  try {
+    const url = await uploadDataUrl(image, 'artes-promocionais');
+    if (!url) return res.status(400).json({ error: 'Não foi possível subir a imagem' });
+
+    const { data, error } = await supabase.from('ARTES_PROMOCIONAIS').insert({
+      tenant_id: req.tenantId,
+      title: title ? String(title).slice(0, 120) : null,
+      image_url: url,
+      product_id: product_id || null,
+      created_by: req.user.id,
+    }).select().single();
+    if (error) throw error;
+
+    audit(req, 'create', 'arte_promocional', data.id, { title });
+    res.status(201).json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/artes-admin/:id', requireManager, async (req, res) => {
+  try {
+    const { error } = await supabase.from('ARTES_PROMOCIONAIS')
+      .delete().eq('id', req.params.id).eq('tenant_id', req.tenantId);
+    if (error) throw error;
+    audit(req, 'delete', 'arte_promocional', req.params.id, null);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// A arte pode chegar como data URL (upload novo) ou como a URL que já
+// estava salva. Só sobe para o Storage quando é upload novo.
+async function promoPayload(req) {
   const b = req.body || {};
+  const image_url = b.image
+    ? await uploadDataUrl(b.image, 'artes-promocionais')
+    : (b.image_url || null);
   return {
+    image_url,
     product_id: b.product_id || null,
     title: b.title ? String(b.title).slice(0, 120) : null,
     suggested_qty: b.suggested_qty != null && b.suggested_qty !== '' ? Math.max(Number(b.suggested_qty) || 0, 0) : null,
@@ -500,7 +713,7 @@ router.post('/promocoes-admin', requireManager, async (req, res) => {
     const { data, error } = await supabase.from('PROMOCOES_VENDEDOR').insert({
       tenant_id: req.tenantId,
       created_by: req.user.id,
-      ...promoPayload(req),
+      ...(await promoPayload(req)),
     }).select().single();
     if (error) throw error;
     audit(req, 'create', 'promocao_vendedor', data.id, { product_id: data.product_id });
@@ -511,7 +724,7 @@ router.post('/promocoes-admin', requireManager, async (req, res) => {
 router.put('/promocoes-admin/:id', requireManager, async (req, res) => {
   try {
     const { data, error } = await supabase.from('PROMOCOES_VENDEDOR')
-      .update({ ...promoPayload(req), updated_at: new Date().toISOString() })
+      .update({ ...(await promoPayload(req)), updated_at: new Date().toISOString() })
       .eq('id', req.params.id).eq('tenant_id', req.tenantId)
       .select().single();
     if (error) throw error;

@@ -128,6 +128,24 @@ export function MigracaoPendente() {
   );
 }
 
+/**
+ * Semáforo de desempenho por estado. O nível (alto/médio/baixo) vem
+ * calculado do servidor; aqui só existe a cor. A lista, o indicador da
+ * UF e o mapa leem daqui — é o que garante que o Paraná não apareça
+ * verde num lugar e laranja no outro.
+ */
+export const NIVEL = {
+  alto:  { fill: '#22c55e', stroke: '#4ade80', text: '#4ade80', chip: 'rgba(34,197,94,0.20)',  label: 'maior desempenho' },
+  medio: { fill: '#f97316', stroke: '#fb923c', text: '#fb923c', chip: 'rgba(249,115,22,0.20)', label: 'desempenho intermediário' },
+  baixo: { fill: '#dc2626', stroke: '#f87171', text: '#f87171', chip: 'rgba(220,38,38,0.20)',  label: 'menor desempenho' },
+};
+
+// UF sem venda no período não tem desempenho a classificar — fica neutra.
+export const nivelDe = n => NIVEL[n] || {
+  fill: 'rgba(148,163,184,0.35)', stroke: 'rgba(148,163,184,0.5)',
+  text: '#94a3b8', chip: 'rgba(148,163,184,0.15)', label: 'sem compras no período',
+};
+
 // ── Formatadores ─────────────────────────────────────────────
 export const fmtBRL = v =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);

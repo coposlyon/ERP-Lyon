@@ -332,6 +332,15 @@ async function unitsByMonthBack(tenantId, userId, year, month, monthsBack) {
 /**
  * Estados que mais compram: conta CLIENTES DIFERENTES por UF, não
  * unidades. Cinco pedidos do mesmo cliente continuam sendo 1 comprador.
+ *
+ * Cada UF sai classificada em alto/médio/baixo — o semáforo verde,
+ * laranja e vermelho que a lista, o indicador e o mapa mostram. A
+ * classificação nasce aqui, e não em cada tela, para os três nunca
+ * discordarem entre si.
+ *
+ * Empate é empate: duas UFs com o mesmo número de compradores recebem
+ * a mesma cor. Com uma UF só, ela é o melhor desempenho; com duas, uma
+ * é verde e a outra vermelha — não existe intermediário entre duas.
  */
 function statesRanking(sales) {
   const byUf = {};
@@ -341,9 +350,23 @@ function statesRanking(sales) {
     if (!byUf[uf]) byUf[uf] = new Set();
     if (s.customer_id) byUf[uf].add(s.customer_id);
   }
-  return Object.entries(byUf)
+
+  const lista = Object.entries(byUf)
     .map(([uf, set]) => ({ uf, buyers: set.size }))
     .sort((a, b) => b.buyers - a.buyers || a.uf.localeCompare(b.uf));
+
+  if (!lista.length) return lista;
+
+  const melhor = lista[0].buyers;
+  const pior   = lista[lista.length - 1].buyers;
+
+  return lista.map((e, i) => ({
+    ...e,
+    position: i + 1,
+    level: e.buyers === melhor ? 'alto'
+         : e.buyers === pior   ? 'baixo'
+         : 'medio',
+  }));
 }
 
 /**

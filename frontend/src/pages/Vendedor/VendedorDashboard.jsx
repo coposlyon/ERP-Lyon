@@ -18,15 +18,17 @@ import {
 import {
   Target, ShoppingCart, DollarSign, TrendingUp, Minus, ArrowUp, CircleDollarSign,
   MapPin, Calendar, Trophy, Eye, ChevronRight, Star, Lock, Unlock, RefreshCw, Settings,
+  ClipboardList,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { useVend, Panel, Kpi, MigracaoPendente, fmtBRL, fmtUn, fmtPct, MESES } from './ui';
+import { useVend, Panel, Kpi, MigracaoPendente, nivelDe, fmtBRL, fmtUn, fmtPct, MESES } from './ui';
 import BrasilMap from './BrasilMap';
 import RankingProdutosModal from './RankingProdutosModal';
 import CarteiraClientesModal from './CarteiraClientesModal';
 import CriarOfertaModal from './CriarOfertaModal';
+import EnviosModal from './EnviosModal';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -73,6 +75,7 @@ export default function VendedorDashboard() {
   const [ranking, setRanking]   = useState(false);
   const [carteira, setCarteira] = useState(false);
   const [oferta, setOferta]     = useState(null);  // { customers, product }
+  const [envios, setEnvios]     = useState(false);
 
   const qs = `month=${mes}${sellerId ? `&user_id=${sellerId}` : ''}`;
 
@@ -99,6 +102,13 @@ export default function VendedorDashboard() {
   const cores    = data?.colors || [];
   const carteiraPrev = data?.carteira || [];
   const territorio = data?.seller?.territory || [];
+
+  // { PR: 'alto', SC: 'medio', RS: 'baixo' } — a mesma classificação
+  // alimenta o ranking, os indicadores de UF e o mapa.
+  const niveis = useMemo(
+    () => Object.fromEntries(estados.map(e => [e.uf, e.level])),
+    [estados],
+  );
 
   const batida = k.goal > 0 && k.units >= k.goal;
 
@@ -181,8 +191,12 @@ export default function VendedorDashboard() {
               {meses.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
           </div>
+          <button onClick={() => setEnvios(true)} className="btn-secondary btn-sm"
+            title="Registro de cada oferta enviada: cliente, produto, hora, status e resposta">
+            <ClipboardList size={14} /> Envios
+          </button>
           {gestor && (
-            <Link to="/vendedor/config" className="btn-secondary btn-sm" title="Plano de metas, território e promoções">
+            <Link to="/vendedor/config" className="btn-secondary btn-sm" title="Plano de metas, território, artes e promoções">
               <Settings size={14} /> Administrar
             </Link>
           )}
@@ -226,27 +240,27 @@ export default function VendedorDashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
 
         <Panel title="Estados que mais compram"
-          hint="Conta CLIENTES DIFERENTES que compraram no mês, não unidades. Cinco pedidos do mesmo cliente continuam sendo 1 comprador.">
+          hint="Conta CLIENTES DIFERENTES que compraram no período, não unidades: cinco pedidos do mesmo cliente continuam sendo 1 comprador. Verde é o maior desempenho, laranja o intermediário e vermelho o menor.">
           {estados.length === 0 ? (
             <p className="text-sm py-6 text-center" style={{ color: v.empty }}>Nenhuma compra no mês</p>
           ) : (
             <>
               <div className="space-y-3">
-                {estados.slice(0, 3).map((e, i) => {
+                {estados.slice(0, 3).map(e => {
                   const max = estados[0].buyers || 1;
-                  const top = i === 0;
+                  const cor = nivelDe(e.level);
                   return (
                     <div key={e.uf} className="flex items-center gap-3">
                       <span className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
-                        style={{ background: top ? '#16a34a' : '#2563eb', color: 'white' }}>{i + 1}</span>
+                        style={{ background: cor.fill, color: 'white' }}>{e.position}</span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm truncate" style={{ color: v.textPrimary }}>{UF_NOME[e.uf] || e.uf}</p>
                         <div className="h-1.5 rounded-full mt-1" style={{ background: v.divider }}>
                           <div className="h-full rounded-full"
-                            style={{ width: `${(e.buyers / max) * 100}%`, background: top ? '#22c55e' : '#3b82f6' }} />
+                            style={{ width: `${(e.buyers / max) * 100}%`, background: cor.fill }} />
                         </div>
                       </div>
-                      <span className="text-xs shrink-0" style={{ color: top ? '#4ade80' : '#60a5fa' }}>
+                      <span className="text-xs shrink-0 text-right" style={{ color: cor.text }}>
                         {fmtUn(e.buyers)} compradores
                       </span>
                     </div>
@@ -255,7 +269,7 @@ export default function VendedorDashboard() {
               </div>
               {lider && (
                 <div className="mt-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-bold"
-                  style={{ border: '1px solid rgba(34,197,94,0.5)', color: '#4ade80' }}>
+                  style={{ border: `1px solid ${nivelDe('alto').fill}80`, color: nivelDe('alto').text }}>
                   <Star size={15} /> ESTADO LÍDER: {(UF_NOME[lider] || lider).toUpperCase()}
                 </div>
               )}
@@ -298,22 +312,24 @@ export default function VendedorDashboard() {
         </Panel>
 
         <Panel title="Território atendido"
-          hint="Definido pelo Administrativo no cadastro do vendedor. O vendedor não altera.">
+          hint="Definido pelo Administrativo no cadastro do vendedor — o vendedor não altera. A cor de cada estado é o desempenho dele no período escolhido.">
           <div className="grid grid-cols-2 gap-3 items-center">
-            <BrasilMap territory={territorio} leader={lider} height={190} />
+            <BrasilMap territory={territorio} levels={niveis} height={190} />
             <div className="space-y-2">
               {territorio.length === 0 ? (
                 <p className="text-xs" style={{ color: v.empty }}>
                   Nenhuma UF definida. O Administrativo configura em Administrar → Vendedores.
                 </p>
-              ) : territorio.map(uf => (
-                <div key={uf} className="flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-                    style={{ background: uf === lider ? 'rgba(34,197,94,0.2)' : 'rgba(37,99,235,0.2)',
-                             color: uf === lider ? '#4ade80' : '#60a5fa' }}>{uf}</span>
-                  <span className="text-sm truncate" style={{ color: v.textPrimary }}>{UF_NOME[uf] || uf}</span>
-                </div>
-              ))}
+              ) : territorio.map(uf => {
+                const cor = nivelDe(niveis[uf]);
+                return (
+                  <div key={uf} className="flex items-center gap-2" title={`${UF_NOME[uf] || uf} — ${cor.label}`}>
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                      style={{ background: cor.chip, color: cor.text }}>{uf}</span>
+                    <span className="text-sm truncate" style={{ color: v.textPrimary }}>{UF_NOME[uf] || uf}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </Panel>
@@ -439,7 +455,10 @@ export default function VendedorDashboard() {
         customers={oferta?.customers || []}
         produtoSugerido={oferta?.product || null}
         sellerName={data?.seller?.name}
+        onVerEnvios={() => { setOferta(null); setEnvios(true); }}
       />
+
+      <EnviosModal open={envios} onClose={() => setEnvios(false)} sellerId={sellerId} />
     </div>
   );
 }

@@ -6,11 +6,12 @@
 // vendedor e as promoções que ele pode ofertar. Nada disso mora no
 // código — a promessa do painel é justamente essa.
 // ============================================================
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Target, Users, Tag, Plus, Trash2, Save, ArrowLeft, MapPin, Loader2, AlertTriangle,
+  Image as ImageIcon, Upload, X,
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -21,6 +22,7 @@ const ABAS = [
   { key: 'planos',    label: 'Plano de metas', Icon: Target },
   { key: 'vendedores',label: 'Vendedores',     Icon: Users  },
   { key: 'promocoes', label: 'Promoções',      Icon: Tag    },
+  { key: 'artes',     label: 'Artes',          Icon: ImageIcon },
 ];
 
 export default function VendedorConfig() {
@@ -54,6 +56,7 @@ export default function VendedorConfig() {
       {aba === 'planos'     && <AbaPlanos />}
       {aba === 'vendedores' && <AbaVendedores />}
       {aba === 'promocoes'  && <AbaPromocoes />}
+      {aba === 'artes'      && <AbaArtes />}
     </div>
   );
 }
@@ -308,7 +311,8 @@ function AbaVendedores() {
 function AbaPromocoes() {
   const v = useVend();
   const qc = useQueryClient();
-  const vazio = { product_id: '', title: '', suggested_qty: '', valid_until: '', promo_price: '', discount_pct: '', message_template: '', is_active: true };
+  const promoFileRef = useRef(null);
+  const vazio = { product_id: '', title: '', suggested_qty: '', valid_until: '', promo_price: '', discount_pct: '', message_template: '', is_active: true, image: null, image_url: '' };
   const [form, setForm] = useState(vazio);
   const [editId, setEditId] = useState(null);
 
@@ -383,6 +387,30 @@ function AbaPromocoes() {
             style={{ ...v.control, width: '100%', resize: 'vertical' }} />
         </Campo>
 
+        {/* A arte desta promoção já vem escolhida na tela de oferta */}
+        <Campo v={v} label="Arte da promoção (vai anexada no WhatsApp)" className="mt-3">
+          <input ref={promoFileRef} type="file" accept="image/*" className="hidden"
+            onChange={e => {
+              const f = e.target.files?.[0]; if (!f) return; e.target.value = '';
+              const r = new FileReader();
+              r.onload = ev => setForm(p => ({ ...p, image: ev.target.result }));
+              r.readAsDataURL(f);
+            }} />
+          {form.image || form.image_url ? (
+            <div className="relative inline-block">
+              <img src={form.image || form.image_url} alt="" className="rounded-lg" style={{ maxHeight: 130 }} />
+              <button onClick={() => setForm(p => ({ ...p, image: null, image_url: '' }))}
+                className="absolute -top-2 -right-2 bg-white rounded-full shadow p-1 text-gray-500 hover:text-red-500">
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => promoFileRef.current?.click()} className="btn-secondary btn-sm">
+              <ImageIcon size={14} /> Anexar arte
+            </button>
+          )}
+        </Campo>
+
         <div className="flex flex-wrap gap-2 mt-3">
           {editId && <button onClick={() => { setForm(vazio); setEditId(null); }} className="btn-secondary">Cancelar edição</button>}
           <button onClick={() => salvar.mutate()} disabled={!form.product_id || salvar.isPending} className="btn-primary">
@@ -425,10 +453,125 @@ function AbaPromocoes() {
                     suggested_qty: p.suggested_qty ?? '', valid_until: p.valid_until || '',
                     promo_price: p.promo_price ?? '', discount_pct: p.discount_pct ?? '',
                     message_template: p.message_template || '', is_active: p.is_active !== false,
+                    image: null, image_url: p.image_url || '',
                   });
                 }} className="btn-secondary btn-sm">Editar</button>
                 <button onClick={() => remover.mutate(p.id)} className="text-red-400 hover:text-red-500 p-1" title="Remover">
                   <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+// ── Artes aprovadas ──────────────────────────────────────────
+// A biblioteca que o vendedor enxerga na tela de oferta. O que não
+// estiver aqui (nem na arte de uma promoção, nem numa campanha do
+// Marketing) é recusado no envio — arte comercial é decisão daqui.
+function AbaArtes() {
+  const v = useVend();
+  const qc = useQueryClient();
+  const fileRef = useRef(null);
+  const [preview, setPreview] = useState(null);   // { image, title, product_id }
+
+  const { data: artes, isLoading, error } = useQuery({
+    queryKey: ['vendedor-artes-admin'],
+    queryFn: () => api.get('/vendedor/artes-admin'),
+    retry: false,
+  });
+  const { data: produtos } = useQuery({
+    queryKey: ['produtos-promocao'],
+    queryFn: () => api.get('/products?limit=500&is_active=true'),
+  });
+  const listaProdutos = produtos?.data || produtos || [];
+
+  const invalidar = () => {
+    qc.invalidateQueries(['vendedor-artes-admin']);
+    qc.invalidateQueries(['vendedor-artes']);
+  };
+
+  const subir = useMutation({
+    mutationFn: () => api.post('/vendedor/artes-admin', preview),
+    onSuccess: () => { toast.success('Arte liberada para os vendedores'); setPreview(null); invalidar(); },
+    onError: e => toast.error(e.error || 'Erro ao subir a arte'),
+  });
+
+  const remover = useMutation({
+    mutationFn: id => api.delete(`/vendedor/artes-admin/${id}`),
+    onSuccess: () => { toast.success('Arte removida'); invalidar(); },
+    onError: e => toast.error(e.error || 'Erro ao remover'),
+  });
+
+  function escolher(e) {
+    const f = e.target.files?.[0]; if (!f) return; e.target.value = '';
+    const r = new FileReader();
+    r.onload = ev => setPreview({ image: ev.target.result, title: f.name.replace(/\.[^.]+$/, ''), product_id: '' });
+    r.readAsDataURL(f);
+  }
+
+  if (error) return <div className="space-y-3"><MigracaoPendente /></div>;
+
+  return (
+    <div className="space-y-3">
+      <Panel title="Liberar nova arte"
+        hint="Só o que estiver aqui aparece para o vendedor anexar. Ele não escolhe arquivo do computador dele.">
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={escolher} />
+
+        {!preview ? (
+          <button onClick={() => fileRef.current?.click()} className="btn-secondary">
+            <Upload size={15} /> Escolher imagem da arte
+          </button>
+        ) : (
+          <div className="flex flex-wrap gap-3 items-start">
+            <div className="relative">
+              <img src={preview.image} alt="" className="rounded-lg" style={{ maxHeight: 150 }} />
+              <button onClick={() => setPreview(null)}
+                className="absolute -top-2 -right-2 bg-white rounded-full shadow p-1 text-gray-500 hover:text-red-500">
+                <X size={12} />
+              </button>
+            </div>
+            <div className="flex-1 min-w-[220px] space-y-3">
+              <Campo v={v} label="Nome da arte">
+                <input value={preview.title} onChange={e => setPreview(p => ({ ...p, title: e.target.value }))}
+                  style={{ ...v.control, width: '100%' }} />
+              </Campo>
+              <Campo v={v} label="Produto relacionado (opcional)">
+                <select value={preview.product_id}
+                  onChange={e => setPreview(p => ({ ...p, product_id: e.target.value }))}
+                  style={{ ...v.control, width: '100%' }}>
+                  <option value="">Nenhum</option>
+                  {listaProdutos.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </Campo>
+              <button onClick={() => subir.mutate()} disabled={subir.isPending} className="btn-primary">
+                {subir.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Liberar arte
+              </button>
+            </div>
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Artes liberadas">
+        {isLoading ? <Carregando /> : (artes || []).length === 0 ? (
+          <p className="text-sm py-6 text-center" style={{ color: v.empty }}>
+            Nenhuma arte liberada. Sem arte aqui, o vendedor envia a oferta só com texto.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-6 gap-3">
+            {artes.map(a => (
+              <div key={a.id} className="rounded-lg overflow-hidden relative" style={{ background: v.surface }}>
+                <img src={a.image_url} alt={a.title} className="w-full aspect-square object-cover" />
+                <div className="p-2">
+                  <p className="text-[11px] font-medium truncate" style={{ color: v.textPrimary }}>{a.title || 'Arte'}</p>
+                  <p className="text-[10px] truncate" style={{ color: v.textSubtle }}>{a.PRODUTOS?.name || 'sem produto'}</p>
+                </div>
+                <button onClick={() => remover.mutate(a.id)} title="Remover arte"
+                  className="absolute top-1 right-1 rounded-full p-1 bg-black/50 text-white hover:text-red-400">
+                  <Trash2 size={12} />
                 </button>
               </div>
             ))}
