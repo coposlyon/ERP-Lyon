@@ -23,6 +23,7 @@ const { askClaude } = require('../lib/ai');
 const { sendWhatsApp, sendWhatsAppImage } = require('../lib/whatsapp');
 const { uploadDataUrl } = require('../lib/storage');
 const { audit } = require('../lib/audit');
+const { cidadesDaUf } = require('../lib/municipios');
 
 const isManager = req => ['admin', 'manager'].includes(req.userProfile?.role);
 
@@ -70,7 +71,7 @@ router.get('/dashboard', async (req, res) => {
     const unitsByMonth = await V.unitsByMonthBack(tenantId, userId, year, month, cycleMonths);
     const cycle = V.cycleProgress(unitsByMonth, plans, year, month, cycleMonths);
 
-    const states  = V.statesRanking(sales);
+    const states  = V.statesRanking(sales, config.territory);
     const ranking = V.productRanking(sales, prevSales, 8);
     const carteira = V.customerRanking(sales).slice(0, config.top_clients);
 
@@ -113,7 +114,10 @@ router.get('/dashboard', async (req, res) => {
       } : null,
       cycle,
       states,
-      leader_state: states[0]?.uf || null,
+      // O líder é quem vendeu. Com o território inteiro na lista, o
+      // primeiro item pode ser um estado zerado — e coroar quem não
+      // vendeu nada seria pior do que não coroar ninguém.
+      leader_state: states.find(e => e.buyers > 0)?.uf || null,
       weekly: V.weeklySales(sales, year, month),
       top_product: ranking[0] || null,
       colors: V.colorRanking(sales),
@@ -223,6 +227,25 @@ router.get('/carteira', async (req, res) => {
 });
 
 // ── Tela 4: promoções liberadas ──────────────────────────────
+// ── Cidades de uma UF do território ──────────────────────────
+//
+// "Você atende o Paraná" não diz onde ir: são 399 cidades, e a
+// diferença entre Curitiba e Doutor Ulysses é a diferença entre uma
+// rota de um dia e uma de uma semana. Aqui sai a lista com o tamanho
+// de cada uma, o DDD para ligar e se está em região metropolitana.
+//
+// Não há nada de sigiloso: é geografia pública do IBGE, a mesma para
+// qualquer empresa. Por isso não filtra por território — o vendedor
+// que quiser conferir a UF vizinha antes de pedir a área não está
+// vendo dado de ninguém.
+router.get('/territorio/:uf/cidades', async (req, res) => {
+  try {
+    res.json(await cidadesDaUf(req.params.uf));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/promocoes', async (req, res) => {
   try {
     const today = new Date().toISOString().slice(0, 10);

@@ -17,18 +17,19 @@ import {
 } from 'chart.js';
 import {
   Target, ShoppingCart, DollarSign, TrendingUp, Minus, ArrowUp, CircleDollarSign,
-  MapPin, Calendar, Trophy, Eye, ChevronRight, Star, Lock, Unlock, RefreshCw, Settings,
+  MapPin, Calendar, Eye, ChevronRight, Star, Lock, Unlock, RefreshCw, Settings,
   ClipboardList,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { useVend, Panel, Kpi, MigracaoPendente, nivelDe, fmtBRL, fmtUn, fmtPct, MESES } from './ui';
+import { useVend, Panel, Kpi, MigracaoPendente, corUf, TrofeuUm, fmtBRL, fmtUn, fmtPct, MESES } from './ui';
 import BrasilMap from './BrasilMap';
 import RankingProdutosModal from './RankingProdutosModal';
 import CarteiraClientesModal from './CarteiraClientesModal';
 import CriarOfertaModal from './CriarOfertaModal';
 import EnviosModal from './EnviosModal';
+import CidadesUfModal from './CidadesUfModal';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -103,12 +104,17 @@ export default function VendedorDashboard() {
   const carteiraPrev = data?.carteira || [];
   const territorio = data?.seller?.territory || [];
 
-  // { PR: 'alto', SC: 'medio', RS: 'baixo' } — a mesma classificação
-  // alimenta o ranking, os indicadores de UF e o mapa.
-  const niveis = useMemo(
-    () => Object.fromEntries(estados.map(e => [e.uf, e.level])),
+  // { PR: 12, SC: 0 } — quantos compradores únicos por UF. O mapa e a
+  // lista leem daqui: é o que decide se o estado sai preenchido ou só
+  // contornado, e os dois nunca discordarem entre si depende de a conta
+  // ser feita num lugar só.
+  const compradores = useMemo(
+    () => Object.fromEntries(estados.map(e => [e.uf, e.buyers])),
     [estados],
   );
+
+  // Qual UF está com a tela de cidades aberta.
+  const [cidadesUf, setCidadesUf] = useState(null);
 
   const batida = k.goal > 0 && k.units >= k.goal;
 
@@ -240,28 +246,52 @@ export default function VendedorDashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
 
         <Panel title="Estados que mais compram"
-          hint="Conta CLIENTES DIFERENTES que compraram no período, não unidades: cinco pedidos do mesmo cliente continuam sendo 1 comprador. Verde é o maior desempenho, laranja o intermediário e vermelho o menor.">
+          hint="Conta CLIENTES DIFERENTES que compraram no período, não unidades: cinco pedidos do mesmo cliente continuam sendo 1 comprador. Cada estado tem a sua cor, a mesma do mapa. Estado do seu território que ainda não vendeu aparece com a barra vazia — é onde há o que fazer. O olho abre as cidades do estado.">
           {estados.length === 0 ? (
-            <p className="text-sm py-6 text-center" style={{ color: v.empty }}>Nenhuma compra no mês</p>
+            <p className="text-sm py-6 text-center" style={{ color: v.empty }}>
+              Nenhuma compra no mês e nenhum estado no território.
+            </p>
           ) : (
             <>
-              <div className="space-y-3">
-                {estados.slice(0, 3).map(e => {
+              <div className="space-y-3 overflow-auto" style={{ maxHeight: 268 }}>
+                {estados.map(e => {
+                  // A barra é proporcional ao líder, não ao total: com um
+                  // estado forte e cinco fracos, dividir pelo total deixaria
+                  // os cinco em fiapos indistintos.
                   const max = estados[0].buyers || 1;
-                  const cor = nivelDe(e.level);
+                  const comprou = e.buyers > 0;
+                  const cor = corUf(e.uf, comprou);
                   return (
                     <div key={e.uf} className="flex items-center gap-3">
                       <span className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
-                        style={{ background: cor.fill, color: 'white' }}>{e.position}</span>
+                        style={comprou
+                          ? { background: cor.base, color: '#0b1020' }
+                          : { border: `1px solid ${cor.stroke}`, color: cor.text }}>
+                        {e.position ?? '–'}
+                      </span>
+
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm truncate" style={{ color: v.textPrimary }}>{UF_NOME[e.uf] || e.uf}</p>
-                        <div className="h-1.5 rounded-full mt-1" style={{ background: v.divider }}>
-                          <div className="h-full rounded-full"
-                            style={{ width: `${(e.buyers / max) * 100}%`, background: cor.fill }} />
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm truncate" style={{ color: comprou ? v.textPrimary : v.textMuted }}>
+                            {UF_NOME[e.uf] || e.uf}
+                          </p>
+                          <button onClick={() => setCidadesUf(e.uf)}
+                            title={`Ver as cidades de ${UF_NOME[e.uf] || e.uf}`}
+                            className="p-0.5 rounded hover:opacity-70 shrink-0" style={{ color: cor.text }}>
+                            <Eye size={13} />
+                          </button>
+                        </div>
+                        <div className="h-1.5 rounded-full mt-1"
+                          style={{ background: v.divider, border: comprou ? 'none' : `1px solid ${cor.stroke}` }}>
+                          {comprou && (
+                            <div className="h-full rounded-full"
+                              style={{ width: `${(e.buyers / max) * 100}%`, background: cor.base }} />
+                          )}
                         </div>
                       </div>
+
                       <span className="text-xs shrink-0 text-right" style={{ color: cor.text }}>
-                        {fmtUn(e.buyers)} compradores
+                        {comprou ? `${fmtUn(e.buyers)} compradores` : 'sem compras'}
                       </span>
                     </div>
                   );
@@ -269,7 +299,7 @@ export default function VendedorDashboard() {
               </div>
               {lider && (
                 <div className="mt-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-bold"
-                  style={{ border: `1px solid ${nivelDe('alto').fill}80`, color: nivelDe('alto').text }}>
+                  style={{ border: `1px solid ${corUf(lider).stroke}`, color: corUf(lider).text }}>
                   <Star size={15} /> ESTADO LÍDER: {(UF_NOME[lider] || lider).toUpperCase()}
                 </div>
               )}
@@ -312,21 +342,31 @@ export default function VendedorDashboard() {
         </Panel>
 
         <Panel title="Território atendido"
-          hint="Definido pelo Administrativo no cadastro do vendedor — o vendedor não altera. A cor de cada estado é o desempenho dele no período escolhido.">
+          hint="Definido pelo Administrativo no cadastro do vendedor — o vendedor não altera. Cada estado tem a sua cor, a mesma da lista ao lado; o estado preenchido é o que teve compra no período, o só contornado é o que está zerado. Clique no estado ou no olho para ver as cidades.">
           <div className="grid grid-cols-2 gap-3 items-center">
-            <BrasilMap territory={territorio} levels={niveis} height={190} />
-            <div className="space-y-2">
+            <BrasilMap territory={territorio} buyers={compradores} height={190}
+              onSelect={setCidadesUf} />
+            <div className="space-y-2 overflow-auto" style={{ maxHeight: 190 }}>
               {territorio.length === 0 ? (
                 <p className="text-xs" style={{ color: v.empty }}>
                   Nenhuma UF definida. O Administrativo configura em Administrar → Vendedores.
                 </p>
               ) : territorio.map(uf => {
-                const cor = nivelDe(niveis[uf]);
+                const comprou = (compradores[uf] || 0) > 0;
+                const cor = corUf(uf, comprou);
                 return (
-                  <div key={uf} className="flex items-center gap-2" title={`${UF_NOME[uf] || uf} — ${cor.label}`}>
+                  <div key={uf} className="flex items-center gap-2"
+                    title={`${UF_NOME[uf] || uf} — ${comprou ? `${compradores[uf]} comprador(es)` : 'sem compras no período'}`}>
                     <span className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-                      style={{ background: cor.chip, color: cor.text }}>{uf}</span>
-                    <span className="text-sm truncate" style={{ color: v.textPrimary }}>{UF_NOME[uf] || uf}</span>
+                      style={{ background: cor.chip, color: cor.text, border: `1px solid ${cor.stroke}` }}>{uf}</span>
+                    <span className="text-sm truncate flex-1" style={{ color: comprou ? v.textPrimary : v.textMuted }}>
+                      {UF_NOME[uf] || uf}
+                    </span>
+                    <button onClick={() => setCidadesUf(uf)}
+                      title={`Ver as cidades de ${UF_NOME[uf] || uf}`}
+                      className="p-1 rounded hover:opacity-70 shrink-0" style={{ color: cor.text }}>
+                      <Eye size={14} />
+                    </button>
                   </div>
                 );
               })}
@@ -353,7 +393,7 @@ export default function VendedorDashboard() {
             <p className="text-sm py-8 text-center" style={{ color: v.empty }}>Nenhum produto vendido</p>
           ) : (
             <div className="flex flex-col items-center text-center gap-1">
-              <Trophy size={44} className="text-yellow-400" />
+              <TrofeuUm size={46} />
               <p className="text-base font-bold mt-1" style={{ color: '#f59e0b' }}>{topProd.name}</p>
               <p className="text-xl font-bold" style={{ color: '#60a5fa' }}>
                 {fmtUn(topProd.units)} <span className="text-xs font-semibold">un vendidas</span>
@@ -459,6 +499,8 @@ export default function VendedorDashboard() {
       />
 
       <EnviosModal open={envios} onClose={() => setEnvios(false)} sellerId={sellerId} />
+
+      <CidadesUfModal uf={cidadesUf} onClose={() => setCidadesUf(null)} />
     </div>
   );
 }

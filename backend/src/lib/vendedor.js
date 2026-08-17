@@ -333,16 +333,16 @@ async function unitsByMonthBack(tenantId, userId, year, month, monthsBack) {
  * Estados que mais compram: conta CLIENTES DIFERENTES por UF, não
  * unidades. Cinco pedidos do mesmo cliente continuam sendo 1 comprador.
  *
- * Cada UF sai classificada em alto/médio/baixo — o semáforo verde,
- * laranja e vermelho que a lista, o indicador e o mapa mostram. A
- * classificação nasce aqui, e não em cada tela, para os três nunca
- * discordarem entre si.
+ * O TERRITÓRIO INTEIRO APARECE, tenha vendido ou não. Antes a lista
+ * só mostrava UF com compra, e o estado zerado sumia da tela — logo
+ * ele, que é o único onde ainda há o que fazer. Estado do território
+ * sem nenhum comprador entra com buyers = 0, no fim da lista, e a tela
+ * desenha a barra vazia.
  *
- * Empate é empate: duas UFs com o mesmo número de compradores recebem
- * a mesma cor. Com uma UF só, ela é o melhor desempenho; com duas, uma
- * é verde e a outra vermelha — não existe intermediário entre duas.
+ * A posição é só de quem vendeu. Não existe "5º lugar" com zero
+ * comprador: ninguém está em quinto numa disputa em que não entrou.
  */
-function statesRanking(sales) {
+function statesRanking(sales, territory = []) {
   const byUf = {};
   for (const s of sales) {
     const uf = String(s.CLIENTES?.address?.state || '').toUpperCase().trim();
@@ -351,21 +351,23 @@ function statesRanking(sales) {
     if (s.customer_id) byUf[uf].add(s.customer_id);
   }
 
-  const lista = Object.entries(byUf)
-    .map(([uf, set]) => ({ uf, buyers: set.size }))
+  // As UFs do território entram mesmo sem venda; as UFs com venda
+  // entram mesmo fora do território (cliente que se mudou, venda
+  // atendida em cobertura) — esconder faturamento porque a UF não
+  // estava no cadastro seria mentir sobre o que foi vendido.
+  const ufs = new Set(Object.keys(byUf));
+  for (const uf of territory || []) {
+    if (UF_REGEX.test(uf)) ufs.add(uf);
+  }
+
+  const lista = [...ufs]
+    .map(uf => ({ uf, buyers: byUf[uf] ? byUf[uf].size : 0 }))
     .sort((a, b) => b.buyers - a.buyers || a.uf.localeCompare(b.uf));
 
-  if (!lista.length) return lista;
-
-  const melhor = lista[0].buyers;
-  const pior   = lista[lista.length - 1].buyers;
-
-  return lista.map((e, i) => ({
+  let posicao = 0;
+  return lista.map(e => ({
     ...e,
-    position: i + 1,
-    level: e.buyers === melhor ? 'alto'
-         : e.buyers === pior   ? 'baixo'
-         : 'medio',
+    position: e.buyers > 0 ? ++posicao : null,
   }));
 }
 
