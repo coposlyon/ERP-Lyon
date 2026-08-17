@@ -13,13 +13,14 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search, Filter, RotateCcw, Plus, Eye, FileText, Send, CheckCircle2,
+  Search, Filter, RotateCcw, Plus, Eye, FileText, Send, CheckCircle2, Trash2,
   AlertTriangle, Siren, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useVend, fmtBRL } from './ui';
 import AtencaoModal from './AtencaoModal';
 import NovoPedidoModal from './NovoPedidoModal';
+import ExcluirPedidoModal from '@/components/UI/ExcluirPedidoModal';
 
 // Ícone das plataformas de origem. Emoji e não imagem: origem nova
 // entra sem precisar subir arquivo nenhum.
@@ -52,6 +53,7 @@ export default function PedidosVendedor() {
   const [porPagina, setPorPagina]     = useState(10);
   const [atencaoDe, setAtencaoDe]     = useState(null);   // pedido da janelinha
   const [novoPedido, setNovoPedido]   = useState(false);
+  const [excluir, setExcluir]         = useState(null);
 
   const { data: statusList = [] } = useQuery({
     queryKey: ['fluxo-status'],
@@ -204,9 +206,13 @@ export default function PedidosVendedor() {
                     de detalhes, onde o vendedor vê o que está mandando —
                     disparar documento a partir de uma linha da lista é
                     convite para mandar o pedido errado. */}
-                <span className="w-28 shrink-0 flex justify-center">
+                <span className="w-28 shrink-0 flex justify-center gap-1.5">
                   <Acao titulo="Visualizar detalhes" cor="#3b82f6" Icon={Eye}
                     onClick={() => navigate(`/vendedor/pedidos/${p.id}`)} />
+                  {/* O vendedor pede; quem libera e o gerente, digitando
+                      o acesso dele na hora. */}
+                  <Acao titulo="Excluir pedido (precisa da autorizacao do gerente)" cor="#ef4444" Icon={Trash2}
+                    onClick={() => setExcluir(p)} />
                 </span>
               </div>
             ))}
@@ -252,6 +258,9 @@ export default function PedidosVendedor() {
 
       <AtencaoModal pedido={atencaoDe} onClose={() => setAtencaoDe(null)} onComunicado={refetch} />
       <NovoPedidoModal open={novoPedido} onClose={() => setNovoPedido(false)} />
+
+      <ExcluirPedidoModal pedido={excluir} modo="gerente"
+        onClose={() => setExcluir(null)} onExcluido={refetch} />
     </div>
   );
 }

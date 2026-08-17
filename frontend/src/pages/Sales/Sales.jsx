@@ -4,7 +4,7 @@ import { Plus, Pencil, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import Modal from '@/components/UI/Modal';
+import ExcluirPedidoModal from '@/components/UI/ExcluirPedidoModal';
 import { useVend, fmtBRL } from '@/components/UI/theme';
 import { iconeOrigem, corStatus, NIVEL_ATENCAO, CSS_ATENCAO, codigoPedido, codigoCliente } from '@/lib/pedidoUi';
 import { SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
@@ -43,9 +43,10 @@ export default function Sales() {
   const [endDate, setEndDate] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [delTarget, setDelTarget] = useState(null);
-  const [delPassword, setDelPassword] = useState('');
   const [selectedId, setSelectedId] = useState(null);
-  const { isAdmin } = useAuth();
+  const { isAdmin, isManager } = useAuth();
+  // Gestor apaga direto por aqui, confirmando com a propria senha.
+  const podeExcluir = isAdmin || isManager;
   const navigate = useNavigate();
   const qc = useQueryClient();
   const searchRef = useRef();
@@ -85,11 +86,6 @@ export default function Sales() {
   const pageFreight = rows.reduce((s, r) => s + (r.freight || 0), 0);
   const totalPaginas = Math.max(1, Math.ceil((data?.total || 0) / porPagina));
 
-  const deleteSale = useMutation({
-    mutationFn: () => api.post(`/sales/${delTarget.id}/delete`, { password: delPassword }),
-    onSuccess: () => { qc.invalidateQueries(['sales']); setDelTarget(null); setDelPassword(''); setSelectedId(null); toast.success('Pedido excluído!'); },
-    onError: (e) => toast.error(e.error || 'Não foi possível excluir'),
-  });
 
   function handleSearch(e) { e?.preventDefault?.(); setSearch(searchInput); setPage(1); }
   function clearFilters() {
@@ -98,7 +94,7 @@ export default function Sales() {
   }
   const hasFilters = search || status || startDate || endDate || finalizados;
 
-  function openDelete() { if (selected) { setDelTarget(selected); setDelPassword(''); } }
+  function openDelete() { if (selected && podeExcluir) setDelTarget(selected); }
   function alterar() { if (selectedId) navigate(`/sales/${selectedId}`); }
 
   // Atalhos estilo Delphi (F2 incluir, F3 alterar, F4 excluir, F5 atualizar, F6 importar, Ctrl+F pesquisar, ESC fechar)
@@ -107,7 +103,7 @@ export default function Sales() {
       if (delTarget) return; // deixa o modal tratar
       if (e.key === 'F2') { e.preventDefault(); navigate('/sales/new'); }
       else if (e.key === 'F3') { if (selectedId) { e.preventDefault(); alterar(); } }
-      else if (e.key === 'F4') { if (selectedId && isAdmin) { e.preventDefault(); openDelete(); } }
+      else if (e.key === 'F4') { if (selectedId && podeExcluir) { e.preventDefault(); openDelete(); } }
       else if (e.key === 'F5') { e.preventDefault(); qc.invalidateQueries(['sales']); }
       else if (e.key === 'F6') { e.preventDefault(); navigate('/quotes'); }
       else if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); searchRef.current?.focus(); }
@@ -280,12 +276,17 @@ export default function Sales() {
                   <span className="w-20 shrink-0 flex justify-center">
                     <SinalAtencao atencao={atencao} />
                   </span>
-                  {/* Uma ação só: comprovante e envio ao cliente moram na
-                      tela do pedido, onde se vê o que está sendo mandado. */}
-                  <span className="w-28 shrink-0 flex justify-center"
+                  {/* Comprovante e envio ao cliente moram na tela do
+                      pedido, onde se vê o que está sendo mandado. Aqui
+                      ficam ver e — para gestor — excluir. */}
+                  <span className="w-28 shrink-0 flex justify-center gap-1.5"
                     onClick={e => e.stopPropagation()}>
                     <Acao titulo="Visualizar detalhes" cor="#3b82f6" Icon={Eye}
                       onClick={() => setSelectedId(row.id)} />
+                    {podeExcluir && (
+                      <Acao titulo="Excluir pedido (pede sua senha)" cor="#ef4444" Icon={Trash2}
+                        onClick={() => setDelTarget(row)} />
+                    )}
                   </span>
                 </div>
               );
@@ -343,30 +344,11 @@ export default function Sales() {
       <SaleDetail saleId={selectedId} onChanged={() => qc.invalidateQueries(['sales'])} />
 
       {/* Excluir pedido (admin + senha) */}
-      <Modal isOpen={!!delTarget} onClose={() => !deleteSale.isPending && setDelTarget(null)} title="Excluir pedido de venda" size="sm">
-        <div className="space-y-4">
-          <div className="flex gap-2.5 bg-red-50 border border-red-100 rounded-xl p-3">
-            <Trash2 size={18} className="text-red-500 mt-0.5 shrink-0" />
-            <p className="text-sm text-gray-700">
-              Você vai <b>excluir permanentemente</b> o pedido <b>#{delTarget?.number}</b>
-              {delTarget?.CLIENTES?.name ? <> de <b>{delTarget.CLIENTES.name}</b></> : ''}. Esta ação não pode ser desfeita.
-            </p>
-          </div>
-          <div>
-            <label className="label">Confirme com a sua senha de admin</label>
-            <input type="password" className="input" autoFocus value={delPassword}
-              onChange={e => setDelPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && delPassword && deleteSale.mutate()} placeholder="Sua senha" />
-          </div>
-          <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
-            <button onClick={() => setDelTarget(null)} disabled={deleteSale.isPending} className="btn-secondary">Cancelar</button>
-            <button onClick={() => deleteSale.mutate()} disabled={deleteSale.isPending || !delPassword}
-              className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50">
-              {deleteSale.isPending ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />} Excluir
-            </button>
-          </div>
-        </div>
-      </Modal>
+      {/* Exclusao com senha — mesma peca usada na tela do vendedor,
+          la no modo que pede o acesso do gerente. */}
+      <ExcluirPedidoModal pedido={delTarget} modo="proprio"
+        onClose={() => setDelTarget(null)}
+        onExcluido={() => { setSelectedId(null); qc.invalidateQueries(['sales']); }} />
     </div>
   );
 }

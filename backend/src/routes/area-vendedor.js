@@ -11,6 +11,7 @@ const router   = express.Router();
 const supabase = require('../config/supabase');
 const A        = require('../lib/atencao');
 const { ORIGENS } = require('../lib/origens');
+const { autorizar, excluirVenda } = require('../lib/excluirVenda');
 const { audit } = require('../lib/audit');
 
 const isManager = req => ['admin', 'manager'].includes(req.userProfile?.role);
@@ -239,6 +240,48 @@ function documentosDoPedido(venda) {
       nota: jaColetado ? null : 'Disponível após a coleta' },
   ];
 }
+
+/**
+ * Excluir um pedido pela tela do vendedor.
+ *
+ * O vendedor não apaga sozinho: ele chama o gerente, que digita o
+ * e-mail e a senha DELE ali na hora. Fica na auditoria quem autorizou —
+ * não só quem clicou.
+ *
+ * Só pedido da carteira dele, e só enquanto não saiu: depois de coletado
+ * o pedido existe no mundo, e apagar do sistema não o traz de volta.
+ */
+const FORA_DE_ALCANCE = ['mercadoria_coletada', 'produto_retirado', 'em_transito',
+                         'aguardando_entrega', 'entregue', 'pedido_finalizado'];
+
+router.post('/pedidos/:id/excluir', async (req, res) => {
+  try {
+    const { data: venda } = await supabase.from('VENDAS')
+      .select('id, number, status, user_id')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!venda) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    if (!isManager(req) && venda.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Este pedido não é da sua carteira' });
+    }
+    if (FORA_DE_ALCANCE.includes(venda.status)) {
+      return res.status(409).json({
+        error: 'Este pedido já saiu da fábrica e não pode ser excluído. Fale com o gerente.',
+      });
+    }
+
+    const auth = await autorizar(
+      String(req.body?.email || '').trim().toLowerCase(),
+      String(req.body?.password || ''),
+      req.tenantId,
+    );
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.motivo });
+
+    const r = await excluirVenda(req, venda.id, auth.usuario, req.body?.motivo);
+    if (!r.ok) return res.status(r.status).json({ error: r.motivo });
+    res.json({ message: r.mensagem, autorizado_por: auth.usuario.name });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 /** O detalhe que a janelinha da coluna Atenção mostra. */
 router.get('/pedidos/:id/atencao', async (req, res) => {

@@ -7,6 +7,7 @@ const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
 const { recomputeRating } = require('../lib/customerRating');
 const { ORIGENS, normalizarOrigem } = require('../lib/origens');
+const { autorizar, excluirVenda } = require('../lib/excluirVenda');
 
 const saleSchema = Joi.object({
   items: Joi.array().min(1).items(
@@ -429,46 +430,37 @@ router.patch('/:id/origin', async (req, res) => {
 });
 
 // Exclusão do pedido de venda — só ADMIN e com a senha dele
+/**
+ * Excluir pedido de venda.
+ *
+ * Quem está no administrativo confirma com a PRÓPRIA senha. Gerente
+ * também pode — ele responde pelo time, e obrigar a chamar o dono da
+ * empresa para apagar um pedido lançado errado só faz o pedido errado
+ * ficar no sistema.
+ *
+ * A regra de quem autoriza e o desfazer (devolver estoque, limpar
+ * financeiro) moram em lib/excluirVenda.js, porque a tela do vendedor
+ * usa exatamente os mesmos.
+ */
 router.post('/:id/delete', async (req, res) => {
   try {
-    if (req.userProfile?.role !== 'admin') {
-      return res.status(403).json({ error: 'Apenas administradores podem excluir pedidos de venda.' });
+    const papel = req.userProfile?.role;
+    if (!['admin', 'manager'].includes(papel)) {
+      return res.status(403).json({ error: 'Apenas administradores e gerentes podem excluir pedidos de venda.' });
     }
-    const password = String(req.body?.password || '');
+
+    // O e-mail é o da sessão: aqui a pessoa confirma a própria senha.
+    // Não usar 401 — o interceptor do front trata 401 como sessão
+    // expirada e desloga no meio da operação.
     const email = req.user?.email;
-    if (!password) return res.status(400).json({ error: 'Digite sua senha para confirmar.' });
-    // Não usar 401: o interceptor do front trata 401 como sessão expirada e desloga.
     if (!email) return res.status(403).json({ error: 'Não consegui confirmar sua sessão. Recarregue a página e tente de novo.' });
 
-    // Reautentica para confirmar a senha
-    const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-    const { error: authErr } = await client.auth.signInWithPassword({ email, password });
-    if (authErr) {
-      const badPass = authErr.status === 400 || /invalid|credential|password|senha/i.test(authErr.message || '');
-      return res.status(badPass ? 403 : 502).json({ error: badPass ? 'Senha incorreta.' : `Não foi possível confirmar a senha: ${authErr.message}` });
-    }
+    const auth = await autorizar(email, String(req.body?.password || ''), req.tenantId);
+    if (!auth.ok) return res.status(auth.status).json({ error: auth.motivo });
 
-    const id = req.params.id;
-    // guarda o cliente para recalcular estrelas/total 12m depois da exclusão
-    const { data: saleRow } = await supabase.from('VENDAS')
-      .select('customer_id').eq('id', id).eq('tenant_id', req.tenantId).maybeSingle();
-    // remove os vínculos (itens, financeiro e movimentações da venda)
-    const safe = (p) => p.then(() => {}, () => {});
-    await safe(supabase.from('VENDA_ITENS').delete().eq('sale_id', id));
-    await safe(supabase.from('LANCAMENTOS').delete().eq('tenant_id', req.tenantId).eq('reference_type', 'sale').eq('reference_id', id));
-    await safe(supabase.from('MOVIMENTACOES_ESTOQUE').delete().eq('tenant_id', req.tenantId).eq('reference_type', 'sale').eq('reference_id', id));
-
-    const { error } = await supabase.from('VENDAS').delete().eq('id', id).eq('tenant_id', req.tenantId);
-    if (error) {
-      if (/foreign key|violat|23503/i.test(error.message || '')) {
-        return res.status(409).json({ error: 'Não foi possível excluir: o pedido tem registros vinculados.' });
-      }
-      throw error;
-    }
-    audit(req, 'delete', 'sale', id, { hard: true });
-    // a venda excluída sai da soma dos 12 meses do cliente
-    if (saleRow?.customer_id) recomputeRating(req.tenantId, saleRow.customer_id).catch(() => {});
-    res.json({ message: 'Pedido de venda excluído com sucesso' });
+    const r = await excluirVenda(req, req.params.id, auth.usuario, req.body?.motivo);
+    if (!r.ok) return res.status(r.status).json({ error: r.motivo });
+    res.json({ message: r.mensagem, estoque_devolvido: r.estoque_devolvido });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
