@@ -141,6 +141,40 @@
 }
 
 /* ═══════════════════════════════════════════════════════
+   TABELA COM CABEÇALHO FIXO
+
+   Antes a página inteira rolava: para ver o cliente nº 40 o operador
+   perdia de vista o título, os filtros e — pior — o nome das colunas,
+   e tinha que subir de novo só para lembrar qual coluna era qual.
+
+   Agora quem rola é só o corpo da tabela. Como o bloco tem altura
+   máxima, o que está acima dele (título, botões, filtros) nunca sai da
+   tela, e o cabeçalho das colunas gruda no topo da área que rola.
+
+   A altura desconta o cabeçalho do ERP, o título da página, a barra de
+   filtros e a paginação — é o espaço que sobra da janela.
+   ═══════════════════════════════════════════════════════ */
+.tabela-rolagem {
+  max-height: calc(100vh - 21rem);
+  min-height: 14rem;
+}
+
+/* Em tela baixa, sobra pouco: solta o limite para não virar uma
+   janelinha de duas linhas. */
+@media (max-height: 700px) {
+  .tabela-rolagem { max-height: none; }
+}
+
+/* O cabeçalho precisa ser OPACO — se for transparente, as linhas
+   passam por baixo dele e leem-se duas coisas sobrepostas. */
+.table-auto thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+html.dark .table-auto thead th { background-color: #0a1130 !important; }
+
+/* ═══════════════════════════════════════════════════════
    LEGIBILIDADE  —  tamanho mínimo de texto
 
    O sistema foi escrito com muito tipo miúdo: 1.062 usos de `text-xs`
@@ -417,6 +451,13 @@ html.dark .hover\:bg-amber-50:hover   { background-color: rgba(245,158,11,0.18) 
 
 /* Linha marcada como sugestão (o primeiro resultado da busca) */
 html.dark [class*="bg-blue-50/"] { background-color: rgba(47,107,255,0.14) !important; }
+
+/* Linha SELECIONADA da tabela. `bg-primary-50` é lavanda quase branco,
+   e a lista de clientes ainda o aplica com `!` (importante do Tailwind)
+   — por isso a linha clicada engolia o próprio texto. Aqui ela vira um
+   azul aceso, com a faixa da esquerda continuando a marcar qual é. */
+html.dark .bg-primary-50,
+html.dark .\!bg-primary-50 { background-color: rgba(47,107,255,0.26) !important; }
 
 /* Estoque negativo pisca: é a informação que impede o operador de
    prometer o que não tem. Quem pediu menos movimento no sistema recebe

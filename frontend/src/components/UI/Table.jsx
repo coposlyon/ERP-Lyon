@@ -50,9 +50,14 @@ export function Table({ columns, data, loading, emptyMessage = 'Nenhum registro 
   }
 
   return (
-    <div className="overflow-x-auto">
+    // O cabeçalho gruda no topo enquanto as linhas rolam: numa lista de
+    // 43 clientes (ou 400) perder de vista qual coluna é qual obriga a
+    // subir de novo só para conferir. `overflow-x-auto` sozinho não
+    // basta — o sticky precisa de um contêiner que role no eixo Y, e é
+    // isso que o `max-height` abaixo cria.
+    <div className="overflow-auto tabela-rolagem">
       <table className="table-auto">
-        <thead>
+        <thead className="sticky top-0 z-20">
           <tr>
             {columns.map(col => {
               const active = sort.key === col.key;
