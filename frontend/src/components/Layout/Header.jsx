@@ -1,5 +1,5 @@
 import {
-  Menu, Bell, Search, X, Sun, Moon, LogOut, ChevronDown,
+  Menu, Bell, Search, X, LogOut, ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 
 export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
   const { user, tenant, logout } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark } = useTheme();
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -92,17 +92,8 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
           <Search size={18} />
         </button>
 
-        {/* Toggle Tema — Sol / Lua */}
-        <button
-          onClick={toggleTheme}
-          className={iconCls}
-          aria-label={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
-          title={isDark ? 'Modo claro' : 'Modo escuro'}
-        >
-          {isDark
-            ? <Sun size={18} className="text-yellow-400" />
-            : <Moon size={18} />}
-        </button>
+        {/* O botão de tema saiu: o ERP tem um visual só. Enquanto ele
+            existia, um clique acidental devolvia o sistema ao branco. */}
 
         {/* Notificações */}
         <button className={`${iconCls} relative`} aria-label="Notificações">
