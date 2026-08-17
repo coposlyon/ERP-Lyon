@@ -270,7 +270,7 @@ html.dark body {
   background-color: #060a1f;
   background-image: radial-gradient(1200px 620px at 50% -12%, #16205c 0%, #0a0f2c 45%, #060a1f 100%);
   background-attachment: fixed;
-  color: #eaf0ff;
+  color: #ffffff;
 }
 
 /* ── O contorno neon ────────────────────────────────────────────
@@ -344,13 +344,31 @@ html.dark .bg-rose-50    { background-color: #4c0519 !important; }
 html.dark .bg-rose-100   { background-color: #881337 !important; }
 
 /* ── Texto ──────────────────────────────────────────────────── */
-html.dark .text-gray-900 { color: #eaf0ff !important; }
-html.dark .text-gray-800 { color: #dbe4ff !important; }
-html.dark .text-gray-700 { color: #c3d0f0 !important; }
-html.dark .text-gray-600 { color: #9db2e8 !important; }
-html.dark .text-gray-500 { color: #7b8fc7 !important; }
-html.dark .text-gray-400 { color: #2b3d84 !important; }
-html.dark .text-gray-300 { color: #1d2b6b !important; }
+/* Texto no escuro: TUDO legível.
+ *
+ * Estava errado aqui. A varredura que repintou as superfícies trocou
+ * também estes valores, e o `text-gray-400` — a classe de texto mais
+ * usada do sistema, 729 ocorrências — acabou apontando para #2b3d84,
+ * que é um tom de BORDA. Rótulo azul-escuro sobre painel azul-escuro
+ * some, e foi o que aconteceu na ficha do cliente.
+ *
+ * Agora os tons neutros vão de branco a quase-branco. A hierarquia
+ * sobrevive no tamanho e no peso da fonte, não em apagar a cor: num
+ * fundo escuro, "mais claro" já é secundário o bastante.
+ *
+ * As cores com significado (verde, ciano, âmbar, vermelho) continuam
+ * como estão — elas informam, e todas passam longe do azul do fundo. */
+html.dark .text-gray-900,
+html.dark .text-gray-800,
+html.dark .text-gray-700,
+html.dark .text-gray-600,
+html.dark .text-slate-700 { color: #ffffff !important; }
+
+html.dark .text-gray-500 { color: #ffffff !important; }
+html.dark .text-gray-400 { color: #dce5fb !important; }
+html.dark .text-gray-300,
+html.dark .text-gray-200,
+html.dark .text-gray-100 { color: #cfdcf8 !important; }
 
 /* Texto colorido (valores, ícones) */
 html.dark .text-indigo-600 { color: #818cf8 !important; }
@@ -400,27 +418,29 @@ html.dark .divide-gray-100 > * + * { border-color: #0a1130 !important; }
 html.dark .divide-gray-200 > * + * { border-color: #1d2b6b !important; }
 
 /* ── Inputs / Formulários ───────────────────────────────────── */
-html.dark ::placeholder { color: #2b3d84 !important; }
+/* Placeholder mais apagado que o conteúdo, mas ainda legível — o
+   #2b3d84 de antes era borda, e sumia dentro do campo. */
+html.dark ::placeholder { color: #94a9d8 !important; }
 
 html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 html.dark select,
 html.dark textarea {
   background-color: #060a1f !important;
   border-color: #1d2b6b !important;
-  color: #eaf0ff !important;
+  color: #ffffff !important;
 }
 
 html.dark input:disabled,
 html.dark select:disabled,
 html.dark textarea:disabled {
   background-color: #0a1130 !important;
-  color: #7b8fc7 !important;
+  color: #b9c8ee !important;
   opacity: 0.7 !important;
 }
 
 html.dark select option {
   background-color: #0a1130;
-  color: #eaf0ff;
+  color: #ffffff;
 }
 
 /* O campo em foco acende. É a peça que faz o formulário parecer da
@@ -456,26 +476,26 @@ html.dark .card-header { border-color: #1d2b6b !important; }
 html.dark .input {
   background-color: #060a1f !important;
   border-color: #1d2b6b !important;
-  color: #eaf0ff !important;
+  color: #ffffff !important;
 }
 html.dark .input:disabled {
   background-color: #0a1130 !important;
-  color: #7b8fc7 !important;
+  color: #b9c8ee !important;
 }
 
-html.dark .label { color: #c3d0f0 !important; }
+html.dark .label { color: #ffffff !important; }
 
 html.dark .btn-secondary {
   background-color: #0a1130 !important;
   border-color: #1d2b6b !important;
-  color: #c3d0f0 !important;
+  color: #ffffff !important;
 }
 html.dark .btn-secondary:hover { background-color: #1d2b6b !important; }
 
-html.dark .btn-ghost { color: #c3d0f0 !important; }
+html.dark .btn-ghost { color: #ffffff !important; }
 html.dark .btn-ghost:hover { background-color: #1d2b6b !important; }
 
-html.dark .page-title { color: #eaf0ff !important; }
+html.dark .page-title { color: #ffffff !important; }
 
 /* ── Tabelas ────────────────────────────────────────────────── */
 html.dark .table-auto th {
@@ -483,11 +503,11 @@ html.dark .table-auto th {
      faixa cinza atravessando a tabela. */
   background-color: transparent !important;
   border-color: #1d2b6b !important;
-  color: #9db2e8 !important;
+  color: #dce5fb !important;
 }
 html.dark .table-auto td {
   border-color: #0a1130 !important;
-  color: #c3d0f0;
+  color: #ffffff;
 }
 html.dark .table-auto tr:hover td {
   background-color: #0a1130 !important;
@@ -498,7 +518,7 @@ html.dark .badge-green  { background-color: #052e16 !important; color: #86efac !
 html.dark .badge-yellow { background-color: #422006 !important; color: #fde68a !important; }
 html.dark .badge-red    { background-color: #450a0a !important; color: #fca5a5 !important; }
 html.dark .badge-blue   { background-color: #082f49 !important; color: #7dd3fc !important; }
-html.dark .badge-gray   { background-color: #0a1130 !important; color: #9db2e8 !important; }
+html.dark .badge-gray   { background-color: #0a1130 !important; color: #dce5fb !important; }
 html.dark .badge-purple { background-color: #2e1065 !important; color: #c4b5fd !important; }
 
 /* ── Status classes ─────────────────────────────────────────── */
@@ -506,7 +526,7 @@ html.dark .status-confirmed    { background-color: #052e16 !important; color: #8
 html.dark .status-open         { background-color: #422006 !important; color: #fde68a !important; }
 html.dark .status-in_production{ background-color: #082f49 !important; color: #7dd3fc !important; }
 html.dark .status-ready        { background-color: #2e1065 !important; color: #c4b5fd !important; }
-html.dark .status-delivered    { background-color: #0a1130 !important; color: #9db2e8 !important; }
+html.dark .status-delivered    { background-color: #0a1130 !important; color: #dce5fb !important; }
 html.dark .status-cancelled    { background-color: #450a0a !important; color: #fca5a5 !important; }
 html.dark .status-pending      { background-color: #422006 !important; color: #fde68a !important; }
 html.dark .status-paid         { background-color: #052e16 !important; color: #86efac !important; }
@@ -529,12 +549,12 @@ html.dark .bg-sidebar {
 }
 
 html.dark .sidebar-item {
-  color: #9db2e8;
+  color: #dce5fb;
   border-radius: 0.75rem;
 }
 html.dark .sidebar-item:hover {
   background-color: #101a44 !important;
-  color: #eaf0ff;
+  color: #ffffff;
 }
 
 /* O item ativo é o retângulo aceso do menu nas telas aprovadas */
@@ -574,13 +594,13 @@ html.dark .sidebar-item.active {
 /* Rótulos e títulos. Era aqui que o texto sumia: cinza-claro pensado
    para cartão branco, num cartão que virou marinho. */
 .cadastro-publico label,
-.cadastro-publico .text-gray-700 { color: #c3d0f0 !important; }
+.cadastro-publico .text-gray-700 { color: #ffffff !important; }
 .cadastro-publico .text-gray-900,
 .cadastro-publico h1,
-.cadastro-publico h2 { color: #eaf0ff !important; }
-.cadastro-publico .text-gray-600 { color: #9db2e8 !important; }
+.cadastro-publico h2 { color: #ffffff !important; }
+.cadastro-publico .text-gray-600 { color: #dce5fb !important; }
 .cadastro-publico .text-gray-500,
-.cadastro-publico .text-gray-400 { color: #7b8fc7 !important; }
+.cadastro-publico .text-gray-400 { color: #b9c8ee !important; }
 
 /* Blocos internos (Endereço, consentimento do Instagram, revisão) */
 .cadastro-publico .bg-gray-50,
@@ -607,7 +627,7 @@ html.dark .sidebar-item.active {
 
 /* ── Details / summary ──────────────────────────────────────── */
 html.dark details { border-color: #1d2b6b !important; }
-html.dark details summary { color: #c3d0f0 !important; }
+html.dark details summary { color: #ffffff !important; }
 html.dark details summary:hover { background-color: #0a1130 !important; }
 
 /* ── Recharts (Dashboard) ───────────────────────────────────── */
@@ -617,9 +637,9 @@ html.dark .recharts-text, html.dark .recharts-cartesian-axis-tick-value { fill: 
 html.dark .recharts-default-tooltip {
   background-color: #0a1130 !important;
   border-color: #1d2b6b !important;
-  color: #eaf0ff !important;
+  color: #ffffff !important;
 }
-html.dark .recharts-legend-item-text { color: #c3d0f0 !important; }
+html.dark .recharts-legend-item-text { color: #ffffff !important; }
 
 /* ── Ring / shadow ──────────────────────────────────────────── */
 html.dark .shadow-sm  { box-shadow: 0 1px 2px 0 rgba(0,0,0,.5) !important; }

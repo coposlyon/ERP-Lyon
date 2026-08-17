@@ -34,9 +34,9 @@ export function useVend() {
     card,
     divider:     isDark ? 'rgba(255,255,255,0.07)' : '#f3f4f6',
     textPrimary: isDark ? '#ffffff'                : '#111827',
-    textMuted:   isDark ? 'rgba(255,255,255,0.55)' : '#6b7280',
-    textSubtle:  isDark ? 'rgba(255,255,255,0.38)' : '#9ca3af',
-    empty:       isDark ? 'rgba(255,255,255,0.25)' : '#d1d5db',
+    textMuted:   isDark ? 'rgba(255,255,255,0.80)' : '#6b7280',
+    textSubtle:  isDark ? 'rgba(255,255,255,0.64)' : '#9ca3af',
+    empty:       isDark ? 'rgba(255,255,255,0.48)' : '#d1d5db',
     surface:     isDark ? 'rgba(255,255,255,0.06)' : '#f9fafb',
     control: {
       background: isDark ? 'rgba(255,255,255,0.07)' : '#ffffff',
