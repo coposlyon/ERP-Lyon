@@ -280,14 +280,12 @@ export default function Sales() {
                   <span className="w-20 shrink-0 flex justify-center">
                     <SinalAtencao atencao={atencao} />
                   </span>
-                  <span className="w-28 shrink-0 flex justify-center gap-1.5"
+                  {/* Uma ação só: comprovante e envio ao cliente moram na
+                      tela do pedido, onde se vê o que está sendo mandado. */}
+                  <span className="w-28 shrink-0 flex justify-center"
                     onClick={e => e.stopPropagation()}>
                     <Acao titulo="Visualizar detalhes" cor="#3b82f6" Icon={Eye}
                       onClick={() => setSelectedId(row.id)} />
-                    <Acao titulo="Gerar comprovante do pedido (não é nota fiscal)" cor="#3b82f6" Icon={FileText}
-                      onClick={() => navigate(`/sales/${row.id}`)} />
-                    <Acao titulo="Enviar ao cliente" cor="#16a34a" Icon={Send}
-                      onClick={() => toast('O envio ao cliente será uma tela própria, ainda em definição.', { icon: '🚧' })} />
                   </span>
                 </div>
               );
@@ -338,9 +336,7 @@ export default function Sales() {
       <div style={{ ...v.card, padding: '0.85rem 1rem' }}
         className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm">
         <span style={{ color: v.textMuted }}>Legenda de ações:</span>
-        <Legenda Icon={Eye}      cor="#3b82f6" texto="Visualizar detalhes" />
-        <Legenda Icon={FileText} cor="#3b82f6" texto="Gerar comprovante" />
-        <Legenda Icon={Send}     cor="#16a34a" texto="Enviar ao cliente" />
+        <Legenda Icon={Eye} cor="#3b82f6" texto="Visualizar detalhes" />
       </div>
 
       {/* Painel master-detail (abas) */}

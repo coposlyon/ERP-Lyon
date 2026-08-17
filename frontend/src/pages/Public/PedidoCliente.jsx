@@ -1,0 +1,508 @@
+// ============================================================
+// TELA 3B — Acompanhamento do Pedido pelo cliente
+//
+// Tela externa: nenhum módulo do ERP aparece aqui, e nenhum dado
+// interno chega até ela — o recorte é feito no servidor
+// (lib/pedidoPublico.js), campo a campo.
+//
+// Ela consulta o MESMO pedido do ERP, não uma cópia: quando a Produção
+// muda a etapa lá dentro, o cliente vê a mudança aqui na atualização
+// seguinte, sem ninguém precisar avisar.
+// ============================================================
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import {
+  MessageSquare, Clock, User, FileText, DollarSign, CalendarDays, Package,
+  Truck, Info, FolderOpen, Download, Sparkles, Headset, X, Loader2, Send,
+  CircleCheck, Star, MapPin, Circle, Wallet, Hourglass, PenTool, FileImage,
+  FileCheck, FlaskConical, Brush, CircleDashed, GlassWater, Settings,
+  PackageOpen, ShieldQuestion, ShieldCheck, Camera, ImageUp, PackageSearch,
+  PackageCheck, ShoppingCart,
+} from 'lucide-react';
+import api from '@/lib/api';
+
+// Nomeados um a um: `import * as Icons` derruba o tree-shaking e arrasta
+// a biblioteca inteira do lucide para dentro desta página.
+const ICONES = {
+  CircleCheck, Wallet, Hourglass, Package, PenTool, FileImage, FileCheck,
+  FlaskConical, Brush, CircleDashed, GlassWater, Settings, PackageOpen,
+  ShieldQuestion, ShieldCheck, Camera, ImageUp, Truck, PackageSearch,
+  PackageCheck, ShoppingCart,
+};
+
+const brl = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+const dia = iso => iso ? new Date(String(iso).slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+const dataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
+// A paleta do acompanhamento. Concluído verde, etapa atual âmbar,
+// futuro azul/roxo apagado — etapa que ainda não aconteceu nunca fica
+// verde, senão o cliente lê como pronto o que não está.
+const CORES = {
+  concluido: { anel: '#22c55e', fundo: 'rgba(34,197,94,0.14)',  texto: '#4ade80' },
+  atual:     { anel: '#f59e0b', fundo: 'rgba(245,158,11,0.18)', texto: '#fbbf24' },
+  pendente:  { anel: 'rgba(129,140,248,0.35)', fundo: 'rgba(99,102,241,0.06)', texto: 'rgba(165,180,252,0.65)' },
+};
+
+const CARD = {
+  background: 'rgba(12,20,52,0.66)',
+  border: '1px solid rgba(96,165,250,0.28)',
+  borderRadius: '0.9rem',
+  backdropFilter: 'blur(8px)',
+};
+
+export default function PedidoCliente() {
+  const navigate = useNavigate();
+  const [contato, setContato] = useState(false);
+  const [verTudo, setVerTudo] = useState(false);
+  const token = sessionStorage.getItem('acompanhar_token');
+
+  useEffect(() => { if (!token) navigate('/acompanhar', { replace: true }); }, [token, navigate]);
+
+  const { data: p, isLoading, error } = useQuery({
+    queryKey: ['acompanhar-pedido'],
+    queryFn: () => api.get('/acompanhar', { headers: { Authorization: `Bearer ${token}` } }),
+    enabled: !!token,
+    // O pedido anda enquanto o cliente olha: a Produção muda a etapa no
+    // ERP e a tela pega a mudança sozinha.
+    refetchInterval: 60000,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (error?.error && /sess/i.test(error.error)) {
+      sessionStorage.removeItem('acompanhar_token');
+      navigate('/acompanhar', { replace: true });
+    }
+  }, [error, navigate]);
+
+  if (!token) return null;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#060a1f' }}>
+        <Loader2 size={30} className="animate-spin" style={{ color: '#60a5fa' }} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4" style={{ background: '#060a1f' }}>
+        <p className="text-white text-center">{error.error || 'Não foi possível carregar seu pedido.'}</p>
+        <button onClick={() => navigate('/acompanhar')} className="rounded-xl px-5 py-2.5 text-white"
+          style={{ background: '#2563eb' }}>Entrar de novo</button>
+      </div>
+    );
+  }
+
+  const etapaAtual = (p.linha_do_tempo || []).find(e => e.estado === 'atual');
+
+  return (
+    <div className="min-h-screen pb-10"
+      style={{ background: 'radial-gradient(1200px 600px at 50% -20%, #16205c 0%, #0a0f2c 45%, #060a1f 100%)' }}>
+
+      {/* ── Cabeçalho ─────────────────────────────────────────── */}
+      <header className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-4"
+        style={{ borderBottom: '1px solid rgba(96,165,250,0.2)' }}>
+        <img src="/lyon-logo.png" alt="Lyon Copos" className="h-10 w-auto" draggable={false} />
+        <h1 className="text-lg sm:text-xl font-bold text-white order-3 sm:order-2 w-full sm:w-auto text-center">
+          Acompanhamento do Pedido
+        </h1>
+        {/* Um botão de atendimento na tela inteira — sem duplicar. */}
+        <button onClick={() => setContato(true)}
+          className="order-2 sm:order-3 rounded-xl px-4 py-2.5 text-sm text-white flex items-center gap-2"
+          style={{ border: '1px solid rgba(96,165,250,0.5)', background: 'rgba(37,99,235,0.18)' }}>
+          <MessageSquare size={16} /> Falar com o vendedor
+        </button>
+      </header>
+
+      <main className="px-4 sm:px-6 py-5 space-y-4 max-w-[1600px] mx-auto">
+
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-2xl font-bold text-white">Pedido de Venda</h2>
+          <span className="text-2xl font-bold" style={{ color: '#60a5fa' }}>{p.pedido.codigo}</span>
+          <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium"
+            style={{ border: `1px solid ${p.pedido.concluido ? '#22c55e' : '#f59e0b'}66`,
+                     color: p.pedido.concluido ? '#4ade80' : '#fbbf24' }}>
+            <Clock size={15} /> {p.pedido.concluido ? 'Pedido entregue' : 'Pedido em andamento'}
+          </span>
+        </div>
+
+        {/* ── Cliente / Pedido / Valores / Prazos ─────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+
+          <Card Icon={User} titulo="Cliente">
+            <p className="text-lg font-bold text-white flex items-center gap-2 flex-wrap">
+              {p.cliente.nome}
+              {p.cliente.prime_estrelas >= 4 && (
+                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(59,130,246,0.22)', color: '#93c5fd' }}>
+                  <Star size={9} /> Cliente Verificado
+                </span>
+              )}
+            </p>
+            <Linha rotulo="Código"   valor={p.cliente.codigo} />
+            <Linha rotulo="CPF/CNPJ" valor={p.cliente.documento} />
+            <Linha rotulo="Telefone" valor={p.cliente.telefone} />
+            <Linha rotulo="E-mail"   valor={p.cliente.email} />
+            <Linha rotulo="Cidade"   valor={p.cliente.cidade ? `${p.cliente.cidade}/${p.cliente.uf || ''}` : null} />
+            {p.cliente.prime_estrelas > 0 && (
+              <div className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+                style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }}>
+                <Star size={11} /> Lyon Prime • {p.cliente.prime_estrelas} estrela{p.cliente.prime_estrelas > 1 ? 's' : ''}
+              </div>
+            )}
+          </Card>
+
+          <Card Icon={FileText} titulo="Dados do Pedido">
+            <Linha rotulo="Número"          valor={p.pedido.codigo} />
+            <Linha rotulo="Data do Pedido"  valor={dataHora(p.pedido.data)} />
+            <Linha rotulo="Data do Evento"  valor={p.pedido.data_evento ? dia(p.pedido.data_evento) : null} />
+            <Linha rotulo="Origem"          valor={p.pedido.origem} />
+            <Linha rotulo="Transportadora"  valor={p.pedido.transportadora} />
+            <Linha rotulo="Cotação"         valor={p.pedido.cotacao} />
+            <Linha rotulo="Rastreio"        valor={p.pedido.rastreio} />
+          </Card>
+
+          <Card Icon={DollarSign} titulo="Valores">
+            <Linha rotulo="Valor dos Produtos" valor={brl(p.valores.produtos)} />
+            <Linha rotulo="Frete"              valor={brl(p.valores.frete)} />
+            <div className="mt-3 pt-3 text-center" style={{ borderTop: '1px solid rgba(96,165,250,0.25)' }}>
+              <p className="text-xs" style={{ color: '#60a5fa' }}>Valor Total</p>
+              <p className="text-3xl font-bold" style={{ color: '#22d3ee' }}>{brl(p.valores.total)}</p>
+            </div>
+          </Card>
+
+          <Card Icon={CalendarDays} titulo="Prazos e Entrega">
+            <Linha rotulo="Previsão de Saída"    valor={p.prazos.saida ? dia(p.prazos.saida) : null} />
+            <Linha rotulo="Data de Coleta"       valor={p.prazos.coleta ? dia(p.prazos.coleta) : null} />
+            <Linha rotulo="Previsão de Entrega"  valor={p.prazos.entrega ? dia(p.prazos.entrega) : null} />
+            <Linha rotulo="Dias Úteis de Transporte"
+              valor={p.prazos.dias_transporte ? `${p.prazos.dias_transporte} dias` : null} />
+          </Card>
+        </div>
+
+        {/* ── Itens ───────────────────────────────────────────── */}
+        <Card Icon={Package} titulo="Itens do Pedido" semPadding>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: 820 }}>
+              <thead>
+                <tr style={{ color: 'rgba(147,197,253,0.8)' }}>
+                  {['Cód. Produto','Produto','Capacidade','Linha','Categoria','Características','Qtd','Valor Unit.','Valor Total']
+                    .map((h, i) => (
+                      <th key={h} className={`px-3 py-2.5 text-[11px] font-semibold whitespace-nowrap ${i >= 6 ? 'text-right' : 'text-left'}`}
+                        style={{ borderBottom: '1px solid rgba(96,165,250,0.22)' }}>{h}</th>
+                    ))}
+                </tr>
+              </thead>
+              <tbody>
+                {p.itens.map((i, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid rgba(96,165,250,0.12)' }}>
+                    <td className="px-3 py-2.5 font-mono text-white">{i.codigo || '—'}</td>
+                    <td className="px-3 py-2.5 text-white">{i.produto}</td>
+                    <td className="px-3 py-2.5" style={{ color: 'rgba(255,255,255,0.7)' }}>{i.capacidade || '—'}</td>
+                    <td className="px-3 py-2.5" style={{ color: 'rgba(255,255,255,0.7)' }}>{i.linha || '—'}</td>
+                    <td className="px-3 py-2.5" style={{ color: 'rgba(255,255,255,0.7)' }}>{i.categoria}</td>
+                    {/* Só o que se aplica a este produto: um tradicional
+                        não mostra "cor da boca" vazia. */}
+                    <td className="px-3 py-2.5">
+                      <div className="flex flex-wrap gap-1.5">
+                        {i.campos.length === 0
+                          ? <span style={{ color: 'rgba(255,255,255,0.35)' }}>—</span>
+                          : i.campos.map(c => (
+                            <span key={c.rotulo} className="text-[11px] px-2 py-0.5 rounded-full"
+                              style={{ background: 'rgba(99,102,241,0.18)', color: '#c7d2fe' }}>
+                              {c.rotulo}: {c.valor}
+                            </span>
+                          ))}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-white">{i.quantidade}</td>
+                    <td className="px-3 py-2.5 text-right" style={{ color: 'rgba(255,255,255,0.7)' }}>{brl(i.valor_unitario)}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-white">{brl(i.valor_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        {/* ── Linha do tempo ──────────────────────────────────── */}
+        <Card Icon={Clock} titulo="Linha do Tempo do Pedido">
+          {etapaAtual && (
+            <p className="text-sm mb-4" style={{ color: '#fbbf24' }}>
+              Seu pedido está em: <b>{etapaAtual.label}</b>
+            </p>
+          )}
+          <div className="flex flex-wrap gap-x-2 gap-y-5">
+            {(p.linha_do_tempo || []).map(passo => <Balao key={passo.key} passo={passo} />)}
+          </div>
+          <p className="text-[11px] mt-4" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            Nem todo pedido passa por todas as etapas — depende do produto e dos processos contratados.
+          </p>
+        </Card>
+
+        {/* ── Histórico / Documentos / Entrega / Avisos ────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+
+          <Card Icon={Clock} titulo="Histórico da Linha do Tempo">
+            <div className="space-y-1.5">
+              {(p.historico || []).length === 0 ? (
+                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Ainda sem movimentações.</p>
+              ) : (verTudo ? p.historico : p.historico.slice(-6)).map((h, i) => (
+                <div key={i} className="flex items-start gap-2 text-[13px]">
+                  <CircleCheck size={13} className="shrink-0 mt-0.5" style={{ color: '#4ade80' }} />
+                  <span style={{ color: 'rgba(255,255,255,0.55)' }}>{dataHora(h.at)}</span>
+                  <span className="text-white">{h.label}</span>
+                </div>
+              ))}
+            </div>
+            {(p.historico || []).length > 6 && (
+              <button onClick={() => setVerTudo(x => !x)} className="text-xs mt-3" style={{ color: '#60a5fa' }}>
+                {verTudo ? 'Mostrar menos' : 'Ver histórico completo'}
+              </button>
+            )}
+          </Card>
+
+          <Card Icon={FolderOpen} titulo="Documentos">
+            <div className="space-y-2">
+              {(p.documentos || []).map(doc => (
+                <button key={doc.key} disabled={!doc.disponivel}
+                  onClick={() => alert('O download será liberado em breve.')}
+                  className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm disabled:opacity-45 disabled:cursor-not-allowed"
+                  style={{ border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(37,99,235,0.10)' }}>
+                  <FileText size={14} style={{ color: '#60a5fa' }} className="shrink-0" />
+                  <span className="flex-1 min-w-0 truncate text-white">{doc.label}</span>
+                  <Download size={14} style={{ color: 'rgba(255,255,255,0.5)' }} className="shrink-0" />
+                </button>
+              ))}
+            </div>
+            {(p.documentos || []).filter(d => d.nota).map(d => (
+              <p key={d.key} className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.45)' }}>{d.nota}</p>
+            ))}
+          </Card>
+
+          <Card Icon={Truck} titulo="Informações da Entrega">
+            <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>
+              {p.entrega.texto}
+            </p>
+            <p className="text-sm leading-relaxed mt-2 flex items-start gap-1.5" style={{ color: '#93c5fd' }}>
+              <MapPin size={13} className="shrink-0 mt-0.5" /> {p.entrega.observacao}
+            </p>
+          </Card>
+
+          <Card Icon={Info} titulo="Informações Importantes">
+            <ul className="space-y-2">
+              {(p.avisos || []).map((a, i) => (
+                <li key={i} className="flex items-start gap-2 text-[13px]" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5" style={{ background: '#fbbf24' }} />
+                  {a}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      </main>
+
+      {contato && <CentralContato token={token} pedido={p.pedido.codigo} onClose={() => setContato(false)} />}
+    </div>
+  );
+}
+
+/**
+ * Central de atendimento. Duas portas: a IA responde na hora sobre este
+ * pedido, e o humanizado leva ao WhatsApp do vendedor responsável — o
+ * cliente não escolhe atendente nem vê telefone de outro vendedor.
+ */
+function CentralContato({ token, pedido, onClose }) {
+  const [modo, setModo] = useState(null);       // null | 'ia' | 'humano'
+  const [pergunta, setPergunta] = useState('');
+  const [conversa, setConversa] = useState([]);
+  const cabecalho = { headers: { Authorization: `Bearer ${token}` } };
+
+  const { data: info } = useQuery({
+    queryKey: ['acompanhar-contato'],
+    queryFn: () => api.get('/acompanhar/contato', cabecalho),
+  });
+
+  const perguntarIA = useMutation({
+    mutationFn: () => api.post('/acompanhar/ia', { pergunta }, cabecalho),
+    onSuccess: r => {
+      setConversa(c => [...c, { de: 'cliente', texto: pergunta }, { de: 'ia', texto: r.resposta }]);
+      setPergunta('');
+    },
+    onError: e => setConversa(c => [...c, { de: 'erro', texto: e.error || 'Não consegui responder agora.' }]),
+  });
+
+  const abrirHumano = useMutation({
+    mutationFn: () => api.post('/acompanhar/humano', { mensagem: pergunta }, cabecalho),
+    onSuccess: r => window.open(r.link, '_blank', 'noopener'),
+    onError: e => alert(e.error || 'Não foi possível abrir o atendimento agora.'),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[92vh] flex flex-col"
+        style={{ ...CARD, background: 'rgba(10,16,45,0.96)' }}>
+
+        <div className="flex items-center justify-between gap-3 px-5 py-4"
+          style={{ borderBottom: '1px solid rgba(96,165,250,0.25)' }}>
+          <div>
+            <h3 className="text-lg font-bold text-white">Contato / Dúvidas</h3>
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              Sobre o pedido {pedido}
+              {info?.vendedor && ` · vendedor ${info.vendedor}`}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 text-white/60 hover:text-white"><X size={20} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {!modo && (
+            <div className="space-y-3">
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                Se precisar tirar dúvidas sobre seu pedido, fale diretamente com o vendedor.
+              </p>
+              <Opcao Icon={Sparkles} titulo="Atendimento por IA" cor="#60a5fa"
+                texto="Responde na hora dúvidas sobre pedido, prazo, entrega e andamento."
+                onClick={() => setModo('ia')} />
+              <Opcao Icon={Headset} titulo="Atendimento Humanizado" cor="#c084fc"
+                texto={`Sua mensagem vai para o vendedor do seu pedido. Retorno em ${info?.prazo_humano || 'até 20 minutos'}.`}
+                onClick={() => setModo('humano')} />
+            </div>
+          )}
+
+          {modo === 'ia' && (
+            <div className="space-y-3">
+              {conversa.map((m, i) => (
+                <div key={i} className={`flex ${m.de === 'cliente' ? 'justify-end' : 'justify-start'}`}>
+                  <p className="max-w-[85%] rounded-xl px-3 py-2 text-[13px] whitespace-pre-wrap"
+                    style={m.de === 'cliente'
+                      ? { background: '#2563eb', color: 'white' }
+                      : m.de === 'erro'
+                        ? { background: 'rgba(248,113,113,0.15)', color: '#fca5a5' }
+                        : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.9)' }}>
+                    {m.texto}
+                  </p>
+                </div>
+              ))}
+              {conversa.length === 0 && (
+                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                  Pergunte sobre prazo, etapa atual, entrega ou o que foi pedido.
+                  Para trocas, cancelamento ou qualquer acerto, o vendedor é quem resolve.
+                </p>
+              )}
+            </div>
+          )}
+
+          {modo === 'humano' && (
+            <div className="space-y-3">
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                Sua mensagem vai direto para {info?.vendedor ? <b>{info.vendedor}</b> : 'o vendedor do seu pedido'},
+                pelo WhatsApp. Retorno em {info?.prazo_humano || 'até 20 minutos'}.
+              </p>
+              {!info?.tem_whatsapp && (
+                <p className="text-sm rounded-lg px-3 py-2"
+                  style={{ background: 'rgba(251,191,36,0.14)', color: '#fbbf24' }}>
+                  O vendedor deste pedido ainda não tem WhatsApp cadastrado. Use o atendimento por IA
+                  ou fale com a loja pelo canal de sempre.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {modo && (
+          <div className="p-4 space-y-2" style={{ borderTop: '1px solid rgba(96,165,250,0.25)' }}>
+            <textarea rows={2} value={pergunta} onChange={e => setPergunta(e.target.value)}
+              placeholder={modo === 'ia' ? 'Escreva sua dúvida...' : 'Escreva sua mensagem (opcional)...'}
+              className="w-full rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/40 outline-none resize-none"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(96,165,250,0.3)' }} />
+            <div className="flex gap-2">
+              <button onClick={() => { setModo(null); setPergunta(''); }}
+                className="rounded-xl px-4 py-2.5 text-sm text-white/70"
+                style={{ border: '1px solid rgba(255,255,255,0.15)' }}>Voltar</button>
+              <button
+                onClick={() => (modo === 'ia' ? perguntarIA : abrirHumano).mutate()}
+                disabled={(modo === 'ia' && !pergunta.trim()) || perguntarIA.isPending || abrirHumano.isPending
+                          || (modo === 'humano' && !info?.tem_whatsapp)}
+                className="flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-50"
+                style={{ background: modo === 'ia' ? '#2563eb' : '#16a34a' }}>
+                {(perguntarIA.isPending || abrirHumano.isPending)
+                  ? <Loader2 size={15} className="animate-spin" />
+                  : modo === 'ia' ? <Sparkles size={15} /> : <Send size={15} />}
+                {modo === 'ia' ? 'Perguntar' : 'Abrir WhatsApp'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Balao({ passo }) {
+  const Icon = ICONES[passo.icone] || Circle;
+  const c = CORES[passo.estado];
+  return (
+    <div className="flex flex-col items-center gap-1 text-center" style={{ width: 92 }}
+      title={`${passo.label}${passo.at ? ` — ${dataHora(passo.at)}` : ''}`}>
+      <div className="relative">
+        <div className="w-11 h-11 rounded-full flex items-center justify-center"
+          style={{ border: `2px solid ${c.anel}`, background: c.fundo,
+                   boxShadow: passo.estado === 'atual' ? `0 0 14px ${c.anel}88` : 'none' }}>
+          <Icon size={18} style={{ color: c.texto }} />
+        </div>
+        <span className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
+          style={{ background: c.anel, color: '#0b1020' }}>{passo.passo}</span>
+      </div>
+      <span className="text-[10px] leading-tight" style={{ color: c.texto }}>{passo.label}</span>
+      {passo.at && (
+        <span className="text-[9px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          {new Date(passo.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function Card({ Icon, titulo, children, semPadding }) {
+  return (
+    <div style={CARD}>
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-white px-4 py-3"
+        style={{ borderBottom: '1px solid rgba(96,165,250,0.2)' }}>
+        <Icon size={16} style={{ color: '#60a5fa' }} /> {titulo}
+      </h3>
+      <div className={semPadding ? '' : 'p-4'}>{children}</div>
+    </div>
+  );
+}
+
+// Campo sem valor não vira linha vazia — some.
+function Linha({ rotulo, valor }) {
+  if (!valor) return null;
+  return (
+    <div className="flex items-start justify-between gap-3 py-1 text-sm">
+      <span style={{ color: 'rgba(147,197,253,0.75)' }}>{rotulo}:</span>
+      <span className="text-right min-w-0 truncate text-white">{valor}</span>
+    </div>
+  );
+}
+
+function Opcao({ Icon, titulo, texto, cor, onClick }) {
+  return (
+    <button onClick={onClick} className="w-full rounded-xl p-4 text-left flex items-start gap-3"
+      style={{ border: `1px solid ${cor}55`, background: `${cor}14` }}>
+      <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${cor}25` }}>
+        <Icon size={17} style={{ color: cor }} />
+      </span>
+      <span className="min-w-0">
+        <span className="block font-semibold text-white">{titulo}</span>
+        <span className="block text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>{texto}</span>
+      </span>
+    </button>
+  );
+}

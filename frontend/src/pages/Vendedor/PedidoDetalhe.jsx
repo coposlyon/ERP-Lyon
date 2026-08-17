@@ -60,6 +60,40 @@ export default function PedidoDetalhe() {
 
   const emBreve = qual => toast(`${qual} será uma tela própria, ainda em definição.`, { icon: '🚧' });
 
+  /**
+   * Manda o link de acompanhamento para o cliente.
+   *
+   * O link não carrega o pedido dentro dele: o cliente entra com o CPF
+   * dele mais o número do pedido. Assim, link encaminhado para o grupo
+   * da família não abre a compra de ninguém — quem não tem o CPF do
+   * titular não passa da porta.
+   */
+  async function compartilhar(pedido, cliente) {
+    const link = `${window.location.origin}/acompanhar`;
+    const texto = [
+      `Olá${cliente?.name ? `, ${cliente.name}` : ''}! Aqui é da Lyon Copos.`,
+      '',
+      `Acompanhe seu pedido ${pedido.codigo} em tempo real:`,
+      link,
+      '',
+      `Entre com o seu CPF e o número do pedido (${pedido.codigo}).`,
+    ].join('\n');
+
+    const fone = String(cliente?.mobile || cliente?.phone || '').replace(/\D/g, '');
+    if (fone) {
+      const num = fone.length <= 11 ? `55${fone}` : fone;
+      window.open(`https://wa.me/${num}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+      return;
+    }
+    // Cliente sem telefone: pelo menos o texto vai para a área de transferência
+    try {
+      await navigator.clipboard.writeText(texto);
+      toast.success('Cliente sem telefone cadastrado — mensagem copiada para você enviar');
+    } catch {
+      toast.error('Cliente sem telefone cadastrado. Cadastre o número para enviar pelo WhatsApp.');
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -106,7 +140,7 @@ export default function PedidoDetalhe() {
           <button onClick={() => navigate('/vendedor/pedidos')} className="btn-secondary">
             <ArrowLeft size={15} /> Voltar
           </button>
-          <button onClick={() => emBreve('O compartilhamento com o cliente')}
+          <button onClick={() => compartilhar(p, cli)}
             className="btn" style={{ background: '#16a34a', color: 'white' }}>
             <Share2 size={15} /> Compartilhar com o Cliente
           </button>

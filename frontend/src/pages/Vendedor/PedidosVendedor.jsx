@@ -200,13 +200,13 @@ export default function PedidosVendedor() {
                 <span className="w-20 shrink-0 flex justify-center">
                   <SinalAtencao atencao={p.atencao} onClick={() => setAtencaoDe(p)} />
                 </span>
-                <span className="w-28 shrink-0 flex justify-center gap-1.5">
+                {/* Uma ação só. Comprovante e envio ao cliente moram na tela
+                    de detalhes, onde o vendedor vê o que está mandando —
+                    disparar documento a partir de uma linha da lista é
+                    convite para mandar o pedido errado. */}
+                <span className="w-28 shrink-0 flex justify-center">
                   <Acao titulo="Visualizar detalhes" cor="#3b82f6" Icon={Eye}
                     onClick={() => navigate(`/vendedor/pedidos/${p.id}`)} />
-                  <Acao titulo="Gerar comprovante do pedido (não é nota fiscal)" cor="#3b82f6" Icon={FileText}
-                    onClick={() => navigate(`/vendedor/pedidos/${p.id}?comprovante=1`)} />
-                  <Acao titulo="Enviar ao cliente" cor="#16a34a" Icon={Send}
-                    onClick={() => navigate(`/vendedor/pedidos/${p.id}?enviar=1`)} />
                 </span>
               </div>
             ))}
@@ -247,9 +247,7 @@ export default function PedidosVendedor() {
       <div style={{ ...v.card, padding: '0.85rem 1rem' }}
         className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm">
         <span style={{ color: v.textMuted }}>Legenda de ações:</span>
-        <Legenda Icon={Eye}      cor="#3b82f6" texto="Visualizar detalhes" />
-        <Legenda Icon={FileText} cor="#3b82f6" texto="Gerar comprovante" />
-        <Legenda Icon={Send}     cor="#16a34a" texto="Enviar ao cliente" />
+        <Legenda Icon={Eye} cor="#3b82f6" texto="Visualizar detalhes" />
       </div>
 
       <AtencaoModal pedido={atencaoDe} onClose={() => setAtencaoDe(null)} onComunicado={refetch} />

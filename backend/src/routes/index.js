@@ -41,6 +41,10 @@ router.use('/auth', authRoutes);
 router.use('/cnpj', cnpjRoutes);   // público — sem auth
 router.use('/cep',  cepRoutes);    // público — sem auth
 router.use('/public', publicStoreRoutes); // loja pública — sem auth
+// Acompanhamento do pedido pelo cliente (telas 3A/3B) — sem auth do ERP.
+// O acesso é CPF + nº do pedido e o token emitido fica preso àquele
+// pedido; a rota não enxerga nada do ERP além do que o cliente comprou.
+router.use('/acompanhar', require('./public-pedido'));
 router.use('/webhooks', require('./webhooks')); // webhooks externos — sem auth
 
 router.use(authMiddleware);
