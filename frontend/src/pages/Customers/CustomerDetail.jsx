@@ -263,20 +263,48 @@ export default function CustomerDetail() {
                   <p className="font-bold text-gray-700">Benefícios atuais</p>
                   {prime.tier ? (
                     <>
-                      <p className="flex items-center gap-1.5 text-gray-600"><Wallet size={14} className="text-emerald-500" /> Limite sugerido: <b>{fmt(prime.tier.credit)}</b></p>
+                      <p className="flex items-start gap-2 text-gray-600">
+                        <Wallet size={14} className="text-emerald-500 shrink-0 mt-0.5" />
+                        <span>Limite sugerido: <b className="whitespace-nowrap">{fmt(prime.tier.credit)}</b></span>
+                      </p>
                       {prime.tier.perks.map((p, i) => (
-                        <p key={i} className="flex items-center gap-1.5 text-gray-600"><CheckCircle2 size={14} className="text-emerald-500" /> {p}</p>
+                        <p key={i} className="flex items-start gap-2 text-gray-600">
+                          <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
+                          <span>{p}</span>
+                        </p>
                       ))}
                     </>
                   ) : <p className="text-gray-400">Sem nível ainda — primeira compra libera</p>}
                 </div>
                 <div className="border border-indigo-100 bg-indigo-50/40 rounded-xl p-3.5 space-y-2">
-                  <p className="font-bold text-indigo-700">Próximo nível {prime.next ? `(${prime.next.stars}⭐)` : ''}</p>
+                  {/* O nível vinha como texto "(1⭐)": o emoji desalinha da
+                      linha e, em fonte pequena, sai como um quadradinho.
+                      Vira um selo com ícone vetorial, que acompanha o
+                      tamanho e o peso da fonte ao redor. */}
+                  <p className="font-bold text-indigo-700 flex items-center gap-2 flex-wrap">
+                    Próximo nível
+                    {prime.next && (
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold leading-none"
+                        style={{ background: 'rgba(245,158,11,0.18)', color: '#fbbf24' }}>
+                        {prime.next.stars}
+                        <Star size={11} className="fill-current" />
+                      </span>
+                    )}
+                  </p>
                   {prime.next ? (
                     <>
-                      <p className="flex items-center gap-1.5 text-gray-600"><Wallet size={14} className="text-indigo-400" /> Limite sugerido: <b>{fmt(prime.next.credit)}</b></p>
+                      {/* items-start + shrink-0: quando o texto quebra em
+                          duas linhas o ícone fica na primeira, e não
+                          flutuando no meio do parágrafo. */}
+                      <p className="flex items-start gap-2 text-gray-600">
+                        <Wallet size={14} className="text-indigo-400 shrink-0 mt-0.5" />
+                        <span>Limite sugerido: <b className="whitespace-nowrap">{fmt(prime.next.credit)}</b></span>
+                      </p>
                       {prime.next.perks.map((p, i) => (
-                        <p key={i} className="flex items-center gap-1.5 text-gray-600"><Star size={14} className="text-indigo-400" /> {p}</p>
+                        <p key={i} className="flex items-start gap-2 text-gray-600">
+                          <Star size={14} className="text-indigo-400 shrink-0 mt-0.5" />
+                          <span>{p}</span>
+                        </p>
                       ))}
                     </>
                   ) : <p className="text-gray-400">Você já desbloqueou tudo 🎉</p>}
