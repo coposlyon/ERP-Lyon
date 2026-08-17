@@ -339,7 +339,7 @@ export default function CadastroCliente() {
 
   if (done) {
     return (
-      <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-4">
+      <div className="cadastro-publico min-h-screen relative overflow-hidden flex items-center justify-center p-4">
         {Bg}
         <div className="relative z-10 bg-white/90 backdrop-blur rounded-3xl shadow-2xl max-w-md w-full p-8 text-center st-rise">
           <div className="relative mx-auto mb-5 w-20 h-20">
@@ -363,7 +363,7 @@ export default function CadastroCliente() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden py-8 px-4 bg-black">
+    <div className="cadastro-publico min-h-screen relative overflow-hidden py-8 px-4 bg-black">
       {/* Abertura cinematográfica */}
       {phase !== 'form' && (
         <div className="fixed inset-0 z-50 bg-black">

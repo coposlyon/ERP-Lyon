@@ -212,7 +212,7 @@ export default function CadastroTransportadora() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden py-8 px-4 bg-black">
+    <div className="cadastro-publico min-h-screen relative overflow-hidden py-8 px-4 bg-black">
       {/* Abertura cinematográfica */}
       {phase !== 'form' && (
         <div className="fixed inset-0 z-50 bg-black">

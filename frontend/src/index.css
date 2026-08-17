@@ -544,6 +544,67 @@ html.dark .sidebar-item.active {
   box-shadow: inset 0 0 0 1px rgba(96,165,250,0.55), 0 0 16px rgba(47,107,255,0.25);
 }
 
+/* ═══════════════════════════════════════════════════════
+   PÁGINAS PÚBLICAS DE CADASTRO
+   /cadastro, /cadastro-fornecedor, /cadastro-transportadora
+
+   Elas nasceram claras (cartão branco sobre fundo preto). Quando o ERP
+   passou a forçar `dark`, a camada de sobrescrita pintou os CAMPOS de
+   marinho mas não o cartão — `bg-white/90` é outra classe, não casa com
+   o seletor de `bg-white`. Resultado: cartão claro com campos pretos e
+   rótulo cinza-claro invisível.
+
+   Em vez de remendar, entram no mesmo padrão do sistema. O escopo
+   `.cadastro-publico` mantém isso longe da loja, que tem visual próprio.
+   ═══════════════════════════════════════════════════════ */
+
+.cadastro-publico {
+  background-color: #060a1f !important;
+  background-image: radial-gradient(1100px 560px at 50% -10%, #16205c 0%, #0a0f2c 45%, #060a1f 100%);
+}
+
+/* O cartão do formulário: marinho com a borda acesa dos cards do ERP */
+.cadastro-publico form,
+.cadastro-publico .bg-white\/90 {
+  background-color: rgba(10,17,48,0.92) !important;
+  border: 1px solid #1d2b6b;
+  box-shadow: 0 0 0 1px rgba(47,107,255,0.20), 0 0 34px rgba(47,107,255,0.14) !important;
+}
+
+/* Rótulos e títulos. Era aqui que o texto sumia: cinza-claro pensado
+   para cartão branco, num cartão que virou marinho. */
+.cadastro-publico label,
+.cadastro-publico .text-gray-700 { color: #c3d0f0 !important; }
+.cadastro-publico .text-gray-900,
+.cadastro-publico h1,
+.cadastro-publico h2 { color: #eaf0ff !important; }
+.cadastro-publico .text-gray-600 { color: #9db2e8 !important; }
+.cadastro-publico .text-gray-500,
+.cadastro-publico .text-gray-400 { color: #7b8fc7 !important; }
+
+/* Blocos internos (Endereço, consentimento do Instagram, revisão) */
+.cadastro-publico .bg-gray-50,
+.cadastro-publico .bg-violet-50\/70,
+.cadastro-publico .bg-violet-50 {
+  background-color: #101a44 !important;
+  border-color: #1d2b6b !important;
+}
+.cadastro-publico .border-gray-200,
+.cadastro-publico .border-violet-100 { border-color: #1d2b6b !important; }
+
+/* O botão escolhido no par Sim/Não precisa continuar óbvio no escuro */
+.cadastro-publico .bg-violet-100 {
+  background-color: rgba(47,107,255,0.22) !important;
+  border-color: #2f6bff !important;
+  color: #dbe4ff !important;
+}
+
+/* Os cartões de aviso (CPF já cadastrado, confirmação de dados) usam
+   `bg-white` puro — esses o seletor global já pega, mas sem a borda. */
+.cadastro-publico [class~="bg-white"] {
+  border: 1px solid #1d2b6b;
+}
+
 /* ── Details / summary ──────────────────────────────────────── */
 html.dark details { border-color: #1d2b6b !important; }
 html.dark details summary { color: #c3d0f0 !important; }

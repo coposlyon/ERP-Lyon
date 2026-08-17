@@ -26,7 +26,7 @@ export default function CadastroDone({ message, whatsapp, title }) {
   }, [link]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-violet-50 to-white px-4">
+    <div className="cadastro-publico min-h-screen flex items-center justify-center bg-gradient-to-b from-violet-50 to-white px-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-100 p-8 text-center">
         <div className="w-16 h-16 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-4">
           <CheckCircle2 size={36} className="text-green-600" />
