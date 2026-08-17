@@ -79,6 +79,28 @@ function itemCustomization(i) {
   return Object.keys(c).length ? c : null;
 }
 
+/**
+ * Estoque do produto na lista de seleção.
+ *
+ * Verde quando tem, vermelho piscando quando está negativo. Negativo
+ * significa que já foi vendido mais do que existe — é a informação que
+ * impede o operador de prometer prazo para o que não está na prateleira,
+ * e por isso ela se mexe: numa lista de 24 itens iguais, cor parada
+ * passa batido.
+ */
+function Estoque({ valor }) {
+  const n = Number(valor) || 0;
+  if (n < 0) {
+    return (
+      <span className="estoque-negativo font-bold" title="Estoque negativo — vendido mais do que existe">
+        Estoque: {n} ⚠
+      </span>
+    );
+  }
+  if (n > 0) return <span className="estoque-positivo font-semibold">Estoque: {n}</span>;
+  return <span className="text-gray-400">Estoque: 0</span>;
+}
+
 // Acabamentos e técnicas marcáveis no lançamento do item. Todos opcionais.
 const ACABAMENTOS = ['Cor degradê', 'Cor bicolor', 'Jateado', 'Borda metalizada', 'Pintura', 'Laser', 'Transfer', 'DTF'];
 
@@ -847,7 +869,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{v.code}</span>
-                  <span className="text-sm text-gray-800 leading-snug">{v.name}</span>
+                  <span className="produto-nome text-sm font-semibold leading-snug">{v.name}</span>
                 </span>
                 <span className="font-semibold text-primary-600 shrink-0">{fmt(drill.sale_price)}</span>
               </button>
@@ -865,9 +887,9 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 <button key={p.id} type="button" onClick={() => pickProduct(p)}
                   className={`w-full flex items-center justify-between px-4 py-3 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
                   <div className="min-w-0">
-                    <p className="font-medium text-gray-900 text-sm leading-snug">{p.name}</p>
-                    <p className="text-xs text-gray-400">
-                      Estoque: {p.current_stock}
+                    <p className="produto-nome font-semibold text-sm leading-snug">{p.name}</p>
+                    <p className="text-xs">
+                      <Estoque valor={p.current_stock} />
                       {nv > 1 && <span className="ml-2 text-indigo-500 font-medium">{nv} variações</span>}
                     </p>
                   </div>
