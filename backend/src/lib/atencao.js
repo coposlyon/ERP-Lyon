@@ -28,51 +28,66 @@
  * Nem todo pedido passa por todas as etapas — o caminho depende do
  * produto e dos processos contratados.
  */
+// `passo` é a posição na linha do tempo da tela de detalhes. Só as
+// etapas do caminho oficial têm passo; as antigas e as de "em processo"
+// ficam de fora da régua para não criar bolinha repetida — elas ainda
+// são status válidos, só não desenham um balão próprio.
+//
+// `icone` é o nome do ícone lucide que a tela usa naquele balão.
 const STATUS = {
-  iniciando_pedido:      { label: 'Iniciando pedido',            area: 'comercial',  aguardando: false, cor: 'cinza' },
-  aguardando_financeiro: { label: 'Aguardando financeiro',       area: 'financeiro', aguardando: true,  cor: 'amarelo' },
-  aguardando_estoque:    { label: 'Aguardando estoque',          area: 'estoque',    aguardando: true,  cor: 'laranja' },
-  aguardando_arte:       { label: 'Aguardando anexo da arte',    area: 'arte',       aguardando: true,  cor: 'amarelo' },
+  iniciando_pedido:      { label: 'Pedido realizado',            area: 'comercial',  aguardando: false, cor: 'verde',   passo: 1,  icone: 'CircleCheck' },
+  aguardando_financeiro: { label: 'Aguardando financeiro',       area: 'financeiro', aguardando: true,  cor: 'amarelo', passo: 2,  icone: 'Wallet' },
+  pagamento_confirmado:  { label: 'Pagamento confirmado',        area: 'financeiro', aguardando: false, cor: 'verde',   passo: 3,  icone: 'CircleCheck' },
+  aguardando_estoque:    { label: 'Aguardando estoque',          area: 'estoque',    aguardando: true,  cor: 'laranja', passo: 4,  icone: 'Hourglass' },
+  estoque_confirmado:    { label: 'Estoque confirmado',          area: 'estoque',    aguardando: false, cor: 'azul',    passo: 5,  icone: 'Package' },
+  aguardando_arte:       { label: 'Aguardando anexo da arte',    area: 'arte',       aguardando: true,  cor: 'amarelo', passo: 6,  icone: 'Hourglass' },
+  arte_aprovada:         { label: 'Arte anexada e aprovada',     area: 'arte',       aguardando: false, cor: 'roxo',    passo: 7,  icone: 'PenTool' },
 
-  aguardando_vegetal:    { label: 'Aguardando impressão de vegetal', area: 'producao', aguardando: true,  cor: 'azul' },
-  vegetal_impresso:      { label: 'Vegetal impresso',            area: 'producao',   aguardando: false, cor: 'azul' },
+  aguardando_vegetal:    { label: 'Aguardando impressão de vegetal', area: 'producao', aguardando: true,  cor: 'azul',  passo: 8,  icone: 'FileImage' },
+  vegetal_impresso:      { label: 'Vegetal impresso',            area: 'producao',   aguardando: false, cor: 'azul',    passo: 9,  icone: 'FileCheck' },
 
-  aguardando_revelacao:  { label: 'Aguardando revelação',        area: 'producao',   aguardando: true,  cor: 'roxo' },
+  aguardando_revelacao:  { label: 'Aguardando revelação',        area: 'producao',   aguardando: true,  cor: 'roxo',    passo: 10, icone: 'FlaskConical' },
   revelacao_processo:    { label: 'Revelação em processo',       area: 'producao',   aguardando: false, cor: 'roxo' },
-  revelacao_finalizada:  { label: 'Revelação finalizada',        area: 'producao',   aguardando: false, cor: 'roxo' },
+  revelacao_finalizada:  { label: 'Revelação finalizada',        area: 'producao',   aguardando: false, cor: 'roxo',    passo: 11, icone: 'FileCheck' },
 
-  aguardando_pintura:    { label: 'Aguardando pintura',          area: 'producao',   aguardando: true,  cor: 'rosa' },
+  aguardando_pintura:    { label: 'Aguardando pintura',          area: 'producao',   aguardando: true,  cor: 'rosa',    passo: 12, icone: 'Brush' },
   pintura_processo:      { label: 'Pintura em processo',         area: 'producao',   aguardando: false, cor: 'rosa' },
-  pintura_finalizada:    { label: 'Pintura finalizada',          area: 'producao',   aguardando: false, cor: 'rosa' },
+  pintura_finalizada:    { label: 'Pintura finalizada',          area: 'producao',   aguardando: false, cor: 'rosa',    passo: 13, icone: 'CircleCheck' },
 
-  aguardando_borda:      { label: 'Aguardando borda',            area: 'producao',   aguardando: true,  cor: 'ciano' },
+  aguardando_borda:      { label: 'Aguardando aplicação de borda', area: 'producao', aguardando: true,  cor: 'ciano',   passo: 14, icone: 'CircleDashed' },
   borda_processo:        { label: 'Borda em processo',           area: 'producao',   aguardando: false, cor: 'ciano' },
-  borda_finalizada:      { label: 'Borda finalizada',            area: 'producao',   aguardando: false, cor: 'ciano' },
+  borda_finalizada:      { label: 'Borda finalizada',            area: 'producao',   aguardando: false, cor: 'ciano',   passo: 15, icone: 'GlassWater' },
 
   aguardando_gravacao:   { label: 'Aguardando gravação',         area: 'producao',   aguardando: true,  cor: 'ciano' },
   gravacao_processo:     { label: 'Gravação em processo',        area: 'producao',   aguardando: false, cor: 'ciano' },
   gravacao_finalizada:   { label: 'Gravação finalizada',         area: 'producao',   aguardando: false, cor: 'ciano' },
 
-  aguardando_producao:   { label: 'Aguardando produção',         area: 'producao',   aguardando: true,  cor: 'azul' },
+  aguardando_producao:   { label: 'Aguardando produção',         area: 'producao',   aguardando: true,  cor: 'azul',    passo: 16, icone: 'Settings' },
   producao_processo:     { label: 'Produção em processo',        area: 'producao',   aguardando: false, cor: 'azul' },
-  producao_finalizada:   { label: 'Produção finalizada',         area: 'producao',   aguardando: false, cor: 'azul' },
+  producao_finalizada:   { label: 'Produção finalizada',         area: 'producao',   aguardando: false, cor: 'azul',    passo: 17, icone: 'Settings' },
 
-  aguardando_embalagem:  { label: 'Aguardando embalagem',        area: 'producao',   aguardando: true,  cor: 'laranja' },
+  aguardando_embalagem:  { label: 'Aguardando embalagem',        area: 'producao',   aguardando: true,  cor: 'laranja', passo: 18, icone: 'PackageOpen' },
   embalando_pedido:      { label: 'Embalando pedido',            area: 'producao',   aguardando: false, cor: 'laranja' },
-  embalagem_finalizada:  { label: 'Embalagem finalizada',        area: 'producao',   aguardando: false, cor: 'laranja' },
+  embalagem_finalizada:  { label: 'Embalagem finalizada',        area: 'producao',   aguardando: false, cor: 'laranja', passo: 19, icone: 'Package' },
 
-  aguardando_qualidade:  { label: 'Aguardando controle de qualidade', area: 'qualidade', aguardando: true,  cor: 'roxo' },
+  aguardando_qualidade:  { label: 'Aguardando controle de qualidade', area: 'qualidade', aguardando: true,  cor: 'roxo', passo: 20, icone: 'ShieldQuestion' },
   conferencia_processo:  { label: 'Em processo de conferência',  area: 'qualidade',  aguardando: false, cor: 'roxo' },
-  qualidade_finalizada:  { label: 'Controle de qualidade finalizado', area: 'qualidade', aguardando: false, cor: 'roxo' },
+  qualidade_finalizada:  { label: 'Controle de qualidade finalizado', area: 'qualidade', aguardando: false, cor: 'roxo', passo: 21, icone: 'ShieldCheck' },
+
+  // A foto do produto pronto vai ao cliente antes de o pedido sair —
+  // é a última chance de pegar um erro enquanto a caixa ainda está aqui.
+  aguardando_foto:       { label: 'Aguardando foto',             area: 'qualidade',  aguardando: true,  cor: 'roxo',    passo: 22, icone: 'Camera' },
+  foto_enviada:          { label: 'Foto enviada',                area: 'comercial',  aguardando: false, cor: 'ciano',   passo: 23, icone: 'ImageUp' },
 
   aguardando_logistica:  { label: 'Aguardando logística',        area: 'logistica',  aguardando: true,  cor: 'verde' },
-  aguardando_coleta:     { label: 'Aguardando coleta / retirada', area: 'logistica', aguardando: true,  cor: 'verde' },
+  aguardando_coleta:     { label: 'Aguardando coleta / retirada', area: 'logistica', aguardando: true,  cor: 'verde',   passo: 24, icone: 'Truck' },
   coleta_processo:       { label: 'Em processo de coleta / retirada', area: 'logistica', aguardando: false, cor: 'verde' },
-  mercadoria_coletada:   { label: 'Mercadoria coletada',         area: 'logistica',  aguardando: false, cor: 'verde' },
+  mercadoria_coletada:   { label: 'Coleta realizada',            area: 'logistica',  aguardando: false, cor: 'verde',   passo: 25, icone: 'PackageCheck' },
   produto_retirado:      { label: 'Produto retirado',            area: 'logistica',  aguardando: false, cor: 'verde' },
-  em_transito:           { label: 'Mercadoria em trânsito',      area: 'logistica',  aguardando: false, cor: 'ciano' },
+  em_transito:           { label: 'Em trânsito',                 area: 'logistica',  aguardando: false, cor: 'ciano',   passo: 26, icone: 'Truck' },
+  aguardando_entrega:    { label: 'Aguardando entrega',          area: 'logistica',  aguardando: true,  cor: 'vermelho', passo: 27, icone: 'PackageSearch' },
 
-  entregue:              { label: 'Entregue',                    area: 'logistica',  aguardando: false, cor: 'verde', final: true },
+  entregue:              { label: 'Pedido entregue',             area: 'logistica',  aguardando: false, cor: 'verde', final: true, passo: 28, icone: 'PackageCheck' },
   pedido_finalizado:     { label: 'Pedido finalizado',           area: 'comercial',  aguardando: false, cor: 'verde', final: true },
 
   // Antigos — pedidos gravados antes do fluxo detalhado
@@ -106,6 +121,85 @@ const listaStatus = () =>
     .map(([key, v]) => ({ key, label: v.label, area: v.area, aguardando: v.aguardando, final: !!v.final }));
 
 const finalizado = s => !!infoStatus(s).final;
+
+/** As etapas que desenham balão na linha do tempo, na ordem do fluxo. */
+const PASSOS = Object.entries(STATUS)
+  .filter(([, v]) => v.passo)
+  .map(([key, v]) => ({ key, ...v }))
+  .sort((a, b) => a.passo - b.passo);
+
+/**
+ * A linha do tempo do pedido.
+ *
+ * O estado de cada balão sai de duas fontes que se completam: o
+ * production_log, que diz por onde o pedido JÁ passou e quando, e o
+ * status atual, que diz onde ele está agora. Só o status não bastaria
+ * (não teria as datas), e só o log também não (um pedido recém-criado
+ * ainda não tem log nenhum).
+ *
+ * Um pedido que pulou etapas — e a maioria pula, porque o caminho
+ * depende do produto — deixa os balões não visitados como 'pendente'.
+ * Não se inventa data para eles.
+ *
+ * @param venda   linha de VENDAS (status + production_log)
+ * @returns [{ passo, key, label, icone, cor, estado, at, user }]
+ *          estado: 'concluido' | 'atual' | 'pendente'
+ */
+function linhaDoTempo(venda) {
+  const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
+
+  // Quando cada etapa aconteceu. Primeira ocorrência vence: se o pedido
+  // voltou de etapa, a data que interessa é a de quando chegou lá.
+  const quando = new Map();
+  for (const e of log) {
+    const k = e.action || e.status;
+    if (k && !quando.has(k)) quando.set(k, { at: e.at || null, user: e.user || null });
+  }
+  // A criação do pedido é o passo 1 e nem sempre está no log.
+  if (!quando.has('iniciando_pedido') && venda?.created_at) {
+    quando.set('iniciando_pedido', { at: venda.created_at, user: null });
+  }
+
+  const atual = infoStatus(venda?.status);
+  const passoAtual = atual.passo || 0;
+
+  return PASSOS.map(p => {
+    const visita = quando.get(p.key) || null;
+    let estado;
+    if (p.key === venda?.status) estado = 'atual';
+    else if (visita) estado = 'concluido';
+    // Passou do ponto sem registro no log: a etapa ficou para trás
+    // (pulada ou registrada antes de o log existir).
+    else if (passoAtual && p.passo < passoAtual) estado = 'concluido';
+    else estado = 'pendente';
+
+    return {
+      passo: p.passo, key: p.key, label: p.label, icone: p.icone, cor: p.cor,
+      area: p.area, estado,
+      at: visita?.at || null,
+      user: visita?.user || null,
+    };
+  });
+}
+
+/** O histórico em ordem cronológica, para a lista embaixo da tela. */
+function historicoPedido(venda) {
+  const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
+  const linhas = log
+    .filter(e => e.action || e.status)
+    .map(e => {
+      const k = e.action || e.status;
+      const info = infoStatus(k);
+      return { key: k, label: info.label, cor: info.cor, at: e.at || null, user: e.user || null, stage: e.stage || null };
+    });
+
+  if (venda?.created_at && !linhas.some(l => l.key === 'iniciando_pedido')) {
+    const info = infoStatus('iniciando_pedido');
+    linhas.unshift({ key: 'iniciando_pedido', label: info.label, cor: info.cor, at: venda.created_at, user: null, stage: 'criacao' });
+  }
+
+  return linhas.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+}
 
 /**
  * O prazo que vale para a Atenção: a data prevista de SAÍDA. ship_date é
@@ -177,4 +271,8 @@ function calcularAtencao(venda, agora = new Date(), alertaAberto = null) {
   return base;
 }
 
-module.exports = { STATUS, AREAS, infoStatus, listaStatus, finalizado, prazoSaida, calcularAtencao };
+module.exports = {
+  STATUS, AREAS, PASSOS,
+  infoStatus, listaStatus, finalizado, prazoSaida, calcularAtencao,
+  linhaDoTempo, historicoPedido,
+};

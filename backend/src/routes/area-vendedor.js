@@ -122,14 +122,29 @@ async function alertasAbertos(tenantId, saleIds) {
  */
 router.get('/pedidos/:id', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('VENDAS').select(`
+    // Um select tolerante: colunas de migrações recentes (freight_quote,
+    // avisos, event_date) podem faltar numa base que ainda não migrou, e
+    // o pedido tem que abrir do mesmo jeito.
+    const CAMPOS = `
       id, number, status, origin, source, subtotal, discount, freight, total,
-      created_at, operation_date, ship_date, delivery_date, max_delivery_date,
-      payment_method, notes, artwork_url, artwork_notes, user_id,
-      CLIENTES ( id, display_id, name, phone, mobile, email, address ),
+      created_at, operation_date, event_date, ship_date, delivery_date, max_delivery_date,
+      payment_method, notes, artwork_url, artwork_notes, user_id, carrier_id,
+      tracking_code, freight_quote, avisos, production_log, collect_date, transport_days,
+      CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating ),
+      USUARIOS ( id, name ),
       VENDA_ITENS ( id, product_name, quantity, unit_price, discount, total, customization,
-                    PRODUTOS ( id, name, unit ) )
-    `).eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+                    PRODUTOS ( id, code, name, unit, ink_type ) )
+    `;
+    let { data, error } = await supabase.from('VENDAS').select(CAMPOS)
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+
+    if (error && /column|does not exist|schema cache/i.test(error.message || '')) {
+      const basico = CAMPOS
+        .replace(/freight_quote, avisos, production_log, collect_date, transport_days,/, 'production_log,')
+        .replace(/, event_date/, '');
+      ({ data, error } = await supabase.from('VENDAS').select(basico)
+        .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle());
+    }
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Pedido não encontrado' });
     if (!isManager(req) && data.user_id !== req.user.id) {
@@ -139,16 +154,91 @@ router.get('/pedidos/:id', async (req, res) => {
     const alertas = await alertasAbertos(req.tenantId, [data.id]);
     const info = A.infoStatus(data.status);
 
+    // A transportadora vem de LOGISTICA por id; sem ela o campo some da
+    // tela em vez de mostrar um uuid.
+    let transportadora = null;
+    if (data.carrier_id) {
+      const { data: t } = await supabase.from('TRANSPORTADORAS')
+        .select('id, name, trade_name').eq('id', data.carrier_id).maybeSingle();
+      transportadora = t ? (t.trade_name || t.name) : null;
+    }
+
     res.json({
       ...data,
-      codigo: `PV-${String(data.number).padStart(4, '0')}`,
+      codigo: `PV-${String(data.number).padStart(6, '0')}`,
       codigo_cliente: data.CLIENTES?.display_id != null ? String(data.CLIENTES.display_id).padStart(4, '0') : null,
+      vendedor: data.USUARIOS?.name || null,
+      transportadora,
       status_label: info.label,
       status_cor: info.cor,
       atencao: A.calcularAtencao(data, new Date(), alertas.get(data.id) || null),
+      // A régua inteira do fluxo com o estado de cada balão
+      linha_do_tempo: A.linhaDoTempo(data),
+      historico: A.historicoPedido(data),
+      itens: (data.VENDA_ITENS || []).map(item => ({ ...item, ...detalharItem(item) })),
+      avisos: await avisosDoPedido(req.tenantId, data),
+      documentos: documentosDoPedido(data),
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+/**
+ * As colunas de item que a tela mostra (Linha, Cor do Produto,
+ * Categoria, Acessório, Cor da Personalização) não existem como campos:
+ * elas foram gravadas no JSON de personalização quando o item foi
+ * lançado no PDV. Aqui elas voltam a ser colunas.
+ */
+function detalharItem(item) {
+  const c = item.customization || {};
+  const acabamentos = String(c['Acabamentos'] || '').split(',').map(s => s.trim()).filter(Boolean);
+  return {
+    codigo_produto: c['Código'] || item.PRODUTOS?.code || null,
+    produto: item.PRODUTOS?.name || item.product_name || 'Produto',
+    linha: c['Tinta'] || item.PRODUTOS?.ink_type || null,
+    cor_produto: c['Variação'] || null,
+    // "Categoria" na tela é o acabamento contratado (Degradê, Jateado...)
+    categoria: acabamentos[0] || null,
+    categorias: acabamentos,
+    acessorio: c['Borda'] || null,
+    cor_personalizacao: c['Cor da personalização'] || null,
+  };
+}
+
+/**
+ * Os avisos do pedido: o padrão da empresa (Configurações) mais o que
+ * for específico deste pedido. Ficam no banco e não no código porque
+ * mudam com a política comercial — o custo de alterar arte não é
+ * decisão de programador.
+ */
+async function avisosDoPedido(tenantId, venda) {
+  let padrao = [];
+  try {
+    const { data } = await supabase.from('EMPRESAS').select('settings').eq('id', tenantId).maybeSingle();
+    const cfg = data?.settings?.pedido_avisos;
+    if (Array.isArray(cfg)) padrao = cfg;
+  } catch { /* sem configuração: só os do pedido */ }
+  const doPedido = Array.isArray(venda.avisos) ? venda.avisos : [];
+  return [...padrao, ...doPedido].map(String).filter(Boolean);
+}
+
+/**
+ * O que dá para baixar. A nota fiscal só aparece disponível depois da
+ * coleta — antes disso ela não existe, e um botão que não funciona é
+ * pior que um botão explicando por quê.
+ */
+function documentosDoPedido(venda) {
+  const jaColetado = ['mercadoria_coletada', 'produto_retirado', 'em_transito', 'aguardando_entrega', 'entregue', 'pedido_finalizado']
+    .includes(venda.status);
+  return [
+    { key: 'pedido',      label: 'Pedido em PDF',                disponivel: true },
+    { key: 'comprovante', label: 'Baixar Comprovante de Pagamento',
+      disponivel: !!venda.payment_method,
+      nota: venda.payment_method ? null : 'Disponível após o pagamento' },
+    { key: 'nfe',         label: 'Baixar Nota Fiscal',
+      disponivel: jaColetado,
+      nota: jaColetado ? null : 'Disponível após a coleta' },
+  ];
+}
 
 /** O detalhe que a janelinha da coluna Atenção mostra. */
 router.get('/pedidos/:id/atencao', async (req, res) => {
