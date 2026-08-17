@@ -230,8 +230,8 @@ export default function CustomerDetail() {
                 <span className={`w-11 h-11 rounded-full flex items-center justify-center mx-auto ${prime?.selo?.earned ? 'bg-amber-100' : 'bg-gray-100'}`}>
                   <Shield size={22} className={prime?.selo?.earned ? 'text-amber-500 fill-amber-200' : 'text-gray-300'} />
                 </span>
-                <p className="text-[10px] font-bold mt-1 text-gray-500">Selo de Confiança</p>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${prime?.selo?.earned ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                <p className="text-xs font-bold mt-1.5 text-gray-500">Selo de Confiança</p>
+                <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${prime?.selo?.earned ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                   {prime?.selo?.earned ? 'CONQUISTADO' : 'NÃO CONQUISTADO'}
                 </span>
               </div>
@@ -240,7 +240,7 @@ export default function CustomerDetail() {
             {/* progresso para a próxima estrela */}
             {prime?.next ? (
               <div>
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <div className="flex justify-between text-sm text-gray-500 mb-1.5">
                   <span>Progresso para {prime.next.stars} estrela{prime.next.stars > 1 ? 's' : ''}</span>
                   <span>{Math.round((prime.progress || 0) * 100)}%</span>
                 </div>
@@ -248,7 +248,7 @@ export default function CustomerDetail() {
                   <div className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all"
                     style={{ width: `${Math.round((prime.progress || 0) * 100)}%` }} />
                 </div>
-                <p className="text-xs text-gray-600 mt-1.5 text-center">
+                <p className="text-sm text-gray-600 mt-2 text-center">
                   Faltam <b className="text-indigo-700">{fmt(prime.next.faltam)}</b> para conquistar a próxima estrela
                 </p>
               </div>
@@ -258,25 +258,25 @@ export default function CustomerDetail() {
 
             {/* benefícios */}
             {prime && (
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="border border-gray-100 rounded-xl p-3 space-y-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="border border-gray-100 rounded-xl p-3.5 space-y-2">
                   <p className="font-bold text-gray-700">Benefícios atuais</p>
                   {prime.tier ? (
                     <>
-                      <p className="flex items-center gap-1.5 text-gray-600"><Wallet size={12} className="text-emerald-500" /> Limite sugerido: <b>{fmt(prime.tier.credit)}</b></p>
+                      <p className="flex items-center gap-1.5 text-gray-600"><Wallet size={14} className="text-emerald-500" /> Limite sugerido: <b>{fmt(prime.tier.credit)}</b></p>
                       {prime.tier.perks.map((p, i) => (
-                        <p key={i} className="flex items-center gap-1.5 text-gray-600"><CheckCircle2 size={12} className="text-emerald-500" /> {p}</p>
+                        <p key={i} className="flex items-center gap-1.5 text-gray-600"><CheckCircle2 size={14} className="text-emerald-500" /> {p}</p>
                       ))}
                     </>
                   ) : <p className="text-gray-400">Sem nível ainda — primeira compra libera</p>}
                 </div>
-                <div className="border border-indigo-100 bg-indigo-50/40 rounded-xl p-3 space-y-1.5">
+                <div className="border border-indigo-100 bg-indigo-50/40 rounded-xl p-3.5 space-y-2">
                   <p className="font-bold text-indigo-700">Próximo nível {prime.next ? `(${prime.next.stars}⭐)` : ''}</p>
                   {prime.next ? (
                     <>
-                      <p className="flex items-center gap-1.5 text-gray-600"><Wallet size={12} className="text-indigo-400" /> Limite sugerido: <b>{fmt(prime.next.credit)}</b></p>
+                      <p className="flex items-center gap-1.5 text-gray-600"><Wallet size={14} className="text-indigo-400" /> Limite sugerido: <b>{fmt(prime.next.credit)}</b></p>
                       {prime.next.perks.map((p, i) => (
-                        <p key={i} className="flex items-center gap-1.5 text-gray-600"><Star size={12} className="text-indigo-400" /> {p}</p>
+                        <p key={i} className="flex items-center gap-1.5 text-gray-600"><Star size={14} className="text-indigo-400" /> {p}</p>
                       ))}
                     </>
                   ) : <p className="text-gray-400">Você já desbloqueou tudo 🎉</p>}
@@ -286,10 +286,10 @@ export default function CustomerDetail() {
 
             {/* critérios do selo */}
             {prime?.selo && !prime.selo.earned && (
-              <div className="border border-amber-100 bg-amber-50/50 rounded-xl p-3 space-y-1">
-                <p className="text-xs font-bold text-amber-700">Para conquistar o Selo de Confiança:</p>
+              <div className="border border-amber-100 bg-amber-50/50 rounded-xl p-3.5 space-y-1.5">
+                <p className="text-sm font-bold text-amber-700">Para conquistar o Selo de Confiança:</p>
                 {prime.selo.criteria.map((c, i) => (
-                  <p key={i} className={`text-xs flex items-center gap-1.5 ${c.ok ? 'text-emerald-600' : 'text-gray-500'}`}>
+                  <p key={i} className={`text-[13px] flex items-center gap-2 ${c.ok ? 'text-emerald-600' : 'text-gray-500'}`}>
                     {c.ok ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} className="text-amber-500" />}
                     {c.label} <span className="text-gray-400">({c.atual})</span>
                   </p>

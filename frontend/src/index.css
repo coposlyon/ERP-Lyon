@@ -141,6 +141,26 @@
 }
 
 /* ═══════════════════════════════════════════════════════
+   LEGIBILIDADE  —  tamanho mínimo de texto
+
+   O sistema foi escrito com muito tipo miúdo: 1.062 usos de `text-xs`
+   (12px), 206 de `text-[11px]` e 100 de `text-[10px]`. Numa tela cheia
+   de rótulo pequeno — a ficha do cliente é o caso extremo — isso cansa
+   antes de informar.
+
+   O ajuste é feito aqui, na classe, e não nos 140 arquivos: cada tipo
+   sobe um degrau e ganha entrelinha proporcional. É pouco por item e
+   muito no conjunto, sem mexer em nenhum layout — nada reflui porque a
+   diferença é de 1 a 2px e as caixas já eram elásticas.
+
+   `text-sm` fica como está: 14px já é tamanho de leitura confortável, e
+   subir os 1.143 usos empurraria tabela para fora da tela.
+   ═══════════════════════════════════════════════════════ */
+.text-\[10px\] { font-size: 11px !important;      line-height: 1.45 !important; }
+.text-\[11px\] { font-size: 12px !important;      line-height: 1.45 !important; }
+.text-xs       { font-size: 0.8125rem !important; line-height: 1.15rem !important; }
+
+/* ═══════════════════════════════════════════════════════
    MOBILE  —  ajustes globais (valem para todas as telas)
    ═══════════════════════════════════════════════════════ */
 
@@ -342,6 +362,45 @@ html.dark .bg-emerald-50 { background-color: #022c22 !important; }
 html.dark .bg-emerald-100{ background-color: #064e3b !important; }
 html.dark .bg-rose-50    { background-color: #4c0519 !important; }
 html.dark .bg-rose-100   { background-color: #881337 !important; }
+
+/* ── Fundos coloridos COM OPACIDADE ─────────────────────────────
+   `bg-indigo-50/40`, `bg-amber-50/50`, `bg-violet-50/70`... são outros
+   tokens de classe e não casavam com as regras acima, que miram
+   `bg-indigo-50` puro. Resultado: a caixa continuava clara no escuro e
+   o texto escuro dela sumia — foi o que aconteceu no cartão do Lyon
+   Prime e nos critérios do Selo de Confiança.
+
+   O seletor termina em `/` de propósito: `[class*="bg-indigo-50"]`
+   casaria também com `bg-indigo-500`, repintando o que não devia. */
+html.dark [class*="bg-indigo-50/"],
+html.dark [class*="bg-blue-50/"],
+html.dark [class*="bg-violet-50/"],
+html.dark [class*="bg-purple-50/"] { background-color: rgba(47,107,255,0.14) !important; }
+
+html.dark [class*="bg-amber-50/"],
+html.dark [class*="bg-yellow-50/"],
+html.dark [class*="bg-orange-50/"] { background-color: rgba(245,158,11,0.14) !important; }
+
+html.dark [class*="bg-green-50/"],
+html.dark [class*="bg-emerald-50/"],
+html.dark [class*="bg-teal-50/"] { background-color: rgba(34,197,94,0.14) !important; }
+
+html.dark [class*="bg-red-50/"],
+html.dark [class*="bg-rose-50/"],
+html.dark [class*="bg-pink-50/"] { background-color: rgba(248,113,113,0.14) !important; }
+
+html.dark [class*="bg-gray-50/"],
+html.dark [class*="bg-slate-50/"] { background-color: #101a44 !important; }
+
+/* Dentro dessas caixas o texto "700" era escuro para fundo claro.
+   Agora o fundo é escuro, então ele sobe para o tom aceso da família. */
+html.dark [class*="bg-indigo-50/"] .text-indigo-700,
+html.dark [class*="bg-violet-50/"] .text-violet-700 { color: #a5b4fc !important; }
+html.dark [class*="bg-amber-50/"] .text-amber-700,
+html.dark [class*="bg-yellow-50/"] .text-yellow-700 { color: #fcd34d !important; }
+html.dark [class*="bg-green-50/"] .text-green-700,
+html.dark [class*="bg-emerald-50/"] .text-emerald-700 { color: #6ee7b7 !important; }
+html.dark [class*="bg-red-50/"] .text-red-700 { color: #fca5a5 !important; }
 
 /* ── Texto ──────────────────────────────────────────────────── */
 /* Texto no escuro: TUDO legível.
