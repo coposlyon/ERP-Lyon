@@ -264,26 +264,58 @@ html, body { max-width: 100%; overflow-x: clip; }
 
 html.dark { color-scheme: dark; }
 
+/* O fundo não é chapado: o degradê de cima é o que dá profundidade às
+   telas aprovadas — sem ele o marinho fica opaco e pesado. */
 html.dark body {
-  background-color: #111827;
-  color: #f9fafb;
+  background-color: #060a1f;
+  background-image: radial-gradient(1200px 620px at 50% -12%, #16205c 0%, #0a0f2c 45%, #060a1f 100%);
+  background-attachment: fixed;
+  color: #eaf0ff;
+}
+
+/* ── O contorno neon ────────────────────────────────────────────
+   É esta regra que transforma "escuro" em "o visual aprovado". Vale
+   para .card e para qualquer caixa branca que ainda não virou .card —
+   assim as ~90 telas que nunca foram convertidas entram no padrão sem
+   precisar ser reescritas uma a uma.
+
+   `!important` porque as utilitárias do Tailwind têm a mesma
+   especificidade e viriam depois no arquivo.
+
+   `[class~="bg-white"]` em vez de `.bg-white` porque o `.card` usa
+   `@apply bg-white`: redefinir a utilitária pelo nome dela faz o
+   Tailwind acusar dependência circular. O seletor de atributo casa
+   com o mesmo elemento sem tocar na utilitária. */
+html.dark .card,
+html.dark [class~="bg-white"] {
+  background-color: #0a1130 !important;
+  border-color: #1d2b6b !important;
+  box-shadow: 0 0 0 1px rgba(47,107,255,0.18), 0 0 22px rgba(47,107,255,0.10) !important;
+}
+
+/* Cartão dentro de cartão não repete o brilho: dois halos empilhados
+   viram borrão. */
+html.dark .card .card,
+html.dark .card [class~="bg-white"] {
+  box-shadow: none !important;
+  background-color: #101a44 !important;
 }
 
 /* ── Scrollbar ──────────────────────────────────────────────── */
-html.dark ::-webkit-scrollbar-track  { background-color: #111827 !important; }
-html.dark ::-webkit-scrollbar-thumb  { background-color: #374151 !important; }
-html.dark ::-webkit-scrollbar-thumb:hover { background-color: #4b5563 !important; }
+html.dark ::-webkit-scrollbar-track  { background-color: #060a1f !important; }
+html.dark ::-webkit-scrollbar-thumb  { background-color: #1d2b6b !important; }
+html.dark ::-webkit-scrollbar-thumb:hover { background-color: #2b3d84 !important; }
 
 /* ── Backgrounds ────────────────────────────────────────────── */
-html.dark .bg-white    { background-color: #1f2937 !important; }
-html.dark .bg-gray-50  { background-color: #111827 !important; }
-html.dark .bg-gray-100 { background-color: #1f2937 !important; }
-html.dark .bg-gray-200 { background-color: #374151 !important; }
-html.dark .bg-gray-300 { background-color: #4b5563 !important; }
+html.dark [class~="bg-white"] { background-color: #0a1130 !important; }
+html.dark .bg-gray-50  { background-color: #060a1f !important; }
+html.dark .bg-gray-100 { background-color: #0a1130 !important; }
+html.dark .bg-gray-200 { background-color: #1d2b6b !important; }
+html.dark .bg-gray-300 { background-color: #2b3d84 !important; }
 
-html.dark .hover\:bg-gray-50:hover   { background-color: #1f2937 !important; }
-html.dark .hover\:bg-gray-100:hover  { background-color: #374151 !important; }
-html.dark .hover\:bg-white:hover     { background-color: #374151 !important; }
+html.dark .hover\:bg-gray-50:hover   { background-color: #0a1130 !important; }
+html.dark .hover\:bg-gray-100:hover  { background-color: #1d2b6b !important; }
+html.dark .hover\:bg-white:hover     { background-color: #1d2b6b !important; }
 
 /* Backgrounds coloridos (stat cards, ícones, badges) */
 html.dark .bg-indigo-50  { background-color: #1e1b4b !important; }
@@ -312,13 +344,13 @@ html.dark .bg-rose-50    { background-color: #4c0519 !important; }
 html.dark .bg-rose-100   { background-color: #881337 !important; }
 
 /* ── Texto ──────────────────────────────────────────────────── */
-html.dark .text-gray-900 { color: #f9fafb !important; }
-html.dark .text-gray-800 { color: #f3f4f6 !important; }
-html.dark .text-gray-700 { color: #d1d5db !important; }
-html.dark .text-gray-600 { color: #9ca3af !important; }
-html.dark .text-gray-500 { color: #6b7280 !important; }
-html.dark .text-gray-400 { color: #4b5563 !important; }
-html.dark .text-gray-300 { color: #374151 !important; }
+html.dark .text-gray-900 { color: #eaf0ff !important; }
+html.dark .text-gray-800 { color: #dbe4ff !important; }
+html.dark .text-gray-700 { color: #c3d0f0 !important; }
+html.dark .text-gray-600 { color: #9db2e8 !important; }
+html.dark .text-gray-500 { color: #7b8fc7 !important; }
+html.dark .text-gray-400 { color: #2b3d84 !important; }
+html.dark .text-gray-300 { color: #1d2b6b !important; }
 
 /* Texto colorido (valores, ícones) */
 html.dark .text-indigo-600 { color: #818cf8 !important; }
@@ -346,11 +378,11 @@ html.dark .text-emerald-600{ color: #34d399 !important; }
 html.dark .text-rose-600   { color: #fb7185 !important; }
 
 /* ── Bordas ─────────────────────────────────────────────────── */
-html.dark .border           { border-color: #374151 !important; }
-html.dark .border-gray-50   { border-color: #111827 !important; }
-html.dark .border-gray-100  { border-color: #1f2937 !important; }
-html.dark .border-gray-200  { border-color: #374151 !important; }
-html.dark .border-gray-300  { border-color: #4b5563 !important; }
+html.dark .border           { border-color: #1d2b6b !important; }
+html.dark .border-gray-50   { border-color: #060a1f !important; }
+html.dark .border-gray-100  { border-color: #0a1130 !important; }
+html.dark .border-gray-200  { border-color: #1d2b6b !important; }
+html.dark .border-gray-300  { border-color: #2b3d84 !important; }
 html.dark .border-indigo-100{ border-color: #312e81 !important; }
 html.dark .border-indigo-200{ border-color: #3730a3 !important; }
 html.dark .border-blue-100  { border-color: #1e3a5f !important; }
@@ -364,76 +396,101 @@ html.dark .border-orange-100{ border-color: #7c2d12 !important; }
 html.dark .border-pink-100  { border-color: #831843 !important; }
 html.dark .border-purple-100{ border-color: #4c1d95 !important; }
 
-html.dark .divide-gray-100 > * + * { border-color: #1f2937 !important; }
-html.dark .divide-gray-200 > * + * { border-color: #374151 !important; }
+html.dark .divide-gray-100 > * + * { border-color: #0a1130 !important; }
+html.dark .divide-gray-200 > * + * { border-color: #1d2b6b !important; }
 
 /* ── Inputs / Formulários ───────────────────────────────────── */
-html.dark ::placeholder { color: #4b5563 !important; }
+html.dark ::placeholder { color: #2b3d84 !important; }
 
 html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 html.dark select,
 html.dark textarea {
-  background-color: #111827 !important;
-  border-color: #374151 !important;
-  color: #f9fafb !important;
+  background-color: #060a1f !important;
+  border-color: #1d2b6b !important;
+  color: #eaf0ff !important;
 }
 
 html.dark input:disabled,
 html.dark select:disabled,
 html.dark textarea:disabled {
-  background-color: #1f2937 !important;
-  color: #6b7280 !important;
+  background-color: #0a1130 !important;
+  color: #7b8fc7 !important;
   opacity: 0.7 !important;
 }
 
 html.dark select option {
-  background-color: #1f2937;
-  color: #f9fafb;
+  background-color: #0a1130;
+  color: #eaf0ff;
+}
+
+/* O campo em foco acende. É a peça que faz o formulário parecer da
+   mesma família das telas aprovadas, e de quebra deixa óbvio onde o
+   cursor está — coisa que no escuro se perde fácil. */
+html.dark input:focus:not([type="checkbox"]):not([type="radio"]),
+html.dark select:focus,
+html.dark textarea:focus,
+html.dark .input:focus {
+  border-color: #2f6bff !important;
+  box-shadow: 0 0 0 3px rgba(47,107,255,0.18), 0 0 14px rgba(47,107,255,0.22) !important;
+  outline: none !important;
+}
+
+/* Botão primário: o azul chapado do tema claro vira o gradiente aceso
+   do "Novo Pedido" das telas aprovadas. */
+html.dark .btn-primary {
+  background-image: linear-gradient(90deg, #2563eb, #3b82f6) !important;
+  border: 1px solid rgba(96,165,250,0.55) !important;
+  box-shadow: 0 0 18px rgba(59,130,246,0.35) !important;
+}
+html.dark .btn-primary:hover {
+  box-shadow: 0 0 26px rgba(59,130,246,0.55) !important;
 }
 
 /* ── Classes customizadas (index.css @layer components) ─────── */
 html.dark .card {
-  background-color: #1f2937 !important;
-  border-color: #374151 !important;
+  background-color: #0a1130 !important;
+  border-color: #1d2b6b !important;
 }
-html.dark .card-header { border-color: #374151 !important; }
+html.dark .card-header { border-color: #1d2b6b !important; }
 
 html.dark .input {
-  background-color: #111827 !important;
-  border-color: #374151 !important;
-  color: #f9fafb !important;
+  background-color: #060a1f !important;
+  border-color: #1d2b6b !important;
+  color: #eaf0ff !important;
 }
 html.dark .input:disabled {
-  background-color: #1f2937 !important;
-  color: #6b7280 !important;
+  background-color: #0a1130 !important;
+  color: #7b8fc7 !important;
 }
 
-html.dark .label { color: #d1d5db !important; }
+html.dark .label { color: #c3d0f0 !important; }
 
 html.dark .btn-secondary {
-  background-color: #1f2937 !important;
-  border-color: #374151 !important;
-  color: #d1d5db !important;
+  background-color: #0a1130 !important;
+  border-color: #1d2b6b !important;
+  color: #c3d0f0 !important;
 }
-html.dark .btn-secondary:hover { background-color: #374151 !important; }
+html.dark .btn-secondary:hover { background-color: #1d2b6b !important; }
 
-html.dark .btn-ghost { color: #d1d5db !important; }
-html.dark .btn-ghost:hover { background-color: #374151 !important; }
+html.dark .btn-ghost { color: #c3d0f0 !important; }
+html.dark .btn-ghost:hover { background-color: #1d2b6b !important; }
 
-html.dark .page-title { color: #f9fafb !important; }
+html.dark .page-title { color: #eaf0ff !important; }
 
 /* ── Tabelas ────────────────────────────────────────────────── */
 html.dark .table-auto th {
-  background-color: #111827 !important;
-  border-color: #374151 !important;
-  color: #6b7280 !important;
+  /* Cabeçalho um tom acima da linha, como nas telas aprovadas — sem
+     faixa cinza atravessando a tabela. */
+  background-color: transparent !important;
+  border-color: #1d2b6b !important;
+  color: #9db2e8 !important;
 }
 html.dark .table-auto td {
-  border-color: #1f2937 !important;
-  color: #d1d5db;
+  border-color: #0a1130 !important;
+  color: #c3d0f0;
 }
 html.dark .table-auto tr:hover td {
-  background-color: #1f2937 !important;
+  background-color: #0a1130 !important;
 }
 
 /* ── Badges ─────────────────────────────────────────────────── */
@@ -441,7 +498,7 @@ html.dark .badge-green  { background-color: #052e16 !important; color: #86efac !
 html.dark .badge-yellow { background-color: #422006 !important; color: #fde68a !important; }
 html.dark .badge-red    { background-color: #450a0a !important; color: #fca5a5 !important; }
 html.dark .badge-blue   { background-color: #082f49 !important; color: #7dd3fc !important; }
-html.dark .badge-gray   { background-color: #1f2937 !important; color: #9ca3af !important; }
+html.dark .badge-gray   { background-color: #0a1130 !important; color: #9db2e8 !important; }
 html.dark .badge-purple { background-color: #2e1065 !important; color: #c4b5fd !important; }
 
 /* ── Status classes ─────────────────────────────────────────── */
@@ -449,7 +506,7 @@ html.dark .status-confirmed    { background-color: #052e16 !important; color: #8
 html.dark .status-open         { background-color: #422006 !important; color: #fde68a !important; }
 html.dark .status-in_production{ background-color: #082f49 !important; color: #7dd3fc !important; }
 html.dark .status-ready        { background-color: #2e1065 !important; color: #c4b5fd !important; }
-html.dark .status-delivered    { background-color: #1f2937 !important; color: #9ca3af !important; }
+html.dark .status-delivered    { background-color: #0a1130 !important; color: #9db2e8 !important; }
 html.dark .status-cancelled    { background-color: #450a0a !important; color: #fca5a5 !important; }
 html.dark .status-pending      { background-color: #422006 !important; color: #fde68a !important; }
 html.dark .status-paid         { background-color: #052e16 !important; color: #86efac !important; }
@@ -457,21 +514,51 @@ html.dark .status-overdue      { background-color: #450a0a !important; color: #f
 html.dark .status-authorized   { background-color: #052e16 !important; color: #86efac !important; }
 html.dark .status-error        { background-color: #450a0a !important; color: #fca5a5 !important; }
 
+/* A casca do ERP fica transparente para o degradê do body aparecer;
+   sem isso o `bg-gray-50` dela tapa o fundo e volta o marinho chapado. */
+html.dark .erp-shell { background-color: transparent !important; }
+html.dark .erp-shell > div > main { background-color: transparent !important; }
+
+/* ── Sidebar ────────────────────────────────────────────────────
+   No escuro ela deixa de ser um bloco roxo sólido e vira um painel do
+   mesmo marinho do resto, separado por uma linha acesa — é o que faz o
+   menu parecer parte da tela em vez de colado nela. */
+html.dark .bg-sidebar {
+  background-color: #080d24 !important;
+  border-right: 1px solid #1d2b6b;
+}
+
+html.dark .sidebar-item {
+  color: #9db2e8;
+  border-radius: 0.75rem;
+}
+html.dark .sidebar-item:hover {
+  background-color: #101a44 !important;
+  color: #eaf0ff;
+}
+
+/* O item ativo é o retângulo aceso do menu nas telas aprovadas */
+html.dark .sidebar-item.active {
+  background-image: linear-gradient(90deg, rgba(37,99,235,0.55), rgba(59,130,246,0.25)) !important;
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(96,165,250,0.55), 0 0 16px rgba(47,107,255,0.25);
+}
+
 /* ── Details / summary ──────────────────────────────────────── */
-html.dark details { border-color: #374151 !important; }
-html.dark details summary { color: #d1d5db !important; }
-html.dark details summary:hover { background-color: #1f2937 !important; }
+html.dark details { border-color: #1d2b6b !important; }
+html.dark details summary { color: #c3d0f0 !important; }
+html.dark details summary:hover { background-color: #0a1130 !important; }
 
 /* ── Recharts (Dashboard) ───────────────────────────────────── */
 html.dark .recharts-cartesian-grid-horizontal line,
-html.dark .recharts-cartesian-grid-vertical line { stroke: #374151 !important; }
-html.dark .recharts-text, html.dark .recharts-cartesian-axis-tick-value { fill: #9ca3af !important; }
+html.dark .recharts-cartesian-grid-vertical line { stroke: #1d2b6b !important; }
+html.dark .recharts-text, html.dark .recharts-cartesian-axis-tick-value { fill: #9db2e8 !important; }
 html.dark .recharts-default-tooltip {
-  background-color: #1f2937 !important;
-  border-color: #374151 !important;
-  color: #f9fafb !important;
+  background-color: #0a1130 !important;
+  border-color: #1d2b6b !important;
+  color: #eaf0ff !important;
 }
-html.dark .recharts-legend-item-text { color: #d1d5db !important; }
+html.dark .recharts-legend-item-text { color: #c3d0f0 !important; }
 
 /* ── Ring / shadow ──────────────────────────────────────────── */
 html.dark .shadow-sm  { box-shadow: 0 1px 2px 0 rgba(0,0,0,.5) !important; }

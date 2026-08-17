@@ -30,14 +30,14 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
   }
 
   const headerStyle = isDark
-    ? { background: '#1f2937', borderBottom: '1px solid #374151', flexShrink: 0 }
+    ? { background: '#080d24', borderBottom: '1px solid #1d2b6b', flexShrink: 0 }
     : { background: '#ffffff', borderBottom: '1px solid #e5e7eb', flexShrink: 0 };
 
   const inputStyle = isDark
     ? {
-        background: '#111827',
-        border: '1px solid #374151',
-        color: '#f9fafb',
+        background: '#060a1f',
+        border: '1px solid #1d2b6b',
+        color: '#eaf0ff',
         outline: 'none',
         borderRadius: '0.5rem',
         padding: '0.375rem 0.75rem 0.375rem 2.25rem',
@@ -45,9 +45,9 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
         width: '100%',
       }
     : {
-        background: '#f9fafb',
+        background: '#eaf0ff',
         border: '1px solid #e5e7eb',
-        color: '#111827',
+        color: '#060a1f',
         outline: 'none',
         borderRadius: '0.5rem',
         padding: '0.375rem 0.75rem 0.375rem 2.25rem',
@@ -59,7 +59,7 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
     ? 'p-2 rounded-lg transition-colors hover:bg-gray-700 text-gray-400 flex items-center justify-center'
     : 'p-2 rounded-lg transition-colors hover:bg-gray-100 text-gray-500 flex items-center justify-center';
 
-  const searchIconColor = isDark ? '#6b7280' : '#9ca3af';
+  const searchIconColor = isDark ? '#7b8fc7' : '#9db2e8';
 
   return (
     <header
@@ -140,11 +140,11 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
               <div
                 className="absolute right-0 mt-2 w-52 rounded-xl shadow-lg z-40 overflow-hidden"
                 style={{
-                  background: isDark ? '#1f2937' : '#ffffff',
-                  border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`,
+                  background: isDark ? '#080d24' : '#ffffff',
+                  border: `1px solid ${isDark ? '#1d2b6b' : '#e5e7eb'}`,
                 }}
               >
-                <div className="px-4 py-3 sm:hidden" style={{ borderBottom: `1px solid ${isDark ? '#374151' : '#e5e7eb'}` }}>
+                <div className="px-4 py-3 sm:hidden" style={{ borderBottom: `1px solid ${isDark ? '#1d2b6b' : '#e5e7eb'}` }}>
                   <p className={`text-sm font-medium ${isDark ? 'text-gray-100' : 'text-gray-800'}`}>{user?.name}</p>
                   <p className={`text-xs capitalize ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{user?.role}</p>
                 </div>
@@ -167,8 +167,8 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
           onSubmit={handleSearch}
           className="absolute top-14 left-0 right-0 z-20 px-3 py-2 lg:hidden"
           style={{
-            background: isDark ? '#1f2937' : '#ffffff',
-            borderBottom: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`,
+            background: isDark ? '#080d24' : '#ffffff',
+            borderBottom: `1px solid ${isDark ? '#1d2b6b' : '#e5e7eb'}`,
           }}
         >
           <div className="relative">

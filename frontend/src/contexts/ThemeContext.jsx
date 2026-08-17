@@ -3,9 +3,11 @@ import { createContext, useContext, useState, useEffect } from 'react';
 const ThemeCtx = createContext({ isDark: false, toggleTheme: () => {} });
 
 export function ThemeProvider({ children }) {
+  // Padrão escuro: é o visual aprovado do sistema. Quem já escolheu
+  // claro alguma vez continua no claro — a preferência gravada manda.
   const [isDark, setIsDark] = useState(() => {
-    try { return localStorage.getItem('erp-theme') === 'dark'; }
-    catch { return false; } // padrão: claro
+    try { return (localStorage.getItem('erp-theme') || 'dark') === 'dark'; }
+    catch { return true; }
   });
 
   useEffect(() => {

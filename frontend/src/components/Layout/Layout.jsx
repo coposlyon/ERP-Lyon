@@ -25,7 +25,7 @@ export default function Layout() {
   }, [location.pathname]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-gray-50 erp-shell">
       <GlobalSearch />
       <AIAssistant />
       {/* Overlay escuro no mobile quando sidebar aberto */}
@@ -55,6 +55,13 @@ export default function Layout() {
               <Outlet />
             </Suspense>
           </ErrorBoundary>
+
+          <footer className="flex flex-wrap items-center justify-between gap-2 mt-8 pt-4 text-[11px] text-gray-400 border-t border-gray-100">
+            <span>© {new Date().getFullYear()} Lyon Copos Acrílicos. Todos os direitos reservados.</span>
+            <a href="https://lyoncopos.com.br" target="_blank" rel="noreferrer" className="text-primary-500 hover:underline">
+              LyonCopos.com.br
+            </a>
+          </footer>
         </main>
       </div>
     </div>
