@@ -40,6 +40,27 @@ const AVISOS_PADRAO = [
   'O andamento seguirá conforme disponibilidade e aprovação do pedido.',
 ];
 
+/**
+ * A nota fiscal só existe depois que a Logística emite. Antes disso o
+ * botão fica desabilitado explicando por quê — botão que não funciona
+ * sem dizer o motivo faz o cliente ligar para perguntar.
+ */
+function documentos(venda, temNota) {
+  return [
+    { key: 'pedido', label: 'Baixar Pedido em PDF', disponivel: true },
+    {
+      key: 'comprovante', label: 'Baixar Comprovante',
+      disponivel: !!venda.payment_method,
+      nota: venda.payment_method ? null : 'Disponível após a confirmação do pagamento.',
+    },
+    {
+      key: 'nfe', label: 'Baixar Nota Fiscal',
+      disponivel: !!temNota,
+      nota: temNota ? null : 'Disponível após emissão pela Logística.',
+    },
+  ];
+}
+
 // A derivação dos itens vive em itensPedido.js: a tela do vendedor
 // mostra exatamente as mesmas características, e duas cópias da mesma
 // conta é uma que vai divergir. Aqui só se escolhe O QUE sai.
@@ -47,7 +68,24 @@ const AVISOS_PADRAO = [
 function montarPedidoDoCliente(venda, extra = {}) {
   const cli = venda.CLIENTES || {};
   const info = A.infoStatus(venda.status);
-  const itens = (venda.VENDA_ITENS || []).map(caracteristicasDoItem);
+  // Campo a campo, mesmo vindo de uma função nossa. caracteristicasDoItem
+  // devolve também tem_borda/tem_pintura, que existem para a linha do
+  // tempo decidir se mostra a etapa — são processo interno e não têm o
+  // que fazer na tela do cliente. Repassar o objeto inteiro seria a
+  // lista de bloqueio disfarçada que este arquivo existe para evitar:
+  // campo novo na lib nasceria exposto aqui e ninguém perceberia.
+  const detalhados = (venda.VENDA_ITENS || []).map(caracteristicasDoItem);
+  const itens = detalhados.map(i => ({
+    codigo: i.codigo,
+    produto: i.produto,
+    capacidade: i.capacidade,
+    linha: i.linha,
+    categoria: i.categoria,
+    campos: i.campos,
+    quantidade: i.quantidade,
+    valor_unitario: i.valor_unitario,
+    valor_total: i.valor_total,
+  }));
 
   return {
     pedido: {
@@ -95,10 +133,12 @@ function montarPedidoDoCliente(venda, extra = {}) {
     },
 
     itens,
-    // Por fases, não por status: o cliente não precisa saber que
-    // "aguardando arte" e "arte aprovada" são dois registros — ele
-    // precisa saber em que ponto do caminho o pedido dele está.
-    linha_do_tempo: A.fasesDoPedido(venda, etapasDosItens(itens)),
+    // A régua DETALHADA, com "aguardando" e "confirmado" separados. É o
+    // contrário da tela do vendedor de propósito: quem acompanha a
+    // própria compra quer ver cada movimentação acontecer, enquanto quem
+    // trabalha o dia inteiro na tela quer o resumo. Pintura e borda só
+    // aparecem se este pedido passar por elas.
+    linha_do_tempo: A.linhaDoTempo(venda, etapasDosItens(detalhados)),
     historico: A.historicoPedido(venda),
     documentos: documentos(venda, extra.temNota),
     avisos: (extra.avisos && extra.avisos.length) ? extra.avisos : AVISOS_PADRAO,

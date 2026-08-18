@@ -99,6 +99,35 @@ export default function PedidoCliente() {
 
   const etapaAtual = (p.linha_do_tempo || []).find(e => e.estado === 'atual');
 
+  /**
+   * AS COLUNAS DO MEIO SÃO DA COMPRA, NÃO DA TELA.
+   *
+   * Um copo tradicional tem uma cor; um degradê tem cor de base e de
+   * boca; um jateado tem a cor do jateado. A tabela abre só as colunas
+   * que algum item DESTE pedido usa — "Cor da boca: —" num tradicional
+   * faz o cliente achar que faltou combinar alguma coisa e ligar para
+   * perguntar sobre o que não existe.
+   *
+   * A ordem é a do copo: cor do produto antes da cor da personalização,
+   * e não a ordem em que os itens chegaram.
+   */
+  const colunasItem = (() => {
+    const achadas = [];
+    for (const item of p.itens || []) {
+      for (const campo of item.campos || []) {
+        if (!achadas.includes(campo.rotulo)) achadas.push(campo.rotulo);
+      }
+    }
+    const ORDEM = ['Cor do produto', 'Cor base', 'Cor da boca', 'Cor do jateado', 'Cor da borda'];
+    const PERSONALIZACAO = 'Cor da personalização';
+    const peso = r => {
+      const i = ORDEM.indexOf(r);
+      if (i >= 0) return i;
+      return r === PERSONALIZACAO ? 999 : 100 + achadas.indexOf(r);
+    };
+    return [...achadas].sort((a, b) => peso(a) - peso(b));
+  })();
+
   return (
     <div className="min-h-screen pb-10"
       style={{ background: 'radial-gradient(1200px 600px at 50% -20%, #16205c 0%, #0a0f2c 45%, #060a1f 100%)' }}>
@@ -187,12 +216,12 @@ export default function PedidoCliente() {
         {/* ── Itens ───────────────────────────────────────────── */}
         <Card Icon={Package} titulo="Itens do Pedido" semPadding>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ minWidth: 820 }}>
+            <table className="w-full text-sm" style={{ minWidth: 700 + colunasItem.length * 130 }}>
               <thead>
                 <tr style={{ color: 'rgba(147,197,253,0.8)' }}>
-                  {['Cód. Produto','Produto','Capacidade','Linha','Categoria','Características','Qtd','Valor Unit.','Valor Total']
-                    .map((h, i) => (
-                      <th key={h} className={`px-3 py-2.5 text-[11px] font-semibold whitespace-nowrap ${i >= 6 ? 'text-right' : 'text-left'}`}
+                  {['Cód. Produto', 'Produto', 'Capacidade', 'Linha', 'Categoria', ...colunasItem, 'Qtd', 'Valor Unit.', 'Valor Total']
+                    .map((h, i, todas) => (
+                      <th key={h} className={`px-3 py-2.5 text-[11px] font-semibold whitespace-nowrap ${i >= todas.length - 3 ? 'text-right' : 'text-left'}`}
                         style={{ borderBottom: '1px solid rgba(96,165,250,0.22)' }}>{h}</th>
                     ))}
                 </tr>
@@ -204,21 +233,15 @@ export default function PedidoCliente() {
                     <td className="px-3 py-2.5 text-white">{i.produto}</td>
                     <td className="px-3 py-2.5" style={{ color: 'rgba(255,255,255,0.7)' }}>{i.capacidade || '—'}</td>
                     <td className="px-3 py-2.5" style={{ color: 'rgba(255,255,255,0.7)' }}>{i.linha || '—'}</td>
-                    <td className="px-3 py-2.5" style={{ color: 'rgba(255,255,255,0.7)' }}>{i.categoria}</td>
-                    {/* Só o que se aplica a este produto: um tradicional
-                        não mostra "cor da boca" vazia. */}
                     <td className="px-3 py-2.5">
-                      <div className="flex flex-wrap gap-1.5">
-                        {i.campos.length === 0
-                          ? <span style={{ color: 'rgba(255,255,255,0.35)' }}>—</span>
-                          : i.campos.map(c => (
-                            <span key={c.rotulo} className="text-[11px] px-2 py-0.5 rounded-full"
-                              style={{ background: 'rgba(99,102,241,0.18)', color: '#c7d2fe' }}>
-                              {c.rotulo}: {c.valor}
-                            </span>
-                          ))}
-                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
+                        style={{ background: 'rgba(99,102,241,0.18)', color: '#c7d2fe' }}>{i.categoria}</span>
                     </td>
+                    {colunasItem.map(rotulo => (
+                      <td key={rotulo} className="px-3 py-2.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                        {(i.campos || []).find(c => c.rotulo === rotulo)?.valor || '—'}
+                      </td>
+                    ))}
                     <td className="px-3 py-2.5 text-right text-white">{i.quantidade}</td>
                     <td className="px-3 py-2.5 text-right" style={{ color: 'rgba(255,255,255,0.7)' }}>{brl(i.valor_unitario)}</td>
                     <td className="px-3 py-2.5 text-right font-semibold text-white">{brl(i.valor_total)}</td>
@@ -457,7 +480,7 @@ function Balao({ passo }) {
           <Icon size={18} style={{ color: c.texto }} />
         </div>
         <span className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
-          style={{ background: c.anel, color: '#0b1020' }}>{passo.passo}</span>
+          style={{ background: c.anel, color: '#0b1020' }}>{passo.ordem ?? passo.passo}</span>
       </div>
       <span className="text-[10px] leading-tight" style={{ color: c.texto }}>{passo.label}</span>
       {passo.at && (

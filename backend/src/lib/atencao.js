@@ -141,11 +141,17 @@ const PASSOS = Object.entries(STATUS)
  * depende do produto — deixa os balões não visitados como 'pendente'.
  * Não se inventa data para eles.
  *
- * @param venda   linha de VENDAS (status + production_log)
+ * Esta é a régua DETALHADA, com "aguardando X" e "X finalizado" como
+ * balões separados — é a que a tela do cliente usa. Quem acompanha a
+ * própria compra quer ver cada movimentação; quem trabalha o dia
+ * inteiro na tela quer o resumo, e para esse existe fasesDoPedido().
+ *
+ * @param venda      linha de VENDAS (status + production_log)
+ * @param aplicaveis { borda, pintura } — de etapasDosItens()
  * @returns [{ passo, key, label, icone, cor, estado, at, user }]
  *          estado: 'concluido' | 'atual' | 'pendente'
  */
-function linhaDoTempo(venda) {
+function linhaDoTempo(venda, aplicaveis = {}) {
   const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
 
   // Quando cada etapa aconteceu. Primeira ocorrência vence: se o pedido
@@ -163,7 +169,20 @@ function linhaDoTempo(venda) {
   const atual = infoStatus(venda?.status);
   const passoAtual = atual.passo || 0;
 
-  return PASSOS.map(p => {
+  // Pintura e borda só entram quando o pedido passa por elas. Um pedido
+  // tradicional sem borda que mostrasse as duas apagadas faria o cliente
+  // esperar por uma etapa que nunca vai acontecer.
+  const OPCIONAIS = {
+    aguardando_pintura: 'pintura', pintura_finalizada: 'pintura',
+    aguardando_borda:   'borda',   borda_finalizada:   'borda',
+  };
+  const visiveis = PASSOS.filter(p => {
+    const grupo = OPCIONAIS[p.key];
+    if (!grupo) return true;
+    return aplicaveis[grupo] || quando.has(p.key) || p.key === venda?.status;
+  });
+
+  return visiveis.map((p, i) => {
     const visita = quando.get(p.key) || null;
     let estado;
     if (p.key === venda?.status) estado = 'atual';
@@ -174,6 +193,11 @@ function linhaDoTempo(venda) {
     else estado = 'pendente';
 
     return {
+      // `ordem` é a posição no que está VISÍVEL; `passo` é o número fixo
+      // no catálogo. Escondendo pintura e borda, o número fixo pularia de
+      // 11 para 16 na tela do cliente — e buraco na contagem se lê como
+      // etapa perdida, não como etapa que não existe neste pedido.
+      ordem: i + 1,
       passo: p.passo, key: p.key, label: p.label, icone: p.icone, cor: p.cor,
       area: p.area, estado,
       at: visita?.at || null,
