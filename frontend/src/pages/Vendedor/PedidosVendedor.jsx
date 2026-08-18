@@ -21,14 +21,7 @@ import { useVend, fmtBRL } from './ui';
 import AtencaoModal from './AtencaoModal';
 import NovoPedidoModal from './NovoPedidoModal';
 import ExcluirPedidoModal from '@/components/UI/ExcluirPedidoModal';
-
-// Ícone das plataformas de origem. Emoji e não imagem: origem nova
-// entra sem precisar subir arquivo nenhum.
-const ORIGEM_ICONE = {
-  'Site': '🌐', 'WhatsApp': '💬', 'Instagram': '📷', 'Facebook': '👥',
-  'TikTok': '🎵', 'Shopee': '🛍️', 'Mercado Livre': '🤝', 'Amazon': '📦',
-  'Magalu': '🏬', 'Presencial': '🤝', 'Telefone': '📞', 'Indicação': '⭐',
-};
+import LogoOrigem from '@/components/UI/LogoOrigem';
 
 const CORES_STATUS = {
   cinza:    '#94a3b8', amarelo: '#facc15', laranja: '#fb923c', azul: '#60a5fa',
@@ -181,7 +174,7 @@ export default function PedidosVendedor() {
                 </span>
                 <span className="w-36 shrink-0 flex items-center gap-1.5 truncate" style={{ color: v.textPrimary }}
                   title={p.source === 'manual' ? 'Lançado manualmente pelo vendedor' : 'Lançado pelo próprio cliente'}>
-                  <span>{ORIGEM_ICONE[p.origin] || '•'}</span>
+                  <LogoOrigem origem={p.origin} size={20} />
                   <span className="truncate">{p.origin || '—'}</span>
                 </span>
                 <span className="w-28 shrink-0 font-mono" style={{ color: v.textMuted }}>

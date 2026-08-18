@@ -29,7 +29,8 @@ import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useVend, fmtBRL, fmtUn, fmtDate } from './ui';
-import { corStatus, iconeOrigem } from '@/lib/pedidoUi';
+import { corStatus } from '@/lib/pedidoUi';
+import LogoOrigem from '@/components/UI/LogoOrigem';
 
 /**
  * Os ícones da linha do tempo, um a um.
@@ -228,7 +229,7 @@ export default function PedidoDetalhe() {
               <Campo v={v} rotulo="Vendedor"       valor={p.vendedor || '—'} />
               <Campo v={v} rotulo="Origem" valor={
                 p.origin
-                  ? <span>{iconeOrigem(p.origin)} {p.origin}</span>
+                  ? <LogoOrigem origem={p.origin} size={18} nome />
                   : <span style={{ color: v.textSubtle }}>não informada</span>
               } />
               <Campo v={v} rotulo="Transportadora" valor={p.transportadora || '—'} />

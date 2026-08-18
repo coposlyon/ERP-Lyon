@@ -7,6 +7,7 @@ import '@/store/store.css';
 import toast from 'react-hot-toast';
 import CadastroDone from './CadastroDone';
 import SolicitarAlteracao from './SolicitarAlteracao';
+import AberturaCadastro from './AberturaCadastro';
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 const INPUT = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none text-sm transition';
@@ -365,7 +366,13 @@ export default function CadastroCliente() {
   return (
     <div className="cadastro-publico min-h-screen relative overflow-hidden py-8 px-4 bg-black">
       {/* Abertura cinematográfica */}
-      {phase !== 'form' && (
+      {/* A abertura e o cartao neon, igual ao acompanhamento do
+          pedido. O video continua depois dele. */}
+      {phase === 'start' && (
+        <AberturaCadastro tipo="cliente" onIniciar={startIntro} />
+      )}
+
+      {phase !== 'form' && phase !== 'start' && (
         <div className="fixed inset-0 z-50 bg-black">
           <Starfield />
           <video ref={videoRef} playsInline preload="auto"
@@ -374,15 +381,6 @@ export default function CadastroCliente() {
             <source src="/cadastro-bg.mp4" type="video/mp4" />
           </video>
 
-          {phase === 'start' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
-              <img src="/lyon-logo.png" alt="Lyon Copos" className="h-24 sm:h-28 mb-8 object-contain st-float" onError={e => { e.target.style.display = 'none'; }} />
-              <button type="button" onClick={startIntro}
-                className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-extrabold text-lg px-9 py-4 rounded-full shadow-2xl st-pulse transition-colors">
-                <Play size={20} /> INICIAR CADASTRO
-              </button>
-            </div>
-          )}
 
           {phase !== 'start' && (
             <button type="button" onClick={() => setPhase('form')} className="absolute bottom-5 right-6 text-white/60 text-xs hover:text-white z-10">Pular ›</button>

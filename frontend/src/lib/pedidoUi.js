@@ -7,17 +7,9 @@
 // pensaria que são canais diferentes.
 // ============================================================
 
-// Ícone por origem. Emoji e não imagem: marketplace novo entra sem
-// precisar subir arquivo nenhum, e acompanha a lista do backend
-// (backend/src/lib/origens.js).
-export const ORIGEM_ICONE = {
-  'Site': '🌐', 'WhatsApp': '💬', 'Instagram': '📷', 'Facebook': '👥',
-  'TikTok': '🎵', 'Shopee': '🛍️', 'Mercado Livre': '🤝', 'Amazon': '📦',
-  'Magalu': '🏬', 'Presencial': '🏪', 'Telefone': '📞', 'Indicação': '⭐',
-  'Outro': '•',
-};
-
-export const iconeOrigem = o => ORIGEM_ICONE[o] || '•';
+// A marca de cada origem virou desenho e mora em
+// components/UI/LogoOrigem.jsx: emoji não distinguia Shopee de Magalu
+// numa coluna de trinta linhas — as duas eram a mesma bolsinha cinza.
 
 // As cores que o backend nomeia em lib/atencao.js.
 export const CORES_STATUS = {

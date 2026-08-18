@@ -6,7 +6,8 @@ import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import ExcluirPedidoModal from '@/components/UI/ExcluirPedidoModal';
 import { useVend, fmtBRL } from '@/components/UI/theme';
-import { iconeOrigem, corStatus, NIVEL_ATENCAO, CSS_ATENCAO, codigoPedido, codigoCliente } from '@/lib/pedidoUi';
+import { corStatus, NIVEL_ATENCAO, CSS_ATENCAO, codigoPedido, codigoCliente } from '@/lib/pedidoUi';
+import LogoOrigem from '@/components/UI/LogoOrigem';
 import { SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -251,7 +252,7 @@ export default function Sales() {
                     title={row.origin
                       ? `${row.origin}${row.source === 'site' ? ' — pedido feito pelo próprio cliente' : ' — lançado no ERP'}`
                       : 'Origem não informada neste pedido'}>
-                    <span>{row.origin ? iconeOrigem(row.origin) : '—'}</span>
+                    <LogoOrigem origem={row.origin} size={20} />
                     <span className="truncate">{row.origin || 'não informado'}</span>
                   </span>
                   <span className="w-28 shrink-0 font-mono" style={{ color: v.textMuted }}>

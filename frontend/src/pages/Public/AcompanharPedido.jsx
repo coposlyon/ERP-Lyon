@@ -12,8 +12,9 @@
 // ============================================================
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Tag, LogIn, Loader2, HelpCircle, AlertCircle } from 'lucide-react';
+import { User, Tag, LogIn, Loader2, AlertCircle } from 'lucide-react';
 import api from '@/lib/api';
+import PortalPublico from './PortalPublico';
 
 // 000.000.000-00 enquanto digita — o campo aceita colado com ou sem
 // pontuação, e a máscara só ajuda a conferir.
@@ -51,15 +52,11 @@ export default function AcompanharPedido() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10"
-      style={{ background: 'radial-gradient(1200px 600px at 50% -10%, #16205c 0%, #0a0f2c 45%, #060a1f 100%)' }}>
-
-      <img src="/lyon-logo.png" alt="Lyon Copos" className="w-56 max-w-[70%] mb-8" draggable={false} />
-
-      <form onSubmit={entrar} className="w-full max-w-md rounded-2xl p-7 sm:p-8"
-        style={{ background: 'rgba(10,16,45,0.72)', border: '1px solid rgba(96,165,250,0.35)',
-                 boxShadow: '0 0 40px rgba(56,120,255,0.18)', backdropFilter: 'blur(10px)' }}>
-
+    // A casca (fundo, logo, cartão e o link de ajuda) vem de
+    // PortalPublico: é a mesma das telas de cadastro, e duas aberturas
+    // ligeiramente diferentes fazem quem chega pelo link se perguntar se
+    // caiu no site certo.
+    <PortalPublico como="form" onSubmit={entrar}>
         <h1 className="text-3xl font-bold text-center text-white">Acompanhar Pedido</h1>
         <p className="text-sm text-center mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
           Acesse seu painel para acompanhar o andamento do seu pedido em tempo real.
@@ -93,13 +90,7 @@ export default function AcompanharPedido() {
           Use seu CPF no login e o número do pedido<br />(ex.: PV-000123) como acesso.
         </p>
 
-        <div className="mt-5 pt-4 text-center" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <a href="/loja" className="text-sm inline-flex items-center gap-1.5" style={{ color: '#60a5fa' }}>
-            <HelpCircle size={14} /> Precisa de ajuda? Fale com o vendedor
-          </a>
-        </div>
-      </form>
-    </div>
+    </PortalPublico>
   );
 }
 
