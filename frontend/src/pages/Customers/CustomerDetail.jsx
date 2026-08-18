@@ -582,7 +582,13 @@ export default function CustomerDetail() {
                 <div className="flex gap-2 pt-2 mt-1 border-t border-gray-100">
                   <MapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
                   <div className="leading-relaxed">
-                    {customer.address.street && <p>{customer.address.street}{customer.address.number ? `, ${customer.address.number}` : ''}{customer.address.complement ? ` — ${customer.address.complement}` : ''}</p>}
+                    {customer.address.street && <p>{customer.address.street}{customer.address.number ? `, ${customer.address.number}` : ''}</p>}
+                    {/* O complemento vinha colado no fim da rua, atrás de um
+                        travessão. Estava lá, mas quem procurava "Complemento"
+                        não achava — é o único campo do bloco sem rótulo, e
+                        "CASA" no fim de um endereço passa por parte da rua.
+                        Linha própria, como o bairro. */}
+                    {customer.address.complement && <p>Complemento: {customer.address.complement}</p>}
                     {customer.address.neighborhood && <p>Bairro: {customer.address.neighborhood}</p>}
                     {(customer.address.city || customer.address.state) && <p>{customer.address.city}{customer.address.state ? `/${customer.address.state}` : ''}</p>}
                     {customer.address.zip && <p className="text-gray-400 text-xs">CEP {customer.address.zip}</p>}
