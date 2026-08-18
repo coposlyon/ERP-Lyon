@@ -11,7 +11,7 @@
 // ============================================================
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Filter, RotateCcw, Plus, Eye, FileText, Send, CheckCircle2, Trash2,
   AlertTriangle, Siren, ChevronLeft, ChevronRight,
@@ -46,9 +46,15 @@ export default function PedidosVendedor() {
   const v = useVend();
   const navigate = useNavigate();
 
-  const [codigo, setCodigo]           = useState('');
+  // A tela abre filtrada quando alguém chega por link — é assim que o
+  // "Ver histórico completo" do cliente cai aqui já mostrando só os
+  // pedidos dele, inclusive os finalizados. Sem isso o vendedor teria
+  // que decorar o código e redigitar.
+  const [busca] = useSearchParams();
+
+  const [codigo, setCodigo]           = useState(busca.get('codigo') || '');
   const [status, setStatus]           = useState('');
-  const [finalizados, setFinalizados] = useState(false);
+  const [finalizados, setFinalizados] = useState(busca.get('finalizados') === '1');
   const [pagina, setPagina]           = useState(1);
   const [porPagina, setPorPagina]     = useState(10);
   const [atencaoDe, setAtencaoDe]     = useState(null);   // pedido da janelinha

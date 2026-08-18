@@ -201,6 +201,119 @@ function historicoPedido(venda) {
   return linhas.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
 }
 
+
+/**
+ * AS FASES DO PEDIDO — a linha do tempo como ela deve ser lida.
+ *
+ * O catálogo de STATUS tem duas entradas por etapa ("aguardando arte" e
+ * "arte aprovada"), porque é assim que o chão de fábrica marca o
+ * andamento. Desenhar isso como vinte e oito bolinhas fazia a tela
+ * contar a mesma coisa duas vezes e o pedido parecer o dobro de longe
+ * do fim do que está.
+ *
+ * Aqui cada etapa é UMA fase, e o estado dela é que muda:
+ *
+ *   pendente   ainda não chegou      (roxo/azul)
+ *   atual      está acontecendo agora (amarelo/laranja)
+ *   concluido  já passou              (verde)
+ *
+ * Nunca se pinta de verde uma fase que ainda não aconteceu.
+ *
+ * PINTURA e BORDA só entram quando o pedido passa por elas — quem
+ * decide é o que foi contratado nos itens, não um palpite. Pedido
+ * tradicional sem borda simplesmente não mostra as duas.
+ */
+const FASES = [
+  { key: 'realizado',  label: 'Pedido Realizado',      icone: 'CircleCheck',    entrando: [],                        concluida: ['iniciando_pedido'] },
+  { key: 'pagamento',  label: 'Pagamento',             icone: 'Wallet',         entrando: ['aguardando_financeiro'], concluida: ['pagamento_confirmado'] },
+  { key: 'estoque',    label: 'Estoque',               icone: 'Package',        entrando: ['aguardando_estoque'],    concluida: ['estoque_confirmado'] },
+  { key: 'arte',       label: 'Arte',                  icone: 'PenTool',        entrando: ['aguardando_arte'],       concluida: ['arte_aprovada'] },
+  { key: 'vegetal',    label: 'Vegetal',               icone: 'FileImage',      entrando: ['aguardando_vegetal'],    concluida: ['vegetal_impresso'] },
+  { key: 'revelacao',  label: 'Revelação',            icone: 'FlaskConical',   entrando: ['aguardando_revelacao'],  concluida: ['revelacao_finalizada'] },
+  { key: 'pintura',    label: 'Pintura',               icone: 'Brush',          entrando: ['aguardando_pintura'],    concluida: ['pintura_finalizada'],   opcional: 'pintura' },
+  { key: 'borda',      label: 'Borda',                 icone: 'CircleDashed',   entrando: ['aguardando_borda'],      concluida: ['borda_finalizada'],     opcional: 'borda' },
+  { key: 'producao',   label: 'Produção',             icone: 'Settings',       entrando: ['aguardando_producao'],   concluida: ['producao_finalizada'] },
+  { key: 'embalagem',  label: 'Embalagem',             icone: 'PackageOpen',    entrando: ['aguardando_embalagem'],  concluida: ['embalagem_finalizada'] },
+  { key: 'qualidade',  label: 'Controle de Qualidade', icone: 'ShieldCheck',    entrando: ['aguardando_qualidade'],  concluida: ['qualidade_finalizada'] },
+  { key: 'foto',       label: 'Foto',                  icone: 'Camera',         entrando: ['aguardando_foto'],       concluida: ['foto_enviada'] },
+  { key: 'coleta',     label: 'Coleta',                icone: 'Truck',          entrando: ['aguardando_coleta'],     concluida: ['mercadoria_coletada', 'produto_retirado'] },
+  { key: 'transito',   label: 'Em Trânsito',           icone: 'Truck',          entrando: ['em_transito'],           concluida: [] },
+  // O fim da régua é "Pedido Entregue", nunca "Finalizado": finalizado é
+  // controle interno, entregue é o que aconteceu com o cliente.
+  { key: 'entrega',    label: 'Pedido Entregue',       icone: 'PackageCheck',   entrando: ['aguardando_entrega'],    concluida: ['entregue', 'pedido_finalizado'] },
+];
+
+/**
+ * A linha do tempo por fases.
+ *
+ * O estado de cada fase sai de duas fontes que se completam: o
+ * production_log, que diz por onde o pedido JÁ passou e quando, e o
+ * status atual, que diz onde ele está agora. Só o status não bastaria
+ * (não teria as datas), e só o log também não (pedido recém-criado
+ * ainda não tem log nenhum).
+ *
+ * @param venda      linha de VENDAS (status + production_log)
+ * @param aplicaveis { borda, pintura } — de etapasDosItens()
+ */
+function fasesDoPedido(venda, aplicaveis = {}) {
+  const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
+
+  // Quando cada status aconteceu. Primeira ocorrência vence: se o pedido
+  // voltou de etapa, a data que interessa é a de quando chegou lá.
+  const quando = new Map();
+  for (const e of log) {
+    const k = e.action || e.status;
+    if (k && !quando.has(k)) quando.set(k, { at: e.at || null, user: e.user || null });
+  }
+  if (!quando.has('iniciando_pedido') && venda?.created_at) {
+    quando.set('iniciando_pedido', { at: venda.created_at, user: null });
+  }
+
+  const status = venda?.status || null;
+  const passoAtual = infoStatus(status).passo || 0;
+
+  const visiveis = FASES.filter(f => {
+    if (!f.opcional) return true;
+    // A fase opcional aparece quando os itens pedem OU quando o pedido
+    // de fato passou por ela — histórico antigo manda mais que regra.
+    if (aplicaveis[f.opcional]) return true;
+    return [...f.entrando, ...f.concluida].some(k => quando.has(k) || k === status);
+  });
+
+  return visiveis.map((f, i) => {
+    const chaves = [...f.entrando, ...f.concluida];
+    const visita = chaves.map(k => quando.get(k)).find(Boolean) || null;
+    const maiorPasso = chaves
+      .map(k => STATUS[k]?.passo || 0)
+      .reduce((a, b) => Math.max(a, b), 0);
+
+    let estado;
+    if (chaves.includes(status)) {
+      // Está nesta fase. Só conta como concluída se o status é o de
+      // saída dela e existe uma fase depois para onde ir.
+      estado = f.concluida.includes(status) && f.key === 'entrega' ? 'concluido' : 'atual';
+    } else if (maiorPasso && passoAtual > maiorPasso) {
+      estado = 'concluido';
+    } else if (visita) {
+      estado = 'concluido';
+    } else {
+      estado = 'pendente';
+    }
+
+    return {
+      ordem: i + 1,
+      key: f.key,
+      label: f.label,
+      icone: f.icone,
+      estado,
+      at: visita?.at || null,
+      user: visita?.user || null,
+      // O rótulo miúdo embaixo da bolinha: o status exato dentro da fase.
+      detalhe: chaves.includes(status) ? infoStatus(status).label : null,
+    };
+  });
+}
+
 /**
  * O prazo que vale para a Atenção: a data prevista de SAÍDA. ship_date é
  * a data que a produção combinou; sem ela, a entrega prometida é o que
@@ -272,7 +385,7 @@ function calcularAtencao(venda, agora = new Date(), alertaAberto = null) {
 }
 
 module.exports = {
-  STATUS, AREAS, PASSOS,
+  STATUS, AREAS, PASSOS, FASES,
   infoStatus, listaStatus, finalizado, prazoSaida, calcularAtencao,
-  linhaDoTempo, historicoPedido,
+  linhaDoTempo, fasesDoPedido, historicoPedido,
 };

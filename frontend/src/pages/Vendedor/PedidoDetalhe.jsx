@@ -7,6 +7,11 @@
 // tempo com o caminho inteiro — o que já passou, onde está agora e o
 // que falta.
 //
+// UMA INFORMAÇÃO, UM LUGAR. As informações da entrega aparecem só no
+// card de baixo; compartilhar com o cliente é só o botão do topo; os
+// documentos só na lateral. Atalho repetido não é conveniência — é a
+// garantia de que um dia os dois vão discordar.
+//
 // O que NÃO aparece: custo, margem, rateio e taxa administrativa. Não é
 // só a tela que esconde — a rota /area-vendedor/pedidos/:id nem
 // consulta esses campos.
@@ -17,12 +22,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Share2, User, FileText, DollarSign, CalendarDays, Package, Clock,
   Truck, Info, Plus, Eye, Download, UploadCloud, PenLine, CircleCheck, Star,
-  Circle, Wallet, Hourglass, PenTool, FileImage, FileCheck, FlaskConical, Brush,
-  CircleDashed, GlassWater, Settings, PackageOpen, ShieldQuestion, ShieldCheck,
-  Camera, ImageUp, PackageSearch, PackageCheck,
+  Circle, Wallet, PenTool, FileImage, FlaskConical, Brush, CircleDashed,
+  Settings, PackageOpen, ShieldCheck, Camera, PackageCheck, History, ExternalLink,
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { useVend, fmtBRL, fmtUn, fmtDate } from './ui';
 import { corStatus, iconeOrigem } from '@/lib/pedidoUi';
 
@@ -35,9 +40,8 @@ import { corStatus, iconeOrigem } from '@/lib/pedidoUi';
  * no catálogo do backend (lib/atencao.js).
  */
 const ICONES = {
-  CircleCheck, Wallet, Hourglass, Package, PenTool, FileImage, FileCheck,
-  FlaskConical, Brush, CircleDashed, GlassWater, Settings, PackageOpen,
-  ShieldQuestion, ShieldCheck, Camera, ImageUp, Truck, PackageSearch, PackageCheck,
+  CircleCheck, Wallet, Package, PenTool, FileImage, FlaskConical, Brush,
+  CircleDashed, Settings, PackageOpen, ShieldCheck, Camera, Truck, PackageCheck,
 };
 
 const dataHora = iso => iso
@@ -51,7 +55,12 @@ export default function PedidoDetalhe() {
   const v = useVend();
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isManager } = useAuth();
   const [verHistorico, setVerHistorico] = useState(false);
+
+  // Quem cadastra aviso é o Administrativo. O vendedor consulta — esses
+  // avisos são regra comercial da empresa, não recado de pedido.
+  const podeEditarAvisos = isManager;
 
   const { data: p, isLoading, error } = useQuery({
     queryKey: ['pedido-vendedor', id],
@@ -116,6 +125,45 @@ export default function PedidoDetalhe() {
   const cli = p.CLIENTES || {};
   const itens = p.itens || [];
   const aguardandoArte = p.status === 'aguardando_arte';
+
+  /**
+   * AS COLUNAS DO MEIO SÃO DO PEDIDO, NÃO DA TELA.
+   *
+   * Um copo tradicional tem uma cor; um degradê tem cor de base e cor de
+   * boca; um jateado tem a cor do jateado. Colunas fixas obrigavam a
+   * mostrar "Cor da boca: —" num tradicional — ruído que faz quem lê
+   * achar que faltou combinar alguma coisa. Aqui a tabela abre só as
+   * colunas que ALGUM item deste pedido usa, na ordem em que aparecem.
+   *
+   * "Cor da borda" fica de fora porque já é a coluna Acessório: duas
+   * colunas com o mesmo dado é duas colunas para discordarem um dia.
+   */
+  const colunasItem = (() => {
+    const achadas = [];
+    for (const item of itens) {
+      for (const campo of item.campos || []) {
+        if (campo.rotulo === 'Cor da borda') continue;
+        if (!achadas.includes(campo.rotulo)) achadas.push(campo.rotulo);
+      }
+    }
+    // A ordem é a do copo, não a de quem chegou primeiro: cor do produto
+    // antes da cor da personalização. Num pedido com um tradicional e um
+    // degradê, ordenar por ordem de aparição jogava "Cor do produto"
+    // para depois de "Cor da personalização" — lia-se de trás para a
+    // frente. Campo desconhecido entra no meio, na ordem em que apareceu.
+    const ORDEM = ['Cor do produto', 'Cor base', 'Cor da boca', 'Cor do jateado'];
+    const peso = r => {
+      const i = ORDEM.indexOf(r);
+      if (i >= 0) return i;
+      return r === 'Cor da personalização' ? 999 : 100 + achadas.indexOf(r);
+    };
+    return [...achadas].sort((a, b) => peso(a) - peso(b));
+  })();
+  const valorDoCampo = (item, rotulo) =>
+    (item.campos || []).find(c => c.rotulo === rotulo)?.valor || '—';
+
+  // Pedido atrasado pinta de vermelho a fase em que ele está parado.
+  const atrasado = p.atencao?.level === 'critico';
 
   return (
     <div className="space-y-4">
@@ -209,35 +257,43 @@ export default function PedidoDetalhe() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" style={{ minWidth: 900 }}>
+              <table className="w-full text-sm" style={{ minWidth: 760 + colunasItem.length * 120 }}>
                 <thead>
                   <tr style={{ color: v.textMuted }}>
-                    {['Cód. Produto','Produto','Linha','Cor do Produto','Categoria','Acessório','Cor da Personalização','Qtd','Valor Unit.','Valor Total']
-                      .map((h, i) => (
-                        <th key={h} className={`px-3 py-2.5 text-[11px] font-semibold whitespace-nowrap ${i >= 7 ? 'text-right' : 'text-left'}`}
+                    {['Cód. Produto', 'Produto', 'Linha', 'Categoria', ...colunasItem, 'Acessório', 'Qtd', 'Valor Unit.', 'Valor Total']
+                      .map((h, i, todas) => (
+                        <th key={h} className={`px-3 py-2.5 text-[11px] font-semibold whitespace-nowrap ${i >= todas.length - 3 ? 'text-right' : 'text-left'}`}
                           style={{ borderBottom: `1px solid ${v.divider}` }}>{h}</th>
                       ))}
                   </tr>
                 </thead>
                 <tbody>
                   {itens.length === 0 ? (
-                    <tr><td colSpan={10} className="text-center py-8" style={{ color: v.empty }}>Sem itens</td></tr>
+                    <tr>
+                      <td colSpan={7 + colunasItem.length} className="text-center py-8" style={{ color: v.empty }}>
+                        Sem itens
+                      </td>
+                    </tr>
                   ) : itens.map(i => (
                     <tr key={i.id} style={{ borderBottom: `1px solid ${v.divider}` }}>
-                      <td className="px-3 py-2.5 font-mono" style={{ color: v.textPrimary }}>{i.codigo_produto || '—'}</td>
+                      <td className="px-3 py-2.5 font-mono" style={{ color: v.textPrimary }}>{i.codigo || '—'}</td>
                       <td className="px-3 py-2.5" style={{ color: v.textPrimary }}>{i.produto}</td>
                       <td className="px-3 py-2.5" style={{ color: v.textMuted }}>{i.linha || '—'}</td>
-                      <td className="px-3 py-2.5" style={{ color: v.textMuted }}>{i.cor_produto || '—'}</td>
-                      <td className="px-3 py-2.5" style={{ color: v.textMuted }}>
-                        {i.categorias?.length > 1
-                          ? <span title={i.categorias.join(' · ')}>{i.categoria} +{i.categorias.length - 1}</span>
-                          : (i.categoria || '—')}
+                      <td className="px-3 py-2.5">
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
+                          style={{ background: 'rgba(96,165,250,0.16)', color: '#93c5fd' }}>
+                          {i.categoria}
+                        </span>
                       </td>
+                      {colunasItem.map(rotulo => (
+                        <td key={rotulo} className="px-3 py-2.5" style={{ color: v.textMuted }}>
+                          {valorDoCampo(i, rotulo)}
+                        </td>
+                      ))}
                       <td className="px-3 py-2.5" style={{ color: v.textMuted }}>{i.acessorio || '—'}</td>
-                      <td className="px-3 py-2.5" style={{ color: v.textMuted }}>{i.cor_personalizacao || '—'}</td>
-                      <td className="px-3 py-2.5 text-right" style={{ color: v.textPrimary }}>{fmtUn(i.quantity)}</td>
-                      <td className="px-3 py-2.5 text-right" style={{ color: v.textMuted }}>{fmtBRL(i.unit_price)}</td>
-                      <td className="px-3 py-2.5 text-right font-semibold" style={{ color: v.textPrimary }}>{fmtBRL(i.total)}</td>
+                      <td className="px-3 py-2.5 text-right" style={{ color: v.textPrimary }}>{fmtUn(i.quantidade)}</td>
+                      <td className="px-3 py-2.5 text-right" style={{ color: v.textMuted }}>{fmtBRL(i.valor_unitario)}</td>
+                      <td className="px-3 py-2.5 text-right font-semibold" style={{ color: v.textPrimary }}>{fmtBRL(i.valor_total)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -252,23 +308,32 @@ export default function PedidoDetalhe() {
               <Clock size={16} style={{ color: '#60a5fa' }} /> Linha do Tempo do Pedido
             </h2>
             <div className="p-4 flex flex-wrap gap-x-2 gap-y-5">
-              {(p.linha_do_tempo || []).map(passo => <Balao key={passo.key} v={v} passo={passo} />)}
+              {(p.linha_do_tempo || []).map(fase => (
+                <Balao key={fase.key} v={v} fase={fase} atrasado={atrasado} />
+              ))}
             </div>
             <p className="text-[11px] px-4 pb-3" style={{ color: v.textSubtle }}>
-              Nem todo pedido percorre todas as etapas — o caminho depende do produto e dos processos
-              contratados. Etapas sem data ainda não aconteceram.
+              Verde já aconteceu, amarelo está acontecendo agora, roxo ainda vem. Pintura e borda
+              só aparecem quando o pedido passa por elas. Etapa sem data ainda não aconteceu.
             </p>
           </div>
 
           {/* Entrega + histórico */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Bloco v={v} Icon={Truck} titulo="Informações da Entrega">
+              {/* Este texto existe UMA vez na tela. Repetir a mesma frase
+                  no topo e aqui era o que fazia parecer que havia dois
+                  endereços de entrega. */}
               <p className="text-sm leading-relaxed" style={{ color: v.textMuted }}>
-                {cli.address?.street
-                  ? `${cli.address.street}, ${cli.address.number || 's/n'} — ${cli.address.city || ''}/${cli.address.state || ''}`
-                  : 'A entrega será realizada no endereço do cadastro'}, em horário comercial,
-                das 8 às 18 horas em dias úteis.
+                A entrega será realizada no endereço informado no cadastro, em horário
+                comercial, das 8h às 18h, em dias úteis.
               </p>
+              {cli.address?.street && (
+                <p className="text-[12px] mt-2" style={{ color: v.textSubtle }}>
+                  {cli.address.street}, {cli.address.number || 's/n'}
+                  {cli.address.city ? ` — ${cli.address.city}/${cli.address.state || ''}` : ''}
+                </p>
+              )}
               {p.tracking_code && (
                 <p className="text-sm mt-2 font-mono" style={{ color: '#60a5fa' }}>
                   Rastreio: {p.tracking_code}
@@ -349,6 +414,33 @@ export default function PedidoDetalhe() {
             )}
           </Bloco>
 
+          {/* Resumo do Cliente — quem é este cliente, em seis números.
+              O vendedor consulta; não edita. Tudo sai do histórico daquele
+              código de cliente, calculado na hora: número copiado é número
+              que envelhece. */}
+          {p.resumo_cliente && (
+            <Bloco v={v} Icon={History} titulo="Resumo do Cliente">
+              <Campo v={v} rotulo="Total de compras"    valor={fmtUn(p.resumo_cliente.total_compras)} />
+              <Campo v={v} rotulo="Pedidos entregues"   valor={fmtUn(p.resumo_cliente.entregues)} />
+              <Campo v={v} rotulo="Pedidos em andamento" valor={fmtUn(p.resumo_cliente.em_andamento)} />
+              <Campo v={v} rotulo="Última compra"       valor={p.resumo_cliente.ultima_compra ? fmtDate(p.resumo_cliente.ultima_compra) : '—'} />
+              <Campo v={v} rotulo="Ticket médio"        valor={fmtBRL(p.resumo_cliente.ticket_medio)} />
+              <Campo v={v} rotulo="Cliente desde"       valor={p.resumo_cliente.cliente_desde ? new Date(p.resumo_cliente.cliente_desde).getFullYear() : '—'} />
+
+              {/* Vai para a própria lista de pedidos do vendedor, filtrada
+                  por este cliente e com os finalizados ligados. NÃO vai
+                  para a ficha do cliente do ERP: aquela tela é de outro
+                  módulo e o vendedor não tem permissão — o botão só
+                  bateria numa porta fechada. */}
+              {p.codigo_cliente && (
+                <button onClick={() => navigate(`/vendedor/pedidos?codigo=${p.codigo_cliente}&finalizados=1`)}
+                  className="btn-secondary btn-sm w-full mt-3 justify-center">
+                  <Eye size={13} /> Ver histórico completo <ExternalLink size={11} />
+                </button>
+              )}
+            </Bloco>
+          )}
+
           {/* Documentos */}
           <Bloco v={v} Icon={FileText} titulo="Documentos">
             <div className="space-y-2">
@@ -372,13 +464,13 @@ export default function PedidoDetalhe() {
 
           {/* Informações importantes */}
           <Bloco v={v} Icon={Info} titulo="Informações Importantes"
-            direita={
+            direita={podeEditarAvisos && (
               <button onClick={() => emBreve('A edição dos avisos')} title="Acrescentar aviso"
                 className="w-6 h-6 rounded-lg flex items-center justify-center"
                 style={{ background: 'rgba(59,130,246,0.2)', color: '#60a5fa' }}>
                 <Plus size={13} />
               </button>
-            }>
+            )}>
             {(p.avisos || []).length === 0 ? (
               <p className="text-[12px]" style={{ color: v.textSubtle }}>
                 Nenhum aviso cadastrado. O Administrativo define os avisos padrão em
@@ -407,44 +499,50 @@ export default function PedidoDetalhe() {
 }
 
 /**
- * Um balão da linha do tempo.
+ * Uma FASE da linha do tempo.
  *
- * Três estados com leituras diferentes: concluído mostra a data (é o
- * registro de quando aconteceu), atual fica aceso e sublinhado, pendente
- * fica apagado sem data — porque não existe data para o que não
- * aconteceu, e inventar uma seria pior que deixar em branco.
+ * A cor conta a história antes do texto:
+ *
+ *   verde     já aconteceu
+ *   amarelo   está acontecendo agora
+ *   roxo      ainda vem
+ *   vermelho  está acontecendo agora E o prazo estourou
+ *
+ * Fase futura NUNCA fica verde. Verde é registro do que aconteceu, e um
+ * verde adiantado faz o vendedor prometer ao cliente uma etapa que a
+ * fábrica ainda nem começou.
  */
-function Balao({ v, passo }) {
-  const Icon = ICONES[passo.icone] || Circle;
-  const cor = corStatus(passo.cor);
+function Balao({ v, fase, atrasado }) {
+  const Icon = ICONES[fase.icone] || Circle;
+  const cor = {
+    concluido: '#4ade80',
+    atual:     atrasado ? '#f87171' : '#fbbf24',
+    pendente:  '#8b5cf6',
+  }[fase.estado] || '#8b5cf6';
 
-  const estilo = {
-    concluido: { anel: cor,                   fundo: `${cor}22`,  icone: cor,        texto: cor },
-    atual:     { anel: cor,                   fundo: `${cor}33`,  icone: cor,        texto: cor },
-    pendente:  { anel: 'rgba(148,163,184,.3)', fundo: 'transparent', icone: '#94a3b8', texto: v.textSubtle },
-  }[passo.estado];
+  const apagado = fase.estado === 'pendente';
 
   return (
     <div className="flex flex-col items-center gap-1 text-center" style={{ width: 96 }}
-      title={`${passo.passo}. ${passo.label}${passo.at ? ` — ${dataHora(passo.at)}` : ''}`}>
+      title={`${fase.ordem}. ${fase.label}${fase.detalhe ? ` — ${fase.detalhe}` : ''}${fase.at ? ` — ${dataHora(fase.at)}` : ''}`}>
       <div className="relative">
         <div className="w-11 h-11 rounded-full flex items-center justify-center"
-          style={{ border: `2px solid ${estilo.anel}`, background: estilo.fundo,
-                   boxShadow: passo.estado === 'atual' ? `0 0 12px ${cor}66` : 'none' }}>
-          <Icon size={18} style={{ color: estilo.icone }} />
+          style={{
+            border: `2px solid ${apagado ? `${cor}66` : cor}`,
+            background: apagado ? 'transparent' : `${cor}22`,
+            boxShadow: fase.estado === 'atual' ? `0 0 14px ${cor}77` : 'none',
+          }}>
+          <Icon size={18} style={{ color: apagado ? `${cor}aa` : cor }} />
         </div>
         <span className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
-          style={{ background: estilo.anel, color: passo.estado === 'pendente' ? '#0b1020' : '#0b1020' }}>
-          {passo.passo}
+          style={{ background: apagado ? `${cor}66` : cor, color: '#0b1020' }}>
+          {fase.ordem}
         </span>
       </div>
-      <span className="text-[10px] leading-tight" style={{ color: estilo.texto }}>{passo.label}</span>
-      {passo.at && (
-        <span className="text-[9px]" style={{ color: v.textSubtle }}>{horaCurta(passo.at)}</span>
-      )}
-      {passo.estado === 'atual' && (
-        <span className="w-6 h-0.5 rounded-full" style={{ background: cor }} />
-      )}
+      <span className="text-[10px] leading-tight font-semibold"
+        style={{ color: apagado ? v.textSubtle : cor }}>{fase.label}</span>
+      {fase.at && <span className="text-[9px]" style={{ color: v.textSubtle }}>{horaCurta(fase.at)}</span>}
+      {fase.estado === 'atual' && <span className="w-6 h-0.5 rounded-full" style={{ background: cor }} />}
     </div>
   );
 }

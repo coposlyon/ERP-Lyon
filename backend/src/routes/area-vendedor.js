@@ -13,6 +13,7 @@ const A        = require('../lib/atencao');
 const { ORIGENS } = require('../lib/origens');
 const { autorizar, excluirVenda } = require('../lib/excluirVenda');
 const { audit } = require('../lib/audit');
+const { caracteristicasDoItem, etapasDosItens } = require('../lib/itensPedido');
 
 const isManager = req => ['admin', 'manager'].includes(req.userProfile?.role);
 const tabelaAusente = err =>
@@ -131,7 +132,7 @@ router.get('/pedidos/:id', async (req, res) => {
       created_at, operation_date, event_date, ship_date, delivery_date, max_delivery_date,
       payment_method, notes, artwork_url, artwork_notes, user_id, carrier_id,
       tracking_code, freight_quote, avisos, production_log, collect_date, transport_days,
-      CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating ),
+      CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating, created_at ),
       USUARIOS ( id, name ),
       VENDA_ITENS ( id, product_name, quantity, unit_price, discount, total, customization,
                     PRODUTOS ( id, code, name, unit, ink_type ) )
@@ -155,6 +156,12 @@ router.get('/pedidos/:id', async (req, res) => {
     const alertas = await alertasAbertos(req.tenantId, [data.id]);
     const info = A.infoStatus(data.status);
 
+    // As colunas do item (Linha, Cor, Categoria, Acessório…) não existem
+    // como campos: nascem do JSON de personalização. A derivação é a
+    // mesma que a tela do cliente usa — uma conta, um lugar.
+    const itens = (data.VENDA_ITENS || [])
+      .map(item => ({ id: item.id, ...caracteristicasDoItem(item) }));
+
     // A transportadora vem de LOGISTICA por id; sem ela o campo some da
     // tela em vez de mostrar um uuid.
     let transportadora = null;
@@ -173,10 +180,14 @@ router.get('/pedidos/:id', async (req, res) => {
       status_label: info.label,
       status_cor: info.cor,
       atencao: A.calcularAtencao(data, new Date(), alertas.get(data.id) || null),
-      // A régua inteira do fluxo com o estado de cada balão
-      linha_do_tempo: A.linhaDoTempo(data),
+      // Uma bolinha por FASE, não por status: "aguardando arte" e "arte
+      // aprovada" são a mesma etapa em dois momentos, e desenhar as duas
+      // fazia o pedido parecer o dobro de longe do fim do que está.
+      // Pintura e borda só entram se os itens passarem por elas.
+      linha_do_tempo: A.fasesDoPedido(data, etapasDosItens(itens)),
       historico: A.historicoPedido(data),
-      itens: (data.VENDA_ITENS || []).map(item => ({ ...item, ...detalharItem(item) })),
+      itens,
+      resumo_cliente: await resumoDoCliente(req.tenantId, data.customer_id, data.CLIENTES),
       avisos: await avisosDoPedido(req.tenantId, data),
       documentos: documentosDoPedido(data),
     });
@@ -184,24 +195,50 @@ router.get('/pedidos/:id', async (req, res) => {
 });
 
 /**
- * As colunas de item que a tela mostra (Linha, Cor do Produto,
- * Categoria, Acessório, Cor da Personalização) não existem como campos:
- * elas foram gravadas no JSON de personalização quando o item foi
- * lançado no PDV. Aqui elas voltam a ser colunas.
+ * O RESUMO DO CLIENTE — quem é este cliente, em seis números.
+ *
+ * É o que o vendedor precisa saber antes de atender: se é cliente de
+ * doze pedidos ou o primeiro, se tem coisa em andamento, quanto costuma
+ * gastar. Sem isso ele abre o pedido sem saber com quem está falando.
+ *
+ * Tudo é calculado do histórico daquele código de cliente, na hora —
+ * não existe campo guardado, e nem deveria: número copiado é número
+ * que envelhece. O vendedor consulta, não edita.
+ *
+ * O ticket médio ignora o frete, pela mesma razão de sempre: frete não
+ * é venda do vendedor.
  */
-function detalharItem(item) {
-  const c = item.customization || {};
-  const acabamentos = String(c['Acabamentos'] || '').split(',').map(s => s.trim()).filter(Boolean);
+async function resumoDoCliente(tenantId, customerId, cliente) {
+  if (!customerId) return null;
+
+  const { data, error } = await supabase.from('VENDAS')
+    .select('id, status, total, discount, freight, created_at, operation_date')
+    .eq('tenant_id', tenantId).eq('customer_id', customerId)
+    .in('type', ['sale', 'order']);
+  if (error || !data?.length) return null;
+
+  const ENTREGUES = ['entregue', 'pedido_finalizado', 'delivered', 'completed'];
+  const CANCELADOS = ['cancelled'];
+
+  let entregues = 0, andamento = 0, soma = 0, ultima = null;
+  for (const v of data) {
+    if (CANCELADOS.includes(v.status)) continue;
+    if (ENTREGUES.includes(v.status)) entregues++; else andamento++;
+    soma += Math.max(0, (Number(v.total) || 0) - (Number(v.freight) || 0));
+    const quando = v.operation_date || v.created_at;
+    if (quando && (!ultima || String(quando) > String(ultima))) ultima = quando;
+  }
+  const validos = entregues + andamento;
+
   return {
-    codigo_produto: c['Código'] || item.PRODUTOS?.code || null,
-    produto: item.PRODUTOS?.name || item.product_name || 'Produto',
-    linha: c['Tinta'] || item.PRODUTOS?.ink_type || null,
-    cor_produto: c['Variação'] || null,
-    // "Categoria" na tela é o acabamento contratado (Degradê, Jateado...)
-    categoria: acabamentos[0] || null,
-    categorias: acabamentos,
-    acessorio: c['Borda'] || null,
-    cor_personalizacao: c['Cor da personalização'] || null,
+    total_compras: validos,
+    entregues,
+    em_andamento: andamento,
+    ultima_compra: ultima,
+    ticket_medio: validos > 0 ? Math.round((soma / validos) * 100) / 100 : 0,
+    // "Cliente desde" é o cadastro, não a primeira compra: o cliente que
+    // se cadastrou em 2024 e comprou em 2026 é cliente desde 2024.
+    cliente_desde: cliente?.created_at || null,
   };
 }
 

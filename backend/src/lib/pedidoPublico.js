@@ -12,6 +12,7 @@
 // dados de outros clientes e qualquer coisa de outro pedido.
 // ============================================================
 const A = require('./atencao');
+const { capacidade, caracteristicasDoItem, etapasDosItens } = require('./itensPedido');
 
 const soDigitos = s => String(s || '').replace(/\D/g, '');
 
@@ -27,110 +28,11 @@ function mascararDoc(doc) {
   return doc || null;
 }
 
-/** Capacidade lida do nome do produto ("TAÇA GIN 600 ML" → "600 ml"). */
-function capacidade(nome) {
-  const m = String(nome || '').match(/(\d{2,4})\s*ML\b/i);
-  return m ? `${m[1]} ml` : null;
-}
-
 /**
- * As características que o cliente realmente comprou.
- *
- * Os campos mudam com a categoria: um copo tradicional tem uma cor,
- * um degradê tem cor de base e de boca, um jateado tem a cor do
- * jateado. Mostrar "Cor da boca: —" num produto tradicional é ruído
- * que faz o cliente achar que faltou combinar alguma coisa — por isso
- * o que não se aplica simplesmente não aparece.
- *
- * A fonte é o JSON de personalização gravado no lançamento do item.
+ * Os avisos que valem para qualquer pedido, quando a empresa ainda não
+ * cadastrou os dela em Configurações. São regra comercial, e por isso
+ * moram no banco — aqui é só a rede de segurança.
  */
-function caracteristicasDoItem(item) {
-  const c = item.customization || {};
-  const nome = item.PRODUTOS?.name || item.product_name || 'Produto';
-
-  // "Cor degradê: AZUL/ROSA" → { tipo: 'Cor degradê', valor: 'AZUL/ROSA' }
-  const acabamentos = String(c['Acabamentos'] || '')
-    .split(',').map(s => s.trim()).filter(Boolean)
-    .map(a => {
-      const [tipo, ...resto] = a.split(':');
-      return { tipo: tipo.trim(), valor: resto.join(':').trim() || null };
-    });
-
-  const achar = re => acabamentos.find(a => re.test(a.tipo));
-  const degrade = achar(/degrad/i);
-  const bicolor = achar(/bicolor/i);
-  const jateado = achar(/jatead/i);
-
-  // "Com borda: PRATA" → cor da borda; "Sem borda" → não mostra nada
-  const bordaBruta = String(c['Borda'] || '');
-  const temBorda = /com borda/i.test(bordaBruta);
-  const corBorda = temBorda ? (bordaBruta.split(':')[1] || '').trim() || null : null;
-
-  // A categoria é o acabamento contratado; sem nenhum, é o tradicional.
-  const categoria = degrade ? 'Degradê'
-                  : bicolor ? 'Bicolor'
-                  : jateado ? 'Jateado'
-                  : acabamentos[0]?.tipo || 'Tradicional';
-
-  // Cada categoria monta a própria lista. Campo sem valor fica de fora.
-  const campos = [];
-  const push = (rotulo, valor) => { if (valor) campos.push({ rotulo, valor }); };
-
-  if (degrade || bicolor) {
-    const par = (degrade || bicolor).valor || '';
-    const [base, boca] = par.split('/').map(s => s.trim());
-    push('Cor base', base || c['Variação']);
-    push('Cor da boca', boca);
-  } else if (jateado) {
-    push('Cor do jateado', jateado.valor || c['Variação']);
-  } else {
-    push('Cor do produto', c['Variação']);
-  }
-
-  if (corBorda) push('Cor da borda', corBorda);
-  push('Cor da personalização', c['Cor da personalização']);
-
-  // Acabamentos extras que não viraram categoria nem borda
-  acabamentos
-    .filter(a => a !== degrade && a !== bicolor && a !== jateado)
-    .forEach(a => push(a.tipo, a.valor || 'sim'));
-
-  return {
-    codigo: c['Código'] || item.PRODUTOS?.code || null,
-    produto: nome,
-    capacidade: capacidade(nome),
-    linha: c['Tinta'] || item.PRODUTOS?.ink_type || null,
-    categoria,
-    campos,
-    quantidade: Number(item.quantity) || 0,
-    valor_unitario: Number(item.unit_price) || 0,
-    valor_total: Number(item.total) || 0,
-  };
-}
-
-/**
- * A nota fiscal só existe depois que a Logística emite. Antes disso o
- * botão fica desabilitado explicando por quê — botão que não funciona
- * sem dizer o motivo faz o cliente ligar para perguntar.
- */
-function documentos(venda, temNota) {
-  return [
-    { key: 'pedido', label: 'Baixar Pedido em PDF', disponivel: true },
-    {
-      key: 'comprovante', label: 'Baixar Comprovante',
-      disponivel: !!venda.payment_method,
-      nota: venda.payment_method ? null : 'Disponível após a confirmação do pagamento.',
-    },
-    {
-      key: 'nfe', label: 'Baixar Nota Fiscal',
-      disponivel: !!temNota,
-      nota: temNota ? null : 'Disponível após emissão pela Logística.',
-    },
-  ];
-}
-
-// Os avisos padrão. Ficam em EMPRESAS.settings.pedido_avisos; esta é a
-// lista que vale enquanto ninguém configurou nada.
 const AVISOS_PADRAO = [
   'Pagamento somente integral.',
   'Alteração de arte após aprovação: taxa de R$ 20,00.',
@@ -138,12 +40,10 @@ const AVISOS_PADRAO = [
   'O andamento seguirá conforme disponibilidade e aprovação do pedido.',
 ];
 
-/**
- * Monta o pedido como o cliente vê.
- *
- * @param venda    linha de VENDAS com CLIENTES, VENDA_ITENS e USUARIOS
- * @param extra    { transportadora, temNota, avisos }
- */
+// A derivação dos itens vive em itensPedido.js: a tela do vendedor
+// mostra exatamente as mesmas características, e duas cópias da mesma
+// conta é uma que vai divergir. Aqui só se escolhe O QUE sai.
+
 function montarPedidoDoCliente(venda, extra = {}) {
   const cli = venda.CLIENTES || {};
   const info = A.infoStatus(venda.status);
@@ -195,7 +95,10 @@ function montarPedidoDoCliente(venda, extra = {}) {
     },
 
     itens,
-    linha_do_tempo: A.linhaDoTempo(venda),
+    // Por fases, não por status: o cliente não precisa saber que
+    // "aguardando arte" e "arte aprovada" são dois registros — ele
+    // precisa saber em que ponto do caminho o pedido dele está.
+    linha_do_tempo: A.fasesDoPedido(venda, etapasDosItens(itens)),
     historico: A.historicoPedido(venda),
     documentos: documentos(venda, extra.temNota),
     avisos: (extra.avisos && extra.avisos.length) ? extra.avisos : AVISOS_PADRAO,
