@@ -24,6 +24,7 @@ const { sendWhatsApp, sendWhatsAppImage } = require('../lib/whatsapp');
 const { uploadDataUrl } = require('../lib/storage');
 const { audit } = require('../lib/audit');
 const { cidadesDaUf } = require('../lib/municipios');
+const { configDoProduto, validarCombinacao } = require('../lib/configProduto');
 
 const isManager = req => ['admin', 'manager'].includes(req.userProfile?.role);
 
@@ -229,6 +230,53 @@ router.get('/carteira', async (req, res) => {
 });
 
 // ── Tela 4: promoções liberadas ──────────────────────────────
+// ── Orçamento: o que cada produto aceita ──────────────
+//
+// A tela de orçamento não sabe o que é degradê. Ela pede a
+// configuração do produto e recebe os acabamentos liberados, cada um
+// carregando os CAMPOS que abre e de qual lista de cores cada campo se
+// alimenta. Acabamento novo é linha no banco — nenhuma tela muda.
+
+/** Os produtos que o vendedor pode orçar. */
+router.get('/orcamento/produtos', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('PRODUTOS')
+      .select('id, code, name, sale_price, CATEGORIAS ( name )')
+      .eq('tenant_id', req.tenantId).eq('is_active', true).order('name');
+    if (error) throw error;
+    res.json((data || []).map(p => ({
+      id: p.id, codigo: p.code, nome: p.name,
+      categoria: p.CATEGORIAS?.name || null,
+      preco_base: Number(p.sale_price) || 0,
+    })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/** Acabamentos, cores e processos liberados para um produto. */
+router.get('/orcamento/config/:produtoId', async (req, res) => {
+  try {
+    const cfg = await configDoProduto(req.tenantId, req.params.produtoId);
+    if (cfg.erro) return res.status(404).json({ error: cfg.erro });
+    res.json(cfg);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * A combinação escolhida é produzível?
+ *
+ * A tela já evita o impossível oferecendo só o liberado, mas a
+ * checagem tem que existir aqui também: tela é conveniência, servidor
+ * é regra. Sem isto, uma requisição montada à mão gravaria um
+ * orçamento que a fábrica não produz — e o cliente já teria pago.
+ */
+router.post('/orcamento/validar', async (req, res) => {
+  try {
+    const cfg = await configDoProduto(req.tenantId, req.body?.produto_id);
+    if (cfg.erro) return res.status(404).json({ error: cfg.erro });
+    res.json(validarCombinacao(cfg, req.body || {}));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Cidades de uma UF do território ──────────────────────────
 //
 // "Você atende o Paraná" não diz onde ir: são 399 cidades, e a
