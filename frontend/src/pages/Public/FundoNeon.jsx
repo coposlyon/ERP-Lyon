@@ -23,14 +23,19 @@ const FUNDO_SVG = 545;
 
 // `d` termina sem a base de propósito: copo apoiado no chão não tem
 // linha embaixo, e é isso que faz a forma pousar no piso.
+// Cinco copos, todos retângulos. A taça em V saiu: no tamanho grande ela
+// virava a figura principal do quadro e puxava o olho para fora do
+// cartão, que é onde o cliente tem coisa para fazer. Cenário bom é o que
+// emoldura sem disputar.
+//
+// As alturas sobem e descem em vez de crescerem em fila: escada certinha
+// lê como gráfico de barras, e isto aqui é uma prateleira de copos.
 const FORMAS = [
-  { d: 'M6 400 V312 H72 V400',                       cor: '#facc15', w: 3.5 },
-  { d: 'M50 400 V208 H138 V400',                     cor: '#eab308', w: 3.5 },
-  { d: 'M108 400 V186 H196 V400',                    cor: '#a3e635', w: 3.5 },
-  // A taça: duas paredes que convergem no talo. É a peça central da
-  // logo e a que dá a leitura de "copo" ao conjunto.
-  { d: 'M190 52 L236 200 L236 400 M282 52 L240 200', cor: '#22d3ee', w: 4 },
-  { d: 'M276 400 V130 H344 V400',                    cor: '#3b82f6', w: 3.5 },
+  { d: 'M6 400 V296 H80 V400',    cor: '#facc15', w: 4 },
+  { d: 'M62 400 V178 H150 V400',  cor: '#eab308', w: 4 },
+  { d: 'M128 400 V240 H208 V400', cor: '#a3e635', w: 4 },
+  { d: 'M188 400 V44 H272 V400',  cor: '#22d3ee', w: 4.5 },
+  { d: 'M254 400 V150 H346 V400', cor: '#3b82f6', w: 4 },
 ];
 
 // O lado direito é o mesmo desenho espelhado, com a outra metade do
@@ -40,7 +45,7 @@ const CORES_DIREITA = ['#f472b6', '#ec4899', '#c026d3', '#a855f7', '#6366f1'];
 
 // Altura do cenário: teto em px para que monitor grande não vire vitrine
 // de neon, piso em vh para caber em tela baixa.
-const ALTURA = 'min(54vh, 470px)';
+const ALTURA = 'min(72vh, 640px)';
 // A linha do chão, na mesma proporção do SVG: (545 − 400) / 545.
 const ALTURA_CHAO = `calc(${ALTURA} * ${((FUNDO_SVG - CHAO) / FUNDO_SVG).toFixed(4)})`;
 
