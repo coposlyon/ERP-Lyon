@@ -25,7 +25,7 @@ const SALE_SELECT = `
   id, number, status, type, total, discount, freight, created_at, operation_date, customer_id,
   CLIENTES ( id, name, address, phone, mobile ),
   VENDA_ITENS ( product_id, quantity, unit_price, discount, total, customization,
-                PRODUTOS ( id, name, ink_type ) )
+                PRODUTOS ( id, name, ink_type, CATEGORIAS ( name ) ) )
 `;
 
 // ── Datas ────────────────────────────────────────────────────
@@ -406,36 +406,100 @@ function weeklySales(sales, year, month) {
 }
 
 /** Unidades por produto, do maior para o menor. */
+/**
+ * A qual linha de produto um item pertence.
+ *
+ * O ranking é por LINHA, não por SKU. No cadastro cada cor é um produto
+ * separado — "TWISTER TRADICIONAL - VERDE GARRAFA TRANSLUCIDO - 550 ML"
+ * e mais dezenove irmãos — e ranquear assim quebrava a mesma linha em
+ * vinte pedaços, cada um com um pouquinho. O 1º lugar acabava sendo a
+ * cor que por acaso saiu mais numa semana, e não o copo que a fábrica
+ * mais vendeu. Quem vende pensa em "twister 550", não em "twister 550
+ * verde garrafa".
+ *
+ * A chave é categoria + volume, e o volume importa: TWISTER
+ * TRADICIONAL existe em 400 ml e em 550 ml, que são dois produtos
+ * diferentes na prateleira e no preço.
+ *
+ * Sem categoria cadastrada, cai no nome até o primeiro traço — que é
+ * onde a cor começa. É pior que a categoria, mas ainda agrupa.
+ */
+function linhaDoItem(item) {
+  const nome = String(item.PRODUTOS?.name || '').trim();
+  const categoria = String(item.PRODUTOS?.CATEGORIAS?.name || '').trim();
+
+  // O volume fica no fim do nome; pego a ÚLTIMA ocorrência para nunca
+  // confundir com um número que apareça no meio.
+  const achados = nome.match(/(\d+(?:[.,]\d+)?)\s*(ML|L)\b/gi) || [];
+  const volume = achados.length
+    ? achados[achados.length - 1].toUpperCase().replace(/\s+/g, ' ')
+    : '';
+
+  const base = categoria || (nome.split(' - ')[0] || nome).trim();
+  if (!base) return { key: 'sem-produto', label: 'Produto removido' };
+
+  const label = volume ? `${base} - ${volume}` : base;
+  return { key: label.toUpperCase(), label };
+}
+
+/**
+ * Unidades e faturamento por linha de produto.
+ *
+ * Guarda também os SKUs que formaram a linha: a oferta é enviada de um
+ * produto concreto, com foto e preço, e "TWISTER 550" sozinho não dá
+ * para ofertar. O representante é a cor que mais vendeu no período.
+ */
 function productTotals(sales) {
   const map = new Map();
   for (const s of sales) {
     for (const i of items(s)) {
-      const id = i.product_id || 'sem-produto';
-      const prev = map.get(id) || { product_id: i.product_id || null, name: i.PRODUTOS?.name || 'Produto removido', units: 0, revenue: 0 };
-      prev.units   += Number(i.quantity) || 0;
+      const { key, label } = linhaDoItem(i);
+      const prev = map.get(key) || { key, name: label, units: 0, revenue: 0, porSku: new Map() };
+      const qtd = Number(i.quantity) || 0;
+      prev.units   += qtd;
       prev.revenue += Number(i.total) || 0;
-      map.set(id, prev);
+      if (i.product_id) prev.porSku.set(i.product_id, (prev.porSku.get(i.product_id) || 0) + qtd);
+      map.set(key, prev);
     }
   }
-  return [...map.values()].sort((a, b) => b.units - a.units);
+
+  return [...map.values()]
+    .map(l => {
+      const skus = [...l.porSku.entries()].sort((a, b) => b[1] - a[1]);
+      return {
+        key: l.key,
+        name: l.name,
+        units: l.units,
+        revenue: l.revenue,
+        product_ids: skus.map(([id]) => id),
+        product_id: skus[0]?.[0] || null,
+        variants: skus.length,
+      };
+    })
+    .sort((a, b) => b.units - a.units);
 }
 
 /**
  * Ranking do mês com participação e tendência contra o mês anterior.
- * Produto que não existia no mês anterior não tem tendência (dividir
- * por zero daria "+∞", que não diz nada a quem lê).
+ * Linha que não existia no mês anterior não tem tendência (dividir por
+ * zero daria "+∞", que não diz nada a quem lê).
  */
 function productRanking(sales, prevSales, limit = 8) {
   const totals = productTotals(sales);
   const totalUnits = totals.reduce((s, p) => s + p.units, 0);
-  const prev = new Map(productTotals(prevSales).map(p => [p.product_id, p.units]));
+  // A comparação casa pela chave da linha, e não por id de produto: a
+  // cor campeã muda de um mês para o outro, a linha não.
+  const prev = new Map(productTotals(prevSales).map(p => [p.key, p.units]));
 
   return totals.slice(0, limit).map((p, idx) => {
-    const before = prev.get(p.product_id);
+    const before = prev.get(p.key);
     const trend = before > 0 ? ((p.units - before) / before) * 100 : null;
     return {
       position: idx + 1,
+      key: p.key,
       product_id: p.product_id,
+      product_ids: p.product_ids,
+      variants: p.variants,
       name: p.name,
       units: round2(p.units),
       revenue: round2(p.revenue),
@@ -501,12 +565,19 @@ function customerRanking(sales) {
       last_product: null,
       last_product_id: null,
       product_ids: new Set(),
+      line_keys: new Set(),
     };
 
     prev.units   += units;
     prev.revenue += saleRevenue(s);
     prev.orders  += 1;
-    products.forEach(p => p.product_id && prev.product_ids.add(p.product_id));
+    // As duas listas servem a coisas diferentes: line_keys é o filtro
+    // "quem comprou twister 550" (a cor não importa), product_ids é o
+    // que a oferta precisa para achar uma promoção de um SKU de verdade.
+    products.forEach(p => {
+      prev.line_keys.add(p.key);
+      (p.product_ids || []).forEach(id => prev.product_ids.add(id));
+    });
 
     // chronological() sobe no tempo: o último visto é a última compra
     prev.last_date       = date;
@@ -518,7 +589,10 @@ function customerRanking(sales) {
   }
 
   return [...map.values()]
-    .map(c => ({ ...c, units: round2(c.units), revenue: round2(c.revenue), product_ids: [...c.product_ids] }))
+    .map(c => ({
+      ...c, units: round2(c.units), revenue: round2(c.revenue),
+      product_ids: [...c.product_ids], line_keys: [...c.line_keys],
+    }))
     .sort((a, b) => b.units - a.units || (a.name || '').localeCompare(b.name || ''));
 }
 
@@ -535,6 +609,6 @@ module.exports = {
   loadSellerConfig, DEFAULT_CONFIG,
   computeCommission, persistCommission,
   cycleProgress, unitsByMonthBack,
-  statesRanking, weeklySales, productTotals, productRanking, colorRanking, customerRanking,
+  statesRanking, weeklySales, linhaDoItem, productTotals, productRanking, colorRanking, customerRanking,
   round2,
 };

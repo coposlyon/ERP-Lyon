@@ -50,9 +50,9 @@ export default function CarteiraClientesModal({ open, onClose, month, sellerId, 
   const [sel, setSel]       = useState([]);   // ids marcados
 
   // Vindo da Tela 2 ("Criar oferta" no produto líder), a lista já abre
-  // filtrada por aquele produto.
+  // filtrada por aquela LINHA — categoria e volume, todas as cores.
   useEffect(() => {
-    if (open && produtoInicial?.product_id) setProduto(produtoInicial.product_id);
+    if (open && produtoInicial?.key) setProduto(produtoInicial.key);
   }, [open, produtoInicial]);
 
   useEffect(() => { if (!open) { setSel([]); setBusca(''); } }, [open]);
@@ -60,7 +60,7 @@ export default function CarteiraClientesModal({ open, onClose, month, sellerId, 
   const params = new URLSearchParams({ month, top: String(top) });
   if (sellerId) params.set('user_id', sellerId);
   if (uf) params.set('uf', uf);
-  if (produto) params.set('product_id', produto);
+  if (produto) params.set('line', produto);
 
   const { data, isLoading } = useQuery({
     queryKey: ['vendedor-carteira', month, sellerId, top, uf, produto],
@@ -148,7 +148,7 @@ export default function CarteiraClientesModal({ open, onClose, month, sellerId, 
             <select value={produto} onChange={e => setProduto(e.target.value)} style={{ ...v.control, maxWidth: 220 }}>
               <option value="">Todos</option>
               {(data?.products || []).map(p => (
-                <option key={p.product_id} value={p.product_id}>{p.name}</option>
+                <option key={p.key} value={p.key}>{p.name}</option>
               ))}
             </select>
           </label>

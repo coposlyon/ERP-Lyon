@@ -7,6 +7,12 @@
 // "Criar oferta", que leva à seleção de clientes (Tela 3) já com este
 // produto como referência.
 //
+// O ranking é por LINHA DE PRODUTO — categoria mais volume, do jeito
+// que quem vende fala: "twister 550", "long drink 350". No cadastro
+// cada cor é um produto separado, e ranquear assim quebrava a mesma
+// linha em vinte pedaços; o 1º lugar virava a cor que por acaso saiu
+// mais numa semana, e não o copo que a fábrica mais vendeu.
+//
 // O pódio se lê pela cor antes de se ler pelo número: taça de ouro,
 // prata e bronze na frente do nome, a mesma cor na barra da esquerda da
 // linha e nos números daquela linha. Do 4º em diante tudo fica azul —
@@ -145,13 +151,13 @@ export default function RankingProdutosModal({ open, onClose, month, sellerId, o
                     <span>Posição</span>
                     <span>Produto</span>
                     <span>
-                      Unidades vendidas <Hint text="Soma das unidades daquele produto nos pedidos válidos do mês." />
+                      Unidades vendidas <Hint text="Soma das unidades daquela linha nos pedidos válidos do mês, com todas as cores juntas." />
                     </span>
                     <span>
-                      Participação <Hint text="Unidades do produto ÷ total de unidades vendidas no mês × 100." />
+                      Participação <Hint text="Unidades da linha ÷ total de unidades vendidas no mês × 100." />
                     </span>
                     <span>
-                      Tendência <Hint text="Variação das unidades contra o mês anterior. Produto que não vendeu no mês anterior não tem tendência." />
+                      Tendência <Hint text="Variação das unidades contra o mês anterior, linha contra linha. Linha que não vendeu no mês anterior não tem tendência." />
                     </span>
                   </div>
 
@@ -161,7 +167,7 @@ export default function RankingProdutosModal({ open, onClose, month, sellerId, o
                       const cor  = tom ? TONS_PODIO[tom].texto : AZUL;
                       const sobe = (p.trend ?? 0) >= 0;
                       return (
-                        <div key={p.product_id || p.name}
+                        <div key={p.key || p.name}
                           className="grid items-center px-4 py-3"
                           style={{
                             gridTemplateColumns: COLUNAS,

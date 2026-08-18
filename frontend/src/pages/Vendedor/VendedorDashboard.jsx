@@ -388,7 +388,7 @@ export default function VendedorDashboard() {
         </Panel>
 
         <Panel title="Produto líder do mês"
-          hint="O produto com maior quantidade vendida no mês, agrupando todos os pedidos.">
+          hint="A linha de produto com maior quantidade vendida no mês: categoria e volume juntos, do jeito que quem vende fala — twister 550, long drink 350 — somando todas as cores.">
           {!topProd ? (
             <p className="text-sm py-8 text-center" style={{ color: v.empty }}>Nenhum produto vendido</p>
           ) : (

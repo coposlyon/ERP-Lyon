@@ -183,22 +183,24 @@ router.get('/carteira', async (req, res) => {
 
     const top = Math.min(Math.max(parseInt(req.query.top, 10) || config.top_clients || 10, 1), 200);
     const uf = String(req.query.uf || '').toUpperCase().trim();
-    const productId = String(req.query.product_id || '').trim();
+    const linha = String(req.query.line || '').trim();
     const q = String(req.query.q || '').trim().toLowerCase();
 
     let list = V.customerRanking(sales);
 
     if (config.territory.length) list = list.filter(c => !c.uf || config.territory.includes(c.uf));
     if (uf && V.UF_REGEX.test(uf)) list = list.filter(c => c.uf === uf);
-    if (productId) list = list.filter(c => c.product_ids.includes(productId));
+    if (linha) list = list.filter(c => c.line_keys.includes(linha));
     if (q) list = list.filter(c => (c.name || '').toLowerCase().includes(q));
 
     // As UFs e produtos dos filtros saem da própria carteira — o vendedor
     // não escolhe um filtro que devolve lista vazia.
     const ufs = [...new Set(V.customerRanking(sales).map(c => c.uf).filter(Boolean))].sort();
-    const products = V.productTotals(sales)
-      .filter(p => p.product_id)
-      .map(p => ({ product_id: p.product_id, name: p.name }));
+    // O filtro é por LINHA, igual ao ranking: "quem comprou twister 550"
+    // não quer dizer "quem comprou o twister 550 verde garrafa".
+    const products = V.productTotals(sales).map(p => ({
+      key: p.key, name: p.name, product_ids: p.product_ids,
+    }));
 
     res.json({
       period: { year, month, months: monthsBack },

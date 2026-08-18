@@ -68,10 +68,19 @@ export default function CriarOfertaModal({ open, onClose, customers = [], produt
 
   // Ao abrir: escolhe a promoção do produto que veio da Tela 2, quando
   // existir uma liberada para ele; senão, a primeira da lista.
+  //
+  // O ranking manda uma LINHA ("twister 550"), não um SKU — e a oferta
+  // sai de um produto concreto, com foto e preço. Então procuro uma
+  // promoção de qualquer cor daquela linha, na ordem em que elas
+  // venderam: a cor que mais saiu é a primeira a ser tentada.
   useEffect(() => {
     if (!open || !promocoes.length || promoId) return;
-    const doProduto = produtoSugerido?.product_id
-      && promocoes.find(p => p.product_id === produtoSugerido.product_id);
+    const ids = produtoSugerido?.product_ids?.length
+      ? produtoSugerido.product_ids
+      : [produtoSugerido?.product_id].filter(Boolean);
+    const doProduto = ids
+      .map(id => promocoes.find(p => p.product_id === id))
+      .find(Boolean);
     setPromoId((doProduto || promocoes[0]).id);
   }, [open, promocoes, promoId, produtoSugerido]);
 
