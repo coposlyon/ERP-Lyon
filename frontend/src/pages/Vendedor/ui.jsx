@@ -68,41 +68,59 @@ export const corUf = (uf, comprou = true) => {
 };
 
 /**
- * O troféu do Produto Líder — a taça com o número 1.
+ * O troféu do pódio — a taça com o número dentro.
  *
  * É desenhado aqui em vez de vir do lucide porque a biblioteca não tem
- * essa: o troféu dela é uma taça lisa, e a taça lisa não diz que aquele
+ * essa: o troféu dela é uma taça lisa, e taça lisa não diz que aquele
  * produto é o PRIMEIRO. Sendo SVG e não imagem, acompanha o tamanho da
  * fonte sem borrar e não custa uma requisição.
+ *
+ * O mesmo desenho serve o 1º, o 2º e o 3º trocando só o metal — é
+ * assim que o pódio se lê de relance, sem precisar ler o número.
  */
-export function TrofeuUm({ size = 44 }) {
+export const TONS_PODIO = {
+  ouro:   { claro: '#ffe9a3', meio: '#f7c948', escuro: '#d18f00', numero: '#6b4200', texto: '#fbbf24' },
+  prata:  { claro: '#ffffff', meio: '#d3dceb', escuro: '#93a4bb', numero: '#3a4557', texto: '#e2e8f0' },
+  bronze: { claro: '#ffd2a8', meio: '#f0913f', escuro: '#a95a06', numero: '#5a2d00', texto: '#fb923c' },
+};
+
+// Pódio por posição: 1º ouro, 2º prata, 3º bronze. Do 4º em diante não
+// há medalha — inventar uma quarta cor de pódio só diria que existe um
+// pódio de oito lugares.
+export const TOM_DA_POSICAO = pos => ['ouro', 'prata', 'bronze'][pos - 1] || null;
+
+export function Trofeu({ size = 44, numero = 1, tom = 'ouro' }) {
+  const t = TONS_PODIO[tom] || TONS_PODIO.ouro;
+  // O gradiente precisa de id próprio por metal: com o id repetido, o
+  // primeiro <defs> da página pinta todos os outros de ouro.
+  const id = `trofeu-${tom}`;
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" fill="none" aria-hidden="true">
       <defs>
-        <linearGradient id="trofeu-ouro" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="#ffe9a3" />
-          <stop offset="45%"  stopColor="#f7c948" />
-          <stop offset="100%" stopColor="#d18f00" />
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor={t.claro} />
+          <stop offset="45%"  stopColor={t.meio} />
+          <stop offset="100%" stopColor={t.escuro} />
         </linearGradient>
       </defs>
 
       {/* Alças */}
       <path d="M13 11H8.5A2.5 2.5 0 0 0 6 13.5V16a8 8 0 0 0 8 8"
-        stroke="url(#trofeu-ouro)" strokeWidth="2.6" strokeLinecap="round" fill="none" />
+        stroke={`url(#${id})`} strokeWidth="2.6" strokeLinecap="round" fill="none" />
       <path d="M35 11h4.5A2.5 2.5 0 0 1 42 13.5V16a8 8 0 0 1-8 8"
-        stroke="url(#trofeu-ouro)" strokeWidth="2.6" strokeLinecap="round" fill="none" />
+        stroke={`url(#${id})`} strokeWidth="2.6" strokeLinecap="round" fill="none" />
 
       {/* Taça */}
-      <path d="M13 6h22v12c0 6.1-4.9 11-11 11s-11-4.9-11-11V6z" fill="url(#trofeu-ouro)" />
+      <path d="M13 6h22v12c0 6.1-4.9 11-11 11s-11-4.9-11-11V6z" fill={`url(#${id})`} />
 
       {/* Haste e base */}
-      <rect x="21.5" y="29" width="5" height="6" fill="url(#trofeu-ouro)" />
+      <rect x="21.5" y="29" width="5" height="6" fill={`url(#${id})`} />
       <path d="M15 42v-1.5A5.5 5.5 0 0 1 20.5 35h7a5.5 5.5 0 0 1 5.5 5.5V42H15z"
-        fill="url(#trofeu-ouro)" />
+        fill={`url(#${id})`} />
 
-      {/* O número 1, gravado na taça */}
+      {/* O número, gravado na taça */}
       <text x="24" y="22.5" textAnchor="middle" fontSize="16" fontWeight="800"
-        fill="#6b4200" style={{ fontFamily: 'inherit' }}>1</text>
+        fill={t.numero} style={{ fontFamily: 'inherit' }}>{numero}</text>
     </svg>
   );
 }

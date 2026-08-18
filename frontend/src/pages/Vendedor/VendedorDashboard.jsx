@@ -23,7 +23,7 @@ import {
 import { Link } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { useVend, Panel, Kpi, MigracaoPendente, corUf, TrofeuUm, fmtBRL, fmtUn, fmtPct, MESES } from './ui';
+import { useVend, Panel, Kpi, MigracaoPendente, corUf, Trofeu, fmtBRL, fmtUn, fmtPct, MESES } from './ui';
 import BrasilMap from './BrasilMap';
 import RankingProdutosModal from './RankingProdutosModal';
 import CarteiraClientesModal from './CarteiraClientesModal';
@@ -393,7 +393,7 @@ export default function VendedorDashboard() {
             <p className="text-sm py-8 text-center" style={{ color: v.empty }}>Nenhum produto vendido</p>
           ) : (
             <div className="flex flex-col items-center text-center gap-1">
-              <TrofeuUm size={46} />
+              <Trofeu size={46} />
               <p className="text-base font-bold mt-1" style={{ color: '#f59e0b' }}>{topProd.name}</p>
               <p className="text-xl font-bold" style={{ color: '#60a5fa' }}>
                 {fmtUn(topProd.units)} <span className="text-xs font-semibold">un vendidas</span>
