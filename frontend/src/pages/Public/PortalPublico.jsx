@@ -11,6 +11,7 @@
 // Nada do ERP entra aqui: estas telas são externas.
 // ============================================================
 import { HelpCircle } from 'lucide-react';
+import FundoNeon from './FundoNeon';
 
 export default function PortalPublico({
   children,
@@ -24,16 +25,18 @@ export default function PortalPublico({
   const Cartao = como;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10"
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10 relative overflow-hidden"
       style={{ background: 'radial-gradient(1200px 600px at 50% -10%, #16205c 0%, #0a0f2c 45%, #060a1f 100%)' }}>
+
+      <FundoNeon />
 
       {/* onError esconde a tag em vez de deixar o ícone de imagem
           quebrada: a tela funciona sem a logo, e um retângulo cinza no
           topo passa a impressão de site fora do ar. */}
-      <img src="/lyon-logo.png" alt="Lyon Copos" className="w-56 max-w-[70%] mb-8" draggable={false}
+      <img src="/lyon-logo.png" alt="Lyon Copos" className="w-56 max-w-[70%] mb-8 relative z-10" draggable={false}
         onError={e => { e.target.style.display = 'none'; }} />
 
-      <Cartao {...props} className={`w-full ${largura} rounded-2xl p-7 sm:p-8`}
+      <Cartao {...props} className={`w-full ${largura} rounded-2xl p-7 sm:p-8 relative z-10`}
         style={{
           background: 'rgba(10,16,45,0.72)',
           border: '1px solid rgba(96,165,250,0.35)',
