@@ -66,13 +66,13 @@ const STATUS = {
   producao_processo:     { label: 'Produção em processo',        area: 'producao',   aguardando: false, cor: 'azul' },
   producao_finalizada:   { label: 'Produção finalizada',         area: 'producao',   aguardando: false, cor: 'azul',    passo: 17, icone: 'Settings' },
 
-  aguardando_embalagem:  { label: 'Aguardando embalagem',        area: 'producao',   aguardando: true,  cor: 'laranja', passo: 18, icone: 'PackageOpen' },
+  aguardando_embalagem:  { label: 'Aguardando embalagem',        area: 'producao',   aguardando: true,  cor: 'laranja', passo: 20, icone: 'PackageOpen' },
   embalando_pedido:      { label: 'Embalando pedido',            area: 'producao',   aguardando: false, cor: 'laranja' },
-  embalagem_finalizada:  { label: 'Embalagem finalizada',        area: 'producao',   aguardando: false, cor: 'laranja', passo: 19, icone: 'Package' },
+  embalagem_finalizada:  { label: 'Embalagem finalizada',        area: 'producao',   aguardando: false, cor: 'laranja', passo: 21, icone: 'Package' },
 
-  aguardando_qualidade:  { label: 'Aguardando controle de qualidade', area: 'qualidade', aguardando: true,  cor: 'roxo', passo: 20, icone: 'ShieldQuestion' },
+  aguardando_qualidade:  { label: 'Aguardando controle de qualidade', area: 'qualidade', aguardando: true,  cor: 'roxo', passo: 18, icone: 'ShieldQuestion' },
   conferencia_processo:  { label: 'Em processo de conferência',  area: 'qualidade',  aguardando: false, cor: 'roxo' },
-  qualidade_finalizada:  { label: 'Controle de qualidade finalizado', area: 'qualidade', aguardando: false, cor: 'roxo', passo: 21, icone: 'ShieldCheck' },
+  qualidade_finalizada:  { label: 'Controle de qualidade finalizado', area: 'qualidade', aguardando: false, cor: 'roxo', passo: 19, icone: 'ShieldCheck' },
 
   // A foto do produto pronto vai ao cliente antes de o pedido sair —
   // é a última chance de pegar um erro enquanto a caixa ainda está aqui.
@@ -243,6 +243,11 @@ function historicoPedido(venda) {
  *
  * Nunca se pinta de verde uma fase que ainda não aconteceu.
  *
+ * A QUALIDADE VEM ANTES DA EMBALAGEM. Confere-se o copo e depois se
+ * embala: achar o defeito com a caixa já fechada custa abrir tudo de
+ * novo. As duas réguas — esta e a detalhada da tela do cliente — leem a
+ * mesma numeração, e por isso a ordem mudou nas duas de uma vez.
+ *
  * PINTURA e BORDA só entram quando o pedido passa por elas — quem
  * decide é o que foi contratado nos itens, não um palpite. Pedido
  * tradicional sem borda simplesmente não mostra as duas.
@@ -257,8 +262,8 @@ const FASES = [
   { key: 'pintura',    label: 'Pintura',               icone: 'Brush',          entrando: ['aguardando_pintura'],    concluida: ['pintura_finalizada'],   opcional: 'pintura' },
   { key: 'borda',      label: 'Borda',                 icone: 'CircleDashed',   entrando: ['aguardando_borda'],      concluida: ['borda_finalizada'],     opcional: 'borda' },
   { key: 'producao',   label: 'Produção',             icone: 'Settings',       entrando: ['aguardando_producao'],   concluida: ['producao_finalizada'] },
-  { key: 'embalagem',  label: 'Embalagem',             icone: 'PackageOpen',    entrando: ['aguardando_embalagem'],  concluida: ['embalagem_finalizada'] },
   { key: 'qualidade',  label: 'Controle de Qualidade', icone: 'ShieldCheck',    entrando: ['aguardando_qualidade'],  concluida: ['qualidade_finalizada'] },
+  { key: 'embalagem',  label: 'Embalagem',             icone: 'PackageOpen',    entrando: ['aguardando_embalagem'],  concluida: ['embalagem_finalizada'] },
   { key: 'foto',       label: 'Foto',                  icone: 'Camera',         entrando: ['aguardando_foto'],       concluida: ['foto_enviada'] },
   { key: 'coleta',     label: 'Coleta',                icone: 'Truck',          entrando: ['aguardando_coleta'],     concluida: ['mercadoria_coletada', 'produto_retirado'] },
   { key: 'transito',   label: 'Em Trânsito',           icone: 'Truck',          entrando: ['em_transito'],           concluida: [] },
