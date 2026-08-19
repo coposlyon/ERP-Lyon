@@ -11,29 +11,30 @@
 // Nada do ERP entra aqui: estas telas são externas.
 // ============================================================
 import { HelpCircle } from 'lucide-react';
-import FundoNeon from './FundoNeon';
 
 export default function PortalPublico({
   children,
-  largura = 'max-w-md',
+  largura = 'max-w-lg',
   ajudaTexto = 'Precisa de ajuda? Fale com o vendedor',
   ajudaHref = '/loja',
   rodape = null,
   como = 'div',
+  // Quando a tela abre POR CIMA de outra (a abertura do cadastro, que
+  // cobre o bloco do vídeo), ela precisa se fixar e subir de camada.
+  sobrepondo = false,
   ...props
 }) {
   const Cartao = como;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10 relative overflow-hidden"
+    <div className={`min-h-screen flex flex-col items-center justify-center px-4 py-10 overflow-hidden ${
+      sobrepondo ? 'fixed inset-0 z-[60] overflow-y-auto' : 'relative'}`}
       style={{ background: 'radial-gradient(1200px 600px at 50% -10%, #16205c 0%, #0a0f2c 45%, #060a1f 100%)' }}>
-
-      <FundoNeon />
 
       {/* onError esconde a tag em vez de deixar o ícone de imagem
           quebrada: a tela funciona sem a logo, e um retângulo cinza no
           topo passa a impressão de site fora do ar. */}
-      <img src="/lyon-logo.png" alt="Lyon Copos" className="w-56 max-w-[70%] mb-8 relative z-10" draggable={false}
+      <img src="/lyon-logo.png" alt="Lyon Copos" className="w-72 max-w-[78%] mb-9 relative z-10" draggable={false}
         onError={e => { e.target.style.display = 'none'; }} />
 
       {/* A BORDA É UM DEGRADÊ ACESO, não uma linha azul.
@@ -49,7 +50,7 @@ export default function PortalPublico({
           background: 'linear-gradient(140deg,#22d3ee 0%,#3b82f6 38%,#a855f7 72%,#ec4899 100%)',
           boxShadow: '0 0 44px rgba(56,120,255,0.35), 0 0 90px rgba(168,85,247,0.14)',
         }}>
-        <Cartao {...props} className="w-full p-7 sm:p-8"
+        <Cartao {...props} className="w-full p-8 sm:p-10"
           style={{
             // Mais opaco que antes: com o cenário neon atrás, 72% deixava
             // as linhas passarem por trás do texto do formulário.

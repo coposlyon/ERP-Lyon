@@ -41,6 +41,7 @@ export default function AberturaCadastro({ tipo = 'cliente', onIniciar }) {
 
   return (
     <PortalPublico
+      sobrepondo
       ajudaTexto={t.ajuda}
       rodape={
         <p className="text-xs text-center leading-relaxed flex items-start justify-center gap-2"

@@ -253,7 +253,11 @@ export default function CadastroFornecedor() {
         <AberturaCadastro tipo="fornecedor" onIniciar={startIntro} />
       )}
 
-      {phase !== 'form' && phase !== 'start' && (
+      {/* O bloco do vídeo fica montado desde a abertura, e não só
+          depois dela: startIntro() chama play() no <video>, e se o
+          elemento ainda não existe o play não acontece — a tela ficava
+          preta por vinte segundos. A abertura vem POR CIMA dele. */}
+      {phase !== 'form' && (
         <div className="fixed inset-0 z-50 bg-black">
           <Starfield />
           <video ref={videoRef} playsInline preload="auto"
