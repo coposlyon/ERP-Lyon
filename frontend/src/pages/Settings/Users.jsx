@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users as UsersIcon, Plus, Shield, KeyRound, Eye, EyeOff, Pencil } from 'lucide-react';
+import { Users as UsersIcon, Plus, Shield, KeyRound, Eye, EyeOff, Pencil,
+         Copy, Check, MessageCircle, AlertTriangle } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
@@ -41,6 +42,83 @@ const ROLES = {
 
 const emptyForm = { name:'', email:'', password:'', role:'operator', allowed_modules: [] };
 
+/**
+ * O ACESSO DE QUEM ACABOU DE SER CRIADO, pronto para entregar.
+ *
+ * Sem isto o administrador criava o usuário e ficava com o problema de
+ * sempre: montar a mensagem à mão, lembrando de cabeça a senha que
+ * digitou há dez segundos, e quase sempre esquecendo o endereço do
+ * sistema — que é justamente o que a pessoa nova não tem como adivinhar.
+ *
+ * Aparece UMA vez, logo após criar. A senha não volta do servidor depois,
+ * e nem deveria: senha guardada em algum lugar de onde dá para ler de
+ * volta é senha que vaza. Se o acesso se perder, o caminho é redefinir.
+ */
+function AcessoCriado({ dados, onClose }) {
+  const [copiado, setCopiado] = useState(false);
+  if (!dados) return null;
+
+  const link = `${window.location.origin}/login`;
+  const papel = (ROLES[dados.role] || ROLES.operator).label;
+
+  const texto = [
+    'Acesso ao sistema — Lyon Copos',
+    '',
+    `Link:   ${link}`,
+    `Nome:   ${dados.name}`,
+    `E-mail: ${dados.email}`,
+    `Senha:  ${dados.password}`,
+    `Papel:  ${papel}`,
+    '',
+    'Troque a senha no primeiro acesso.',
+  ].join('\n');
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2500);
+    } catch {
+      // Navegador sem permissão de área de transferência: o texto está na
+      // tela e dá para selecionar — melhor dizer isso do que falhar calado.
+      toast.error('Não consegui copiar. Selecione o texto abaixo e copie à mão.');
+    }
+  }
+
+  return (
+    <Modal isOpen onClose={onClose} title="Acesso criado" size="md">
+      <div className="space-y-4">
+        <div className="flex gap-2.5 rounded-xl p-3"
+          style={{ background: 'rgba(250,204,21,0.10)', border: '1px solid rgba(250,204,21,0.30)' }}>
+          <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: '#facc15' }} />
+          <p className="text-sm text-gray-700">
+            Esta é a única vez que a senha aparece. Copie e entregue agora —
+            depois disso, só redefinindo.
+          </p>
+        </div>
+
+        <pre className="text-[13px] leading-relaxed rounded-xl p-4 whitespace-pre-wrap select-all font-mono"
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)' }}>
+{texto}
+        </pre>
+
+        <div className="flex flex-wrap gap-2">
+          <button onClick={copiar} className="btn-primary flex-1 justify-center">
+            {copiado ? <><Check size={15} /> Copiado</> : <><Copy size={15} /> Copiar tudo</>}
+          </button>
+          <a className="btn-secondary flex-1 justify-center"
+            href={`https://wa.me/?text=${encodeURIComponent(texto)}`}
+            target="_blank" rel="noreferrer">
+            <MessageCircle size={15} /> Enviar no WhatsApp
+          </a>
+        </div>
+
+        <button onClick={onClose} className="btn-secondary w-full justify-center">Fechar</button>
+      </div>
+    </Modal>
+  );
+}
+
 function ModuleGrid({ value, onChange, disabled }) {
   function toggle(key) {
     onChange(value.includes(key) ? value.filter(m => m !== key) : [...value, key]);
@@ -69,6 +147,10 @@ export default function Users() {
   const [modal, setModal]       = useState(null); // 'new' | 'edit' | 'password'
   const [target, setTarget]     = useState(null);
   const [form, setForm]         = useState(emptyForm);
+  // O que acabou de ser criado, para entregar o acesso a quem vai usar.
+  // Só existe nesta tela e nesta sessão: a senha não volta do servidor
+  // depois, e nem deveria.
+  const [criado, setCriado]     = useState(null);
   const [newPass, setNewPass]   = useState('');
   const [showPass, setShowPass] = useState(false);
 
@@ -79,7 +161,15 @@ export default function Users() {
 
   const createMut = useMutation({
     mutationFn: d => api.post('/users', d),
-    onSuccess: () => { toast.success('Usuário criado!'); close(); qc.invalidateQueries(['users']); },
+    onSuccess: () => {
+      toast.success('Usuário criado!');
+      // Guarda ANTES de limpar o formulário: a senha em texto só existe
+      // aqui, no que o administrador digitou. Sem isto, ele teria que
+      // lembrar de cabeça o que acabou de escrever para passar adiante.
+      setCriado({ ...form });
+      close();
+      qc.invalidateQueries(['users']);
+    },
     onError: e => toast.error(e.error || 'Erro ao criar usuário'),
   });
   const updateMut = useMutation({
@@ -291,6 +381,9 @@ export default function Users() {
           </div>
         </form>
       </Modal>
+
+      {/* Aparece depois de criar, uma vez só. */}
+      <AcessoCriado dados={criado} onClose={() => setCriado(null)} />
     </div>
   );
 }
