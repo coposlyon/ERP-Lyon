@@ -173,6 +173,10 @@ function AppRoutes() {
         <Route path="coupons" element={<Mod m={['price-tables','sales','pdv']}><Coupons /></Mod>} />
         {/* Vendas */}
         <Route path="sales" element={<Mod m="sales"><Sales /></Mod>} />
+        {/* A tela do pedido é a MESMA do vendedor. Duas telas para
+            "onde está este pedido" seriam duas para discordar no dia
+            em que a produção mudar de etapa. */}
+        <Route path="sales/:id/detalhe" element={<Mod m="sales"><PedidoDetalhe /></Mod>} />
         <Route path="sales/:id" element={<Mod m="sales"><SaleForm /></Mod>} />
         <Route path="store-payments" element={<Mod m="sales"><StorePayments /></Mod>} />
         {/* Painel do Vendedor — a configuração (meta, território, promoções) é só de gestor */}

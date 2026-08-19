@@ -18,7 +18,7 @@
 // ============================================================
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft, Share2, User, FileText, DollarSign, CalendarDays, Package, Clock,
   Truck, Info, Plus, Eye, Download, UploadCloud, PenLine, CircleCheck, Star,
@@ -45,6 +45,13 @@ const ICONES = {
   CircleDashed, Settings, PackageOpen, ShieldCheck, Camera, Truck, PackageCheck,
 };
 
+// Os mesmos rótulos do módulo de Vendas: 'pix' na tela é código vazando.
+const PAGAMENTO = {
+  cash: 'Dinheiro', pix: 'Pix', card_debit: 'Cartão de débito',
+  card_credit: 'Cartão de crédito', transfer: 'Transferência',
+  check: 'Cheque', a_prazo: 'A prazo', boleto: 'Boleto',
+};
+
 const dataHora = iso => iso
   ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
   : '—';
@@ -57,6 +64,21 @@ export default function PedidoDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isManager } = useAuth();
+  const { pathname } = useLocation();
+
+  /**
+   * A MESMA TELA ATENDE DOIS CAMINHOS: /sales/:id/detalhe, do
+   * Administrativo, e /vendedor/pedidos/:id, da carteira do vendedor.
+   * Duas telas para "onde está este pedido" seriam duas para discordar
+   * no dia em que a produção mudar de etapa.
+   *
+   * O que muda é só para onde os botões levam de volta — e o histórico
+   * do cliente, que no ERP é a ficha completa e na área do vendedor é a
+   * lista de pedidos dele, porque a ficha é de outro módulo e o vendedor
+   * não tem permissão: o botão bateria numa porta fechada.
+   */
+  const noErp = pathname.startsWith('/sales');
+  const voltarPara = noErp ? '/sales' : '/vendedor/pedidos';
   const [verHistorico, setVerHistorico] = useState(false);
 
   // Quem cadastra aviso é o Administrativo. O vendedor consulta — esses
@@ -171,7 +193,7 @@ export default function PedidoDetalhe() {
 
       {/* ── Cabeçalho ─────────────────────────────────────────── */}
       <div className="flex items-center gap-2 text-sm" style={{ color: v.textSubtle }}>
-        <button onClick={() => navigate('/vendedor/pedidos')} className="hover:underline">Pedido de Venda</button>
+        <button onClick={() => navigate(voltarPara)} className="hover:underline">Pedido de Venda</button>
         <span>›</span>
         <span style={{ color: v.textPrimary }}>Detalhes do Pedido</span>
       </div>
@@ -186,7 +208,7 @@ export default function PedidoDetalhe() {
           </span>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => navigate('/vendedor/pedidos')} className="btn-secondary">
+          <button onClick={() => navigate(voltarPara)} className="btn-secondary">
             <ArrowLeft size={15} /> Voltar
           </button>
           <button onClick={() => compartilhar(p, cli)}
@@ -232,6 +254,9 @@ export default function PedidoDetalhe() {
                   ? <LogoOrigem origem={p.origin} size={18} nome />
                   : <span style={{ color: v.textSubtle }}>não informada</span>
               } />
+              {/* Estava na aba "Forma de Pagamento" do acordeão antigo e
+                  não existia aqui. Trocar de tela não pode custar um dado. */}
+              <Campo v={v} rotulo="Pagamento" valor={PAGAMENTO[p.payment_method] || p.payment_method || '—'} />
               <Campo v={v} rotulo="Transportadora" valor={p.transportadora || '—'} />
               <Campo v={v} rotulo="Cotação"        valor={p.freight_quote || '—'} mono />
             </Bloco>
@@ -433,8 +458,10 @@ export default function PedidoDetalhe() {
                   para a ficha do cliente do ERP: aquela tela é de outro
                   módulo e o vendedor não tem permissão — o botão só
                   bateria numa porta fechada. */}
-              {p.codigo_cliente && (
-                <button onClick={() => navigate(`/vendedor/pedidos?codigo=${p.codigo_cliente}&finalizados=1`)}
+              {(noErp ? cli.id : p.codigo_cliente) && (
+                <button onClick={() => navigate(noErp
+                  ? `/customers/${cli.id}`
+                  : `/vendedor/pedidos?codigo=${p.codigo_cliente}&finalizados=1`)}
                   className="btn-secondary btn-sm w-full mt-3 justify-center">
                   <Eye size={13} /> Ver histórico completo <ExternalLink size={11} />
                 </button>

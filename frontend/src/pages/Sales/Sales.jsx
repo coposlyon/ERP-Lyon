@@ -282,8 +282,11 @@ export default function Sales() {
                       ficam ver e — para gestor — excluir. */}
                   <span className="w-28 shrink-0 flex justify-center gap-1.5"
                     onClick={e => e.stopPropagation()}>
-                    <Acao titulo="Visualizar detalhes" cor="#3b82f6" Icon={Eye}
-                      onClick={() => setSelectedId(row.id)} />
+                    {/* Abre a tela do pedido — a mesma que o vendedor vê.
+                        Selecionar a linha também, para F3/F4 continuarem
+                        valendo em quem volta. */}
+                    <Acao titulo="Abrir o pedido" cor="#3b82f6" Icon={Eye}
+                      onClick={() => { setSelectedId(row.id); navigate(`/sales/${row.id}/detalhe`); }} />
                     {podeExcluir && (
                       <Acao titulo="Excluir pedido (pede sua senha)" cor="#ef4444" Icon={Trash2}
                         onClick={() => setDelTarget(row)} />
@@ -338,7 +341,7 @@ export default function Sales() {
       <div style={{ ...v.card, padding: '0.85rem 1rem' }}
         className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm">
         <span style={{ color: v.textMuted }}>Legenda de ações:</span>
-        <Legenda Icon={Eye} cor="#3b82f6" texto="Visualizar detalhes" />
+        <Legenda Icon={Eye} cor="#3b82f6" texto="Abrir o pedido" />
       </div>
 
       {/* Painel master-detail (abas) */}
