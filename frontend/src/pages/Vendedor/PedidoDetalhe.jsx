@@ -79,6 +79,11 @@ export default function PedidoDetalhe() {
    */
   const noErp = pathname.startsWith('/sales');
   const voltarPara = noErp ? '/sales' : '/vendedor/pedidos';
+  // Montado a partir do id, e NÃO colando '/documento' no fim do
+  // endereço atual: no ERP a tela mora em /sales/:id/detalhe, e colar no
+  // fim gerava /sales/:id/detalhe/documento — rota que não existe, e o
+  // curinga mandava quem clicou para o Dashboard.
+  const documentoEm = noErp ? `/sales/${id}/documento` : `/vendedor/pedidos/${id}/documento`;
   const [verHistorico, setVerHistorico] = useState(false);
   const [enviando, setEnviando] = useState(null);   // 'arte' | 'comprovante'
   const qc = useQueryClient();
@@ -536,7 +541,7 @@ export default function PedidoDetalhe() {
                   onClick={() => {
                     // O pedido em PDF é uma TELA, e não um download cego: o
                     // vendedor confere o que vai sair antes de mandar.
-                    if (doc.key === 'pedido') return navigate(`${pathname}/documento`);
+                    if (doc.key === 'pedido') return navigate(documentoEm);
                     // O comprovante não vem na resposta: é pedido na hora e
                     // volta um link que expira em dez minutos, para o
                     // endereço do arquivo não ficar guardado na aba.
