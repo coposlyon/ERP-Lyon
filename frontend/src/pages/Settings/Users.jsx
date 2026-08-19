@@ -34,13 +34,26 @@ const MODULOS = [
   { key: 'hr',             label: 'RH' },
 ];
 
+
 const ROLES = {
   admin:    { label: 'Administrador', cls: 'bg-violet-100 text-violet-700' },
   manager:  { label: 'Gerente',       cls: 'bg-blue-100   text-blue-700'   },
   operator: { label: 'Operador',      cls: 'bg-gray-100   text-gray-600'   },
 };
 
-const emptyForm = { name:'', email:'', password:'', role:'operator', allowed_modules: [] };
+/**
+ * A senha inicial sai do papel escolhido: operador123, gerente123,
+ * administrador123.
+ *
+ * É previsível de propósito — serve para o primeiro acesso, para quem
+ * está entregando o sistema a alguém que ainda vai trocar. Pelo mesmo
+ * motivo, quem souber o padrão entra como qualquer usuário recém-criado
+ * que ainda não trocou: o campo continua editável para quando isso não
+ * for aceitável.
+ */
+const senhaDoPapel = papel => `${(ROLES[papel] || ROLES.operator).label.toLowerCase()}123`;
+
+const emptyForm = { name:'', email:'', password: senhaDoPapel('operator'), role:'operator', allowed_modules: [] };
 
 /**
  * O ACESSO DE QUEM ACABOU DE SER CRIADO, pronto para entregar.
@@ -187,7 +200,7 @@ export default function Users() {
     setModal(null); setTarget(null); setForm(emptyForm); setNewPass(''); setShowPass(false);
   }
 
-  function openNew() { setForm(emptyForm); setModal('new'); }
+  function openNew() { setForm({ ...emptyForm, password: senhaDoPapel('operator') }); setModal('new'); }
   function openEdit(u) {
     setTarget(u);
     setForm({
@@ -316,21 +329,29 @@ export default function Users() {
             {modal === 'new' && (
               <div>
                 <label className="label">Senha *</label>
-                <div className="relative">
-                  <input type={showPass ? 'text' : 'password'} className="input pr-10" value={form.password}
-                    onChange={e => setForm(p => ({...p, password: e.target.value}))} />
-                  <button type="button" onClick={() => setShowPass(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                    {showPass ? <EyeOff size={15}/> : <Eye size={15}/>}
-                  </button>
-                </div>
+                {/* Sempre à mostra: esta senha vai ser DITADA para alguém
+                    agora, não guardada. Esconder o que está sendo entregue
+                    só obriga a clicar no olho toda vez. */}
+                <input type="text" className="input font-mono" value={form.password}
+                  onChange={e => setForm(p => ({...p, password: e.target.value}))} />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Gerada a partir do papel. Dá para trocar aqui mesmo.
+                </p>
               </div>
             )}
             <div>
               <label className="label">Papel *</label>
               <select className="input" value={form.role}
                 disabled={modal === 'edit' && target?.id === me?.id}
-                onChange={e => setForm(p => ({...p, role: e.target.value}))}>
+                onChange={e => setForm(p => ({
+                  ...p,
+                  role: e.target.value,
+                  // Só regera se a senha ainda for a gerada. Quem digitou
+                  // uma senha própria não a perde por trocar o papel depois.
+                  password: (modal === 'new' && p.password === senhaDoPapel(p.role))
+                    ? senhaDoPapel(e.target.value)
+                    : p.password,
+                }))}>
                 <option value="operator">Operador</option>
                 <option value="manager">Gerente</option>
                 <option value="admin">Administrador</option>
