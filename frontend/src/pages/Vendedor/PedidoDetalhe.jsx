@@ -16,8 +16,8 @@
 // só a tela que esconde — a rota /area-vendedor/pedidos/:id nem
 // consulta esses campos.
 // ============================================================
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft, Share2, User, FileText, DollarSign, CalendarDays, Package, Clock,
@@ -80,6 +80,10 @@ export default function PedidoDetalhe() {
   const noErp = pathname.startsWith('/sales');
   const voltarPara = noErp ? '/sales' : '/vendedor/pedidos';
   const [verHistorico, setVerHistorico] = useState(false);
+  const [enviando, setEnviando] = useState(null);   // 'arte' | 'comprovante'
+  const qc = useQueryClient();
+  const inputArte = useRef(null);
+  const inputComprovante = useRef(null);
 
   // Quem cadastra aviso é o Administrativo. O vendedor consulta — esses
   // avisos são regra comercial da empresa, não recado de pedido.
@@ -90,7 +94,51 @@ export default function PedidoDetalhe() {
     queryFn: () => api.get(`/area-vendedor/pedidos/${id}`),
   });
 
-  const emBreve = qual => toast(`${qual} será uma tela própria, ainda em definição.`, { icon: '🚧' });
+  /**
+   * Sobe um anexo do pedido — arte ou comprovante.
+   *
+   * Anexar NÃO aprova: o pedido continua onde estava até que quem
+   * aprova aprove. Um arquivo subir não quer dizer que a arte está
+   * certa, e mover o status sozinho faria a produção começar em cima de
+   * um PDF que ninguém conferiu.
+   */
+  /** Pede o link assinado e abre. */
+  async function abrirComprovante() {
+    try {
+      const r = await api.get(`/area-vendedor/pedidos/${id}/comprovante`);
+      window.open(r.url, '_blank', 'noopener');
+    } catch (err) {
+      toast.error(err.error || 'Não foi possível abrir o comprovante');
+    }
+  }
+
+  async function anexar(tipo, arquivo) {
+    if (!arquivo) return;
+    // 8 MB é o limite do que faz sentido trafegar em base64. Acima disso
+    // o navegador trava montando a string, e o erro sairia como "falhou"
+    // sem dizer por quê.
+    if (arquivo.size > 8 * 1024 * 1024) {
+      return toast.error('Arquivo muito grande. O limite é 8 MB.');
+    }
+    setEnviando(tipo);
+    try {
+      const dados = await new Promise((ok, erro) => {
+        const r = new FileReader();
+        r.onload = () => ok(r.result);
+        r.onerror = () => erro(new Error('Não consegui ler o arquivo'));
+        r.readAsDataURL(arquivo);
+      });
+      const r = await api.post(`/area-vendedor/pedidos/${id}/anexar`, { tipo, arquivo: dados });
+      toast.success(r.substituiu
+        ? `${tipo === 'arte' ? 'Arte' : 'Comprovante'} substituído — fica no histórico`
+        : `${tipo === 'arte' ? 'Arte anexada' : 'Comprovante anexado'}`);
+      qc.invalidateQueries({ queryKey: ['pedido-vendedor', id] });
+    } catch (err) {
+      toast.error(err.error || 'Não foi possível anexar');
+    } finally {
+      setEnviando(null);
+    }
+  }
 
   /**
    * Manda o link de acompanhamento para o cliente.
@@ -423,8 +471,14 @@ export default function PedidoDetalhe() {
                 Anexe o arquivo da arte para darmos continuidade.
               </p>
             )}
-            <button onClick={() => emBreve('O anexo da arte')} className="btn-secondary w-full mb-2">
-              <UploadCloud size={15} /> Anexar Arte
+            <input ref={inputArte} type="file" className="hidden"
+              accept="image/*,application/pdf,.ai,.cdr,.eps,.psd"
+              onChange={e => { anexar('arte', e.target.files?.[0]); e.target.value = ''; }} />
+            <button onClick={() => inputArte.current?.click()} disabled={enviando === 'arte'}
+              className="btn-secondary w-full mb-2 disabled:opacity-50">
+              {enviando === 'arte'
+                ? <><Loader2 size={15} className="animate-spin" /> Enviando…</>
+                : <><UploadCloud size={15} /> {p.artwork_url ? 'Substituir Arte' : 'Anexar Arte'}</>}
             </button>
             {p.artwork_url ? (
               <a href={p.artwork_url} target="_blank" rel="noreferrer" className="btn-secondary w-full">
@@ -472,9 +526,28 @@ export default function PedidoDetalhe() {
           {/* Documentos */}
           <Bloco v={v} Icon={FileText} titulo="Documentos">
             <div className="space-y-2">
+              <input ref={inputComprovante} type="file" className="hidden"
+                accept="image/*,application/pdf"
+                onChange={e => { anexar('comprovante', e.target.files?.[0]); e.target.value = ''; }} />
+
               {(p.documentos || []).map(doc => (
-                <button key={doc.key} disabled={!doc.disponivel}
-                  onClick={() => emBreve(`O download de "${doc.label}"`)}
+                <button key={doc.key}
+                  disabled={doc.key === 'nfe' && !doc.disponivel}
+                  onClick={() => {
+                    // O pedido em PDF é uma TELA, e não um download cego: o
+                    // vendedor confere o que vai sair antes de mandar.
+                    if (doc.key === 'pedido') return navigate(`${pathname}/documento`);
+                    // O comprovante não vem na resposta: é pedido na hora e
+                    // volta um link que expira em dez minutos, para o
+                    // endereço do arquivo não ficar guardado na aba.
+                    if (doc.key === 'comprovante' && doc.via_rota) return abrirComprovante();
+                    if (doc.url) return window.open(doc.url, '_blank', 'noopener');
+                    // Comprovante que ainda não existe: o botão vira o
+                    // caminho de anexar, em vez de acender prometendo um
+                    // arquivo que ninguém subiu.
+                    if (doc.key === 'comprovante') return inputComprovante.current?.click();
+                    toast(doc.nota || 'Ainda não disponível', { icon: '⏳' });
+                  }}
                   className="w-full flex items-center gap-2 text-left text-sm disabled:opacity-45 disabled:cursor-not-allowed">
                   <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
                     style={{ background: 'rgba(59,130,246,0.2)' }}>
@@ -483,8 +556,15 @@ export default function PedidoDetalhe() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate" style={{ color: v.textPrimary }}>{doc.label}</span>
                     {doc.nota && <span className="block text-[10px]" style={{ color: v.textSubtle }}>{doc.nota}</span>}
+                    {doc.key === 'pedido' && (
+                      <span className="block text-[10px]" style={{ color: v.textSubtle }}>Abre a folha para conferir e imprimir</span>
+                    )}
                   </span>
-                  <Download size={14} style={{ color: v.textMuted }} className="shrink-0" />
+                  {doc.key === 'comprovante' && !doc.via_rota
+                    ? (enviando === 'comprovante'
+                        ? <Loader2 size={14} className="animate-spin shrink-0" style={{ color: v.textMuted }} />
+                        : <UploadCloud size={14} style={{ color: v.textMuted }} className="shrink-0" />)
+                    : <Download size={14} style={{ color: v.textMuted }} className="shrink-0" />}
                 </button>
               ))}
             </div>

@@ -29,6 +29,7 @@ const VendedorDashboard  = lazy(() => import('@/pages/Vendedor/VendedorDashboard
 const VendedorConfig     = lazy(() => import('@/pages/Vendedor/VendedorConfig'));
 const PedidosVendedor    = lazy(() => import('@/pages/Vendedor/PedidosVendedor'));
 const PedidoDetalhe      = lazy(() => import('@/pages/Vendedor/PedidoDetalhe'));
+const DocumentoPedido    = lazy(() => import('@/pages/Vendedor/DocumentoPedido'));
 const Catalogo           = lazy(() => import('@/pages/Vendedor/Catalogo'));
 const AgendaVendedor     = lazy(() => import('@/pages/Vendedor/Agenda'));
 const Comunicacao        = lazy(() => import('@/pages/Vendedor/Comunicacao'));
@@ -177,6 +178,7 @@ function AppRoutes() {
             "onde está este pedido" seriam duas para discordar no dia
             em que a produção mudar de etapa. */}
         <Route path="sales/:id/detalhe" element={<Mod m="sales"><PedidoDetalhe /></Mod>} />
+        <Route path="sales/:id/documento" element={<Mod m="sales"><DocumentoPedido /></Mod>} />
         <Route path="sales/:id" element={<Mod m="sales"><SaleForm /></Mod>} />
         <Route path="store-payments" element={<Mod m="sales"><StorePayments /></Mod>} />
         {/* Painel do Vendedor — a configuração (meta, território, promoções) é só de gestor */}
@@ -191,6 +193,7 @@ function AppRoutes() {
         {/* Detalhe do pedido. A Tela 2 completa ainda será especificada;
             esta versão sustenta o "Visualizar detalhes" sem expor custo. */}
         <Route path="vendedor/pedidos/:id" element={<Mod m={['pedidos-vendedor','vendedor','sales']}><PedidoDetalhe /></Mod>} />
+        <Route path="vendedor/pedidos/:id/documento" element={<Mod m={['pedidos-vendedor','vendedor','sales']}><DocumentoPedido /></Mod>} />
         {/* Orçamentos */}
         <Route path="quotes" element={<Mod m="quotes"><Quotes /></Mod>} />
         <Route path="quotes/:id" element={<Mod m="quotes"><QuoteForm /></Mod>} />

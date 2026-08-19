@@ -5,6 +5,7 @@ const { randomUUID } = require('crypto');
 // produção mostradas ao cliente, previews dos pedidos). Documentos sensíveis
 // (CNH, contratos) continuam no bucket privado DOCUMENTOS via outras rotas.
 const BUCKET = process.env.PUBLIC_STORAGE_BUCKET || 'loja-publico';
+const BUCKET_PRIVADO = process.env.PRIVATE_STORAGE_BUCKET || 'DOCUMENTOS';
 
 // Sobe uma imagem em base64 (data URL) para o Storage e devolve a URL pública.
 // Se já for uma URL (http) ou vazio, devolve como está. Nunca lança — em
@@ -29,4 +30,55 @@ async function uploadDataUrl(dataUrl, folder = 'previews') {
   }
 }
 
-module.exports = { uploadDataUrl };
+/**
+ * BUCKET PRIVADO, para o que não pode circular por link solto.
+ *
+ * Comprovante de pagamento traz nome do pagador, banco e valor. No
+ * bucket público ele fica acessível a quem tiver a URL — e URL vaza:
+ * vai colada num print, num encaminhado de WhatsApp, no histórico do
+ * navegador de um computador emprestado.
+ *
+ * Devolve o CAMINHO, não uma URL. Quem for mostrar pede um link
+ * assinado, que expira. É a diferença entre "quem tem o link vê para
+ * sempre" e "quem tem permissão vê por dez minutos".
+ */
+async function uploadPrivado(dataUrl, folder = 'pedidos') {
+  if (!dataUrl || !/^data:/.test(dataUrl)) return null;
+  const m = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+  if (!m) return null;
+  try {
+    const mime = m[1];
+    const buf = Buffer.from(m[2], 'base64');
+    const ext = mime.includes('png') ? 'png'
+              : mime.includes('jpeg') ? 'jpg'
+              : mime.includes('webp') ? 'webp'
+              : mime.includes('pdf') ? 'pdf' : 'bin';
+    const path = `${folder}/${randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from(BUCKET_PRIVADO)
+      .upload(path, buf, { contentType: mime, upsert: false });
+    if (error) { console.error('[storage privado]', error.message); return null; }
+    return path;
+  } catch (err) {
+    console.error('[storage privado]', err.message);
+    return null;
+  }
+}
+
+/** Link temporário para um arquivo do bucket privado. */
+async function linkAssinado(path, segundos = 600) {
+  if (!path) return null;
+  // Arquivo antigo já gravado como URL inteira continua funcionando: a
+  // migração trouxe os comprovantes da loja, que nasceram públicos.
+  if (/^https?:\/\//.test(path)) return path;
+  try {
+    const { data, error } = await supabase.storage.from(BUCKET_PRIVADO)
+      .createSignedUrl(path, segundos);
+    if (error) { console.error('[storage assinado]', error.message); return null; }
+    return data?.signedUrl || null;
+  } catch (err) {
+    console.error('[storage assinado]', err.message);
+    return null;
+  }
+}
+
+module.exports = { uploadDataUrl, uploadPrivado, linkAssinado };

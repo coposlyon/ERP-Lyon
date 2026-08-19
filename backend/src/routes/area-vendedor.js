@@ -14,6 +14,7 @@ const { ORIGENS } = require('../lib/origens');
 const { autorizar, excluirVenda } = require('../lib/excluirVenda');
 const { audit } = require('../lib/audit');
 const { caracteristicasDoItem, etapasDosItens } = require('../lib/itensPedido');
+const { uploadDataUrl, uploadPrivado, linkAssinado } = require('../lib/storage');
 
 const isManager = req => ['admin', 'manager'].includes(req.userProfile?.role);
 const tabelaAusente = err =>
@@ -130,7 +131,7 @@ router.get('/pedidos/:id', async (req, res) => {
     const CAMPOS = `
       id, number, status, origin, source, subtotal, discount, freight, total,
       created_at, operation_date, event_date, ship_date, delivery_date, max_delivery_date,
-      payment_method, notes, artwork_url, artwork_notes, user_id, carrier_id,
+      payment_method, notes, artwork_url, artwork_notes, receipt_url, user_id, carrier_id,
       tracking_code, freight_quote, avisos, production_log, collect_date, transport_days,
       CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating, created_at ),
       USUARIOS ( id, name ),
@@ -269,9 +270,16 @@ function documentosDoPedido(venda) {
     .includes(venda.status);
   return [
     { key: 'pedido',      label: 'Pedido em PDF',                disponivel: true },
+    // Disponível quando o ARQUIVO existe, não quando a forma de pagamento
+    // foi escolhida: escolher pix não produz comprovante nenhum, e o botão
+    // acendia prometendo um arquivo que ninguém tinha subido.
     { key: 'comprovante', label: 'Baixar Comprovante de Pagamento',
-      disponivel: !!venda.payment_method,
-      nota: venda.payment_method ? null : 'Disponível após o pagamento' },
+      disponivel: !!venda.receipt_url,
+      // Sem a URL: o comprovante é pedido à rota própria, que devolve
+      // link assinado. Mandar o caminho na resposta seria guardar o
+      // endereço do arquivo em toda aba aberta do navegador.
+      via_rota: !!venda.receipt_url,
+      nota: venda.receipt_url ? null : 'Anexe o comprovante para disponibilizar' },
     { key: 'nfe',         label: 'Baixar Nota Fiscal',
       disponivel: jaColetado,
       nota: jaColetado ? null : 'Disponível após a coleta' },
@@ -290,6 +298,94 @@ function documentosDoPedido(venda) {
  */
 const FORA_DE_ALCANCE = ['mercadoria_coletada', 'produto_retirado', 'em_transito',
                          'aguardando_entrega', 'entregue', 'pedido_finalizado'];
+
+/**
+ * ANEXAR ARQUIVO AO PEDIDO — arte ou comprovante.
+ *
+ * Anexar NÃO aprova. O pedido continua "aguardando anexo da arte" até
+ * que quem aprova aprove: um arquivo subir não quer dizer que a arte
+ * está certa, e mover o status sozinho faria a produção começar em cima
+ * de um PDF que ninguém conferiu.
+ *
+ * Fica no histórico quem anexou e quando. Substituir também fica — a
+ * segunda arte de um pedido é exatamente o que alguém vai querer
+ * explicar depois.
+ */
+router.post('/pedidos/:id/anexar', async (req, res) => {
+  try {
+    const tipo = String(req.body?.tipo || '').trim();
+    if (!['arte', 'comprovante'].includes(tipo)) {
+      return res.status(400).json({ error: 'Tipo de anexo inválido.' });
+    }
+    const arquivo = req.body?.arquivo;
+    if (typeof arquivo !== 'string' || !arquivo.startsWith('data:')) {
+      return res.status(400).json({ error: 'Envie um arquivo.' });
+    }
+
+    const { data: venda } = await supabase.from('VENDAS')
+      .select('id, number, user_id, artwork_url, receipt_url, production_log')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!venda) return res.status(404).json({ error: 'Pedido não encontrado' });
+    if (!isManager(req) && venda.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Este pedido não é da sua carteira' });
+    }
+
+    // A arte vai para o bucket público porque produção, designer e o
+    // próprio cliente precisam abri-la o tempo todo. O COMPROVANTE não:
+    // ele traz nome do pagador, banco e valor, e vai para o privado, de
+    // onde só sai por link assinado que expira.
+    const url = tipo === 'arte'
+      ? await uploadDataUrl(arquivo, 'artes-pedido')
+      : await uploadPrivado(arquivo, 'comprovantes-pedido');
+    if (!url) return res.status(502).json({ error: 'Não foi possível guardar o arquivo. Tente de novo.' });
+
+    const campo = tipo === 'arte' ? 'artwork_url' : 'receipt_url';
+    const substituindo = !!venda[campo];
+
+    // O log recebe uma linha própria, e não um status: o fluxo do pedido
+    // não anda porque um arquivo chegou.
+    const log = Array.isArray(venda.production_log) ? venda.production_log : [];
+    log.push({
+      action: tipo === 'arte' ? 'arte_anexada' : 'comprovante_anexado',
+      at: new Date().toISOString(),
+      user: req.userProfile?.name || req.user?.email || null,
+      stage: 'documentos',
+      nota: substituindo ? 'substituiu o anterior' : null,
+    });
+
+    const { error } = await supabase.from('VENDAS')
+      .update({ [campo]: url, production_log: log, ...(req.body?.notas && tipo === 'arte' ? { artwork_notes: req.body.notas } : {}) })
+      .eq('id', venda.id).eq('tenant_id', req.tenantId);
+    if (error) throw error;
+
+    audit(req, 'update', 'venda', venda.id, { anexo: tipo, substituiu: substituindo });
+    res.json({ url, substituiu: substituindo });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * O comprovante, por link temporário.
+ *
+ * O arquivo mora no bucket privado; o que sai daqui é um link que
+ * expira em dez minutos. Assim, o link que for parar num print ou num
+ * encaminhado de WhatsApp não abre o comprovante de ninguém amanhã.
+ */
+router.get('/pedidos/:id/comprovante', async (req, res) => {
+  try {
+    const { data: venda } = await supabase.from('VENDAS')
+      .select('id, user_id, receipt_url')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!venda) return res.status(404).json({ error: 'Pedido não encontrado' });
+    if (!isManager(req) && venda.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Este pedido não é da sua carteira' });
+    }
+    if (!venda.receipt_url) return res.status(404).json({ error: 'Este pedido ainda não tem comprovante anexado.' });
+
+    const link = await linkAssinado(venda.receipt_url, 600);
+    if (!link) return res.status(502).json({ error: 'Não foi possível abrir o comprovante agora.' });
+    res.json({ url: link });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 router.post('/pedidos/:id/excluir', async (req, res) => {
   try {
