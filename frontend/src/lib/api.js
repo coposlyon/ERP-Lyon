@@ -5,12 +5,6 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
 /**
  * As rotas do acompanhamento do cliente respondem 401 como RESPOSTA DE
  * NEGÓCIO — "esse CPF e esse pedido não conferem" — e não como sessão
@@ -22,6 +16,25 @@ api.interceptors.request.use((config) => {
  */
 const rotaPublica = url =>
   /^\/?acompanhar(\/|$)/.test(String(url || '').replace(/^\/api/, ''));
+
+api.interceptors.request.use((config) => {
+  // O ACOMPANHAMENTO DO CLIENTE NÃO LEVA O TOKEN DO ERP.
+  //
+  // Este interceptor sobrescrevia o Authorization de QUALQUER chamada
+  // com o token do ERP guardado no navegador. Resultado: o vendedor que
+  // abrisse o link de acompanhamento na mesma janela em que está logado
+  // mandava o próprio Bearer no lugar do token do cliente — e o
+  // servidor, que confere o cabeçalho primeiro, respondia "sessão
+  // expirada" logo depois de o login ter dado certo.
+  if (rotaPublica(config.url)) return config;
+
+  // Quem passou o cabeçalho na chamada sabe o que está fazendo.
+  if (config.headers?.Authorization) return config;
+
+  const token = localStorage.getItem('access_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
 api.interceptors.response.use(
   (response) => response.data,

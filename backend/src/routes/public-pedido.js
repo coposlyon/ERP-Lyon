@@ -175,17 +175,22 @@ router.post('/acesso', limiteAcesso, async (req, res) => {
  * O cliente vem do token, nunca da URL.
  */
 function exigirToken(req, res, next) {
-  const bruto = req.headers.authorization?.split(' ')[1] || req.query.t;
-  if (!bruto) return res.status(401).json({ error: 'Sessão expirada. Entre de novo.' });
-  try {
-    const dados = jwt.verify(bruto, SEGREDO);
-    if (dados.escopo !== 'acompanhamento' || !dados.customer_id) throw new Error('escopo');
-    req.customerId = dados.customer_id;
-    req.tenantId = dados.tenant_id;
-    next();
-  } catch {
-    res.status(401).json({ error: 'Sessão expirada. Entre de novo.' });
+  // Aceita o token que VALIDAR, venha do cabeçalho ou da URL. Preferir
+  // o cabeçalho cegamente derrubava o cliente quando havia outro Bearer
+  // na janela — por exemplo o do ERP, se o vendedor abrisse o link no
+  // mesmo navegador em que está logado.
+  const candidatos = [req.query.t, req.headers.authorization?.split(' ')[1]].filter(Boolean);
+
+  for (const bruto of candidatos) {
+    try {
+      const dados = jwt.verify(bruto, SEGREDO);
+      if (dados.escopo !== 'acompanhamento' || !dados.customer_id) continue;
+      req.customerId = dados.customer_id;
+      req.tenantId = dados.tenant_id;
+      return next();
+    } catch { /* tenta o próximo */ }
   }
+  res.status(401).json({ error: 'Sessão expirada. Entre de novo.' });
 }
 
 /**
