@@ -22,6 +22,7 @@ const jwt      = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const supabase = require('../config/supabase');
 const P        = require('../lib/pedidoPublico');
+const A        = require('../lib/atencao');
 const { askClaude } = require('../lib/ai');
 
 const SEGREDO = process.env.PEDIDO_TOKEN_SECRET
@@ -44,9 +45,20 @@ const limiteAcesso = rateLimit({
 });
 
 /** 'PV-000123', 'pv 123' ou '123' → 123 */
-function numeroDoPedido(entrada) {
-  const m = String(entrada || '').match(/(\d+)\s*$/);
-  return m ? parseInt(m[1], 10) : null;
+/**
+ * A data digitada, em qualquer formato razoável, virando AAAA-MM-DD.
+ *
+ * O campo da tela manda AAAA-MM-DD (input type=date), mas gente colando
+ * de outro lugar manda 01/01/2025 — e recusar por causa da barra seria
+ * recusar quem digitou certo.
+ */
+function dataISO(entrada) {
+  const t = String(entrada || '').trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = t.match(/^(\d{2})[/\-.](\d{2})[/\-.](\d{4})$/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return null;
 }
 
 const CAMPOS_PEDIDO = `
@@ -101,35 +113,58 @@ async function avisosDaEmpresa(tenantId) {
   } catch { return []; }
 }
 
-// ── TELA 3A — entrar ─────────────────────────────────────────
+// ── TELA 3A — entrar ────────────────────────────
+//
+// CPF + DATA DE NASCIMENTO, e não mais CPF + número do pedido.
+//
+// A diferença não é só de campo: o acesso deixou de ser de UM pedido e
+// passou a ser DO CLIENTE. Quem entra vê a própria lista e escolhe qual
+// abrir — antes precisava ter o número na mão, e quem perdeu o
+// WhatsApp do vendedor não entrava de jeito nenhum.
+//
+// O que NÃO mudou é a trava: o token carrega o customer_id, e cada
+// pedido aberto é conferido contra ele. Trocar o id na URL continua não
+// abrindo pedido de outra pessoa.
+//
+// Uma data de nascimento é um segredo mais fraco que um número de
+// pedido, e vale saber disso: quem souber CPF e nascimento de alguém
+// entra. É o mesmo nível do login da loja, que já pedia só o CPF —
+// então isto sobe a barra, não desce. Para subir mais, o caminho é
+// código por WhatsApp, que exige o telefone na mão.
 router.post('/acesso', limiteAcesso, async (req, res) => {
   const cpf = P.soDigitos(req.body?.cpf);
-  const numero = numeroDoPedido(req.body?.pedido);
+  const nascimento = dataISO(req.body?.nascimento);
 
-  if (!cpf || !numero) return res.status(401).json({ error: ERRO_ACESSO });
+  if (!cpf || !nascimento) return res.status(401).json({ error: ERRO_ACESSO });
 
   try {
-    // Procura o pedido pelo número. Como `number` se repete entre
-    // empresas, o CPF é que decide qual é o certo.
-    const { data: candidatos } = await supabase.from('VENDAS')
-      .select('id, number, tenant_id, CLIENTES ( cpf_cnpj )')
-      .eq('number', numero).limit(20);
+    // doc_digits quando existir (é indexado); senão compara na mão,
+    // porque o cadastro antigo gravou com pontuação.
+    let cliente = null;
+    const { data, error } = await supabase.from('CLIENTES')
+      .select('id, tenant_id, name, birth_date, cpf_cnpj')
+      .eq('doc_digits', cpf).limit(5);
 
-    const venda = (candidatos || []).find(
-      v => P.soDigitos(v.CLIENTES?.cpf_cnpj) === cpf
-    );
-    // CPF certo com pedido de outra pessoa cai aqui, com a mesma frase.
-    if (!venda) return res.status(401).json({ error: ERRO_ACESSO });
+    if (error) {
+      const { data: todos } = await supabase.from('CLIENTES')
+        .select('id, tenant_id, name, birth_date, cpf_cnpj').limit(5000);
+      cliente = (todos || []).find(c => P.soDigitos(c.cpf_cnpj) === cpf
+        && String(c.birth_date || '').slice(0, 10) === nascimento) || null;
+    } else {
+      cliente = (data || []).find(
+        c => String(c.birth_date || '').slice(0, 10) === nascimento) || null;
+    }
+
+    // CPF certo com nascimento errado cai aqui, com a mesma frase de
+    // sempre: dizer "a data não confere" confirmaria que o CPF existe.
+    if (!cliente) return res.status(401).json({ error: ERRO_ACESSO });
 
     const token = jwt.sign(
-      { sale_id: venda.id, tenant_id: venda.tenant_id, escopo: 'acompanhamento' },
+      { customer_id: cliente.id, tenant_id: cliente.tenant_id, escopo: 'acompanhamento' },
       SEGREDO, { expiresIn: VALIDADE },
     );
 
-    const pedido = await carregarPedido(venda.id);
-    if (!pedido) return res.status(401).json({ error: ERRO_ACESSO });
-
-    res.json({ token, ...pedido });
+    res.json({ token, cliente: { nome: cliente.name } });
   } catch {
     // Erro interno também não vira pista sobre o que existe no banco.
     res.status(401).json({ error: ERRO_ACESSO });
@@ -137,16 +172,15 @@ router.post('/acesso', limiteAcesso, async (req, res) => {
 });
 
 /**
- * O pedido vem do token, não da URL. Trocar o PV no endereço não muda
- * nada: o servidor nem lê o que está lá.
+ * O cliente vem do token, nunca da URL.
  */
 function exigirToken(req, res, next) {
   const bruto = req.headers.authorization?.split(' ')[1] || req.query.t;
   if (!bruto) return res.status(401).json({ error: 'Sessão expirada. Entre de novo.' });
   try {
     const dados = jwt.verify(bruto, SEGREDO);
-    if (dados.escopo !== 'acompanhamento') throw new Error('escopo');
-    req.saleId = dados.sale_id;
+    if (dados.escopo !== 'acompanhamento' || !dados.customer_id) throw new Error('escopo');
+    req.customerId = dados.customer_id;
     req.tenantId = dados.tenant_id;
     next();
   } catch {
@@ -154,12 +188,66 @@ function exigirToken(req, res, next) {
   }
 }
 
+/**
+ * O pedido pedido na URL É daquele cliente?
+ *
+ * Esta é a trava inteira do modelo novo. Com o token preso a um pedido
+ * só, trocar o id na URL não fazia nada porque o servidor nem lia a URL.
+ * Agora ele lê — então tem que conferir. Devolve 404, e não 403: "esse
+ * pedido não é seu" confirmaria que o pedido existe.
+ */
+async function pedidoDoCliente(saleId, customerId) {
+  if (!saleId) return null;
+  const { data } = await supabase.from('VENDAS')
+    .select('id, customer_id').eq('id', saleId).maybeSingle();
+  if (!data || data.customer_id !== customerId) return null;
+  return data.id;
+}
+
+// ── A LISTA ────────────────────────────────────────
+//
+// Só o suficiente para escolher: número, data, status e valor. O
+// detalhe fica no pedido aberto — mandar tudo de todos os pedidos seria
+// carregar dez vezes o que a pessoa vai olhar uma vez.
+router.get('/pedidos', exigirToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('VENDAS')
+      .select('id, number, status, total, freight, created_at, operation_date, event_date, delivery_date')
+      .eq('tenant_id', req.tenantId).eq('customer_id', req.customerId)
+      .in('type', ['sale', 'order'])
+      .order('created_at', { ascending: false }).limit(200);
+    if (error) throw error;
+
+    res.json({
+      pedidos: (data || []).map(v => {
+        const info = A.infoStatus(v.status);
+        return {
+          id: v.id,
+          codigo: `PV-${String(v.number).padStart(6, '0')}`,
+          numero: v.number,
+          data: v.operation_date || (v.created_at || '').slice(0, 10),
+          data_evento: v.event_date || null,
+          previsao_entrega: v.delivery_date || null,
+          status: info.label,
+          cor: info.cor,
+          finalizado: !!info.final,
+          total: Number(v.total) || 0,
+        };
+      }),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Não foi possível carregar seus pedidos agora.' });
+  }
+});
+
 // ── TELA 3B — o pedido, sempre atual ─────────────────────────
 // A tela chama isto de tempos em tempos: quando a Produção muda a etapa
 // no ERP, o cliente vê a mudança sem fazer nada.
-router.get('/', exigirToken, async (req, res) => {
+router.get('/pedido/:id', exigirToken, async (req, res) => {
   try {
-    const pedido = await carregarPedido(req.saleId);
+    const saleId = await pedidoDoCliente(req.params.id, req.customerId);
+    if (!saleId) return res.status(404).json({ error: 'Pedido não encontrado.' });
+    const pedido = await carregarPedido(saleId);
     if (!pedido) return res.status(404).json({ error: 'Pedido não encontrado' });
     res.json(pedido);
   } catch (err) { res.status(500).json({ error: 'Não foi possível carregar o pedido' }); }
@@ -191,9 +279,11 @@ async function vendedorDoPedido(saleId) {
   } catch { return user; }
 }
 
-router.get('/contato', exigirToken, async (req, res) => {
+router.get('/pedido/:id/contato', exigirToken, async (req, res) => {
   try {
-    const vendedor = await vendedorDoPedido(req.saleId);
+    const saleId = await pedidoDoCliente(req.params.id, req.customerId);
+    if (!saleId) return res.status(404).json({ error: 'Pedido não encontrado.' });
+    const vendedor = await vendedorDoPedido(saleId);
     res.json({
       // Só o primeiro nome: o cliente precisa saber com quem fala, não
       // o cadastro completo de quem trabalha aqui.
@@ -213,12 +303,14 @@ router.get('/contato', exigirToken, async (req, res) => {
  * combinado, a resposta é encaminhar ao vendedor: a IA informa, não
  * negocia.
  */
-router.post('/ia', exigirToken, async (req, res) => {
+router.post('/pedido/:id/ia', exigirToken, async (req, res) => {
   const pergunta = String(req.body?.pergunta || '').trim();
   if (!pergunta) return res.status(400).json({ error: 'Escreva sua dúvida' });
 
   try {
-    const p = await carregarPedido(req.saleId);
+    const saleId = await pedidoDoCliente(req.params.id, req.customerId);
+    if (!saleId) return res.status(404).json({ error: 'Pedido não encontrado.' });
+    const p = await carregarPedido(saleId);
     if (!p) return res.status(404).json({ error: 'Pedido não encontrado' });
 
     const etapaAtual = (p.linha_do_tempo || []).find(e => e.estado === 'atual');
@@ -266,11 +358,13 @@ router.post('/ia', exigirToken, async (req, res) => {
  * pedido, com a mensagem já começando pelo número do pedido — assim o
  * vendedor abre a conversa sabendo do que se trata.
  */
-router.post('/humano', exigirToken, async (req, res) => {
+router.post('/pedido/:id/humano', exigirToken, async (req, res) => {
   try {
+    const saleId = await pedidoDoCliente(req.params.id, req.customerId);
+    if (!saleId) return res.status(404).json({ error: 'Pedido não encontrado.' });
     const [vendedor, p] = await Promise.all([
-      vendedorDoPedido(req.saleId),
-      carregarPedido(req.saleId),
+      vendedorDoPedido(saleId),
+      carregarPedido(saleId),
     ]);
     const digitos = P.soDigitos(vendedor?.phone);
     if (!digitos) {

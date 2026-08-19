@@ -11,7 +11,7 @@
 // ============================================================
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   MessageSquare, Clock, User, FileText, DollarSign, CalendarDays, Package,
   Truck, Info, FolderOpen, Download, Sparkles, Headset, X, Loader2, Send,
@@ -53,6 +53,7 @@ const CARD = {
 
 export default function PedidoCliente() {
   const navigate = useNavigate();
+  const { id } = useParams();
   const [contato, setContato] = useState(false);
   const [verTudo, setVerTudo] = useState(false);
   const token = sessionStorage.getItem('acompanhar_token');
@@ -60,8 +61,8 @@ export default function PedidoCliente() {
   useEffect(() => { if (!token) navigate('/acompanhar', { replace: true }); }, [token, navigate]);
 
   const { data: p, isLoading, error } = useQuery({
-    queryKey: ['acompanhar-pedido'],
-    queryFn: () => api.get('/acompanhar', { headers: { Authorization: `Bearer ${token}` } }),
+    queryKey: ['acompanhar-pedido', id],
+    queryFn: () => api.get(`/acompanhar/pedido/${id}`, { headers: { Authorization: `Bearer ${token}` } }),
     enabled: !!token,
     // O pedido anda enquanto o cliente olha: a Produção muda a etapa no
     // ERP e a tela pega a mudança sozinha.
@@ -329,7 +330,7 @@ export default function PedidoCliente() {
         </div>
       </main>
 
-      {contato && <CentralContato token={token} pedido={p.pedido.codigo} onClose={() => setContato(false)} />}
+      {contato && <CentralContato token={token} saleId={id} pedido={p.pedido.codigo} onClose={() => setContato(false)} />}
     </div>
   );
 }
@@ -339,19 +340,19 @@ export default function PedidoCliente() {
  * pedido, e o humanizado leva ao WhatsApp do vendedor responsável — o
  * cliente não escolhe atendente nem vê telefone de outro vendedor.
  */
-function CentralContato({ token, pedido, onClose }) {
+function CentralContato({ token, saleId, pedido, onClose }) {
   const [modo, setModo] = useState(null);       // null | 'ia' | 'humano'
   const [pergunta, setPergunta] = useState('');
   const [conversa, setConversa] = useState([]);
   const cabecalho = { headers: { Authorization: `Bearer ${token}` } };
 
   const { data: info } = useQuery({
-    queryKey: ['acompanhar-contato'],
-    queryFn: () => api.get('/acompanhar/contato', cabecalho),
+    queryKey: ['acompanhar-contato', saleId],
+    queryFn: () => api.get(`/acompanhar/pedido/${saleId}/contato`, cabecalho),
   });
 
   const perguntarIA = useMutation({
-    mutationFn: () => api.post('/acompanhar/ia', { pergunta }, cabecalho),
+    mutationFn: () => api.post(`/acompanhar/pedido/${saleId}/ia`, { pergunta }, cabecalho),
     onSuccess: r => {
       setConversa(c => [...c, { de: 'cliente', texto: pergunta }, { de: 'ia', texto: r.resposta }]);
       setPergunta('');
@@ -360,7 +361,7 @@ function CentralContato({ token, pedido, onClose }) {
   });
 
   const abrirHumano = useMutation({
-    mutationFn: () => api.post('/acompanhar/humano', { mensagem: pergunta }, cabecalho),
+    mutationFn: () => api.post(`/acompanhar/pedido/${saleId}/humano`, { mensagem: pergunta }, cabecalho),
     onSuccess: r => window.open(r.link, '_blank', 'noopener'),
     onError: e => alert(e.error || 'Não foi possível abrir o atendimento agora.'),
   });

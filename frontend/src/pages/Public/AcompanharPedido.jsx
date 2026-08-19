@@ -12,7 +12,7 @@
 // ============================================================
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Tag, LogIn, Loader2, AlertCircle } from 'lucide-react';
+import { User, CalendarDays, LogIn, Loader2, AlertCircle } from 'lucide-react';
 import api from '@/lib/api';
 import PortalPublico from './PortalPublico';
 
@@ -29,7 +29,7 @@ function mascaraCPF(v) {
 export default function AcompanharPedido() {
   const navigate = useNavigate();
   const [cpf, setCpf] = useState('');
-  const [pedido, setPedido] = useState('');
+  const [nascimento, setNascimento] = useState('');
   const [erro, setErro] = useState('');
   const [enviando, setEnviando] = useState(false);
 
@@ -38,12 +38,13 @@ export default function AcompanharPedido() {
     setErro('');
     setEnviando(true);
     try {
-      const r = await api.post('/acompanhar/acesso', { cpf, pedido });
+      const r = await api.post('/acompanhar/acesso', { cpf, nascimento });
       // O token é o que dá acesso ao pedido dali em diante. Fica na
       // sessão e não no localStorage: fechou o navegador, acabou —
       // muita gente abre isso de um computador emprestado.
       sessionStorage.setItem('acompanhar_token', r.token);
-      navigate('/acompanhar/pedido');
+      if (r.cliente?.nome) sessionStorage.setItem('acompanhar_nome', r.cliente.nome);
+      navigate('/acompanhar/pedidos');
     } catch (err) {
       setErro(err.error || 'Não foi possível entrar agora. Tente de novo em instantes.');
     } finally {
@@ -59,7 +60,7 @@ export default function AcompanharPedido() {
     <PortalPublico como="form" onSubmit={entrar}>
         <h1 className="text-3xl font-bold text-center text-white">Acompanhar Pedido</h1>
         <p className="text-sm text-center mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
-          Acesse seu painel para acompanhar o andamento do seu pedido em tempo real.
+          Acesse seu painel para acompanhar o andamento dos seus pedidos em tempo real.
         </p>
 
         <div className="mt-7 space-y-3">
@@ -67,9 +68,13 @@ export default function AcompanharPedido() {
             onChange={e => setCpf(mascaraCPF(e.target.value))}
             inputMode="numeric" autoComplete="off" autoFocus />
 
-          <Campo Icon={Tag} placeholder="Digite seu pedido de venda" value={pedido}
-            onChange={e => setPedido(e.target.value.toUpperCase())}
-            autoComplete="off" />
+          {/* type=date dá o calendário do próprio aparelho — no celular,
+              que é onde o cliente abre isto, digitar data é o passo em que
+              mais gente desiste. */}
+          <Campo Icon={CalendarDays} type="date" value={nascimento}
+            onChange={e => setNascimento(e.target.value)}
+            max={new Date().toISOString().slice(0, 10)}
+            aria-label="Data de nascimento" />
         </div>
 
         {erro && (
@@ -79,7 +84,7 @@ export default function AcompanharPedido() {
           </p>
         )}
 
-        <button type="submit" disabled={enviando || !cpf.trim() || !pedido.trim()}
+        <button type="submit" disabled={enviando || !cpf.trim() || !nascimento}
           className="w-full mt-5 rounded-xl py-3.5 font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-50"
           style={{ background: 'linear-gradient(90deg,#2563eb,#3b82f6)',
                    boxShadow: '0 0 24px rgba(59,130,246,0.45)' }}>
@@ -87,7 +92,7 @@ export default function AcompanharPedido() {
         </button>
 
         <p className="text-xs text-center mt-4 leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>
-          Use seu CPF no login e o número do pedido<br />(ex.: PV-000123) como acesso.
+Entre com o seu CPF e a sua data de nascimento<br />para ver todos os seus pedidos.
         </p>
 
     </PortalPublico>
