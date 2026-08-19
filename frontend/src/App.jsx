@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import Layout from '@/components/Layout/Layout';
@@ -105,6 +105,12 @@ function PrivateRoute({ children }) {
 }
 
 // Bloqueia a rota se o usuário não tiver acesso ao módulo
+/** Manda o endereço antigo do documento para o novo, sem perder o pedido. */
+function LevaAoDocumento() {
+  const { id } = useParams();
+  return <Navigate to={`/sales/${id}/documento`} replace />;
+}
+
 function Mod({ m, children }) {
   const { hasModule } = useAuth();
   const mods = Array.isArray(m) ? m : [m];
@@ -181,6 +187,14 @@ function AppRoutes() {
             em que a produção mudar de etapa. */}
         <Route path="sales/:id/detalhe" element={<Mod m="sales"><PedidoDetalhe /></Mod>} />
         <Route path="sales/:id/documento" element={<Mod m="sales"><DocumentoPedido /></Mod>} />
+        {/* O ENDEREÇO ERRADO QUE UMA VERSÃO ANTERIOR GERAVA.
+            Ela colava "/documento" no fim do caminho atual, e em
+            /sales/:id/detalhe isso virava /sales/:id/detalhe/documento —
+            rota inexistente, que o curinga mandava para a home. Já
+            corrigido na origem, mas o navegador de quem estiver com o
+            pacote antigo em cache continua gerando o endereço velho.
+            Uma linha aqui vale mais do que pedir Ctrl+Shift+R. */}
+        <Route path="sales/:id/detalhe/documento" element={<LevaAoDocumento />} />
         <Route path="sales/:id" element={<Mod m="sales"><SaleForm /></Mod>} />
         <Route path="store-payments" element={<Mod m="sales"><StorePayments /></Mod>} />
         {/* Painel do Vendedor — a configuração (meta, território, promoções) é só de gestor */}
