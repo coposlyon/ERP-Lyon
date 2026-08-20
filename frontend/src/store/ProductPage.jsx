@@ -1,15 +1,26 @@
-import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
+// ============================================================
+// O PRODUTO NA LOJA — COPO LISO.
+//
+// A loja vende o copo como ele sai do molde: modelo, cor, quantidade.
+// Sem arte, sem impressão, sem editor. Quem quer o copo com nome, data
+// ou logo vai para o Catálogo de Produtos Personalizados, que é onde o
+// gabarito, as artes e a aprovação de arte existem.
+//
+// POR QUE SEPARAR. Personalização exige gabarito, tinta compatível com
+// o material, aprovação e prazo de produção. Misturar isso com a
+// compra de caixa fechada fazia a mesma tela responder duas perguntas
+// diferentes — e a resposta ficava pior para as duas.
+// ============================================================
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Check, ShoppingCart, Minus, Plus, Box, Download, X } from 'lucide-react';
+import { ArrowLeft, Check, ShoppingCart, Minus, Plus, PenTool } from 'lucide-react';
 import toast from 'react-hot-toast';
 import storeApi from './storeApi';
 import Bottle from './Bottle';
 import { useCart } from './CartContext';
-// three.js é pesado: só carrega quando o cliente abre a prévia 3D.
-const Studio3D = lazy(() => import('@/studio3d/Studio3D'));
-import { resolveColor, needsBorder, STORE_PALETTE } from './colors';
-import { modelKeyFor, shortColor } from './productMeta';
+import { resolveColor, needsBorder } from './colors';
+import { shortColor } from './productMeta';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
@@ -23,29 +34,12 @@ function precoFaixa(tiers, salePrice, qty) {
   return price;
 }
 
-// tabela do tipo de impressão escolhido (price/tiers) ou a padrão do produto
-function methodTable(product, method) {
-  const m = method && product?.print_pricing?.[method];
-  if (m && (m.price != null || (Array.isArray(m.tiers) && m.tiers.length))) {
-    return { tiers: m.tiers || [], base: m.price != null ? m.price : product.sale_price };
-  }
-  return { tiers: product?.price_tiers || [], base: product?.sale_price };
-}
-function availableMethods(product) {
-  return (product?.print_methods || []).filter(m => {
-    const d = product?.print_pricing?.[m.key];
-    return d && (d.price != null || (Array.isArray(d.tiers) && d.tiers.length));
-  });
-}
-
 export default function ProductPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { add } = useCart();
-  const [printMethod, setPrintMethod] = useState(null);
   const [qty, setQty] = useState(1);
   const [imgError, setImgError] = useState(false);
-  const [show3D, setShow3D] = useState(false);
 
   const { data: product, isLoading, isFetching, error } = useQuery({
     queryKey: ['store-product', id],
@@ -61,13 +55,6 @@ export default function ProductPage() {
   useEffect(() => { if (product) setQty(q => Math.max(q, minQty)); }, [product, minQty]);
   useEffect(() => { setImgError(false); }, [id]);
 
-  // seleciona o primeiro tipo de impressão disponível
-  useEffect(() => {
-    if (!product) return;
-    const avail = availableMethods(product);
-    if (avail.length) setPrintMethod(prev => prev || avail[0].key);
-  }, [product]);
-
   const gradient = /degrad/i.test(product?.name || '');
   // foto: foto principal → qualquer foto que o produto tenha (compatível com cadastros antigos)
   const anyImg = product?.image_url
@@ -75,8 +62,9 @@ export default function ProductPage() {
     || (product?.variations?.images && Object.values(product.variations.images).find(Boolean))
     || null;
   const productImg = anyImg;
-  const methods = availableMethods(product);
-  const table = methodTable(product, printMethod);
+  // O preço do copo liso é a tabela do próprio produto, sem tabela de
+  // impressão por cima: aqui não existe impressão.
+  const table = { tiers: product?.price_tiers || [], base: product?.sale_price };
   // Cores do modelo (produtos irmãos do mesmo store_group)
   const colorOptions = useMemo(
     () => (product?.color_options || []).map(c => ({ ...c, short: shortColor(c.label, product?.group) })),
@@ -88,18 +76,13 @@ export default function ProductPage() {
   const unitPrice = useMemo(() => {
     if (!product) return 0;
     return precoFaixa(table.tiers, table.base, qty);
-  }, [product, qty, printMethod]); // eslint-disable-line
+  }, [product, qty]); // eslint-disable-line
 
-  const modelKey = modelKeyFor(product);
-  // cor da variante escolhida; se não houver grupo de cores, tenta pelo nome
-  // do produto (ex.: "... AZUL BIC ...") antes de cair no laranja padrão.
+  // cor da variante escolhida; se não houver grupo de cores, tenta pelo
+  // nome do produto (ex.: "... AZUL BIC ...") antes do padrão.
   const bodyHex = currentColor
     ? resolveColor({ name: currentColor.short, value: currentColor.short })
     : resolveColor({ name: product?.color_label || product?.name, value: product?.color_label });
-  // Semente estável do 3D (hook antes de qualquer return — regras de hooks).
-  const initial3D = useMemo(
-    () => ({ model: modelKey, color1: bodyHex, color2: '#0B1B4D', gradient, capColor: '#1A1A1A' }),
-    [modelKey, bodyHex, gradient]);
 
   if (isLoading) return <div className="max-w-6xl mx-auto px-4 py-16 text-center text-gray-400">Carregando...</div>;
   if (error || !product) return (
@@ -110,38 +93,15 @@ export default function ProductPage() {
   );
 
   function addToCart() {
-    const methodLabel = methods.find(m => m.key === printMethod)?.label;
     add({
       product_id: product.id,
       product_name: product.name,
       color: currentColor?.short || product.color_label || null,
-      print_method: printMethod || null,
-      print_name: methodLabel || null,
       unit_price: unitPrice,
       quantity: qty,
       min_order_qty: minQty,
     });
     toast.success('Adicionado ao carrinho!');
-  }
-
-  // Adiciona ao carrinho já com a personalização 3D (design + prévia).
-  function add3DToCart(a) {
-    const methodLabel = methods.find(m => m.key === printMethod)?.label;
-    add({
-      product_id: product.id,
-      product_name: product.name,
-      color: currentColor?.short || product.color_label || null,
-      print_method: printMethod || null,
-      print_name: methodLabel || null,
-      unit_price: unitPrice,
-      quantity: qty,
-      min_order_qty: minQty,
-      design: a.getDesign(),
-      preview: a.getThumb(),
-    });
-    toast.success('Personalização adicionada ao carrinho!');
-    setShow3D(false);
-    navigate('/loja/carrinho');
   }
 
   return (
@@ -164,10 +124,10 @@ export default function ProductPage() {
             </div>
           )}
 
-          <button onClick={() => setShow3D(true)}
+          <a href="/catalogo"
             className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5 bg-gray-900/90 hover:bg-gray-900 text-white text-sm font-semibold px-3.5 py-2 rounded-xl shadow-lg backdrop-blur transition-colors">
-            <Box size={16} /> Ver em 3D e personalizar
-          </button>
+            <PenTool size={16} /> Quero personalizado
+          </a>
         </div>
 
         {/* Info */}
@@ -205,21 +165,6 @@ export default function ProductPage() {
                       }} />
                   );
                 })}
-              </div>
-            </div>
-          )}
-
-          {/* Tipo de impressão */}
-          {methods.length > 0 && (
-            <div className="mt-5">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tipo de impressão</p>
-              <div className="flex flex-wrap gap-2">
-                {methods.map(m => (
-                  <button key={m.key} onClick={() => setPrintMethod(m.key)}
-                    className={`px-3 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${printMethod === m.key ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-                    {m.label}
-                  </button>
-                ))}
               </div>
             </div>
           )}
@@ -270,52 +215,24 @@ export default function ProductPage() {
           </div>
 
           <p className="text-xs text-gray-400 mt-3">
-            Ao pedir, você recebe um orçamento sem compromisso. Personalização e formas de pagamento são combinadas com nossa equipe.
+            Este é o copo liso, sem impressão. Ao pedir, você recebe um orçamento sem compromisso.
           </p>
+
+          {/* A ponte para o outro caminho. Quem chegou aqui querendo o copo
+              com nome e data precisa saber que isso existe — e onde. */}
+          <a href="/catalogo"
+            className="mt-4 flex items-start gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3.5 hover:bg-violet-100 transition-colors">
+            <PenTool size={18} className="text-violet-600 shrink-0 mt-0.5" />
+            <span>
+              <span className="block font-semibold text-sm text-violet-900">Quer com personalização?</span>
+              <span className="block text-xs text-violet-700 mt-0.5">
+                No Catálogo de Produtos Personalizados você escolhe o acabamento, monta a arte com
+                nomes e data e vê o copo pronto antes de fechar.
+              </span>
+            </span>
+          </a>
         </div>
       </div>
-
-      {/* Prévia 3D + personalização (cores, degradê, borda) do copo escolhido */}
-      {show3D && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start sm:items-center justify-center p-0 sm:p-6 overflow-y-auto"
-          onClick={() => setShow3D(false)}>
-          <div className="bg-white w-full sm:max-w-5xl sm:rounded-2xl shadow-2xl min-h-screen sm:min-h-0"
-            onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 sticky top-0 bg-white sm:rounded-t-2xl z-10">
-              <div className="flex items-center gap-2">
-                <Box size={18} className="text-orange-500" />
-                <h2 className="font-black text-lg">{product.name} · 3D</h2>
-              </div>
-              <button onClick={() => setShow3D(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-4">
-              <p className="text-sm text-gray-500 mb-3">Gire o copo e ajuste as cores, o degradê e a borda. Depois é só adicionar ao carrinho.</p>
-              <Suspense fallback={<div className="h-[58vh] min-h-[360px] flex items-center justify-center text-gray-400">Carregando 3D…</div>}>
-              <Studio3D
-                simple
-                palette={STORE_PALETTE}
-                lockedModel={modelKey}
-                initialDesign={initial3D}
-                actions={(a) => (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => { const u = a.getPNG(); Object.assign(document.createElement('a'), { href: u, download: `${product.name}.png` }).click(); }}
-                      className="flex items-center justify-center gap-2 border border-gray-200 text-gray-700 font-semibold rounded-xl px-4 py-2.5 hover:bg-gray-50 transition-colors">
-                      <Download size={15} /> Baixar imagem
-                    </button>
-                    <button onClick={() => add3DToCart(a)}
-                      className="bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl px-4 py-2.5 flex items-center justify-center gap-2 transition-colors">
-                      <ShoppingCart size={16} /> Adicionar ao carrinho
-                    </button>
-                  </div>
-                )}
-              />
-              </Suspense>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

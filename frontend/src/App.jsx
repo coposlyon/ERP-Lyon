@@ -7,6 +7,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import Login from '@/pages/Auth/Login';
 import MarcacaoPonto from '@/pages/Ponto/MarcacaoPonto';
 import StoreApp from '@/store/StoreApp';
+import CatalogoApp from '@/catalogo/CatalogoApp';
 import CadastroCliente from '@/pages/Public/CadastroCliente';
 import CadastroFornecedor from '@/pages/Public/CadastroFornecedor';
 import CadastroTransportadora from '@/pages/Public/CadastroTransportadora';
@@ -63,6 +64,7 @@ const Users              = lazy(() => import('@/pages/Settings/Users'));
 const Audit              = lazy(() => import('@/pages/Settings/Audit'));
 const CadastroAprovacoes = lazy(() => import('@/pages/Settings/CadastroAprovacoes'));
 const Feriados           = lazy(() => import('@/pages/Settings/Feriados'));
+const CatalogoAdmin      = lazy(() => import('@/pages/Settings/CatalogoAdmin'));
 const Quotes             = lazy(() => import('@/pages/Quotes/Quotes'));
 const QuoteForm          = lazy(() => import('@/pages/Quotes/QuoteForm'));
 const NewQuote           = lazy(() => import('@/pages/Quotes/NewQuote'));
@@ -148,8 +150,12 @@ function AppRoutes() {
     // erro #426 ("suspended while responding to synchronous input").
     <Suspense fallback={<AppLoading />}>
     <Routes>
-      {/* Loja pública — sem login, fora do ERP */}
+      {/* Loja pública — sem login, fora do ERP. Só copos LISOS: quem
+          quer personalização vai para o catálogo, logo abaixo. */}
       <Route path="/loja/*" element={<StoreApp />} />
+      {/* Catálogo de Produtos Personalizados — o link que o vendedor
+          manda ao cliente. Fora do ERP e sem login, igual à loja. */}
+      <Route path="/catalogo/*" element={<CatalogoApp />} />
       {/* Autocadastro de cliente — link público p/ enviar ao cliente */}
       <Route path="/cadastro" element={<CadastroCliente />} />
       {/* Autocadastro de fornecedora — link público p/ enviar à fornecedora */}
@@ -259,6 +265,9 @@ function AppRoutes() {
         {/* Aprovação das alterações pedidas pelos links públicos de cadastro */}
         <Route path="cadastro-aprovacoes" element={<AdminOnly><CadastroAprovacoes /></AdminOnly>} />
         <Route path="feriados" element={<Mod m={['settings','hr']}><Feriados /></Mod>} />
+        {/* O cadastro que alimenta o catálogo público: famílias, gabaritos,
+            caixa do liso, ocasiões e o banco de artes. */}
+        <Route path="catalogo-admin" element={<Mod m={['settings','products']}><CatalogoAdmin /></Mod>} />
         {/* Novos módulos */}
         <Route path="returns"  element={<Mod m="returns"><Returns /></Mod>}  />
         <Route path="quality"  element={<Mod m="quality"><Quality /></Mod>}  />

@@ -1,0 +1,1 @@
+const a=t=>`catalogo_rascunho_${t}`;function e(t){try{return JSON.parse(sessionStorage.getItem(a(t)))||null}catch{return null}}function n(t,s){try{sessionStorage.setItem(a(t),JSON.stringify(s))}catch{}}function r(t){try{sessionStorage.removeItem(a(t))}catch{}}export{r as a,n as g,e as l};

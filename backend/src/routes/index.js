@@ -41,6 +41,11 @@ router.use('/auth', authRoutes);
 router.use('/cnpj', cnpjRoutes);   // público — sem auth
 router.use('/cep',  cepRoutes);    // público — sem auth
 router.use('/public', publicStoreRoutes); // loja pública — sem auth
+// Catálogo de produtos personalizados — o link que o vendedor manda
+// pro cliente. Público e só de leitura: família, modelo, configuração e
+// gabarito da arte saem daqui; carrinho e pagamento continuam em /public,
+// que já é o caixa da loja.
+router.use('/catalogo', require('./public-catalogo'));
 // Acompanhamento do pedido pelo cliente (telas 3A/3B) — sem auth do ERP.
 // O acesso é CPF + nº do pedido e o token emitido fica preso àquele
 // pedido; a rota não enxerga nada do ERP além do que o cliente comprou.
@@ -84,6 +89,9 @@ router.use('/contabil',  requireModules('financial','fiscal','settings'), requir
 router.use('/fiscal',    requireModules('fiscal'), fiscalRoutes);
 router.use('/reports',   requireModules('reports'), reportsRoutes);
 router.use('/settings',  requireModules('settings'), settingsRoutes);
+// O cadastro que alimenta o catálogo: famílias, gabaritos, caixa do
+// liso, ocasiões e o banco de artes. Quem mexe em produto mexe aqui.
+router.use('/catalogo-admin', requireModules('settings','products'), require('./catalogo-admin'));
 router.use('/quotes',    requireModules('quotes','sales'), quotesRoutes);
 router.use('/customizations', requireModules('customizations','sales'), customizationsRoutes);
 router.use('/price-tables',   requireModules('price-tables','sales','pdv'), priceTablesRoutes);

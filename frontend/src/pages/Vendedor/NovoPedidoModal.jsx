@@ -14,13 +14,15 @@ import { useNavigate } from 'react-router-dom';
 import { Link2, PenLine, X, Copy, Check, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useVend } from './ui';
-import { linkDaLoja } from './Catalogo';
+import { linkDoCatalogo } from './Catalogo';
 
 export default function NovoPedidoModal({ open, onClose }) {
   const v = useVend();
   const navigate = useNavigate();
   const [copiado, setCopiado] = useState(false);
-  const link = linkDaLoja();
+  // O catálogo personalizado, e não a loja de lisos: é dele que sai o
+  // pedido completo — modelo, acabamento, arte, quantidade e pagamento.
+  const link = linkDoCatalogo();
 
   if (!open) return null;
 

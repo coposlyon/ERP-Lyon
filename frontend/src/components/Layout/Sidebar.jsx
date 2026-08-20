@@ -11,7 +11,7 @@ import {
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory, ShieldCheck,
   Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark, Star,
-  MessageSquare, LogOut,
+  MessageSquare, LogOut, LayoutGrid,
 } from 'lucide-react';
 
 import { useState } from 'react';
@@ -182,6 +182,9 @@ const menuItems = [
       { label: 'Geral',     path: '/settings', icon: Settings,     module: 'settings' },
       { label: 'Permissões por setor', path: '/permissoes', icon: ShieldCheck, module: 'settings' },
       { label: 'Feriados',  path: '/feriados', icon: CalendarDays, module: 'settings' },
+      // O que o cliente vê no catálogo público: famílias, gabaritos da
+      // arte, caixa do liso, ocasiões e o banco de artes.
+      { label: 'Catálogo',  path: '/catalogo-admin', icon: LayoutGrid, module: 'settings' },
       { label: 'Usuários',  path: '/users',    icon: Users,        adminOnly: true },
       { label: 'Auditoria', path: '/audit',    icon: ScrollText,   adminOnly: true },
     ],

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, Loader2, User, Instagram, ExternalLink, Play } from 'lucide-react';
 import storeApi from '@/store/storeApi';
 import { setStoreCustomer } from '@/store/StoreAuthContext';
@@ -82,6 +82,17 @@ function Starfield() {
 
 export default function CadastroCliente() {
   const navigate = useNavigate();
+  // De onde a pessoa veio. Quem foi mandado para cá no meio de uma
+  // compra (o carrinho do catálogo, por exemplo) volta para lá com o
+  // carrinho intacto — despejar todo mundo em /loja faria essa pessoa
+  // perder o pedido que estava montando.
+  const [buscaUrl] = useSearchParams();
+  const voltarPara = destinoSeguro(buscaUrl.get('voltar')) || '/loja';
+  // Veio no meio de uma compra? Então o fim do cadastro é VOLTAR, não a
+  // tela de "fale com a gente no WhatsApp": a pessoa tem um carrinho
+  // montado esperando, e mandá-la para o WhatsApp é perder a venda que
+  // ela já tinha decidido fazer.
+  const retomandoCompra = !!destinoSeguro(buscaUrl.get('voltar'));
   const [type, setType] = useState('PF');
   const [f, setF] = useState({ name:'', cpf_cnpj:'', ie:'', birth_date:'', email:'', phone:'', mobile:'', instagram:'' });
   const [ieIsento, setIeIsento] = useState(false);
@@ -110,12 +121,15 @@ export default function CadastroCliente() {
   const todayISO = new Date().toISOString().slice(0, 10);
 
   // Cliente que ENTROU (já era cadastrado) vai para a loja logado.
-  // Quem acabou de FAZER o cadastro volta para o WhatsApp (ver render abaixo).
+  // Quem acabou de FAZER o cadastro volta para o WhatsApp (ver render
+  // abaixo) — exceto quem veio no meio de uma compra, que volta para
+  // onde estava comprando.
   useEffect(() => {
-    if (!done || doneKind !== 'login') return;
-    const t = setTimeout(() => navigate('/loja'), 2800);
+    if (!done) return;
+    if (doneKind !== 'login' && !(retomandoCompra && doneKind === 'new')) return;
+    const t = setTimeout(() => navigate(voltarPara), 2800);
     return () => clearTimeout(t);
-  }, [done, doneKind, navigate]);
+  }, [done, doneKind, navigate, voltarPara, retomandoCompra]);
 
   // Abertura: botão "INICIAR CADASTRO" → toca o vídeo (com som) → preto → card sobe.
   const [phase, setPhase] = useState('start'); // start | video | black2 | form
@@ -334,7 +348,7 @@ export default function CadastroCliente() {
       message="Recebemos seu pedido de alteração. Nossa equipe confere e aprova — até lá, seu cadastro continua como está." />;
   }
 
-  if (done && doneKind !== 'login') {
+  if (done && doneKind !== 'login' && !(retomandoCompra && doneKind === 'new')) {
     return <CadastroDone message={storeCfg?.message} whatsapp={storeCfg?.whatsapp} />;
   }
 
@@ -351,11 +365,11 @@ export default function CadastroCliente() {
             {doneKind === 'updated' ? 'Dados atualizados! ✅' : doneKind === 'login' ? 'Bem-vindo de volta! 🎉' : 'Cadastro concluído! 🎉'}
           </h1>
           <p className="text-lg font-bold st-gradient-text mt-1">Olá{welcomeName ? `, ${welcomeName}` : ''}!</p>
-          <p className="text-gray-500 mt-3">Você já está logado. Estamos te levando para a loja…</p>
+          <p className="text-gray-500 mt-3">Você já está logado. Estamos te levando de volta…</p>
           <div className="flex items-center justify-center gap-2 mt-5 text-violet-600 font-semibold">
             <Loader2 size={18} className="animate-spin" /> Entrando na loja
           </div>
-          <button onClick={() => navigate('/loja')} className="mt-5 text-sm text-gray-400 hover:text-violet-600 underline">
+          <button onClick={() => navigate(voltarPara)} className="mt-5 text-sm text-gray-400 hover:text-violet-600 underline">
             Ir agora
           </button>
         </div>
@@ -638,4 +652,18 @@ function InstaInput({ value, onChange }) {
         : handle && <p className="text-xs text-gray-400 mt-1">Toque no ícone → para conferir se abre o perfil certo.</p>}
     </div>
   );
+}
+
+/**
+ * O destino de volta, conferido.
+ *
+ * Só caminho interno começando com uma barra. Sem isso, `?voltar=` vira
+ * um redirecionador aberto: bastaria mandar `/cadastro?voltar=https://
+ * site-falso` para o cliente sair do nosso site achando que continua
+ * nele — e ele acabou de digitar CPF e endereço.
+ */
+function destinoSeguro(valor) {
+  const v = String(valor || '');
+  if (!v.startsWith('/') || v.startsWith('//')) return null;
+  return v;
 }

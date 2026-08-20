@@ -182,9 +182,9 @@ export default function StoreHome() {
               <p className="lj-olho claro lj-an">Novo · 3D</p>
               <h2 className="lj-an d1 mt-3" style={{ fontSize: 'clamp(24px,3.6vw,42px)' }}>{S.studio_title}</h2>
               <p className="lj-sub lj-an d2 mt-4" style={{ color: 'var(--cinza2)' }}>{S.studio_subtitle}</p>
-              <Link to="/loja/personalizar" className="lj-btn laranja lj-an d3 mt-7">
-                <Wand2 size={17} /> Abrir estúdio 3D <ArrowRight size={16} />
-              </Link>
+              <a href="/catalogo" className="lj-btn laranja lj-an d3 mt-7">
+                <Wand2 size={17} /> Abrir o catálogo personalizado <ArrowRight size={16} />
+              </a>
             </div>
             <div className="relative flex justify-center items-end gap-3 pb-8 md:pb-0 md:pr-8">
               {showcase.slice(0, 3).map((p, i) => (
@@ -257,7 +257,10 @@ function Heroi({ S, show3d, heroSlots }) {
           <p className="lj-sub lj-an d3 mt-6" style={{ fontSize: 'clamp(15px,1.35vw,17.5px)' }}>{S.hero_subtitle}</p>
           <div className="flex flex-wrap gap-3 mt-7 lj-an d4">
             <a href="#catalogo" className="lj-btn">{S.btn_catalog} <ArrowRight size={16} /></a>
-            {show3d && <Link to="/loja/personalizar" className="lj-btn vazio"><Wand2 size={16} /> {S.btn_3d}</Link>}
+            {/* A personalização mora em /catalogo, que é outra aplicação de
+                rota: link do React Router deixaria o cliente dentro da casca
+                da loja. Âncora comum é o que troca de tela de verdade. */}
+            {show3d && <a href="/catalogo" className="lj-btn vazio"><Wand2 size={16} /> {S.btn_3d}</a>}
           </div>
         </div>
         <div className="lj-prateleira">
@@ -489,10 +492,14 @@ function Personalizar({ showcase, titulo, sub }) {
               ))}
             </div>
           </div>
+          {/* A prévia mostra o nome no copo — então a chamada tem que levar
+              para onde o nome no copo existe de verdade. Mandar para a
+              página do copo liso seria prometer aqui o que a outra tela
+              não entrega. */}
           <div className="lj-an d5 mt-7">
-            <Link to={`/loja/produto/${tons[cor]?.id}`} className="lj-btn laranja">
-              Pedir este copo <ArrowRight size={16} />
-            </Link>
+            <a href="/catalogo" className="lj-btn laranja">
+              Montar minha arte <ArrowRight size={16} />
+            </a>
           </div>
         </div>
       </div>
