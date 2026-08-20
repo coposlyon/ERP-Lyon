@@ -1,8 +1,25 @@
+// ============================================================
+// O CADASTRO MESTRE DE PRODUTOS.
+//
+// UMA FICHA, TRÊS PORTAS. O mesmo copo pode ser vendido liso na loja,
+// personalizado no catálogo, nos dois, ou em nenhum dos dois enquanto
+// ainda está sendo montado. Por isso a publicação são perguntas
+// separadas, e não um "ativo" só: elas não são degraus de uma escada.
+//
+// E O QUE O CATÁLOGO OFERECE SAI DAQUI. Acabamentos, cores de cada
+// campo, impressão, caixa do liso e gabarito da arte moram na aba
+// "Catálogo personalizado" — que é deste produto, não de um cadastro
+// paralelo. É o que garante que o site e a produção leiam a mesma coisa.
+// ============================================================
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { Loader2, Image as ImageIcon, Upload, ClipboardPaste } from 'lucide-react';
+import {
+  Loader2, Image as ImageIcon, Upload, ClipboardPaste,
+  ClipboardList, Sparkles, Eye, EyeOff, Info,
+} from 'lucide-react';
+import CatalogoDoProduto from './CatalogoDoProduto';
 
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -23,6 +40,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     cost_price: '', current_stock: '',
     pricing_sheet_id: '',
     ncm: '', cst: '', cfop: '', is_active: true,
+    show_in_store: true, show_in_catalogo: false, ink_type: '',
     supplier_id: '',
     height: '', weight: '', thickness: '',
     base_circumference: '', mouth_circumference: '',
@@ -30,6 +48,7 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   });
   const [mainImage, setMainImage] = useState(null);   // url ou dataURL
   const [loading, setLoading] = useState(false);
+  const [aba, setAba] = useState('cadastro');
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
@@ -67,6 +86,9 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         cst: product.cst || '',
         cfop: product.cfop || '',
         is_active: product.is_active !== false,
+        show_in_store: product.show_in_store !== false,
+        show_in_catalogo: product.show_in_catalogo === true,
+        ink_type: product.ink_type || '',
         supplier_id: product.supplier_id || '',
         height: product.height || '',
         weight: product.weight || '',
@@ -152,6 +174,12 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         length: parseFloat(form.length) || null,
         width: parseFloat(form.width) || null,
         image: mainImage ?? '',
+        // As três portas, sempre explícitas. Mandar só quando muda faria
+        // o "desmarcar" nunca chegar ao servidor — `false` some num
+        // `if (campo)`.
+        show_in_store: !!form.show_in_store,
+        show_in_catalogo: !!form.show_in_catalogo,
+        ink_type: form.ink_type || null,
       };
 
       if (product?.id) {
@@ -169,8 +197,27 @@ export default function ProductForm({ product, onSaved, onCancel }) {
     }
   }
 
+  const ABAS = [
+    { key: 'cadastro', label: 'Cadastro', icone: ClipboardList },
+    { key: 'catalogo', label: 'Catálogo personalizado', icone: Sparkles },
+  ];
+
+  if (aba === 'catalogo') {
+    return (
+      <div className="space-y-5">
+        <Abas abas={ABAS} atual={aba} onMudar={setAba} />
+        <CatalogoDoProduto productId={product?.id} />
+        <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+          <button type="button" onClick={onCancel} className="btn-secondary">Fechar</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      <Abas abas={ABAS} atual={aba} onMudar={setAba} />
+
       {/* Identificação */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="col-span-2">
@@ -294,12 +341,53 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         <p className="text-xs text-gray-400 mt-1">Dica: copie uma imagem e aperte <b>Ctrl+V</b> em qualquer lugar desta janela — não precisa clicar em nada antes.</p>
       </div>
 
-      {/* Status */}
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} className="w-4 h-4 text-primary-600 rounded" />
-          <span className="text-sm text-gray-700">Produto ativo</span>
-        </label>
+      {/* Linha do material — quem determina a tinta compatível */}
+      <div>
+        <label className="label">Linha / material do copo</label>
+        <select className="input" value={form.ink_type} onChange={e => set('ink_type', e.target.value)}>
+          <option value="">Não definida</option>
+          <option value="PS">PS</option>
+          <option value="PP">PP</option>
+          <option value="PET">PET</option>
+        </select>
+        <p className="text-xs text-gray-400 mt-1">
+          O cliente não escolhe a tinta: o material escolhe. O catálogo só oferece impressão
+          compatível com esta linha.
+        </p>
+      </div>
+
+      {/* Publicação — três perguntas independentes */}
+      <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+        <p className="text-sm font-semibold text-gray-700">Onde este produto aparece</p>
+
+        <Chave
+          ligado={form.is_active} onMudar={v => set('is_active', v)}
+          titulo="Ativo no sistema"
+          ajuda="Desligado, o produto some de tudo: catálogo, loja, PDV, orçamento e pedido." />
+
+        <Chave
+          ligado={form.is_active && form.show_in_catalogo}
+          desativado={!form.is_active}
+          onMudar={v => set('show_in_catalogo', v)}
+          titulo="Exibir no catálogo personalizado"
+          ajuda="O site de copo com arte, nome e acabamento (/catalogo). Produto novo nasce em rascunho: começar a cadastrar não é publicar." />
+
+        <Chave
+          ligado={form.is_active && form.show_in_store}
+          desativado={!form.is_active}
+          onMudar={v => set('show_in_store', v)}
+          titulo="Exibir no site de produtos lisos"
+          ajuda="A loja de copo sem impressão (/loja). É outra pergunta: o mesmo copo pode estar num site e não no outro." />
+
+        {product?.id && form.show_in_catalogo && (
+          <p className="text-[11.5px] text-violet-700 bg-violet-50 rounded-lg p-2.5 flex items-start gap-2">
+            <Info size={13} className="shrink-0 mt-0.5" />
+            <span>
+              Configure acabamentos, cores, impressão, caixa e gabarito na aba
+              <b> Catálogo personalizado</b> — é de lá que o site monta as opções deste produto.
+            </span>
+          </p>
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
@@ -309,5 +397,48 @@ export default function ProductForm({ product, onSaved, onCancel }) {
         </button>
       </div>
     </form>
+  );
+}
+
+/** A troca de abas do cadastro. */
+function Abas({ abas, atual, onMudar }) {
+  return (
+    <div className="flex gap-1.5 flex-wrap border-b border-gray-100 pb-3">
+      {abas.map(a => (
+        <button key={a.key} type="button" onClick={() => onMudar(a.key)}
+          className={`px-3.5 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
+            atual === a.key ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}>
+          <a.icone size={15} /> {a.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Uma chave de publicação.
+ *
+ * Fica desligada e travada quando o produto está inativo: um produto
+ * fora do sistema não aparece em site nenhum, e deixar a chave clicável
+ * ali prometeria uma publicação que não vai acontecer.
+ */
+function Chave({ ligado, desativado, onMudar, titulo, ajuda }) {
+  return (
+    <label className={`flex items-start gap-3 rounded-lg border p-3 ${
+      desativado ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
+        : ligado ? 'border-green-200 bg-green-50 cursor-pointer' : 'border-gray-200 cursor-pointer'
+    }`}>
+      <input type="checkbox" checked={!!ligado} disabled={desativado}
+        onChange={e => onMudar(e.target.checked)}
+        className="w-4 h-4 mt-0.5 text-primary-600 rounded shrink-0" />
+      <span className="min-w-0">
+        <span className="flex items-center gap-1.5 text-sm font-medium text-gray-800">
+          {ligado ? <Eye size={13} className="text-green-600" /> : <EyeOff size={13} className="text-gray-400" />}
+          {titulo}
+        </span>
+        <span className="block text-[11.5px] text-gray-500 mt-0.5 leading-relaxed">{ajuda}</span>
+      </span>
+    </label>
   );
 }

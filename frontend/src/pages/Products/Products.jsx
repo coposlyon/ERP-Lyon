@@ -350,6 +350,27 @@ export default function Products() {
         </span>
       )
     },
+    // Onde o produto está publicado. Sem esta coluna, descobrir por que
+    // um copo não aparece no site exige abrir o cadastro um por um.
+    { key: 'show_in_catalogo', label: 'Onde aparece', width: 150,
+      render: (_, row) => {
+        if (!row.is_active) return <span className="text-xs text-gray-400">—</span>;
+        const portas = [
+          row.show_in_catalogo === true && { t: 'Catálogo', cls: 'bg-violet-100 text-violet-700' },
+          row.show_in_store !== false && { t: 'Loja liso', cls: 'bg-sky-100 text-sky-700' },
+        ].filter(Boolean);
+        if (!portas.length) {
+          return <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Rascunho</span>;
+        }
+        return (
+          <span className="flex flex-wrap gap-1">
+            {portas.map(x => (
+              <span key={x.t} className={`text-[10px] px-2 py-0.5 rounded-full ${x.cls}`}>{x.t}</span>
+            ))}
+          </span>
+        );
+      }
+    },
     { key: 'id', label: '', width: 140,
       render: (_, row) => (
         <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>

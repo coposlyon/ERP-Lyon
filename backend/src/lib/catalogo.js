@@ -34,6 +34,37 @@ const { precoFaixa, precoComImpressao } = require('./calc');
 const tabelaAusente = err =>
   /42P01|PGRST(002|205)|does not exist|schema cache/i.test(`${err?.code || ''} ${err?.message || ''}`);
 
+/**
+ * Os produtos PUBLICADOS no catálogo.
+ *
+ * O cadastro mestre é quem decide (migração 077): `show_in_catalogo` é a
+ * chave do catálogo personalizado e `show_in_store` é a da loja de
+ * lisos. São perguntas independentes — o mesmo copo pode estar num site
+ * e não no outro — e por isso são duas colunas, não uma.
+ *
+ * PRODUTO NOVO NÃO ENTRA SOZINHO. A coluna nasce FALSE: começar a
+ * cadastrar não é publicar. Um cadastro pela metade não pode virar card
+ * no ar no minuto em que o nome é digitado.
+ *
+ * Enquanto a 077 não rodar, a chave antiga continua valendo — o catálogo
+ * não pode ficar vazio esperando migração.
+ */
+async function produtosPublicados(tenantId, colunas, ajustar = q => q) {
+  const monta = comColuna => ajustar(
+    supabase.from('PRODUTOS')
+      .select(comColuna ? `${colunas}, show_in_catalogo` : colunas)
+      .eq('tenant_id', tenantId).eq('is_active', true));
+
+  let { data, error } = await monta(true);
+  if (error && /show_in_catalogo/i.test(error.message || '')) {
+    ({ data, error } = await monta(false));
+    if (error) throw error;
+    return (data || []).filter(p => p.show_in_store !== false);
+  }
+  if (error) throw error;
+  return (data || []).filter(p => p.show_in_catalogo === true);
+}
+
 /** "Long Drink Degradê" → "long-drink-degrade". */
 function slugify(texto) {
   return String(texto || '')
@@ -145,16 +176,12 @@ async function familias(tenantId) {
   }
   if (!fams?.length) return { familias: [] };
 
-  const [itensRes, prodsRes] = await Promise.all([
+  const [itensRes, visiveis] = await Promise.all([
     supabase.from('CATALOGO_FAMILIA_ITENS')
       .select('familia_id, category_id, product_id').eq('tenant_id', tenantId),
-    supabase.from('PRODUTOS').select('id, name, category_id, image_url, photos, show_in_store')
-      .eq('tenant_id', tenantId).eq('is_active', true),
+    produtosPublicados(tenantId, 'id, name, category_id, image_url, photos, show_in_store'),
   ]);
   if (itensRes.error) throw itensRes.error;
-  if (prodsRes.error) throw prodsRes.error;
-
-  const visiveis = (prodsRes.data || []).filter(p => p.show_in_store !== false);
 
   const lista = fams.map(f => {
     const produtos = produtosDaFamilia(f.id, itensRes.data || [], visiveis);
@@ -214,19 +241,17 @@ async function modelosDaFamilia(tenantId, slug) {
   if (erroFam) { if (tabelaAusente(erroFam)) return { config_ausente: true }; throw erroFam; }
   if (!fam) return { erro: 'Família não encontrada' };
 
-  const [itensRes, prodsRes, catsRes] = await Promise.all([
+  const [itensRes, publicados, catsRes] = await Promise.all([
     supabase.from('CATALOGO_FAMILIA_ITENS').select('familia_id, category_id, product_id')
       .eq('tenant_id', tenantId).eq('familia_id', fam.id),
-    supabase.from('PRODUTOS')
-      .select('id, name, code, category_id, sale_price, price_tiers, min_order_qty, image_url, photos, show_in_store, ink_type')
-      .eq('tenant_id', tenantId).eq('is_active', true),
+    produtosPublicados(tenantId,
+      'id, name, code, category_id, sale_price, price_tiers, min_order_qty, image_url, photos, show_in_store, ink_type'),
     supabase.from('CATEGORIAS').select('id, name, nome_catalogo').eq('tenant_id', tenantId),
   ]);
-  for (const r of [itensRes, prodsRes, catsRes]) if (r.error) throw r.error;
+  for (const r of [itensRes, catsRes]) if (r.error) throw r.error;
 
   const catPorId = Object.fromEntries((catsRes.data || []).map(c => [c.id, c]));
-  const produtos = produtosDaFamilia(fam.id, itensRes.data || [],
-    (prodsRes.data || []).filter(p => p.show_in_store !== false));
+  const produtos = produtosDaFamilia(fam.id, itensRes.data || [], publicados);
 
   // Agrupa em modelos (categoria + capacidade).
   const grupos = new Map();
@@ -334,19 +359,17 @@ async function configDoModelo(tenantId, chave) {
   const { categoryId, volSlug } = lerChave(chave);
   if (!categoryId) return { erro: 'Modelo inválido' };
 
-  const [catRes, prodsRes] = await Promise.all([
+  const [catRes, publicados] = await Promise.all([
     supabase.from('CATEGORIAS').select('id, name, nome_catalogo')
       .eq('tenant_id', tenantId).eq('id', categoryId).maybeSingle(),
-    supabase.from('PRODUTOS')
-      .select('id, code, name, unit, ink_type, category_id, sale_price, price_tiers, print_pricing, min_order_qty, image_url, photos, show_in_store')
-      .eq('tenant_id', tenantId).eq('category_id', categoryId).eq('is_active', true),
+    produtosPublicados(tenantId,
+      'id, code, name, unit, ink_type, category_id, sale_price, price_tiers, print_pricing, min_order_qty, image_url, photos, show_in_store',
+      q => q.eq('category_id', categoryId)),
   ]);
   if (catRes.error) throw catRes.error;
-  if (prodsRes.error) throw prodsRes.error;
   if (!catRes.data) return { erro: 'Modelo não encontrado' };
 
-  const membros = (prodsRes.data || [])
-    .filter(p => p.show_in_store !== false)
+  const membros = publicados
     .map(p => ({ ...p, partes: partesDoNome(p.name) }))
     .filter(p => slugify(p.partes.capacidade || 'unico') === volSlug);
 
@@ -381,15 +404,30 @@ async function configDoModelo(tenantId, chave) {
   if (falha) { if (tabelaAusente(falha.error)) return { config_ausente: true }; throw falha.error; }
 
   const idsMembros = new Set(membros.map(m => m.id));
+
+  /**
+   * O que este MODELO aceita.
+   *
+   * A regra da categoria abre; a regra de produto abre ou fecha por cima
+   * dela. E BLOQUEAR VENCE PERMITIR quando as cores do modelo discordam
+   * entre si: oferecer o que o cadastro fechou em algum lugar é vender o
+   * que a fábrica pode não fazer, e quem descobre é a produção — depois
+   * de pago. Sem esta regra a resposta dependia da ordem em que as
+   * linhas voltavam do banco, que é o mesmo que dizer "sorteio".
+   */
   const permitidos = tipo => {
-    const daCategoria = new Set(), doProduto = new Map();
+    const daCategoria = new Set(), abertos = new Set(), fechados = new Set();
     for (const r of compatRes.data || []) {
       if (r.tipo !== tipo) continue;
-      if (r.product_id) { if (idsMembros.has(r.product_id)) doProduto.set(r.ref_id, r.permitido); }
-      else if (r.category_id === categoryId && r.permitido) daCategoria.add(r.ref_id);
+      if (r.product_id) {
+        if (!idsMembros.has(r.product_id)) continue;
+        (r.permitido ? abertos : fechados).add(r.ref_id);
+      } else if (r.category_id === categoryId && r.permitido) {
+        daCategoria.add(r.ref_id);
+      }
     }
-    const fim = new Set(daCategoria);
-    for (const [ref, ok] of doProduto) { if (ok) fim.add(ref); else fim.delete(ref); }
+    const fim = new Set([...daCategoria, ...abertos]);
+    for (const ref of fechados) fim.delete(ref);
     return fim;
   };
 
@@ -567,5 +605,5 @@ module.exports = {
   chaveModelo, lerChave,
   familias, modelosDaFamilia, configDoModelo,
   precoDoItem, validarEscolha,
-  escolherPorAlvo, produtosDaFamilia, primeiraFoto,
+  escolherPorAlvo, produtosDaFamilia, primeiraFoto, produtosPublicados,
 };

@@ -21,6 +21,11 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [cst, setCst] = useState('');
   const [cfop, setCfop] = useState('');
   const [inkType, setInkType] = useState('');       // '' não altera | PP | PS | __none__ limpa
+  // Publicação em massa. '' = não altera | 'sim' | 'nao'. No cadastro
+  // existe um produto POR COR: colocar um modelo no ar de uma em uma
+  // seriam 24 cliques, e é assim que metade das cores fica esquecida.
+  const [noCatalogo, setNoCatalogo] = useState('');
+  const [naLoja, setNaLoja] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);        // modal de apagar em massa
   const [delPassword, setDelPassword] = useState('');
@@ -76,6 +81,8 @@ export default function BulkEditModal({ isOpen, onClose }) {
   if (cst.trim()) fields.cst = cst.trim();
   if (cfop.trim()) fields.cfop = cfop.trim();
   if (inkType) fields.ink_type = inkType;   // 'PP' | 'PS' | '__none__' (limpa)
+  if (noCatalogo) fields.show_in_catalogo = noCatalogo === 'sim';
+  if (naLoja) fields.show_in_store = naLoja === 'sim';
   const hasFields = Object.keys(fields).length > 0;
 
   // Apagar em massa (definitivo) — só nos selecionados e com senha da conta.
@@ -129,6 +136,8 @@ export default function BulkEditModal({ isOpen, onClose }) {
     const targets = applyAll ? (products || []) : (products || []).filter(p => selected[p.id]);
     const labels = {
       supplier_id: 'Fornecedor', cost_price: 'Custo', ncm: 'NCM', cst: 'CST', cfop: 'CFOP',
+      ink_type: 'Tinta do copo',
+      show_in_catalogo: 'Catálogo personalizado', show_in_store: 'Loja de copos lisos',
     };
     const norm = (key, val) => {
       if (val == null) return '';
@@ -138,6 +147,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
       return String(val);
     };
     const display = (key) => {
+      if (key === 'show_in_catalogo' || key === 'show_in_store') return fields[key] ? 'Publicado' : 'Fora do ar';
       if (key === 'supplier_id') return fields.supplier_id ? supplierName(fields.supplier_id) : 'Sem fornecedor';
       if (key === 'cost_price') return `R$ ${Number(fields[key]).toFixed(2)}`;
       if (['ncm', 'cst', 'cfop'].includes(key)) return String(fields[key]);
@@ -147,7 +157,9 @@ export default function BulkEditModal({ isOpen, onClose }) {
       const newN = norm(key, fields[key]);
       let same = 0, diff = 0, empty = 0;
       for (const p of targets) {
-        const cur = key === 'show_in_store' ? (p.show_in_store !== false) : p[key];
+        const cur = key === 'show_in_store' ? (p.show_in_store !== false)
+          : key === 'show_in_catalogo' ? (p.show_in_catalogo === true)
+          : p[key];
         const curN = norm(key, cur);
         if (curN === newN) same++;
         else if (curN === '') empty++;
@@ -271,6 +283,17 @@ export default function BulkEditModal({ isOpen, onClose }) {
           </div>
         </div>
 
+        {/* Publicação — as duas portas, em massa */}
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Onde os produtos aparecem</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <TresEstados titulo="Catálogo personalizado" valor={noCatalogo} onMudar={setNoCatalogo}
+              ajuda="O site de copo com arte e acabamento (/catalogo)." />
+            <TresEstados titulo="Loja de copos lisos" valor={naLoja} onMudar={setNaLoja}
+              ajuda="A loja de copo sem impressão (/loja)." />
+          </div>
+        </div>
+
         {/* Fiscal */}
         <div>
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Fiscal (NCM / CST / CFOP)</p>
@@ -386,5 +409,31 @@ export default function BulkEditModal({ isOpen, onClose }) {
       </div>
     </Modal>
     </>
+  );
+}
+
+/**
+ * "Não alterar" precisa ser um estado de verdade.
+ *
+ * Numa edição em massa, um checkbox de dois estados não sabe dizer a
+ * diferença entre "deixe como está" e "desligue" — e a segunda leitura
+ * tira do ar produtos que ninguém pediu para tirar.
+ */
+function TresEstados({ titulo, valor, onMudar, ajuda }) {
+  return (
+    <div>
+      <p className="text-sm text-gray-700 mb-1.5">{titulo}</p>
+      <div className="flex flex-wrap gap-2">
+        {[['', 'Não alterar'], ['sim', 'Publicar'], ['nao', 'Tirar do ar']].map(([v, label]) => (
+          <button key={v || 'keep'} type="button" onClick={() => onMudar(v)}
+            className={`px-3 py-1.5 rounded-lg border text-sm font-medium ${
+              valor === v ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {ajuda && <p className="text-xs text-gray-400 mt-1">{ajuda}</p>}
+    </div>
   );
 }

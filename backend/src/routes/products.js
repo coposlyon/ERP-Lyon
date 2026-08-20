@@ -8,6 +8,8 @@ const { validate } = require('../middleware/validate');
 const { uploadDataUrl } = require('../lib/storage');
 const { parseName, extractColorNames, stripAccents } = require('../lib/cupImage');
 const { PRINT_METHODS } = require('../lib/calc');
+const { fichaDoProduto, gravarFicha } = require('../lib/produtoCatalogo');
+const { partesDoNome } = require('../lib/catalogo');
 
 // Sobe data-URLs (fotos) para o Storage; mantém URLs já existentes.
 async function processImage(val) {
@@ -146,9 +148,16 @@ router.patch('/bulk', async (req, res) => {
   if (fields.ink_type !== undefined && fields.ink_type !== '') {
     patch.ink_type = fields.ink_type === '__none__' ? null : String(fields.ink_type).toUpperCase().slice(0, 10);
   }
-  // Visibilidade na loja (true/false). '' / undefined = não altera.
+  // Visibilidade na loja de LISOS (true/false). '' / undefined = não altera.
   if (fields.show_in_store !== undefined && fields.show_in_store !== '') {
     patch.show_in_store = fields.show_in_store === true || fields.show_in_store === 'true';
+  }
+  // Publicação no CATÁLOGO PERSONALIZADO. É outra pergunta: o mesmo copo
+  // pode ser vendido liso e não estar publicado para personalizar, ou o
+  // contrário. Uma chave só decidindo os dois sites era o que obrigava a
+  // tirar da loja para tirar do catálogo.
+  if (fields.show_in_catalogo !== undefined && fields.show_in_catalogo !== '') {
+    patch.show_in_catalogo = fields.show_in_catalogo === true || fields.show_in_catalogo === 'true';
   }
   // texto fiscal
   for (const k of ['ncm', 'cst', 'cfop']) {
@@ -794,7 +803,8 @@ router.post('/', validate(productSchema), async (req, res) => {
     name, code, ean, description, category_id, tipo_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing, pricing_sheet_id, variations, image, variation_images, show_in_store,
+    price_tiers, min_order_qty, print_pricing, pricing_sheet_id, variations, image, variation_images,
+    show_in_store, show_in_catalogo, ink_type,
     current_stock
   } = req.body;
 
@@ -827,16 +837,24 @@ router.post('/', validate(productSchema), async (req, res) => {
       ...(imageUrl !== undefined ? { image_url: imageUrl } : {}),
       ...(varImgs !== undefined ? { variation_images: varImgs } : {}),
       show_in_store: show_in_store !== false,
+      // Produto novo nasce FORA do catálogo. Começar a cadastrar não é
+      // publicar: um cadastro pela metade — sem foto, sem preço, sem
+      // gabarito — não pode virar card no ar no minuto em que o nome é
+      // digitado.
+      show_in_catalogo: show_in_catalogo === true,
+      ...(ink_type !== undefined ? { ink_type: ink_type || null } : {}),
     };
     const ins = () => supabase.from('PRODUTOS').insert(payload).select().single();
     let { data, error } = await ins();
-    while (error && /(variations|image_url|variation_images|show_in_store|tipo_id|pricing_sheet_id)/i.test(error.message || '')) {
+    while (error && /(variations|image_url|variation_images|show_in_catalogo|show_in_store|tipo_id|pricing_sheet_id|ink_type)/i.test(error.message || '')) {
       if (/variation_images/i.test(error.message)) delete payload.variation_images;
       else if (/image_url/i.test(error.message)) delete payload.image_url;
       else if (/variations/i.test(error.message)) delete payload.variations;
+      else if (/show_in_catalogo/i.test(error.message)) delete payload.show_in_catalogo;
       else if (/show_in_store/i.test(error.message)) delete payload.show_in_store;
       else if (/tipo_id/i.test(error.message)) delete payload.tipo_id;
       else if (/pricing_sheet_id/i.test(error.message)) delete payload.pricing_sheet_id;
+      else if (/ink_type/i.test(error.message)) delete payload.ink_type;
       ({ data, error } = await ins());
     }
 
@@ -853,7 +871,8 @@ router.put('/:id', async (req, res) => {
     name, code, ean, description, category_id, tipo_id, cost_price, sale_price,
     min_stock, ncm, cst, cfop, is_active, supplier_id,
     height, weight, thickness, base_circumference, mouth_circumference, length, width,
-    price_tiers, min_order_qty, print_pricing, pricing_sheet_id, variations, image, variation_images, show_in_store,
+    price_tiers, min_order_qty, print_pricing, pricing_sheet_id, variations, image, variation_images,
+    show_in_store, show_in_catalogo, ink_type,
     current_stock
   } = req.body;
 
@@ -902,17 +921,21 @@ router.put('/:id', async (req, res) => {
     if (imageUrl !== undefined) payload.image_url = imageUrl;
     if (varImgs !== undefined) payload.variation_images = varImgs;
     if (show_in_store != null) payload.show_in_store = !!show_in_store;
+    if (show_in_catalogo != null) payload.show_in_catalogo = !!show_in_catalogo;
+    if (ink_type !== undefined) payload.ink_type = ink_type || null;
     const upd = () => supabase.from('PRODUTOS').update(payload)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     let { data, error } = await upd();
     // remove colunas novas que ainda não existem no banco e tenta de novo
-    while (error && /(variations|image_url|variation_images|show_in_store|tipo_id|pricing_sheet_id)/i.test(error.message || '')) {
+    while (error && /(variations|image_url|variation_images|show_in_catalogo|show_in_store|tipo_id|pricing_sheet_id|ink_type)/i.test(error.message || '')) {
       if (/variation_images/i.test(error.message)) delete payload.variation_images;
       else if (/image_url/i.test(error.message)) delete payload.image_url;
       else if (/variations/i.test(error.message)) delete payload.variations;
+      else if (/show_in_catalogo/i.test(error.message)) delete payload.show_in_catalogo;
       else if (/show_in_store/i.test(error.message)) delete payload.show_in_store;
       else if (/tipo_id/i.test(error.message)) delete payload.tipo_id;
       else if (/pricing_sheet_id/i.test(error.message)) delete payload.pricing_sheet_id;
+      else if (/ink_type/i.test(error.message)) delete payload.ink_type;
       ({ data, error } = await upd());
     }
     if (error) throw error;
@@ -1240,6 +1263,87 @@ router.patch('/:id/variation', async (req, res) => {
     if (error) throw error;
     res.json({ ok: true, name: newName, image_url: images[newName] || null });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── A ficha de catálogo do produto ───────────────────────────────
+//
+// O CADASTRO MESTRE MANDA (§34 da especificação do catálogo). O que o
+// cliente encontra no site — acabamentos, cores de cada campo, tipo de
+// impressão, mínimo, caixa do liso e gabarito da arte — é atributo DESTE
+// produto, editado aqui. Não existe um cadastro paralelo de catálogo, e
+// é por isso que não existe o dia em que os dois discordam.
+
+router.get('/:id/catalogo', async (req, res) => {
+  try {
+    const r = await fichaDoProduto(req.tenantId, req.params.id);
+    if (r.erro) return res.status(404).json({ error: r.erro });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/:id/catalogo', async (req, res) => {
+  try {
+    const r = await gravarFicha(req.tenantId, req.params.id, req.body || {});
+    if (r.erro) return res.status(400).json({ error: r.erro });
+    audit(req, 'update', 'product_catalogo', req.params.id, {
+      blocos: Object.keys(req.body || {}),
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Publica (ou tira do ar) as OUTRAS cores do mesmo modelo.
+ *
+ * No cadastro existe um produto por cor: 24 linhas para um Long Drink de
+ * 350 ml. O cliente não compra "Long Drink Azul Bic" — ele compra um
+ * Long Drink e escolhe a cor depois. Publicar de uma em uma seria 24
+ * cliques para colocar um modelo no ar, e é assim que metade das cores
+ * fica esquecida fora da vitrine.
+ *
+ * "Mesmo modelo" é a leitura que o catálogo já usa: mesma categoria e
+ * mesma capacidade lida do nome.
+ */
+router.post('/:id/catalogo/publicar-modelo', async (req, res) => {
+  const publicar = req.body?.publicar !== false;
+  try {
+    const { data: base, error } = await supabase.from('PRODUTOS')
+      .select('id, name, category_id').eq('tenant_id', req.tenantId).eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!base) return res.status(404).json({ error: 'Produto não encontrado' });
+    if (!base.category_id) return res.status(400).json({ error: 'Produto sem categoria — não dá para identificar o modelo.' });
+
+    const alvo = partesDoNome(base.name).capacidade;
+    const { data: irmaos, error: erroIrmaos } = await supabase.from('PRODUTOS')
+      .select('id, name').eq('tenant_id', req.tenantId)
+      .eq('category_id', base.category_id).eq('is_active', true);
+    if (erroIrmaos) throw erroIrmaos;
+
+    const ids = (irmaos || [])
+      .filter(p => (partesDoNome(p.name).capacidade || null) === (alvo || null))
+      .map(p => p.id);
+    if (!ids.length) return res.json({ atualizados: 0 });
+
+    const { error: erroUpd } = await supabase.from('PRODUTOS')
+      .update({ show_in_catalogo: publicar }).eq('tenant_id', req.tenantId).in('id', ids);
+    if (erroUpd) {
+      if (/show_in_catalogo/i.test(erroUpd.message || '')) {
+        return res.status(400).json({ error: 'Rode a migração 077 para publicar produtos no catálogo.' });
+      }
+      throw erroUpd;
+    }
+
+    audit(req, 'update', 'product', req.params.id, {
+      catalogo: publicar ? 'publicou o modelo' : 'tirou o modelo do ar', produtos: ids.length,
+    });
+    res.json({ atualizados: ids.length, capacidade: alvo });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Variantes ────────────────────────────────────────────────────
