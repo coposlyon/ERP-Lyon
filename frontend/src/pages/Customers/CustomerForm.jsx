@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Loader2, Star, Instagram, CheckCircle2, XCircle, Ban, ExternalLink } from 'lucide-react';
+import CampoData from '@/components/UI/CampoData';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -412,8 +413,12 @@ export default function CustomerForm({ customer, onSaved, onCancel, hideRating =
         ) : (
           <div>
             <label className="label">Data de Nascimento</label>
-            <input className="input" inputMode="numeric" maxLength={10} placeholder="DD/MM/AAAA"
-              value={form.birth_date} onChange={e => set('birth_date', maskDate(e.target.value))} />
+            {/* O formulário guarda em DD/MM/AAAA e converte na hora de
+                salvar; o campo trabalha em AAAA-MM-DD. A conversão fica
+                aqui, na fronteira, em vez de espalhar formato pelo resto. */}
+            <CampoData maxHoje
+              value={brToISO(form.birth_date) || ''}
+              onChange={iso => set('birth_date', iso ? isoToBR(iso) : '')} />
           </div>
         )}
 
