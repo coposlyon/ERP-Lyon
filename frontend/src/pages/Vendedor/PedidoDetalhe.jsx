@@ -24,6 +24,7 @@ import {
   Truck, Info, Plus, Eye, Download, UploadCloud, PenLine, CircleCheck, Star,
   Circle, Wallet, PenTool, FileImage, FlaskConical, Brush, CircleDashed,
   Settings, PackageOpen, ShieldCheck, Camera, PackageCheck, History, ExternalLink,
+  Loader2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
