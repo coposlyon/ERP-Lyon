@@ -260,7 +260,10 @@ export default function Configurador() {
         { nome: preco?.nome || cfg.modelo.nome },
       ]}>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.86fr)_minmax(300px,0.72fr)]">
+      {/* `items-start` + `sticky` nas colunas 2 e 3: a coluna 1 é MUITO mais
+          alta que as outras duas, e sem isso o cliente rola até a quantidade
+          com o resumo e os botões já fora da tela — decidindo às cegas. */}
+      <div className="grid gap-4 items-start xl:grid-cols-[minmax(0,1.22fr)_minmax(296px,0.76fr)_minmax(288px,0.7fr)]">
 
         {/* ═══ COLUNA 1 — produto, personalização e entrega ═══ */}
         <div className="space-y-4">
@@ -269,20 +272,23 @@ export default function Configurador() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <Rotulo>Modelo do produto</Rotulo>
-                <div className="rounded-lg px-3 py-2.5 text-[13.5px] flex items-center gap-2"
+                {/* Sem `truncate`: "Long Drink Degradê com Borda…" cortado é o
+                    cliente sem saber o que está comprando. Duas linhas custam
+                    menos que essa dúvida. */}
+                <div className="rounded-lg px-3 py-2 text-[13.5px] flex items-start gap-2 min-h-[42px]"
                   style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.13)', color: NEON.texto }}>
-                  <Check size={14} style={{ color: NEON.ciano, flexShrink: 0 }} />
-                  <span className="truncate">{preco?.nome || cfg.modelo.nome}</span>
+                  <Check size={14} className="mt-1 shrink-0" style={{ color: NEON.ciano }} />
+                  <span className="leading-snug">{preco?.nome || cfg.modelo.nome}</span>
                 </div>
               </div>
 
               <div>
                 <Rotulo>Tipo de pedido</Rotulo>
                 <div className="grid grid-cols-2 gap-2">
-                  <Opcao titulo="Liso" icone={Box} cor={NEON.ciano}
+                  <Opcao titulo="Liso" icone={Box} cor={NEON.ciano} quebrar
                     ativo={!personalizado}
                     onClick={() => mudar({ tipo_pedido: 'liso', quantidade: '' })} />
-                  <Opcao titulo="Personalizado" icone={PenTool} cor={NEON.roxo}
+                  <Opcao titulo="Personalizado" icone={PenTool} cor={NEON.roxo} quebrar
                     ativo={personalizado}
                     onClick={() => mudar({ tipo_pedido: 'personalizado', quantidade: '' })} />
                 </div>
@@ -298,12 +304,16 @@ export default function Configurador() {
 
             <div className="mt-4">
               <Rotulo>Categoria / Acabamento</Rotulo>
-              <div className="flex flex-wrap gap-2">
+              {/* Grade regular em vez de `flex-wrap`: catorze chips de larguras
+                  diferentes viravam quatro linhas desalinhadas. E sem ícone —
+                  o mesmo desenho repetido catorze vezes não distingue nada,
+                  só enche a linha e rouba espaço do nome. */}
+              <div className="grid gap-1.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
                 {cfg.acabamentos.map(a => (
-                  <Opcao key={a.id} titulo={a.nome} icone={Layers} cor={NEON.roxo}
+                  <Opcao key={a.id} titulo={a.nome} cor={NEON.roxo} centralizado
                     ativo={a.id === estado.acabamento_id}
                     onClick={() => trocarAcabamento(a)}
-                    className="min-w-[104px] flex-1 sm:flex-none" />
+                    className="h-full" />
                 ))}
               </div>
             </div>
@@ -319,15 +329,26 @@ export default function Configurador() {
                     const opcoes = opcoesDoCampo(campo);
                     const valor = estado.campos?.[campo.key] || '';
                     const atual = opcoes.find(o => o.id === valor);
+                    // O ERRO MORA NO CAMPO. Antes a lista "Falta informar: Cor
+                    // base" ficava três colunas à direita, embaixo dos botões:
+                    // o cliente lia o problema num canto da tela e tinha que
+                    // procurar o campo no outro.
+                    const faltando = campo.obrigatorio && !valor && opcoes.length > 0;
                     return (
                       <div key={campo.key}>
                         <Rotulo>
-                          {campo.label}{campo.obrigatorio ? '' : ' (opcional)'}
+                          {campo.label}
+                          {campo.obrigatorio
+                            ? <span style={{ color: faltando ? '#fca5a5' : NEON.fraco }}> *</span>
+                            : ' (opcional)'}
                         </Rotulo>
                         <div className="relative">
                           <Seletor value={valor}
                             onChange={e => mudar({ campos: { ...estado.campos, [campo.key]: e.target.value } })}
-                            style={{ paddingLeft: atual ? 30 : 12 }}>
+                            style={{
+                              paddingLeft: atual ? 30 : 12,
+                              ...(faltando ? { borderColor: 'rgba(252,165,165,0.75)' } : {}),
+                            }}>
                             <option value="">Selecione…</option>
                             {opcoes.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                           </Seletor>
@@ -337,11 +358,15 @@ export default function Configurador() {
                             </span>
                           )}
                         </div>
-                        {!opcoes.length && (
+                        {!opcoes.length ? (
                           <p className="text-[10.5px] mt-1" style={{ color: '#fca5a5' }}>
                             Sem opção liberada — fale com um atendente.
                           </p>
-                        )}
+                        ) : faltando ? (
+                          <p className="text-[10.5px] mt-1" style={{ color: '#fca5a5' }}>
+                            Escolha para continuar
+                          </p>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -492,16 +517,24 @@ export default function Configurador() {
         </div>
 
         {/* ═══ COLUNA 2 — prévia e ações ═══ */}
-        <div className="space-y-4">
+        <div className="space-y-3 xl:sticky xl:top-4">
           <Painel titulo="A. Pré-visualização" cor={NEON.azul} icone={Box}>
-            <div className="flex items-end justify-center gap-4 py-1">
+            <div className="flex items-end justify-center gap-4">
               <CopoPreview escolha={escolhaVisual} arte={arteFrente} face="frente"
-                gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 236 : 280} />
+                gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 190 : 216} />
               {personalizado && estado.posicao === 'frente_verso' && (
                 <CopoPreview escolha={escolhaVisual} arte={arteVerso} face="verso"
-                  gabarito={gabarito} altura={236} />
+                  gabarito={gabarito} altura={190} />
               )}
             </div>
+
+            {/* O copo cinza sem cor escolhida parece defeito. Uma linha
+                explicando transforma "quebrou" em "falta escolher". */}
+            {!escolhaVisual.campos?.cor_base && !escolhaVisual.campos?.cor_produto && (
+              <p className="text-[11px] text-center mt-1" style={{ color: NEON.fraco }}>
+                Escolha as cores ao lado para ver o copo como ele vai ficar.
+              </p>
+            )}
 
             <div className="mt-3">
               <Botao icone={Eye} cor={NEON.ciano} onClick={() => setVer3D(true)}>
@@ -526,20 +559,24 @@ export default function Configurador() {
               Gerar pagamento
             </Botao>
 
+            {/* Os campos que faltam já estão marcados em vermelho no painel 1.
+                Aqui vai só o motivo de o botão estar apagado — repetir a lista
+                inteira seria a mesma informação em dois lugares. */}
             {!podeFechar && preco?.problemas?.length > 0 && (
-              <ul className="text-[11.5px] space-y-1 px-1" style={{ color: '#fca5a5' }}>
-                {preco.problemas.map((p, i) => (
-                  <li key={i} className="flex items-start gap-1.5">
-                    <AlertTriangle size={12} className="shrink-0 mt-0.5" /> {p}
-                  </li>
-                ))}
-              </ul>
+              <p className="text-[11.5px] px-1 flex items-start gap-1.5" style={{ color: '#fca5a5' }}>
+                <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                <span>
+                  {preco.problemas.length === 1
+                    ? preco.problemas[0]
+                    : `Complete os ${preco.problemas.length} campos marcados em "1. Produto e Configuração".`}
+                </span>
+              </p>
             )}
           </div>
         </div>
 
         {/* ═══ COLUNA 3 — resumo, atendimento e pagamento ═══ */}
-        <div className="space-y-4">
+        <div className="space-y-3 xl:sticky xl:top-4">
           <Painel titulo="B. Resumo do orçamento" cor={NEON.rosa} icone={FileText}>
             <p className="font-semibold text-[14px] leading-snug" style={{ color: NEON.texto }}>
               {preco?.nome || cfg.modelo.nome}
@@ -666,6 +703,10 @@ export default function Configurador() {
             verso: estado.posicao === 'frente_verso' ? arteVerso : null,
           } : {}}
           gabarito={gabarito}
+          // A forma 3D sai da CATEGORIA do cadastro: caneca tem alça,
+          // taça tem pé, long drink é cônico. Sem isso todo produto
+          // apareceria como o mesmo copo.
+          modelo={{ ...cfg.modelo, nome: preco?.nome || cfg.modelo.nome }}
           onFechar={() => setVer3D(false)} />
       )}
     </CatalogoShell>

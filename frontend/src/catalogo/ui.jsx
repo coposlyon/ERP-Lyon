@@ -136,19 +136,35 @@ export const Rotulo = ({ children }) => (
  * acabamento, tipo de pedido, impressão e ocasião — um só, e não quatro
  * parecidos.
  */
-export function Opcao({ ativo, cor = NEON.roxo, icone: Icone, titulo, sub, onClick, className = '' }) {
+/**
+ * @param centralizado  texto centrado e sem ícone — para grades de
+ *                      opções curtas (os 14 acabamentos), onde repetir o
+ *                      mesmo ícone catorze vezes é ruído que não
+ *                      distingue nada.
+ * @param quebrar       deixa o texto usar duas linhas em vez de virar
+ *                      "Personaliz…". Nome cortado numa opção que o
+ *                      cliente precisa escolher é pior que o botão mais
+ *                      alto.
+ */
+export function Opcao({
+  ativo, cor = NEON.roxo, icone: Icone, titulo, sub, onClick,
+  centralizado = false, quebrar = false, className = '', ...props
+}) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={!!ativo}
-      className={`px-3 py-2.5 rounded-xl text-left transition-all active:scale-[0.985] ${className}`}
+    <button type="button" onClick={onClick} aria-pressed={!!ativo} {...props}
+      className={`px-3 py-2 rounded-xl transition-all active:scale-[0.985] ${centralizado ? 'text-center' : 'text-left'} ${className}`}
       style={{
         background: ativo ? corComAlfa(cor, 0.16) : 'rgba(255,255,255,0.035)',
         border: `1px solid ${ativo ? corComAlfa(cor, 0.85) : 'rgba(255,255,255,0.10)'}`,
         boxShadow: ativo ? `0 0 16px ${corComAlfa(cor, 0.35)}` : 'none',
+        ...(props.style || {}),
       }}>
-      <span className="flex items-center gap-2">
-        {Icone && <Icone size={15} style={{ color: ativo ? cor : NEON.fraco, flexShrink: 0 }} />}
+      <span className={`flex items-center gap-2 ${centralizado ? 'justify-center' : ''}`}>
+        {Icone && !centralizado && (
+          <Icone size={15} style={{ color: ativo ? cor : NEON.fraco, flexShrink: 0 }} />
+        )}
         <span className="min-w-0">
-          <span className="block text-[12.5px] font-medium leading-tight truncate"
+          <span className={`block text-[12.5px] font-medium leading-tight ${quebrar || centralizado ? '' : 'truncate'}`}
             style={{ color: ativo ? NEON.texto : 'rgba(255,255,255,0.82)' }}>
             {titulo}
           </span>

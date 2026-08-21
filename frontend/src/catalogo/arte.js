@@ -173,6 +173,40 @@ export function cabeNoGabarito(svgMontado) {
 }
 
 /**
+ * O vetor da arte virado imagem, para o 3D poder pintá-lo no copo.
+ *
+ * O WebGL não desenha SVG: ele quer uma textura. O caminho é rasterizar
+ * o vetor num `<img>` e deixar a textura ser montada num canvas.
+ *
+ * DUAS COISAS QUEBRAM SE FOREM ESQUECIDAS:
+ *
+ *   `currentColor` — as artes são desenhadas com `fill="currentColor"`
+ *   para herdar a cor da tinta escolhida. Fora do DOM não existe cor
+ *   herdada, e o navegador resolve para PRETO. Sem a troca, a arte sai
+ *   preta no copo mesmo com o cliente tendo escolhido branco.
+ *
+ *   width/height — um SVG só com `viewBox` rasteriza em tamanho
+ *   indefinido (no Firefox, 0×0). A medida tem que ir explícita.
+ */
+export function svgParaImagem(svg, { cor = '#111318', largura = 640 } = {}) {
+  return new Promise(resolve => {
+    if (!svg || typeof window === 'undefined') return resolve(null);
+
+    const altura = largura;
+    const pintado = String(svg)
+      .replace(/currentColor/g, cor)
+      .replace(/<svg\b/, `<svg width="${largura}" height="${altura}"`);
+
+    const url = URL.createObjectURL(new Blob([pintado], { type: 'image/svg+xml;charset=utf-8' }));
+    const img = new Image();
+    img.decoding = 'sync';
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+/**
  * A proporção do gabarito, para a tela desenhar o retângulo certo.
  *
  * O Long Drink é 120 × 45 mm: alto e estreito. A caneca é o contrário.
