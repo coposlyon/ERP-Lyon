@@ -193,6 +193,10 @@ router.get('/store', async (req, res) => {
         // quem sabe desenhar a tela quando o campo está em branco.
         textos: s.cadastro_textos || {},
       },
+      // Dá para cobrar? Sem chave PIX a loja não oferece "Comprar agora" —
+      // botão que promete pagamento e cai em "a gente te chama" é pior
+      // do que botão nenhum.
+      pix_ativo: !!(s.pix?.key || s.pix?.chave),
       // Textos/opções editáveis do site (Configurações → Site)
       site: s.site || {},
     });
@@ -598,8 +602,21 @@ router.get('/products/:id', async (req, res) => {
 });
 
 // ── Enviar pedido de orçamento ────────────────────────────
+/**
+ * O CARRINHO DA LOJA — COMPRAR OU PEDIR ORÇAMENTO.
+ *
+ * Os dois caminhos existem porque são conversas diferentes: quem já
+ * decidiu quer pagar e ir embora; quem está pesquisando quer o preço
+ * fechado por escrito antes de decidir. Antes só existia um botão, e
+ * ele mentia dos dois lados — dizia "sem compromisso, é orçamento" e
+ * abria uma cobrança PIX na tela seguinte.
+ *
+ * `modo` é quem decide: 'pagamento' gera a cobrança e o pedido fica
+ * aguardando o PIX; 'orcamento' entra no Comercial sem cobrar nada.
+ */
 router.post('/quote', async (req, res) => {
-  const { customer = {}, items = [], notes, event_date, customer_id, freight } = req.body;
+  const { customer = {}, items = [], notes, event_date, customer_id, freight, modo } = req.body;
+  const querPagar = modo !== 'orcamento';
   const name  = (customer.name  || '').trim();
   const phone = (customer.phone || '').trim();
   const email = (customer.email || '').trim();
@@ -713,10 +730,17 @@ router.post('/quote', async (req, res) => {
 
     // Sem chave PIX configurada não dá para cobrar: mantém o comportamento
     // antigo (pedido entra direto no Comercial) em vez de travar a loja.
+    // E quem pediu ORÇAMENTO não é cobrado nem com chave configurada.
     const cfgPix = await pixConfig(STORE_TENANT);
-    if (!cfgPix.key) {
+    if (!querPagar || !cfgPix.key) {
       const sale = await criarVendaDoPedido(pedido);
-      return res.status(201).json({ success: true, mode: 'sale', number: sale.number, items: orderItems.length });
+      return res.status(201).json({
+        success: true, mode: 'sale', number: sale.number, items: orderItems.length,
+        // Quem quis pagar e não pôde (loja sem chave PIX) precisa saber
+        // que o pedido entrou e alguém vai chamar — não pode achar que
+        // pagou.
+        sem_cobranca: querPagar && !cfgPix.key,
+      });
     }
 
     // Pedido fica na fila aguardando o PIX. Só vira venda quando confirmado.

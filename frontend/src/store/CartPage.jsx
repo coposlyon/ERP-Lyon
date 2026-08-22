@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Trash2, Minus, Plus, ShoppingBag, CheckCircle2, Loader2, ArrowLeft, CalendarHeart, User, LogIn, Printer, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -30,7 +31,12 @@ export default function CartPage() {
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(null);
   const [cep, setCep] = useState('');
+  // A loja consegue cobrar? Sem chave PIX cadastrada não adianta
+  // oferecer "Comprar agora" — o pedido cairia em "a gente te chama".
+  const { data: infoLoja } = useQuery({ queryKey: ['store-info'], queryFn: () => storeApi.get('/store') });
+  const podeComprar = !!infoLoja?.pix_ativo;
   const [freteOpts, setFreteOpts] = useState(null);
+  const [avisoFrete, setAvisoFrete] = useState(null);
   const [freteSel, setFreteSel] = useState(null);
   const [freteLoading, setFreteLoading] = useState(false);
 
@@ -41,14 +47,23 @@ export default function CartPage() {
     try {
       const res = await storeApi.post('/frete', { cep: c, items: items.map(i => ({ product_id: i.product_id, quantity: i.quantity })) });
       setFreteOpts(res.options || []);
+      setAvisoFrete(res.aviso || null);
       if ((res.options || []).length) setFreteSel(res.options[0]);
-      else if (res.aviso) toast(res.aviso);
     } catch (e) {
       toast.error(e?.response?.data?.error || 'Não foi possível calcular o frete');
     } finally { setFreteLoading(false); }
   }
 
-  async function submit(e) {
+  /**
+   * DOIS CAMINHOS, E O CLIENTE ESCOLHE QUAL.
+   *
+   * 'pagamento' abre a cobrança PIX na hora; 'orcamento' manda o pedido
+   * para a equipe sem cobrar nada. Antes existia um botão só, escrito
+   * "solicitar orçamento", que gerava PIX na tela seguinte — quem queria
+   * comprar não achava o caminho, e quem queria só o preço levava um
+   * susto.
+   */
+  async function submit(e, modo = 'pagamento') {
     e.preventDefault();
     if (!customer) { toast.error('Faça login para solicitar o orçamento.'); return; }
     // Dados vêm do cadastro (login obrigatório) — sem formulário manual.
@@ -80,6 +95,7 @@ export default function CartPage() {
         customer: cust,
       };
       const res = await storeApi.post('/quote', {
+        modo,
         customer: cust,
         customer_id: customer.id || null,
         event_date: form.event_date || null,
@@ -91,7 +107,7 @@ export default function CartPage() {
       clear();
     } catch (err) {
       const e = err?.response?.data;
-      if (e?.code === 'LOGIN_REQUIRED') toast.error('Faça login para solicitar o orçamento.');
+      if (e?.code === 'LOGIN_REQUIRED') toast.error('Entre na sua conta para finalizar o pedido.');
       else toast.error(e?.error || 'Erro ao enviar o pedido');
     } finally { setSending(false); }
   }
@@ -309,7 +325,11 @@ export default function CartPage() {
                   {freteLoading ? '...' : 'Calcular'}
                 </button>
               </div>
-              {freteOpts && freteOpts.length === 0 && <p className="text-xs text-gray-400 mt-2">Nenhuma opção de frete encontrada para esse CEP.</p>}
+              {freteOpts && freteOpts.length === 0 && (
+                <p className="text-xs text-gray-500 mt-2">
+                  {avisoFrete || 'N\u00e3o consegui calcular o frete para esse CEP.'}
+                </p>
+              )}
               {freteOpts && freteOpts.length > 0 && (
                 <div className="space-y-1.5 mt-2">
                   {freteOpts.map(o => {
@@ -349,11 +369,31 @@ export default function CartPage() {
               </p>
             </div>
 
-            <button type="submit" disabled={sending}
-              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-              {sending ? <><Loader2 size={18} className="animate-spin" /> Enviando...</> : <><Package size={18} /> Solicitar orçamento</>}
+            {/* COMPRAR é o botão principal; orçamento fica do lado, para
+                quem ainda está pesquisando. Só aparece "comprar" se a
+                loja realmente conseguir cobrar (chave PIX cadastrada). */}
+            {podeComprar && (
+              <button type="submit" disabled={sending}
+                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
+                {sending ? <><Loader2 size={18} className="animate-spin" /> Enviando...</>
+                  : <><ShoppingBag size={18} /> Comprar agora · {fmt(totalEstimado)}</>}
+              </button>
+            )}
+
+            <button type="button" disabled={sending} onClick={e => submit(e, 'orcamento')}
+              className={`w-full font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60 ${
+                podeComprar
+                  ? 'bg-white text-gray-700 border border-gray-200 hover:border-gray-300'
+                  : 'bg-orange-500 hover:bg-orange-600 text-white'}`}>
+              {sending ? <><Loader2 size={18} className="animate-spin" /> Enviando...</>
+                : <><Package size={18} /> Solicitar orçamento</>}
             </button>
-            <p className="text-xs text-gray-400 text-center">Sem compromisso — é um pedido de orçamento.</p>
+
+            <p className="text-xs text-gray-400 text-center">
+              {podeComprar
+                ? 'Comprar gera um PIX na próxima tela. Orçamento não cobra nada — nossa equipe responde com o preço fechado.'
+                : 'Orçamento sem compromisso — nossa equipe responde com o preço fechado.'}
+            </p>
           </form>
           )}
         </div>
