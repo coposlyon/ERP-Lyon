@@ -73,6 +73,11 @@ const TEXT_FIELDS = [
   ['cta_title', 'CTA final — título'], ['cta_subtitle', 'CTA final — descrição'], ['cta_button', 'CTA final — botão'],
 ];
 
+// OS CAMPOS VÊM PREENCHIDOS COM O QUE A LOJA DIZ HOJE, não com um
+// espaço em branco e o texto de fábrica pálido atrás. Campo vazio com
+// sugestão cinza parecia loja sem título — quem abria não sabia se
+// aquilo era o texto do site ou um exemplo. Apagar o campo continua
+// valendo: a loja ignora texto em branco e volta ao de fábrica.
 export default function SiteEditor({ site = {}, setSite, isAdmin }) {
   const [sub, setSub] = useState('hero');
   const s = site || {};
@@ -121,11 +126,11 @@ export default function SiteEditor({ site = {}, setSite, isAdmin }) {
       {sub === 'hero' && (
         <div className="space-y-5">
           <div className="grid sm:grid-cols-2 gap-4">
-            <div><label className="label">Selo do topo</label><input className="input" value={s.hero_badge ?? ''} onChange={e => setSite('hero_badge', e.target.value)} placeholder={SITE_DEFAULTS.hero_badge} disabled={!isAdmin} /></div>
-            <div><label className="label">Título principal</label><input className="input" value={s.hero_title ?? ''} onChange={e => setSite('hero_title', e.target.value)} placeholder={SITE_DEFAULTS.hero_title} disabled={!isAdmin} /></div>
-            <div className="sm:col-span-2"><label className="label">Subtítulo</label><textarea className="input min-h-[64px] resize-y" value={s.hero_subtitle ?? ''} onChange={e => setSite('hero_subtitle', e.target.value)} placeholder={SITE_DEFAULTS.hero_subtitle} disabled={!isAdmin} /></div>
-            <div><label className="label">Botão "Ver catálogo"</label><input className="input" value={s.btn_catalog ?? ''} onChange={e => setSite('btn_catalog', e.target.value)} placeholder={SITE_DEFAULTS.btn_catalog} disabled={!isAdmin} /></div>
-            <div><label className="label">Botão "Personalizar 3D"</label><input className="input" value={s.btn_3d ?? ''} onChange={e => setSite('btn_3d', e.target.value)} placeholder={SITE_DEFAULTS.btn_3d} disabled={!isAdmin} /></div>
+            <div><label className="label">Selo do topo</label><input className="input" value={s.hero_badge ?? SITE_DEFAULTS.hero_badge ?? ''} onChange={e => setSite('hero_badge', e.target.value)} placeholder={SITE_DEFAULTS.hero_badge} disabled={!isAdmin} /></div>
+            <div><label className="label">Título principal</label><input className="input" value={s.hero_title ?? SITE_DEFAULTS.hero_title ?? ''} onChange={e => setSite('hero_title', e.target.value)} placeholder={SITE_DEFAULTS.hero_title} disabled={!isAdmin} /></div>
+            <div className="sm:col-span-2"><label className="label">Subtítulo</label><textarea className="input min-h-[64px] resize-y" value={s.hero_subtitle ?? SITE_DEFAULTS.hero_subtitle ?? ''} onChange={e => setSite('hero_subtitle', e.target.value)} placeholder={SITE_DEFAULTS.hero_subtitle} disabled={!isAdmin} /></div>
+            <div><label className="label">Botão "Ver catálogo"</label><input className="input" value={s.btn_catalog ?? SITE_DEFAULTS.btn_catalog ?? ''} onChange={e => setSite('btn_catalog', e.target.value)} placeholder={SITE_DEFAULTS.btn_catalog} disabled={!isAdmin} /></div>
+            <div><label className="label">Botão "Personalizar 3D"</label><input className="input" value={s.btn_3d ?? SITE_DEFAULTS.btn_3d ?? ''} onChange={e => setSite('btn_3d', e.target.value)} placeholder={SITE_DEFAULTS.btn_3d} disabled={!isAdmin} /></div>
           </div>
 
           <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 cursor-pointer w-fit">
@@ -198,9 +203,9 @@ export default function SiteEditor({ site = {}, setSite, isAdmin }) {
           </p>
 
           <div className="grid sm:grid-cols-3 gap-4">
-            <div><label className="label">Selo da seção</label><input className="input" value={s.promos_badge ?? ''} onChange={e => setSite('promos_badge', e.target.value)} placeholder={SITE_DEFAULTS.promos_badge} disabled={!isAdmin} /></div>
-            <div><label className="label">Título</label><input className="input" value={s.promos_title ?? ''} onChange={e => setSite('promos_title', e.target.value)} placeholder={SITE_DEFAULTS.promos_title} disabled={!isAdmin} /></div>
-            <div><label className="label">Descrição</label><input className="input" value={s.promos_subtitle ?? ''} onChange={e => setSite('promos_subtitle', e.target.value)} placeholder={SITE_DEFAULTS.promos_subtitle} disabled={!isAdmin} /></div>
+            <div><label className="label">Selo da seção</label><input className="input" value={s.promos_badge ?? SITE_DEFAULTS.promos_badge ?? ''} onChange={e => setSite('promos_badge', e.target.value)} placeholder={SITE_DEFAULTS.promos_badge} disabled={!isAdmin} /></div>
+            <div><label className="label">Título</label><input className="input" value={s.promos_title ?? SITE_DEFAULTS.promos_title ?? ''} onChange={e => setSite('promos_title', e.target.value)} placeholder={SITE_DEFAULTS.promos_title} disabled={!isAdmin} /></div>
+            <div><label className="label">Descrição</label><input className="input" value={s.promos_subtitle ?? SITE_DEFAULTS.promos_subtitle ?? ''} onChange={e => setSite('promos_subtitle', e.target.value)} placeholder={SITE_DEFAULTS.promos_subtitle} disabled={!isAdmin} /></div>
           </div>
 
           <div className="flex items-center justify-between">
@@ -318,7 +323,7 @@ export default function SiteEditor({ site = {}, setSite, isAdmin }) {
           {TEXT_FIELDS.map(([k, label]) => (
             <div key={k}>
               <label className="label">{label}</label>
-              <input className="input" value={s[k] ?? ''} onChange={e => setSite(k, e.target.value)} placeholder={SITE_DEFAULTS[k]} disabled={!isAdmin} />
+              <input className="input" value={s[k] ?? SITE_DEFAULTS[k] ?? ''} onChange={e => setSite(k, e.target.value)} placeholder={SITE_DEFAULTS[k]} disabled={!isAdmin} />
             </div>
           ))}
         </div>
@@ -336,8 +341,8 @@ export default function SiteEditor({ site = {}, setSite, isAdmin }) {
               <div key={k} className={type === 'textarea' ? 'sm:col-span-2' : ''}>
                 <label className="label">{label}</label>
                 {type === 'textarea'
-                  ? <textarea className="input min-h-[64px] resize-y" value={s[k] ?? ''} onChange={e => setSite(k, e.target.value)} placeholder={ph || SITE_DEFAULTS[k]} disabled={!isAdmin} />
-                  : <input className="input" value={s[k] ?? ''} onChange={e => setSite(k, e.target.value)} placeholder={ph || SITE_DEFAULTS[k]} disabled={!isAdmin} />}
+                  ? <textarea className="input min-h-[64px] resize-y" value={s[k] ?? SITE_DEFAULTS[k] ?? ''} onChange={e => setSite(k, e.target.value)} placeholder={ph || SITE_DEFAULTS[k]} disabled={!isAdmin} />
+                  : <input className="input" value={s[k] ?? SITE_DEFAULTS[k] ?? ''} onChange={e => setSite(k, e.target.value)} placeholder={ph || SITE_DEFAULTS[k]} disabled={!isAdmin} />}
               </div>
             ))}
           </div>

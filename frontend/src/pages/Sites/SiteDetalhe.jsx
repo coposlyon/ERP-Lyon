@@ -146,10 +146,15 @@ function EditorLoja({ cfg, isAdmin, aoSalvar }) {
 // tem uma aba por tipo e uma aba de Conclusão, que é comum aos três: a
 // saída é a mesma porta.
 //
-// O CAMPO EM BRANCO NÃO É TEXTO VAZIO: é o texto de fábrica. O padrão
-// aparece como sugestão dentro do campo, e "usar o padrão" apaga o que
-// foi escrito. Ninguém vai ver um título em branco no site porque
-// alguém limpou o campo e salvou.
+// O CAMPO JÁ VEM PREENCHIDO COM O QUE O SITE DIZ HOJE. Campo em branco
+// com o texto de fábrica em cinza atrás parecia campo vazio: quem abria
+// não sabia se o site estava sem título ou se aquilo era sugestão. Aqui
+// se edita o que existe, não se adivinha o que existe.
+//
+// Apagar tudo continua sendo seguro: a tela pública ignora texto em
+// branco e volta ao de fábrica, então ninguém publica um título vazio
+// sem querer. E "voltar ao original" traz a frase de fábrica de volta
+// para dentro do campo.
 
 /** Um campo do editor — texto, texto longo ou chave liga/desliga. */
 function CampoTexto({ campo, tipo, cfg, isAdmin }) {
@@ -171,23 +176,27 @@ function CampoTexto({ campo, tipo, cfg, isAdmin }) {
     );
   }
 
-  const mexido = typeof valor === 'string' && valor.trim() !== '';
+  // O que o site mostra HOJE: o texto salvo, ou o de fábrica quando
+  // ninguém mexeu. É isso que aparece dentro do campo, escrito.
+  const efetivo = valor === undefined ? (padrao ?? '') : valor;
+  const diferenteDoOriginal = efetivo !== (padrao ?? '');
+
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
         <label className="label mb-0">{campo.label}</label>
-        {mexido && isAdmin && (
-          <button type="button" onClick={() => cfg.doCadastro(tipo, campo.k, '')}
+        {diferenteDoOriginal && isAdmin && (
+          <button type="button" onClick={() => cfg.doCadastro(tipo, campo.k, padrao ?? '')}
             className="text-[11px] text-gray-400 hover:text-primary-600 flex items-center gap-1">
-            <RotateCcw size={11} /> usar o padrão
+            <RotateCcw size={11} /> voltar ao original
           </button>
         )}
       </div>
       {campo.linhas > 1 ? (
-        <textarea className="input mt-1" rows={campo.linhas} value={valor || ''} placeholder={padrao}
+        <textarea className="input mt-1" rows={campo.linhas} value={efetivo} placeholder={padrao}
           onChange={e => cfg.doCadastro(tipo, campo.k, e.target.value)} disabled={!isAdmin} />
       ) : (
-        <input className="input mt-1" value={valor || ''} placeholder={padrao}
+        <input className="input mt-1" value={efetivo} placeholder={padrao}
           onChange={e => cfg.doCadastro(tipo, campo.k, e.target.value)} disabled={!isAdmin} />
       )}
       {campo.dica && <p className="text-xs text-gray-400 mt-1">{campo.dica}</p>}
@@ -265,22 +274,24 @@ function EditorCadastro({ cfg, isAdmin, aoSalvar, tipoInicial = 'cliente', siteA
 
           <div>
             <label className="label">Título do card final</label>
-            <input className="input" value={s.cadastro_done_titulo || ''} placeholder={DONE_PADRAO.titulo}
+            <input className="input" value={s.cadastro_done_titulo ?? DONE_PADRAO.titulo} placeholder={DONE_PADRAO.titulo}
               onChange={e => cfg.opcao('cadastro_done_titulo', e.target.value)} disabled={!isAdmin} />
           </div>
 
           <div>
             <label className="label">Mensagem exibida no card</label>
-            <input className="input" value={s.cadastro_message || ''} placeholder={DONE_PADRAO.mensagem}
+            <input className="input" value={s.cadastro_message ?? DONE_PADRAO.mensagem} placeholder={DONE_PADRAO.mensagem}
               onChange={e => cfg.opcao('cadastro_message', e.target.value)} disabled={!isAdmin} />
           </div>
 
           <div>
             <label className="label">WhatsApp do botão “Voltar ao WhatsApp”</label>
-            <input className="input" value={s.cadastro_whatsapp || ''}
+            <input className="input" value={s.cadastro_whatsapp ?? (cfg.form?.phone || '')}
               onChange={e => cfg.opcao('cadastro_whatsapp', e.target.value)}
               placeholder="(44) 99999-9999" disabled={!isAdmin} />
-            <p className="text-xs text-gray-400 mt-1">Em branco, usa o telefone da empresa.</p>
+            <p className="text-xs text-gray-400 mt-1">
+              Em branco, usa o telefone da empresa — que é o número já preenchido aqui.
+            </p>
           </div>
         </div>
       )}
