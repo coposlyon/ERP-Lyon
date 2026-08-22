@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import CadastroDone from './CadastroDone';
 import SolicitarAlteracao from './SolicitarAlteracao';
 import AberturaCadastro from './AberturaCadastro';
+import { textosCadastro } from './cadastroTextos';
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 const INPUT = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none text-sm transition';
@@ -104,8 +105,18 @@ export default function CadastroCliente() {
   const [welcomeName, setWelcomeName] = useState('');
   const [storeCfg, setStoreCfg] = useState(null);
 
-  // Config do site (modo manutenção dos cadastros)
-  useEffect(() => { storeApi.get('/store').then(d => setStoreCfg(d?.cadastro || null)).catch(() => {}); }, []);
+  // Config do site: modo manutenção E os textos das telas de cadastro.
+  // `cfgPronto` existe para a abertura não piscar o texto de fábrica
+  // antes do texto configurado — o fundo já é preto, então esperar a
+  // resposta não custa nada visualmente.
+  const [cfgPronto, setCfgPronto] = useState(false);
+  useEffect(() => {
+    storeApi.get('/store')
+      .then(d => setStoreCfg(d?.cadastro || null))
+      .catch(() => {})
+      .finally(() => setCfgPronto(true));
+  }, []);
+  const txt = textosCadastro('cliente', storeCfg);
 
   // Detecção de cliente já cadastrado (ao preencher o CPF/CNPJ)
   const [existing, setExisting] = useState(null); // { first_name, type, has_birth }
@@ -136,6 +147,8 @@ export default function CadastroCliente() {
   const videoRef = useRef(null);
 
   function startIntro() {
+    // Vídeo desligado na configuração: vai direto ao formulário.
+    if (!txt.video) return setPhase('form');
     const v = videoRef.current;
     setPhase('video');
     if (!v) return;
@@ -349,7 +362,7 @@ export default function CadastroCliente() {
   }
 
   if (done && doneKind !== 'login' && !(retomandoCompra && doneKind === 'new')) {
-    return <CadastroDone message={storeCfg?.message} whatsapp={storeCfg?.whatsapp} />;
+    return <CadastroDone message={storeCfg?.message} title={storeCfg?.done_titulo} whatsapp={storeCfg?.whatsapp} />;
   }
 
   if (done) {
@@ -382,8 +395,8 @@ export default function CadastroCliente() {
       {/* Abertura cinematográfica */}
       {/* A abertura e o cartao neon, igual ao acompanhamento do
           pedido. O video continua depois dele. */}
-      {phase === 'start' && (
-        <AberturaCadastro tipo="cliente" onIniciar={startIntro} />
+      {phase === 'start' && cfgPronto && (
+        <AberturaCadastro tipo="cliente" textos={txt} onIniciar={startIntro} />
       )}
 
       {/* O bloco do vídeo fica montado desde a abertura, e não só
@@ -507,8 +520,8 @@ export default function CadastroCliente() {
       <div className="relative z-10 max-w-xl mx-auto st-rise">
         <div className="text-center mb-6">
           <img src="/lyon-logo.png" alt="Lyon Copos" className="h-28 sm:h-32 mx-auto mb-3 object-contain st-float drop-shadow-xl" onError={e => { e.target.style.display='none'; }} />
-          <h1 className="text-2xl sm:text-3xl font-black leading-tight st-gradient-text">FAÇA O SEU CADASTRO NO NOSSO SISTEMA LYON COPOS!</h1>
-          <p className="text-gray-500 mt-2 text-sm">Preencha seus dados abaixo. Leva menos de 1 minuto.</p>
+          <h1 className="text-2xl sm:text-3xl font-black leading-tight st-gradient-text">{txt.form_titulo}</h1>
+          <p className="text-gray-500 mt-2 text-sm">{txt.form_subtitulo}</p>
         </div>
 
         <form onSubmit={submit} className="bg-white/90 backdrop-blur rounded-3xl shadow-xl p-6 sm:p-8 space-y-4">
@@ -578,7 +591,7 @@ export default function CadastroCliente() {
 
           {/* Consentimento de publicação */}
           <div className="bg-violet-50/70 border border-violet-100 rounded-2xl p-4">
-            <p className="text-sm font-medium text-gray-700 mb-2">Podemos publicar a foto do seu produto e te marcar no Instagram?</p>
+            <p className="text-sm font-medium text-gray-700 mb-2">{txt.pergunta_instagram}</p>
             <div className="flex gap-2">
               {[['sim','Sim 💜'], ['nao','Não, obrigado']].map(([v, l]) => (
                 <button type="button" key={v} onClick={() => setCanPublish(v)}
@@ -613,9 +626,9 @@ export default function CadastroCliente() {
 
           <button type="submit" disabled={sending}
             className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-            {sending ? <><Loader2 size={18} className="animate-spin" /> Enviando...</> : <><User size={18} /> Enviar cadastro</>}
+            {sending ? <><Loader2 size={18} className="animate-spin" /> Enviando...</> : <><User size={18} /> {txt.form_botao}</>}
           </button>
-          <p className="text-xs text-gray-400 text-center">Seus dados são usados apenas para atendimento e pedidos.</p>
+          <p className="text-xs text-gray-400 text-center">{txt.form_privacidade}</p>
         </form>
       </div>
       </>)}

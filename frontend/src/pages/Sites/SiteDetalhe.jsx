@@ -21,11 +21,14 @@ import { useParams, Link, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, ExternalLink, Link2, Check, RefreshCw, Eye, PenLine, Save, Loader2,
-  Monitor, Tablet, Smartphone, Lock, Info, ArrowUpRight,
+  Monitor, Tablet, Smartphone, Lock, Info, ArrowUpRight, RotateCcw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  CADASTRO_PADRAO, CAMPOS_CADASTRO, TIPOS_CADASTRO, TIPO_POR_SITE, DONE_PADRAO,
+} from '@/pages/Public/cadastroTextos';
 import { acharSite, CORES, urlDoSite, copiarTexto } from './registro';
 import { PreviewAparelho, APARELHOS } from './Preview';
 
@@ -77,12 +80,27 @@ function useConfigEmpresa() {
 
   const campo = (k, v) => { setForm(p => ({ ...p, [k]: v })); setSujo(true); };
   const opcao = (k, v) => { setForm(p => ({ ...p, settings: { ...p.settings, [k]: v } })); setSujo(true); };
+  // Um texto de um tipo de cadastro: settings.cadastro_textos[tipo][k].
+  const doCadastro = (tipo, k, v) => {
+    setForm(p => ({
+      ...p,
+      settings: {
+        ...p.settings,
+        cadastro_textos: {
+          ...(p.settings?.cadastro_textos || {}),
+          [tipo]: { ...(p.settings?.cadastro_textos?.[tipo] || {}), [k]: v },
+        },
+      },
+    }));
+    setSujo(true);
+  };
+
   const doSite = (k, v) => {
     setForm(p => ({ ...p, settings: { ...p.settings, site: { ...(p.settings?.site || {}), [k]: v } } }));
     setSujo(true);
   };
 
-  return { form, isLoading, isError, refetch, salvar, campo, opcao, doSite, sujo };
+  return { form, isLoading, isError, refetch, salvar, campo, opcao, doSite, doCadastro, sujo };
 }
 
 /** A barra fixa de salvar — a mesma em todos os editores desta tela. */
@@ -121,44 +139,151 @@ function EditorLoja({ cfg, isAdmin, aoSalvar }) {
   );
 }
 
-// ── Editor dos autocadastros ────────────────────────────────
-// São três endereços (cliente, fornecedor, transportadora) e uma
-// configuração só: o que o site faz depois que a pessoa termina.
-function EditorCadastro({ cfg, isAdmin, aoSalvar }) {
+// ── Editor dos autocadastros ────────────────────────
+// TRÊS LINKS, TRÊS VOZES, UMA JORNADA. Cliente, fornecedor e
+// transportadora percorrem as mesmas quatro telas — abertura, vídeo,
+// formulário, conclusão — dizendo coisas diferentes. Por isso o editor
+// tem uma aba por tipo e uma aba de Conclusão, que é comum aos três: a
+// saída é a mesma porta.
+//
+// O CAMPO EM BRANCO NÃO É TEXTO VAZIO: é o texto de fábrica. O padrão
+// aparece como sugestão dentro do campo, e "usar o padrão" apaga o que
+// foi escrito. Ninguém vai ver um título em branco no site porque
+// alguém limpou o campo e salvou.
+
+/** Um campo do editor — texto, texto longo ou chave liga/desliga. */
+function CampoTexto({ campo, tipo, cfg, isAdmin }) {
+  const salvos = cfg.form?.settings?.cadastro_textos?.[tipo] || {};
+  const padrao = (CADASTRO_PADRAO[tipo] || {})[campo.k];
+  const valor = salvos[campo.k];
+
+  if (campo.tipo === 'liga') {
+    const ligado = valor === undefined ? padrao !== false : valor !== false;
+    return (
+      <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${ligado ? 'border-primary-300 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}>
+        <input type="checkbox" className="mt-0.5 rounded" checked={ligado} disabled={!isAdmin}
+          onChange={e => cfg.doCadastro(tipo, campo.k, e.target.checked)} />
+        <span>
+          <span className="block text-sm font-semibold text-gray-800">{campo.label}</span>
+          {campo.dica && <span className="block text-xs text-gray-500 mt-0.5">{campo.dica}</span>}
+        </span>
+      </label>
+    );
+  }
+
+  const mexido = typeof valor === 'string' && valor.trim() !== '';
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <label className="label mb-0">{campo.label}</label>
+        {mexido && isAdmin && (
+          <button type="button" onClick={() => cfg.doCadastro(tipo, campo.k, '')}
+            className="text-[11px] text-gray-400 hover:text-primary-600 flex items-center gap-1">
+            <RotateCcw size={11} /> usar o padrão
+          </button>
+        )}
+      </div>
+      {campo.linhas > 1 ? (
+        <textarea className="input mt-1" rows={campo.linhas} value={valor || ''} placeholder={padrao}
+          onChange={e => cfg.doCadastro(tipo, campo.k, e.target.value)} disabled={!isAdmin} />
+      ) : (
+        <input className="input mt-1" value={valor || ''} placeholder={padrao}
+          onChange={e => cfg.doCadastro(tipo, campo.k, e.target.value)} disabled={!isAdmin} />
+      )}
+      {campo.dica && <p className="text-xs text-gray-400 mt-1">{campo.dica}</p>}
+    </div>
+  );
+}
+
+function EditorCadastro({ cfg, isAdmin, aoSalvar, tipoInicial = 'cliente', siteAtual }) {
+  const [aba, setAba] = useState(tipoInicial);
   const s = cfg.form?.settings || {};
+  const tipo = aba === 'fim' ? null : aba;
+  const oTipo = TIPOS_CADASTRO.find(t => t.key === tipo);
+  const siteDoTipo = Object.keys(TIPO_POR_SITE).find(k => TIPO_POR_SITE[k] === tipo);
+
   return (
     <div className="space-y-5">
       <AvisoAdmin isAdmin={isAdmin} />
-      <p className="text-sm text-gray-500">
-        Vale para os <b>três</b> links de autocadastro (cliente, fornecedor e transportadora).
-      </p>
 
-      <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${s.cadastro_maintenance ? 'border-primary-300 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}>
-        <input type="checkbox" className="mt-1 rounded" checked={!!s.cadastro_maintenance}
-          onChange={e => cfg.opcao('cadastro_maintenance', e.target.checked)} disabled={!isAdmin} />
-        <span>
-          <span className="block text-sm font-semibold text-gray-800">Modo manutenção do site</span>
-          <span className="block text-xs text-gray-500 mt-0.5">
-            Ligado, o site mostra só um card pedindo para voltar ao WhatsApp depois do cadastro —
-            não entra na loja nem abre outras telas.
-          </span>
-        </span>
-      </label>
-
-      <div>
-        <label className="label">Mensagem exibida no card</label>
-        <input className="input" value={s.cadastro_message || ''}
-          onChange={e => cfg.opcao('cadastro_message', e.target.value)}
-          placeholder="Você concluiu o cadastro! Volte para o WhatsApp." disabled={!isAdmin} />
-        <p className="text-xs text-gray-400 mt-1">O título do card é sempre “VOCÊ CONCLUIU O CADASTRO”.</p>
+      <div className="flex flex-wrap gap-2">
+        {[...TIPOS_CADASTRO.map(t => [t.key, t.label]), ['fim', 'Conclusão']].map(([k, label]) => (
+          <button key={k} type="button" onClick={() => setAba(k)}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${aba === k ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+            {label}
+          </button>
+        ))}
       </div>
 
-      <div>
-        <label className="label">WhatsApp do botão “Voltar ao WhatsApp”</label>
-        <input className="input" value={s.cadastro_whatsapp || ''}
-          onChange={e => cfg.opcao('cadastro_whatsapp', e.target.value)}
-          placeholder="(44) 99999-9999" disabled={!isAdmin} />
-      </div>
+      {/* A prévia ao lado é a DESTE site. Editar outro tipo aqui é
+          legítimo, mas quem edita precisa saber que não está vendo o
+          resultado ao lado. */}
+      {oTipo && siteAtual && TIPO_POR_SITE[siteAtual] !== tipo && (
+        <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 flex flex-wrap items-center gap-1.5">
+          <Info size={13} className="shrink-0" />
+          Você está editando o cadastro de {oTipo.label.toLowerCase()} — a prévia ao lado continua mostrando este site.
+          <Link to={`/sites/${siteDoTipo}`} className="text-primary-600 hover:underline inline-flex items-center gap-0.5">
+            abrir o dele <ArrowUpRight size={11} />
+          </Link>
+        </p>
+      )}
+
+      {tipo && CAMPOS_CADASTRO.map(grupo => {
+        const campos = grupo.campos.filter(c => !c.so || c.so === tipo);
+        if (!campos.length) return null;
+        return (
+          <div key={grupo.grupo} className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">{grupo.grupo}</h3>
+              {grupo.ajuda && <p className="text-xs text-gray-500 mt-0.5">{grupo.ajuda}</p>}
+            </div>
+            {campos.map(c => <CampoTexto key={c.k} campo={c} tipo={tipo} cfg={cfg} isAdmin={isAdmin} />)}
+          </div>
+        );
+      })}
+
+      {aba === 'fim' && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800">Depois que a pessoa termina</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Vale para os <b>três</b> cadastros — a saída é a mesma porta.
+            </p>
+          </div>
+
+          <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${s.cadastro_maintenance ? 'border-primary-300 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}>
+            <input type="checkbox" className="mt-1 rounded" checked={!!s.cadastro_maintenance}
+              onChange={e => cfg.opcao('cadastro_maintenance', e.target.checked)} disabled={!isAdmin} />
+            <span>
+              <span className="block text-sm font-semibold text-gray-800">Modo manutenção do site</span>
+              <span className="block text-xs text-gray-500 mt-0.5">
+                Ligado, o site mostra só um card pedindo para voltar ao WhatsApp depois do cadastro —
+                não entra na loja nem abre outras telas.
+              </span>
+            </span>
+          </label>
+
+          <div>
+            <label className="label">Título do card final</label>
+            <input className="input" value={s.cadastro_done_titulo || ''} placeholder={DONE_PADRAO.titulo}
+              onChange={e => cfg.opcao('cadastro_done_titulo', e.target.value)} disabled={!isAdmin} />
+          </div>
+
+          <div>
+            <label className="label">Mensagem exibida no card</label>
+            <input className="input" value={s.cadastro_message || ''} placeholder={DONE_PADRAO.mensagem}
+              onChange={e => cfg.opcao('cadastro_message', e.target.value)} disabled={!isAdmin} />
+          </div>
+
+          <div>
+            <label className="label">WhatsApp do botão “Voltar ao WhatsApp”</label>
+            <input className="input" value={s.cadastro_whatsapp || ''}
+              onChange={e => cfg.opcao('cadastro_whatsapp', e.target.value)}
+              placeholder="(44) 99999-9999" disabled={!isAdmin} />
+            <p className="text-xs text-gray-400 mt-1">Em branco, usa o telefone da empresa.</p>
+          </div>
+        </div>
+      )}
 
       <BarraSalvar cfg={cfg} isAdmin={isAdmin} aoSalvar={aoSalvar} />
     </div>
@@ -248,7 +373,8 @@ export default function SiteDetalhe() {
       {usaConfig && !cfg.isLoading && cfg.form && (
         <>
           {editorLoja     && <EditorLoja     cfg={cfg} isAdmin={isAdmin} aoSalvar={recarregar} />}
-          {editorCadastro && <EditorCadastro cfg={cfg} isAdmin={isAdmin} aoSalvar={recarregar} />}
+          {editorCadastro && <EditorCadastro cfg={cfg} isAdmin={isAdmin} aoSalvar={recarregar}
+            tipoInicial={TIPO_POR_SITE[site.key] || 'cliente'} siteAtual={site.key} />}
           {editorEmpresa  && <EditorEmpresa  cfg={cfg} isAdmin={isAdmin} aoSalvar={recarregar} />}
         </>
       )}

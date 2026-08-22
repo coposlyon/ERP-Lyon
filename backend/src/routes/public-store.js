@@ -188,6 +188,12 @@ router.get('/store', async (req, res) => {
         maintenance: !!s.cadastro_maintenance,
         whatsapp: onlyDigits(s.cadastro_whatsapp || empresa?.phone) || null,
         message: s.cadastro_message || 'Você concluiu o cadastro! Volte para o WhatsApp.',
+        done_titulo: s.cadastro_done_titulo || null,
+        // O que está escrito nas telas dos três autocadastros (abertura,
+        // vídeo, formulário), editado em Sites → Cadastro. Vai cru: o
+        // padrão de cada frase mora no front (cadastroTextos.js), que é
+        // quem sabe desenhar a tela quando o campo está em branco.
+        textos: s.cadastro_textos || {},
       },
       // Textos/opções editáveis do site (Configurações → Site)
       site: s.site || {},

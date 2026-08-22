@@ -5,6 +5,7 @@ import '@/store/store.css';
 import toast from 'react-hot-toast';
 import CadastroDone from './CadastroDone';
 import AberturaCadastro from './AberturaCadastro';
+import { textosCadastro } from './cadastroTextos';
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 const INPUT = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none text-sm transition';
@@ -100,13 +101,24 @@ export default function CadastroFornecedor() {
   const [pendente, setPendente] = useState(null); // protocolo do pedido enviado
 
   // Config do site (modo manutenção dos cadastros)
-  useEffect(() => { storeApi.get('/store').then(d => setStoreCfg(d?.cadastro || null)).catch(() => {}); }, []);
+  // A abertura espera a configuração chegar para não piscar o texto
+  // de fábrica antes do configurado — o fundo já é preto.
+  const [cfgPronto, setCfgPronto] = useState(false);
+  useEffect(() => {
+    storeApi.get('/store')
+      .then(d => setStoreCfg(d?.cadastro || null))
+      .catch(() => {})
+      .finally(() => setCfgPronto(true));
+  }, []);
+  const txt = textosCadastro('fornecedor', storeCfg);
 
   // Abertura: botão → vídeo (com som) → preto → card sobe.
   const [phase, setPhase] = useState('start'); // start | video | black2 | form
   const videoRef = useRef(null);
 
   function startIntro() {
+    // Vídeo desligado na configuração: vai direto ao formulário.
+    if (!txt.video) return setPhase('form');
     const v = videoRef.current;
     setPhase('video');
     if (!v) return;
@@ -241,7 +253,7 @@ export default function CadastroFornecedor() {
   // Modo manutenção: mostra só o card "VOCÊ CONCLUIU O CADASTRO"
   // Concluiu o cadastro → volta para o WhatsApp.
   if (done) {
-    return <CadastroDone message={storeCfg?.message} whatsapp={storeCfg?.whatsapp} />;
+    return <CadastroDone message={storeCfg?.message} title={storeCfg?.done_titulo} whatsapp={storeCfg?.whatsapp} />;
   }
 
   return (
@@ -249,8 +261,8 @@ export default function CadastroFornecedor() {
       {/* Abertura cinematográfica */}
       {/* A abertura e o cartao neon, igual ao acompanhamento do
           pedido. O video continua depois dele. */}
-      {phase === 'start' && (
-        <AberturaCadastro tipo="fornecedor" onIniciar={startIntro} />
+      {phase === 'start' && cfgPronto && (
+        <AberturaCadastro tipo="fornecedor" textos={txt} onIniciar={startIntro} />
       )}
 
       {/* O bloco do vídeo fica montado desde a abertura, e não só
@@ -278,8 +290,8 @@ export default function CadastroFornecedor() {
       <div className="relative z-10 max-w-xl mx-auto st-rise">
         <div className="text-center mb-6">
           <img src="/lyon-logo.png" alt="Lyon Copos" className="h-28 sm:h-32 mx-auto mb-3 object-contain st-float drop-shadow-xl" onError={e => { e.target.style.display='none'; }} />
-          <h1 className="text-2xl sm:text-3xl font-black leading-tight st-gradient-text">CADASTRE SUA EMPRESA COMO FORNECEDORA DA LYON COPOS!</h1>
-          <p className="text-gray-500 mt-2 text-sm">Preencha os dados da sua empresa abaixo. Leva menos de 1 minuto.</p>
+          <h1 className="text-2xl sm:text-3xl font-black leading-tight st-gradient-text">{txt.form_titulo}</h1>
+          <p className="text-gray-500 mt-2 text-sm">{txt.form_subtitulo}</p>
         </div>
 
         <form onSubmit={submit} className="bg-white/90 backdrop-blur rounded-3xl shadow-xl p-6 sm:p-8 space-y-4">
@@ -402,12 +414,12 @@ export default function CadastroFornecedor() {
           <button type="submit" disabled={sending}
             className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
             {sending ? <><Loader2 size={18} className="animate-spin" /> Enviando...</>
-              : <><Building2 size={18} /> {jaCadastrado ? 'Enviar pedido de atualização' : 'Enviar cadastro'}</>}
+              : <><Building2 size={18} /> {jaCadastrado ? 'Enviar pedido de atualização' : txt.form_botao}</>}
           </button>
           <p className="text-xs text-gray-400 text-center">
             {jaCadastrado
               ? 'A atualização só entra no sistema depois que nossa equipe aprovar.'
-              : 'Seus dados são usados apenas para o cadastro de fornecedores.'}
+              : txt.form_privacidade}
           </p>
         </form>
       </div>

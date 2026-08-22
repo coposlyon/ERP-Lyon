@@ -82,8 +82,8 @@ export const SITES = [
     cor: 'emerald',
     publico: true,
     editor: 'cadastro',
-    editorTitulo: 'O que acontece depois do cadastro',
-    editorResumo: 'Modo manutenção, mensagem final e WhatsApp do botão de retorno.',
+    editorTitulo: 'Editar as telas de cadastro',
+    editorResumo: 'Abertura, vídeo, formulário e conclusão — texto por texto, nos três cadastros.',
   },
   {
     key: 'cadastro-fornecedor',
@@ -95,8 +95,8 @@ export const SITES = [
     cor: 'amber',
     publico: true,
     editor: 'cadastro',
-    editorTitulo: 'O que acontece depois do cadastro',
-    editorResumo: 'Modo manutenção, mensagem final e WhatsApp do botão de retorno.',
+    editorTitulo: 'Editar as telas de cadastro',
+    editorResumo: 'Abertura, vídeo, formulário e conclusão — texto por texto, nos três cadastros.',
   },
   {
     key: 'cadastro-transportadora',
@@ -108,8 +108,8 @@ export const SITES = [
     cor: 'teal',
     publico: true,
     editor: 'cadastro',
-    editorTitulo: 'O que acontece depois do cadastro',
-    editorResumo: 'Modo manutenção, mensagem final e WhatsApp do botão de retorno.',
+    editorTitulo: 'Editar as telas de cadastro',
+    editorResumo: 'Abertura, vídeo, formulário e conclusão — texto por texto, nos três cadastros.',
   },
   {
     key: 'marcacao',
