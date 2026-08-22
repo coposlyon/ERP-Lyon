@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 import { useState } from 'react';
-import { SITES } from '@/pages/Sites/sites';
+import { SITES } from '@/pages/Sites/registro';
 
 // Dashboard primeiro (separado por um divisor), depois todos os módulos que
 // têm submenu agrupados, em seguida os módulos diretos, e Configurações por último.
@@ -42,7 +42,7 @@ const menuItems = [
     ],
   },
   // Sites — um submenu por endereço público. A lista NÃO é escrita aqui:
-  // vem do catálogo em pages/Sites/sites.js, o mesmo que desenha o painel.
+  // vem do catálogo em pages/Sites/registro.js, o mesmo que desenha o painel.
   // Endereço novo registrado lá aparece no menu sozinho.
   {
     label: 'Sites',

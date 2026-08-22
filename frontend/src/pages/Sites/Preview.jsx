@@ -9,12 +9,97 @@
 // site cair no layout de celular, e o cartão mostraria o site errado. O
 // truque é renderizar em largura de desktop e reduzir com transform: o
 // desenho é o do computador, só que pequeno.
+//
+// A FILA, E POR QUE ELA EXISTE. Cada prévia é o aplicativo inteiro
+// abrindo de novo. Sete cartões abrindo juntos são sete downloads do
+// mesmo pacote de 1,3 MB ao mesmo tempo, todos furando o cache porque
+// nenhum terminou ainda — a tela inteira parece travada. Um de cada vez
+// resolve: o primeiro paga o download, os outros seis pegam do cache e
+// entram quase instantâneos. E só entra na fila o cartão que está
+// realmente visível — prévia de coisa fora da tela é trabalho jogado
+// fora.
 // ============================================================
 import { useEffect, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
+
+// ── A fila: uma prévia carregando por vez, no app inteiro ──
+const espera = [];
+let ativo = null;
+
+function girar() {
+  if (ativo) return;
+  while (espera.length) {
+    const t = espera.shift();
+    if (t.cancelado) continue;
+    ativo = t;
+    t.comecar();
+    return;
+  }
+}
+
+/** Entra na fila. Devolve a função de saída (obrigatória no desmonte). */
+function entrarNaFila(comecar) {
+  const t = { comecar, cancelado: false };
+  espera.push(t);
+  girar();
+  return () => {
+    t.cancelado = true;
+    if (ativo === t) { ativo = null; girar(); }
+  };
+}
+
+/**
+ * Estado de uma prévia: entra na fila quando aparece na tela, avisa
+ * quando o site terminou de abrir e libera o próximo da fila.
+ *
+ * O prazo de 10s não é decoração: site que demora demais não pode
+ * segurar a fila inteira: passou disso, o próximo começa.
+ */
+function usePreviaNaFila(chave = '') {
+  const alvo = useRef(null);
+  const [visivel, setVisivel] = useState(false);
+  const [carregar, setCarregar] = useState(false);
+  const [pronto, setPronto] = useState(false);
+  const bilhete = useRef(null);
+
+  // Recarregar (ou trocar de aparelho) traz o véu de volta: o quadro
+  // com o desenho antigo enquanto o novo abre é o que parece bug.
+  useEffect(() => { setPronto(false); }, [chave]);
+
+  // Só o que está (ou está quase) na tela entra na fila.
+  useEffect(() => {
+    const el = alvo.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { setVisivel(true); io.disconnect(); }
+    }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visivel || carregar) return;
+    let prazo;
+    const sair = entrarNaFila(() => {
+      setCarregar(true);
+      prazo = setTimeout(() => { bilhete.current?.(); bilhete.current = null; }, 10000);
+    });
+    bilhete.current = sair;
+    return () => { clearTimeout(prazo); bilhete.current?.(); bilhete.current = null; };
+  }, [visivel, carregar]);
+
+  // O site abriu: marca como pronto e passa a vez.
+  const aoAbrir = () => {
+    setPronto(true);
+    bilhete.current?.();
+    bilhete.current = null;
+  };
+
+  return { alvo, carregar, pronto, aoAbrir };
+}
 
 /** Mede a largura do elemento e devolve o número (0 antes da primeira medida). */
-function useLargura() {
-  const ref = useRef(null);
+function useLargura(ref) {
   const [largura, setLargura] = useState(0);
   useEffect(() => {
     const el = ref.current;
@@ -23,8 +108,19 @@ function useLargura() {
     ro.observe(el);
     setLargura(el.getBoundingClientRect().width);
     return () => ro.disconnect();
-  }, []);
-  return [ref, largura];
+  }, [ref]);
+  return largura;
+}
+
+/** O véu de "abrindo o site" — some quando o iframe termina de carregar. */
+function Carregando({ pronto, texto = 'Abrindo o site...' }) {
+  if (pronto) return null;
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gray-50 text-gray-400">
+      <Loader2 size={20} className="animate-spin" />
+      <span className="text-xs">{texto}</span>
+    </div>
+  );
 }
 
 /**
@@ -32,17 +128,18 @@ function useLargura() {
  * quem quiser mexer abre o site ou entra no detalhe.
  */
 export function MiniPreview({ caminho, altura = 168, versao = 0, larguraBase = 1280 }) {
-  const [ref, largura] = useLargura();
+  const { alvo, carregar, pronto, aoAbrir } = usePreviaNaFila(`${caminho}|${versao}`);
+  const largura = useLargura(alvo);
   const escala = largura ? largura / larguraBase : 0;
 
   return (
-    <div ref={ref} className="relative overflow-hidden rounded-xl bg-gray-100 border border-gray-200" style={{ height: altura }}>
-      {escala > 0 && (
+    <div ref={alvo} className="relative overflow-hidden rounded-xl bg-gray-100 border border-gray-200" style={{ height: altura }}>
+      {carregar && escala > 0 && (
         <iframe
           key={versao}
           src={caminho}
           title={`Prévia ${caminho}`}
-          loading="lazy"
+          onLoad={aoAbrir}
           tabIndex={-1}
           style={{
             width: larguraBase,
@@ -54,8 +151,9 @@ export function MiniPreview({ caminho, altura = 168, versao = 0, larguraBase = 1
           }}
         />
       )}
+      <Carregando pronto={pronto} />
       {/* Véu de leitura: a miniatura é para reconhecer o site, não para ler. */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none" />
+      {pronto && <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none" />}
     </div>
   );
 }
@@ -74,22 +172,24 @@ export const APARELHOS = [
  * o que é o jeito honesto de conferir se o botão novo funciona.
  */
 export function PreviewAparelho({ caminho, aparelho = 'desktop', versao = 0, interativo = true, alturaMax = 720 }) {
-  const [ref, largura] = useLargura();
+  const { alvo, carregar, pronto, aoAbrir } = usePreviaNaFila(`${caminho}|${aparelho}|${versao}`);
+  const largura = useLargura(alvo);
   const ap = APARELHOS.find(a => a.key === aparelho) || APARELHOS[0];
   const altura = Math.min(ap.altura, alturaMax);
   const escala = largura ? Math.min(1, largura / ap.largura) : 0;
 
   return (
-    <div ref={ref} className="flex justify-center">
+    <div ref={alvo} className="flex justify-center">
       <div
         className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
         style={{ width: escala ? ap.largura * escala : '100%', height: altura * (escala || 1) }}
       >
-        {escala > 0 && (
+        {carregar && escala > 0 && (
           <iframe
             key={`${aparelho}-${versao}`}
             src={caminho}
             title={`Site ${caminho}`}
+            onLoad={aoAbrir}
             style={{
               width: ap.largura,
               height: altura,
@@ -100,6 +200,7 @@ export function PreviewAparelho({ caminho, aparelho = 'desktop', versao = 0, int
             }}
           />
         )}
+        <Carregando pronto={pronto} />
       </div>
     </div>
   );

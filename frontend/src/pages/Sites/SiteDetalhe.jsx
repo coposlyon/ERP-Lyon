@@ -26,11 +26,22 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import SiteEditor from '@/pages/Settings/SiteEditor';
-import { acharSite, CORES, urlDoSite, copiarTexto } from './sites';
+import { acharSite, CORES, urlDoSite, copiarTexto } from './registro';
 import { PreviewAparelho, APARELHOS } from './Preview';
 
+// Os dois editores pesados entram sob demanda: quem abriu só para VER
+// como o site está não baixa o editor da loja nem o do catálogo.
+const SiteEditor    = lazy(() => import('@/pages/Settings/SiteEditor'));
 const CatalogoAdmin = lazy(() => import('@/pages/Settings/CatalogoAdmin'));
+
+/** Espera dos editores sob demanda. */
+function Abrindo() {
+  return (
+    <div className="flex items-center justify-center h-40">
+      <Loader2 size={22} className="animate-spin text-primary-600" />
+    </div>
+  );
+}
 
 const ICONE_APARELHO = { desktop: Monitor, tablet: Tablet, mobile: Smartphone };
 
@@ -102,7 +113,9 @@ function EditorLoja({ cfg, isAdmin, aoSalvar }) {
   return (
     <div className="space-y-4">
       <AvisoAdmin isAdmin={isAdmin} />
-      <SiteEditor site={cfg.form?.settings?.site} setSite={cfg.doSite} isAdmin={isAdmin} />
+      <Suspense fallback={<Abrindo />}>
+        <SiteEditor site={cfg.form?.settings?.site} setSite={cfg.doSite} isAdmin={isAdmin} />
+      </Suspense>
       <BarraSalvar cfg={cfg} isAdmin={isAdmin} aoSalvar={aoSalvar} />
     </div>
   );
@@ -220,11 +233,7 @@ export default function SiteDetalhe() {
 
   const painelEditor = (
     <>
-      {usaConfig && cfg.isLoading && (
-        <div className="flex items-center justify-center h-40">
-          <Loader2 size={22} className="animate-spin text-primary-600" />
-        </div>
-      )}
+      {usaConfig && cfg.isLoading && <Abrindo />}
       {usaConfig && !cfg.isLoading && cfg.form && (
         <>
           {editorLoja     && <EditorLoja     cfg={cfg} isAdmin={isAdmin} aoSalvar={recarregar} />}
@@ -233,7 +242,7 @@ export default function SiteDetalhe() {
         </>
       )}
       {editorCatalogo && (
-        <Suspense fallback={<div className="flex items-center justify-center h-40"><Loader2 size={22} className="animate-spin text-primary-600" /></div>}>
+        <Suspense fallback={<Abrindo />}>
           <CatalogoAdmin />
         </Suspense>
       )}

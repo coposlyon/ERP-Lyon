@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Globe, ExternalLink, Link2, Check, RefreshCw, PenLine, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { SITES, CORES, urlDoSite, copiarTexto } from './sites';
+import { SITES, CORES, urlDoSite, copiarTexto } from './registro';
 import { MiniPreview } from './Preview';
 
 function CartaoSite({ site, versao }) {
