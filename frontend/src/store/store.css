@@ -347,3 +347,114 @@
   .st-heart-pop { animation: none !important; }
   .st-slide { transition: none; }
 }
+
+/* ============================================================
+   A PÁGINA DO PRODUTO.
+   Mesma paleta da home: creme, carvão e um laranja só. O copo tem
+   palco próprio à esquerda; a decisão de compra mora inteira na
+   coluna da direita, sem precisar rolar para achar o botão.
+   ============================================================ */
+.lj-prod{padding-block:112px 80px}  /* padding-block, nunca `padding`: o atalho zeraria o padding lateral do .lj-env e o conteúdo encostaria na borda da tela */
+.lj-prod-voltar{display:inline-flex;align-items:center;gap:7px;font-size:13.5px;font-weight:600;
+  color:var(--cinza);margin-bottom:26px;transition:color .2s}
+.lj-prod-voltar:hover{color:var(--laranja)}
+
+.lj-prod-grade{display:grid;grid-template-columns:1fr;gap:clamp(28px,4vw,56px);align-items:start}
+@media(min-width:900px){
+  .lj-prod-grade{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+  /* O painel de compra ocupa a coluna da direita inteira; as garantias
+     voltam para baixo do copo, na coluna da esquerda. */
+  .lj-prod-painel{grid-column:2;grid-row:1 / span 2}
+  .lj-prod-palco{grid-column:1;grid-row:1}
+  .lj-prod-garantias{grid-column:1;grid-row:2}
+}
+
+/* ── O palco do copo ───────────────────────────────────── */
+.lj-prod-palco{position:relative;display:flex;align-items:center;justify-content:center;
+  min-height:clamp(340px,42vw,520px);border-radius:26px;background:var(--creme2);
+  box-shadow:inset 0 0 0 1px var(--linha);overflow:hidden}
+/* Um halo quente atrás do copo: separa o produto do fundo sem
+   precisar de caixa branca recortada. */
+.lj-prod-palco::before{content:'';position:absolute;width:62%;aspect-ratio:1;border-radius:50%;
+  background:radial-gradient(circle,rgba(242,101,34,.16),transparent 68%);filter:blur(6px)}
+.lj-prod-foto{position:relative;z-index:1;max-height:clamp(260px,32vw,400px);width:auto;
+  object-fit:contain;filter:drop-shadow(0 22px 30px rgba(26,22,20,.18))}
+.lj-prod-palco .st-color-in{position:relative;z-index:1}
+
+.lj-prod-selo{position:absolute;z-index:2;right:14px;bottom:14px;display:inline-flex;align-items:center;gap:7px;
+  background:var(--carvao);color:var(--creme);font-size:13px;font-weight:600;
+  padding:9px 15px;border-radius:999px;transition:background .25s,transform .25s}
+.lj-prod-selo:hover{background:var(--laranja);transform:translateY(-2px)}
+
+.lj-prod-garantias{display:grid;gap:10px}
+@media(min-width:520px){.lj-prod-garantias{grid-template-columns:repeat(3,1fr)}}
+.lj-prod-garantias div{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--cinza);
+  background:var(--creme2);border-radius:14px;padding:11px 13px;box-shadow:inset 0 0 0 1px var(--linha)}
+.lj-prod-garantias svg{color:var(--laranja);flex:none}
+
+/* ── A coluna da compra ────────────────────────────────── */
+.lj-prod-painel{max-width:560px}
+.lj-prod-titulo{font-size:clamp(26px,3.1vw,40px);margin-top:8px;color:var(--carvao);
+  transition:opacity .2s}
+.lj-prod-titulo.trocando{opacity:.45}
+
+.lj-prod-preco{display:flex;align-items:baseline;flex-wrap:wrap;gap:10px;margin-top:22px;
+  padding-bottom:22px;border-bottom:1px solid var(--linha)}
+.lj-prod-preco .rot{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--cinza)}
+.lj-prod-preco .valor{font-size:clamp(30px,3.4vw,40px);font-weight:800;letter-spacing:-.03em;
+  color:var(--carvao);line-height:1}
+.lj-prod-preco .valor.combinar{font-size:clamp(20px,2.2vw,26px);color:var(--cinza)}
+.lj-prod-preco .min{font-size:12.5px;color:var(--cinza)}
+
+.lj-prod-bloco{margin-top:24px}
+.lj-prod-rotulo{display:flex;align-items:baseline;gap:8px;margin-bottom:11px}
+.lj-prod-rotulo span{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--cinza)}
+.lj-prod-rotulo b{font-size:13.5px;font-weight:700;color:var(--carvao)}
+.lj-prod-rotulo i{font-style:normal;font-size:12px;color:var(--cinza);margin-left:auto}
+
+.lj-prod-cores{display:flex;flex-wrap:wrap;gap:9px}
+.lj-prod-cor{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+  transition:transform .2s cubic-bezier(.22,1,.36,1),outline-color .2s;outline:2px solid transparent;
+  outline-offset:3px}
+.lj-prod-cor:hover{transform:scale(1.12)}
+.lj-prod-cor.on{outline-color:var(--laranja);transform:scale(1.08)}
+
+.lj-prod-faixas{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+.lj-prod-faixas .fx{display:flex;flex-direction:column;gap:2px;text-align:left;padding:10px 13px;
+  border-radius:14px;background:var(--creme2);box-shadow:inset 0 0 0 1px var(--linha);
+  transition:background .2s,box-shadow .2s}
+.lj-prod-faixas .fx:hover{box-shadow:inset 0 0 0 1.4px var(--cinza2)}
+.lj-prod-faixas .fx span{font-size:11.5px;color:var(--cinza)}
+.lj-prod-faixas .fx b{font-size:15px;font-weight:700;color:var(--carvao)}
+.lj-prod-faixas .fx.on{background:var(--laranja);box-shadow:none}
+.lj-prod-faixas .fx.on span{color:rgba(255,255,255,.8)}
+.lj-prod-faixas .fx.on b{color:#fff}
+
+.lj-prod-compra{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap;margin-top:26px}
+.lj-prod-qtd{display:inline-flex;align-items:center;background:var(--creme2);border-radius:999px;
+  box-shadow:inset 0 0 0 1px var(--linha);overflow:hidden}
+.lj-prod-qtd button{width:44px;height:48px;display:grid;place-items:center;color:var(--carvao);
+  transition:background .2s}
+.lj-prod-qtd button:hover{background:rgba(26,22,20,.06)}
+.lj-prod-qtd input{width:62px;height:48px;text-align:center;font-weight:700;font-size:16px;
+  background:transparent;border:0;outline:none;color:var(--carvao)}
+.lj-prod-min{font-size:11.5px;color:var(--laranja);margin-top:7px}
+.lj-prod-total{margin-left:auto;text-align:right}
+.lj-prod-total span{display:block;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--cinza)}
+.lj-prod-total b{font-size:26px;font-weight:800;letter-spacing:-.03em;color:var(--carvao)}
+
+.lj-prod-acoes{display:grid;gap:10px;margin-top:22px}
+@media(min-width:460px){.lj-prod-acoes{grid-template-columns:1fr auto}}
+.lj-prod-acoes .lj-btn{justify-content:center}
+
+.lj-prod-nota{font-size:12px;color:var(--cinza);margin-top:12px}
+
+.lj-prod-ponte{display:flex;gap:12px;align-items:flex-start;margin-top:20px;padding:15px 17px;
+  border-radius:18px;background:var(--carvao);color:var(--creme);transition:transform .25s}
+.lj-prod-ponte:hover{transform:translateY(-2px)}
+.lj-prod-ponte svg{color:#FFB98C;flex:none;margin-top:2px}
+.lj-prod-ponte b{display:block;font-size:14px;margin-bottom:3px}
+.lj-prod-ponte span{font-size:12.5px;line-height:1.55;color:var(--cinza2)}

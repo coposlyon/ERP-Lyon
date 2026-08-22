@@ -10,11 +10,18 @@
 // o material, aprovação e prazo de produção. Misturar isso com a
 // compra de caixa fechada fazia a mesma tela responder duas perguntas
 // diferentes — e a resposta ficava pior para as duas.
+//
+// ESTA TELA FALA A LÍNGUA DA LOJA (.lj): creme, carvão e um laranja só,
+// os mesmos da página inicial. Antes ela era Tailwind cru — `bg-white`,
+// `text-gray-900` — e parecia uma tela de sistema colada no meio do
+// site: fundo branco de recorte quadrado no creme, tipografia de painel
+// administrativo e o campo de quantidade nativo do navegador, com as
+// setinhas. Quem vinha da home sentia que tinha saído do site.
 // ============================================================
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Check, ShoppingCart, Minus, Plus, PenTool } from 'lucide-react';
+import { ArrowLeft, Check, ShoppingCart, Minus, Plus, PenTool, Truck, ShieldCheck, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
 import storeApi from './storeApi';
 import Bottle from './Bottle';
@@ -84,13 +91,26 @@ export default function ProductPage() {
     ? resolveColor({ name: currentColor.short, value: currentColor.short })
     : resolveColor({ name: product?.color_label || product?.name, value: product?.color_label });
 
-  if (isLoading) return <div className="max-w-6xl mx-auto px-4 py-16 text-center text-gray-400">Carregando...</div>;
-  if (error || !product) return (
-    <div className="max-w-6xl mx-auto px-4 py-16 text-center">
-      <p className="text-gray-500">Produto não encontrado.</p>
-      <Link to="/loja" className="text-orange-600 font-semibold mt-2 inline-block">Voltar à loja</Link>
-    </div>
-  );
+  // A faixa de preço que vale para a quantidade atual — destacada na
+  // tabela, para o cliente ver que comprar mais barateia.
+  const faixaAtiva = (t) => qty >= (Number(t.min_qty) || 0)
+    && (t.max_qty == null || t.max_qty === '' || qty <= Number(t.max_qty));
+
+  if (isLoading) {
+    return (
+      <div className="lj-env" style={{ padding: '120px 0', textAlign: 'center', color: 'var(--cinza)' }}>
+        Carregando...
+      </div>
+    );
+  }
+  if (error || !product) {
+    return (
+      <div className="lj-env" style={{ padding: '120px 0', textAlign: 'center' }}>
+        <p style={{ color: 'var(--cinza)' }}>Produto não encontrado.</p>
+        <Link to="/loja" className="lj-btn laranja" style={{ marginTop: 18 }}>Voltar à loja</Link>
+      </div>
+    );
+  }
 
   function addToCart() {
     add({
@@ -104,133 +124,156 @@ export default function ProductPage() {
     toast.success('Adicionado ao carrinho!');
   }
 
+  const semPreco = !(unitPrice > 0);
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <Link to="/loja" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-orange-600 mb-6">
+    <div className="lj-env lj-prod">
+      <Link to="/loja" className="lj-prod-voltar">
         <ArrowLeft size={15} /> Voltar ao catálogo
       </Link>
 
-      <div className="grid md:grid-cols-2 gap-8">
-        {/* Visual — foto real ou desenho 3D */}
-        {/* Card branco e parado: sem os blobs de fundo e sem o copo flutuando */}
-        <div className="relative rounded-3xl overflow-hidden flex items-center justify-center py-16 bg-white border border-gray-200">
+      <div className="lj-prod-grade">
+        {/* ── O copo ─────────────────────────────────────── */}
+        <div className="lj-prod-palco">
           {productImg && !imgError ? (
             <img key={productImg} src={productImg} alt={product.name}
-              onError={() => setImgError(true)}
-              className="relative z-10 max-h-[360px] w-auto object-contain drop-shadow-xl" />
+              onError={() => setImgError(true)} className="lj-prod-foto" />
           ) : (
-            <div key={currentColor?.id || 'base'} className="relative st-color-in">
-              <Bottle color={bodyHex} gradient={gradient} size={240} />
+            <div key={currentColor?.id || 'base'} className="st-color-in">
+              <Bottle color={bodyHex} gradient={gradient} size={260} />
             </div>
           )}
 
-          <a href="/catalogo"
-            className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5 bg-gray-900/90 hover:bg-gray-900 text-white text-sm font-semibold px-3.5 py-2 rounded-xl shadow-lg backdrop-blur transition-colors">
-            <PenTool size={16} /> Quero personalizado
+          <a href="/catalogo" className="lj-prod-selo">
+            <PenTool size={15} /> Quero personalizado
           </a>
         </div>
 
-        {/* Info */}
-        <div>
-          {product.category && <span className="text-xs text-orange-500 font-semibold uppercase tracking-wide">{product.category}</span>}
-          <h1 className={`text-3xl font-extrabold text-gray-900 mt-1 transition-opacity duration-200 ${isFetching ? 'opacity-50' : ''}`}>
-            {product.name}
-          </h1>
-          {product.description && <p className="text-gray-500 mt-2">{product.description}</p>}
+        {/* ── A compra ───────────────────────────────────── */}
+        <div className="lj-prod-painel">
+          {product.category && <span className="lj-olho">{product.category}</span>}
+          <h1 className={`lj-prod-titulo ${isFetching ? 'trocando' : ''}`}>{product.name}</h1>
+          {product.description && <p className="lj-sub" style={{ marginTop: 10 }}>{product.description}</p>}
 
-          <div className="mt-4">
-            <p className="text-sm text-gray-400">{product.price_tiers?.length ? 'a partir de' : 'preço unitário'}</p>
-            <p className="text-3xl font-extrabold text-gray-900">{fmt(unitPrice)}</p>
+          <div className="lj-prod-preco">
+            <span className="rot">{table.tiers?.length ? 'a partir de' : 'preço unitário'}</span>
+            {semPreco ? (
+              <b className="valor combinar">Sob consulta</b>
+            ) : (
+              <b className="valor">{fmt(unitPrice)}</b>
+            )}
+            {minQty > 1 && <span className="min">a partir de {minQty} unidades</span>}
           </div>
 
           {/* Cores do modelo — cada cor é um produto do mesmo grupo */}
           {colorOptions.length > 1 && (
-            <div className="mt-5">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Cor {currentColor && <span className="text-gray-900 normal-case font-bold">· {currentColor.short}</span>}
-                <span className="text-gray-400 font-normal normal-case"> ({colorOptions.length} disponíveis)</span>
-              </p>
-              <div className="flex flex-wrap gap-2">
+            <div className="lj-prod-bloco">
+              <div className="lj-prod-rotulo">
+                <span>Cor</span>
+                {currentColor && <b>{currentColor.short}</b>}
+                <i>{colorOptions.length} disponíveis</i>
+              </div>
+              <div className="lj-prod-cores">
                 {colorOptions.map(c => {
                   const hex = resolveColor({ name: c.short, value: c.short });
                   const active = c.id === id;
                   return (
-                    <button key={c.id} title={c.short}
+                    <button key={c.id} title={c.short} aria-label={c.short} aria-pressed={active}
                       onClick={() => { if (!active) navigate(`/loja/produto/${c.id}`); }}
-                      className={`w-10 h-10 rounded-full transition-transform hover:scale-110 ${
-                        active ? 'ring-2 ring-offset-2 ring-orange-500 scale-110' : ''}`}
+                      className={`lj-prod-cor ${active ? 'on' : ''}`}
                       style={{
                         background: hex,
-                        border: needsBorder(hex) ? '1px solid #D8DCE2' : '1px solid rgba(0,0,0,.08)',
-                      }} />
+                        boxShadow: needsBorder(hex) ? 'inset 0 0 0 1px rgba(26,22,20,.18)' : 'none',
+                      }}>
+                      {active && <Check size={15} strokeWidth={3} color={needsBorder(hex) ? '#1A1614' : '#fff'} />}
+                    </button>
                   );
                 })}
               </div>
             </div>
           )}
 
-          {/* Faixas de preço */}
+          {/* Faixas de preço — comprar mais custa menos, e dá para ver */}
           {table.tiers?.length > 0 && (
-            <div className="mt-6 bg-gray-50 rounded-xl p-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Preço por quantidade</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+            <div className="lj-prod-bloco">
+              <div className="lj-prod-rotulo"><span>Preço por quantidade</span></div>
+              <div className="lj-prod-faixas">
                 {table.tiers.map((t, i) => (
-                  <div key={i} className={`rounded-lg px-3 py-2 ${qty >= (t.min_qty||0) && (t.max_qty==null || qty <= t.max_qty) ? 'bg-orange-100 text-orange-800 font-semibold' : 'bg-white border border-gray-100'}`}>
-                    <p className="text-xs text-gray-500">{t.min_qty}{t.max_qty ? `–${t.max_qty}` : '+'} un</p>
-                    <p className="font-bold">{fmt(t.price)}</p>
-                  </div>
+                  <button key={i} type="button" className={`fx ${faixaAtiva(t) ? 'on' : ''}`}
+                    onClick={() => setQty(Math.max(minQty, Number(t.min_qty) || minQty))}>
+                    <span>{t.min_qty}{t.max_qty ? `–${t.max_qty}` : '+'} un</span>
+                    <b>{fmt(t.price)}</b>
+                  </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Quantidade + adicionar */}
-          <div className="mt-6 flex items-center gap-3">
-            <div className="flex flex-col">
-              <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
-                <button onClick={() => setQty(q => Math.max(minQty, q - minQty))} className="px-3 py-3 hover:bg-gray-50"><Minus size={15} /></button>
-                <input type="number" min={minQty} step={minQty} value={qty}
-                  onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
-                  onBlur={e => { if ((parseInt(e.target.value) || 0) < minQty) setQty(minQty); }}
-                  className="w-20 text-center font-bold outline-none" />
-                <button onClick={() => setQty(q => q + minQty)} className="px-3 py-3 hover:bg-gray-50"><Plus size={15} /></button>
+          {/* Quantidade + total */}
+          <div className="lj-prod-compra">
+            <div>
+              <div className="lj-prod-rotulo"><span>Quantidade</span></div>
+              <div className="lj-prod-qtd">
+                <button onClick={() => setQty(q => Math.max(minQty, q - minQty))} aria-label="Diminuir">
+                  <Minus size={15} />
+                </button>
+                {/* Campo de texto, não `number`: o input nativo traz as
+                    setinhas do navegador, que no tema escuro do sistema
+                    vinham como uma caixa preta no meio do site creme. */}
+                <input type="text" inputMode="numeric" value={qty}
+                  onChange={e => {
+                    const n = parseInt(String(e.target.value).replace(/\D/g, ''), 10);
+                    setQty(Number.isFinite(n) ? n : '');
+                  }}
+                  onBlur={() => setQty(q => (Number(q) >= minQty ? Number(q) : minQty))}
+                  aria-label="Quantidade" />
+                <button onClick={() => setQty(q => (Number(q) || 0) + minQty)} aria-label="Aumentar">
+                  <Plus size={15} />
+                </button>
               </div>
-              {minQty > 1 && <p className="text-[11px] text-orange-600 mt-1">Pedido mínimo: {minQty} un.</p>}
+              {minQty > 1 && <p className="lj-prod-min">Pedido mínimo: {minQty} un.</p>}
             </div>
-            <div className="flex-1">
-              <p className="text-xs text-gray-400">Total</p>
-              <p className="text-xl font-extrabold text-gray-900">{fmt(unitPrice * qty)}</p>
+
+            <div className="lj-prod-total">
+              <span>Total</span>
+              <b>{semPreco ? '—' : fmt(unitPrice * (Number(qty) || 0))}</b>
             </div>
           </div>
 
-          <div className="mt-4 flex gap-3">
-            <button onClick={addToCart}
-              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors">
-              <ShoppingCart size={18} /> Adicionar ao carrinho
+          <div className="lj-prod-acoes">
+            <button onClick={addToCart} className="lj-btn laranja">
+              <ShoppingCart size={17} /> Adicionar ao carrinho
             </button>
-            <button onClick={() => { addToCart(); navigate('/loja/carrinho'); }}
-              className="bg-gray-900 hover:bg-gray-800 text-white font-semibold px-5 rounded-xl flex items-center gap-2 transition-colors">
-              <Check size={18} /> Pedir
+            <button onClick={() => { addToCart(); navigate('/loja/carrinho'); }} className="lj-btn">
+              <Check size={17} /> Pedir agora
             </button>
           </div>
 
-          <p className="text-xs text-gray-400 mt-3">
+          <p className="lj-prod-nota">
             Este é o copo liso, sem impressão. Ao pedir, você recebe um orçamento sem compromisso.
           </p>
 
           {/* A ponte para o outro caminho. Quem chegou aqui querendo o copo
               com nome e data precisa saber que isso existe — e onde. */}
-          <a href="/catalogo"
-            className="mt-4 flex items-start gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3.5 hover:bg-violet-100 transition-colors">
-            <PenTool size={18} className="text-violet-600 shrink-0 mt-0.5" />
+          <a href="/catalogo" className="lj-prod-ponte">
+            <PenTool size={18} />
             <span>
-              <span className="block font-semibold text-sm text-violet-900">Quer com personalização?</span>
-              <span className="block text-xs text-violet-700 mt-0.5">
-                No Catálogo de Produtos Personalizados você escolhe o acabamento, monta a arte com
-                nomes e data e vê o copo pronto antes de fechar.
-              </span>
+              <b>Quer com personalização?</b>
+              No Catálogo de Produtos Personalizados você escolhe o acabamento, monta a arte com
+              nomes e data e vê o copo pronto antes de fechar.
             </span>
           </a>
+        </div>
+
+        {/* Os três motivos que o cliente pergunta antes de fechar.
+            No celular eles vêm DEPOIS do botão: quem abriu no telefone
+            quer ver preço e comprar, não rolar 500px de selo até achar
+            o valor. No computador o CSS devolve o bloco para baixo do
+            copo, onde sobra espaço. */}
+        <div className="lj-prod-garantias">
+          <div><Package size={16} /><span>Caixa fechada, direto da fábrica</span></div>
+          <div><Truck size={16} /><span>Frete calculado pelo seu estado</span></div>
+          <div><ShieldCheck size={16} /><span>Orçamento sem compromisso</span></div>
         </div>
       </div>
     </div>
