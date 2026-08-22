@@ -11,10 +11,11 @@ import {
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory, ShieldCheck,
   Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark, Star,
-  MessageSquare, LogOut, LayoutGrid,
+  MessageSquare, LogOut, LayoutGrid, Globe,
 } from 'lucide-react';
 
 import { useState } from 'react';
+import { SITES } from '@/pages/Sites/sites';
 
 // Dashboard primeiro (separado por um divisor), depois todos os módulos que
 // têm submenu agrupados, em seguida os módulos diretos, e Configurações por último.
@@ -38,6 +39,17 @@ const menuItems = [
       { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
       { label: 'Estúdio 3D', path: '/studio', icon: Box, module: 'customizations' },
       { label: 'Cupons de Desconto', path: '/coupons', icon: Tag, module: 'sales' },
+    ],
+  },
+  // Sites — um submenu por endereço público. A lista NÃO é escrita aqui:
+  // vem do catálogo em pages/Sites/sites.js, o mesmo que desenha o painel.
+  // Endereço novo registrado lá aparece no menu sozinho.
+  {
+    label: 'Sites',
+    icon: Globe,
+    children: [
+      { label: 'Todos os sites', path: '/sites', icon: LayoutGrid, module: ['sites', 'settings'], exact: true },
+      ...SITES.map(s => ({ label: s.nome, path: `/sites/${s.key}`, icon: s.icone, module: ['sites', 'settings'] })),
     ],
   },
   {
@@ -333,16 +345,20 @@ function SidebarGroup({ item, collapsed, onMobileClose, badges = {} }) {
 // Aplica permissões: itens sem module são públicos; adminOnly exige admin;
 // grupos somem quando nenhum filho sobra.
 function filterMenu(items, hasModule, isAdmin) {
+  // module aceita 'stock' ou ['sites','settings'] — basta um deles liberar,
+  // igual à regra que as rotas usam. Menu e rota discordarem é como o
+  // usuário descobre um item que abre e cai fora.
+  const pode = m => hasModule(...(Array.isArray(m) ? m : [m]));
   return items
     .map(item => {
       if (item.children) {
         const children = item.children.filter(c =>
-          c.adminOnly ? isAdmin : (!c.module || hasModule(c.module))
+          c.adminOnly ? isAdmin : (!c.module || pode(c.module))
         );
         return children.length ? { ...item, children } : null;
       }
       if (item.adminOnly && !isAdmin) return null;
-      if (item.module && !hasModule(item.module)) return null;
+      if (item.module && !pode(item.module)) return null;
       return item;
     })
     .filter(Boolean);

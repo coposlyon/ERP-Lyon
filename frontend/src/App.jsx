@@ -65,6 +65,8 @@ const Audit              = lazy(() => import('@/pages/Settings/Audit'));
 const CadastroAprovacoes = lazy(() => import('@/pages/Settings/CadastroAprovacoes'));
 const Feriados           = lazy(() => import('@/pages/Settings/Feriados'));
 const CatalogoAdmin      = lazy(() => import('@/pages/Settings/CatalogoAdmin'));
+const Sites             = lazy(() => import('@/pages/Sites/Sites'));
+const SiteDetalhe        = lazy(() => import('@/pages/Sites/SiteDetalhe'));
 const Quotes             = lazy(() => import('@/pages/Quotes/Quotes'));
 const QuoteForm          = lazy(() => import('@/pages/Quotes/QuoteForm'));
 const NewQuote           = lazy(() => import('@/pages/Quotes/NewQuote'));
@@ -268,6 +270,11 @@ function AppRoutes() {
         {/* O cadastro que alimenta o catálogo público: famílias, gabaritos,
             caixa do liso, ocasiões e o banco de artes. */}
         <Route path="catalogo-admin" element={<Mod m={['settings','products']}><CatalogoAdmin /></Mod>} />
+        {/* Sites — o painel de todos os endereços públicos (loja, catálogo,
+            acompanhamento e autocadastros): como estão agora e onde se edita
+            cada um. Um site por submódulo, e o índice deles em /sites. */}
+        <Route path="sites" element={<Mod m={['sites','settings']}><Sites /></Mod>} />
+        <Route path="sites/:key" element={<Mod m={['sites','settings']}><SiteDetalhe /></Mod>} />
         {/* Novos módulos */}
         <Route path="returns"  element={<Mod m="returns"><Returns /></Mod>}  />
         <Route path="quality"  element={<Mod m="quality"><Quality /></Mod>}  />

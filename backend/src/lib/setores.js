@@ -49,6 +49,7 @@ const MODULOS = [
   { key: 'fiscal',           label: 'Fiscal / NF-e',        grupo: 'Administrativo' },
   { key: 'reports',          label: 'Relatórios',           grupo: 'Administrativo' },
   { key: 'hr',               label: 'RH',                   grupo: 'Administrativo' },
+  { key: 'sites',            label: 'Sites (loja/catálogo)', grupo: 'Administrativo' },
   { key: 'settings',         label: 'Configurações',        grupo: 'Administrativo' },
 ];
 
