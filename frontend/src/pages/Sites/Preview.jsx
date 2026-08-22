@@ -60,16 +60,29 @@ function usePreviaNaFila(chave = '') {
   const [visivel, setVisivel] = useState(false);
   const [carregar, setCarregar] = useState(false);
   const [pronto, setPronto] = useState(false);
-  const bilhete = useRef(null);
+  const soltarVez = useRef(null);
 
   // Recarregar (ou trocar de aparelho) traz o véu de volta: o quadro
   // com o desenho antigo enquanto o novo abre é o que parece bug.
   useEffect(() => { setPronto(false); }, [chave]);
 
   // Só o que está (ou está quase) na tela entra na fila.
+  //
+  // A CONTA DE GEOMETRIA VEM ANTES DO OBSERVADOR, e não é preciosismo: o
+  // IntersectionObserver só entrega aviso quando o navegador está
+  // desenhando. Em aba de segundo plano ele cala, e o cartão que está
+  // bem no meio da tela ficaria em "Abrindo o site..." para sempre.
+  // Medir o retângulo funciona desenhando ou não; o observador fica para
+  // o que ainda vai chegar rolando a página.
   useEffect(() => {
     const el = alvo.current;
     if (!el) return;
+    const naTela = () => {
+      const r = el.getBoundingClientRect();
+      const alturaJanela = window.innerHeight || document.documentElement.clientHeight || 0;
+      return r.bottom > -200 && r.top < alturaJanela + 200;
+    };
+    if (naTela()) { setVisivel(true); return; }
     const io = new IntersectionObserver(([e]) => {
       if (e.isIntersecting) { setVisivel(true); io.disconnect(); }
     }, { rootMargin: '200px' });
@@ -77,22 +90,28 @@ function usePreviaNaFila(chave = '') {
     return () => io.disconnect();
   }, []);
 
+  // A VEZ SÓ SE DEVOLVE EM TRÊS MOMENTOS: o site abriu, estourou o prazo,
+  // ou o cartão saiu da tela. Nada mais — e é por isso que `carregar` não
+  // entra nas dependências: quando ele entrava, ligar o iframe refazia o
+  // efeito, a limpeza devolvia a vez no mesmo instante e as sete prévias
+  // disparavam em cascata. A fila existia no papel e não segurava nada.
   useEffect(() => {
-    if (!visivel || carregar) return;
+    if (!visivel) return;
+    let sair = null;
     let prazo;
-    const sair = entrarNaFila(() => {
+    const soltar = () => { clearTimeout(prazo); if (sair) { sair(); sair = null; } };
+    sair = entrarNaFila(() => {
       setCarregar(true);
-      prazo = setTimeout(() => { bilhete.current?.(); bilhete.current = null; }, 10000);
+      prazo = setTimeout(soltar, 10000);
     });
-    bilhete.current = sair;
-    return () => { clearTimeout(prazo); bilhete.current?.(); bilhete.current = null; };
-  }, [visivel, carregar]);
+    soltarVez.current = soltar;
+    return () => { soltar(); soltarVez.current = null; };
+  }, [visivel]);
 
   // O site abriu: marca como pronto e passa a vez.
   const aoAbrir = () => {
     setPronto(true);
-    bilhete.current?.();
-    bilhete.current = null;
+    soltarVez.current?.();
   };
 
   return { alvo, carregar, pronto, aoAbrir };

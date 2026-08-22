@@ -54,7 +54,7 @@ function useConfigEmpresa() {
   const [form, setForm] = useState(null);
   const [sujo, setSujo] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api.get('/settings'),
   });
@@ -82,7 +82,7 @@ function useConfigEmpresa() {
     setSujo(true);
   };
 
-  return { form, isLoading, salvar, campo, opcao, doSite, sujo };
+  return { form, isLoading, isError, refetch, salvar, campo, opcao, doSite, sujo };
 }
 
 /** A barra fixa de salvar — a mesma em todos os editores desta tela. */
@@ -234,6 +234,17 @@ export default function SiteDetalhe() {
   const painelEditor = (
     <>
       {usaConfig && cfg.isLoading && <Abrindo />}
+      {/* Sem isto, uma falha ao buscar as configurações deixava o painel
+          simplesmente VAZIO — o usuário ficava olhando para o nada sem
+          saber se era carregamento, permissão ou defeito. */}
+      {usaConfig && !cfg.isLoading && !cfg.form && (
+        <div className="flex flex-col items-start gap-3 text-sm text-gray-600 bg-amber-50 rounded-xl p-4">
+          <p>Não consegui carregar as configurações do site{cfg.isError ? ' — o servidor não respondeu' : ''}.</p>
+          <button onClick={() => cfg.refetch()} className="btn-secondary btn-sm">
+            <RefreshCw size={14} /> Tentar de novo
+          </button>
+        </div>
+      )}
       {usaConfig && !cfg.isLoading && cfg.form && (
         <>
           {editorLoja     && <EditorLoja     cfg={cfg} isAdmin={isAdmin} aoSalvar={recarregar} />}
@@ -288,8 +299,10 @@ export default function SiteDetalhe() {
 
   return (
     <div className="space-y-4">
-      {/* Cabeçalho */}
-      <div className="page-header">
+      {/* Cabeçalho. NÃO usa .page-header no bloco de fora: aquela classe é
+          uma LINHA flex, e a descrição viraria irmã do título — foi assim
+          que ela foi parar espremida na beirada direita da tela. */}
+      <div className="mb-4 sm:mb-6 space-y-3">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-start gap-3 min-w-0">
             <Link to="/sites" className="btn-ghost btn-sm text-gray-500 mt-0.5" title="Voltar para Sites">
@@ -317,7 +330,7 @@ export default function SiteDetalhe() {
             <ExternalLink size={14} /> Abrir o site
           </a>
         </div>
-        <p className="text-sm text-gray-500 mt-3">{site.descricao}</p>
+        <p className="text-sm text-gray-500 max-w-3xl">{site.descricao}</p>
       </div>
 
       {/* Abas */}
