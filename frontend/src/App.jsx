@@ -84,6 +84,8 @@ const CRM                = lazy(() => import('@/pages/CRM/CRM'));
 const Marketing          = lazy(() => import('@/pages/Marketing/Marketing'));
 const Production         = lazy(() => import('@/pages/Production/Production'));
 const HR                 = lazy(() => import('@/pages/HR/HR'));
+const PainelRH           = lazy(() => import('@/pages/HR/PainelRH'));
+const EstruturaEmpresa   = lazy(() => import('@/pages/HR/EstruturaEmpresa'));
 const HRPonto            = lazy(() => import('@/pages/HR/HRPonto'));
 const HRFerias           = lazy(() => import('@/pages/HR/HRFerias'));
 const HRFolha            = lazy(() => import('@/pages/HR/HRFolha'));
@@ -292,7 +294,11 @@ function AppRoutes() {
         <Route path="marketing" element={<Mod m={['marketing','crm']}><Marketing /></Mod>} />
         <Route path="production" element={<Mod m={['production','quality','stock']}><Production /></Mod>} />
         <Route path="hr" element={<Mod m="hr"><HR /></Mod>}>
-          <Route index element={<Navigate to="ponto" replace />} />
+          <Route index element={<Navigate to="painel" replace />} />
+          {/* Painel e Estrutura: as duas telas que alimentam todas as
+              outras — tudo calculado do cadastro mestre. */}
+          <Route path="painel"     element={<PainelRH />} />
+          <Route path="estrutura"  element={<EstruturaEmpresa />} />
           <Route path="ponto"      element={<HRPonto />} />
           <Route path="ferias"     element={<HRFerias />} />
           <Route path="folha"      element={<HRFolha />} />

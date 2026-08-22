@@ -142,6 +142,8 @@ export const menuItems = [
       // dele. Por isso este item aparece para qualquer pessoa — e, com
       // ele aqui dentro, o grupo Recursos Humanos também aparece, ainda
       // que com um item só, para quem não é do RH.
+      { label: 'Painel RH',           path: '/hr/painel',     icon: LayoutDashboard, module: 'hr' },
+      { label: 'Estrutura da Empresa', path: '/hr/estrutura', icon: Building2,      module: 'hr' },
       { label: 'Bater Ponto',         path: '/marcacao',      icon: Fingerprint },
       { label: 'Gestão de Pontos',    path: '/hr/ponto',      icon: Clock,      module: 'hr' },
       { label: 'Férias',              path: '/hr/ferias',     icon: Umbrella,   module: 'hr' },
