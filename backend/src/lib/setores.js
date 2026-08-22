@@ -94,15 +94,20 @@ async function listSetores(tenantId) {
  * o servidor e a tela nunca discordam sobre quem pode o quê.
  */
 function resolverAcesso(userProfile, setor) {
+  // Telas liberadas para esta pessoa. `undefined` (coluna ainda não
+  // criada) e `null` (ninguém escolheu) valem a mesma coisa: sem
+  // restrição por tela. Lista vazia é escolha — não vê nada.
+  const telas = Array.isArray(userProfile?.allowed_screens) ? userProfile.allowed_screens : null;
+
   if (userProfile?.role === 'admin') {
-    return { modules: null, layout: 'erp', home: '/', setor: setor?.key || null, setorName: setor?.name || 'Administrador' };
+    return { modules: null, screens: null, layout: 'erp', home: '/', setor: setor?.key || null, setorName: setor?.name || 'Administrador' };
   }
 
   const extras = Array.isArray(userProfile?.allowed_modules) ? userProfile.allowed_modules : null;
 
   if (!setor) {
     // Regra antiga, intocada: null = sem restrição, lista = só a lista.
-    return { modules: extras, layout: 'erp', home: '/', setor: null, setorName: null };
+    return { modules: extras, screens: telas, layout: 'erp', home: '/', setor: null, setorName: null };
   }
 
   const doSetor = Array.isArray(setor.modules) ? setor.modules : [];
@@ -110,6 +115,7 @@ function resolverAcesso(userProfile, setor) {
 
   return {
     modules,
+    screens: telas,
     layout: LAYOUTS.includes(setor.layout) ? setor.layout : 'erp',
     home: setor.home_path || '/',
     setor: setor.key,

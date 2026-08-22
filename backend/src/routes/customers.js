@@ -6,6 +6,7 @@ const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { getEmailConfig, makeTransport } = require('../lib/mailer');
 const { recomputeRating, recomputeAll } = require('../lib/customerRating');
+const { uploadDataUrl } = require('../lib/storage');
 const { computePrime, TIERS } = require('../lib/lyonPrime');
 const googleContacts = require('../lib/googleContacts');
 const { getCreditConfig, consultarCredito } = require('../lib/creditCheck');
@@ -389,6 +390,16 @@ router.put('/:id', async (req, res) => {
 
     const existingAttachments = current?.admission_data?.attachments || [];
 
+    // FOTO DO COLABORADOR. A tela manda a imagem em data URL; guardar
+    // isso numa coluna de texto seria enfiar 200 KB de base64 em cada
+    // consulta de lista. Sobe para o Storage e grava só o endereço.
+    let avatarUrl;
+    if (typeof req.body.avatar === 'string' && /^data:/.test(req.body.avatar)) {
+      avatarUrl = await uploadDataUrl(req.body.avatar, 'colaboradores') || undefined;
+    } else if (req.body.avatar === null) {
+      avatarUrl = null;
+    }
+
     const base = {
       type, name, cpf_cnpj, rg_ie, email, phone, mobile, address,
       credit_limit, is_active, instagram, nome_fantasia,
@@ -406,14 +417,16 @@ router.put('/:id', async (req, res) => {
       ...base,
       birth_date: birth_date || null,
       updated_at: new Date().toISOString(),
+      ...(avatarUrl !== undefined ? { avatar_url: avatarUrl } : {}),
       ...(vendedor !== undefined ? { vendedor: vendedor || null } : {}),
       ...(boleto_days !== undefined ? { boleto_days: (boleto_days === '' || boleto_days == null) ? null : parseInt(boleto_days) } : {}),
     };
     const upd = (p) => supabase.from('CLIENTES')
       .update(p).eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     let { data, error } = await upd(payload);
-    while (error && /(birth_date|updated_at|vendedor|boleto_days)/i.test(error.message || '')) {
-      if (/birth_date/i.test(error.message)) delete payload.birth_date;
+    while (error && /(birth_date|updated_at|vendedor|boleto_days|avatar_url)/i.test(error.message || '')) {
+      if (/avatar_url/i.test(error.message)) delete payload.avatar_url;
+      else if (/birth_date/i.test(error.message)) delete payload.birth_date;
       else if (/updated_at/i.test(error.message)) delete payload.updated_at;
       else if (/vendedor/i.test(error.message)) delete payload.vendedor;
       else if (/boleto_days/i.test(error.message)) delete payload.boleto_days;
@@ -612,6 +625,9 @@ router.post('/:id/attachments', upload.single('file'), async (req, res) => {
       path: filePath,
       type: file.mimetype,
       size: file.size,
+      // A pasta que a tela escolheu (documentos pessoais, do cônjuge,
+      // dos filhos...). Sem ela, dez anexos viram um monte sem dono.
+      folder: req.body?.folder || null,
       uploaded_at: new Date().toISOString(),
     };
 

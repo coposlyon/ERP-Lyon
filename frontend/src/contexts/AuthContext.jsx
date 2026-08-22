@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
+import { podeVerTela } from '@/lib/menu';
 
 const AuthContext = createContext(null);
 
@@ -59,6 +60,18 @@ export function AuthProvider({ children }) {
     return modules.some(m => allowed.includes(m));
   }, [user]);
 
+  // Pode ABRIR esta tela?
+  //
+  // Duas travas em série: o módulo (que o servidor também cobra) e a
+  // lista de telas liberadas para esta pessoa. `allowed_screens` nulo
+  // quer dizer "ninguém escolheu tela nenhuma" — vale a regra antiga, o
+  // módulo decide. Lista vazia é escolha: não vê nada.
+  const hasScreen = useCallback((path) => podeVerTela(path, {
+    isAdmin: user?.role === 'admin',
+    hasModule,
+    screens: user?.allowed_screens ?? null,
+  }), [user, hasModule]);
+
   const isAdmin = user?.role === 'admin';
   const isManager = ['admin', 'manager'].includes(user?.role);
 
@@ -70,7 +83,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, tenant, loading, login, logout, hasModule, isAdmin, isManager,
+      user, tenant, loading, login, logout, hasModule, hasScreen, isAdmin, isManager,
       layout, homePath, sector: user?.sector_key || null, sectorName: user?.sector_name || null,
     }}>
       {children}

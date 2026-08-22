@@ -2,221 +2,13 @@ import { NavLink } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
-import {
-  LayoutDashboard, Package, Users, Truck, ShoppingCart,
-  ShoppingBag, BarChart3, FileText, Settings,
-  Boxes, Wallet, Receipt, ChevronDown, ChevronRight,
-  Monitor, ClipboardList, Palette, Tag,
-  Building2, Percent, PenLine, Briefcase, X, MapPin,
-  RotateCcw, FlaskConical, Target, UserCog,
-  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory, ShieldCheck,
-  Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark, Star,
-  MessageSquare, LogOut, LayoutGrid, Globe,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, X, UserCog, LogOut } from 'lucide-react';
 
 import { useState } from 'react';
-import { SITES } from '@/pages/Sites/registro';
+import { menuItems, menuVendedor } from '@/lib/menu';
 
 // Dashboard primeiro (separado por um divisor), depois todos os módulos que
 // têm submenu agrupados, em seguida os módulos diretos, e Configurações por último.
-const menuItems = [
-  {
-    label: 'Dashboard',
-    icon: LayoutDashboard,
-    path: '/',
-    exact: true,
-    // sem module: visível para todos
-  },
-
-  // --- Módulos com submenu (agrupados) ---
-  {
-    label: 'Comercial',
-    icon: ShoppingCart,
-    children: [
-      { label: 'Painel do Vendedor', path: '/vendedor', icon: Target, module: 'vendedor' },
-      { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart, module: 'sales' },
-      { label: 'Pagamentos da Loja', path: '/store-payments', icon: Wallet, module: 'sales' },
-      { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
-      { label: 'Estúdio 3D', path: '/studio', icon: Box, module: 'customizations' },
-      { label: 'Cupons de Desconto', path: '/coupons', icon: Tag, module: 'sales' },
-    ],
-  },
-  // Sites — um submenu por endereço público. A lista NÃO é escrita aqui:
-  // vem do catálogo em pages/Sites/registro.js, o mesmo que desenha o painel.
-  // Endereço novo registrado lá aparece no menu sozinho.
-  {
-    label: 'Sites',
-    icon: Globe,
-    children: [
-      { label: 'Todos os sites', path: '/sites', icon: LayoutGrid, module: ['sites', 'settings'], exact: true },
-      ...SITES.map(s => ({ label: s.nome, path: `/sites/${s.key}`, icon: s.icone, module: ['sites', 'settings'] })),
-    ],
-  },
-  {
-    label: 'Cadastros',
-    icon: Package,
-    children: [
-      { label: 'Produtos', path: '/products', icon: Package, module: 'products' },
-      { label: 'Clientes', path: '/customers', icon: Users, module: 'customers' },
-      { label: 'Aprovações de Cadastro', path: '/cadastro-aprovacoes', icon: ShieldCheck, adminOnly: true },
-      { label: 'Fornecedores', path: '/suppliers', icon: Truck, module: 'suppliers' },
-      { label: 'Colaboradores', path: '/employees', icon: Briefcase, module: 'employees' },
-      { label: 'Tabelas de Preço', path: '/price-tables', icon: Percent, module: 'price-tables' },
-    ],
-  },
-  {
-    label: 'Logística',
-    icon: MapPin,
-    children: [
-      { label: 'Transportadoras', path: '/logistics', icon: Truck, module: 'logistics' },
-    ],
-  },
-  {
-    label: 'Financeiro',
-    icon: Wallet,
-    children: [
-      { label: 'Central de Contas', path: '/contas', icon: CalendarDays, module: 'financial' },
-      { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet, module: 'financial' },
-      { label: 'Config. Financeira', path: '/financial-config', icon: Building2, module: 'financial' },
-    ],
-  },
-  {
-    label: 'Precificação',
-    icon: Calculator,
-    children: [
-      { label: 'Formação de Preço', path: '/pricing/formacao', icon: Calculator, module: 'financial' },
-      { label: 'Simulador de Preço', path: '/pricing/simulador', icon: SlidersHorizontal, module: 'financial' },
-      { label: 'Relatórios de Preço', path: '/pricing/relatorios', icon: Trophy, module: 'financial' },
-      { label: 'Análise de Produtos', path: '/pricing', icon: LineChart, module: 'financial', exact: true },
-    ],
-  },
-  {
-    label: 'Engenharia de Custos',
-    icon: PieChart,
-    children: [
-      { label: 'Insumos', path: '/engenharia/insumos', icon: FlaskConical, module: 'financial' },
-      { label: 'Despesas Fixas', path: '/rateio/despesas-fixas', icon: Home, module: 'financial' },
-      { label: 'Despesas Variáveis', path: '/rateio/despesas-variaveis', icon: Percent, module: 'financial' },
-      { label: 'Rateio por Produto', path: '/rateio/produto', icon: Package, module: 'financial' },
-      { label: 'Rateio por Pedido', path: '/rateio/pedido', icon: ShoppingCart, module: 'financial' },
-      { label: 'Painel de Rentabilidade', path: '/rateio/rentabilidade', icon: LineChart, module: 'financial' },
-      { label: 'Simulador de Metas', path: '/rateio/metas', icon: Target, module: 'financial' },
-      { label: 'Histórico de Rateios', path: '/rateio/historico', icon: ScrollText, module: 'financial' },
-    ],
-  },
-  {
-    label: 'Relatórios',
-    icon: BarChart3,
-    children: [
-      { label: 'Relatórios', path: '/reports', icon: BarChart3, module: 'reports' },
-      { label: 'Previsão de Demanda', path: '/forecast', icon: LineChart, module: 'reports' },
-    ],
-  },
-  {
-    label: 'Recursos Humanos',
-    icon: UserCog,
-    children: [
-      { label: 'Gestão de Pontos',    path: '/hr/ponto',      icon: Clock,      module: 'hr' },
-      { label: 'Férias',              path: '/hr/ferias',     icon: Umbrella,   module: 'hr' },
-      { label: 'Folha de Pagamento',  path: '/hr/folha',      icon: DollarSign, module: 'hr' },
-      { label: 'Documentos',          path: '/hr/documentos', icon: FileText,   module: 'hr' },
-      { label: 'Conformidade Trab.',  path: '/hr/conformidade', icon: ShieldCheck, module: 'hr' },
-    ],
-  },
-
-  // --- Módulos diretos (sem submenu) ---
-  {
-    label: 'Bater Ponto',
-    icon: Fingerprint,
-    path: '/marcacao',
-    // sem module: todo colaborador pode marcar o próprio ponto
-  },
-  {
-    label: 'Estoque',
-    icon: Boxes,
-    path: '/stock',
-    module: 'stock',
-  },
-  {
-    label: 'Produção',
-    icon: Factory,
-    path: '/production',
-    module: 'production',
-  },
-  {
-    label: 'Fiscal / NF-e',
-    icon: Receipt,
-    path: '/fiscal',
-    module: 'fiscal',
-  },
-  {
-    label: 'Contábil / Fiscal',
-    icon: Landmark,
-    path: '/contabil',
-    module: 'financial',
-  },
-  {
-    label: 'Devoluções',
-    icon: RotateCcw,
-    path: '/returns',
-    module: 'returns',
-  },
-  {
-    label: 'Qualidade',
-    icon: FlaskConical,
-    path: '/quality',
-    module: 'quality',
-  },
-  {
-    label: 'Lyon Prime',
-    icon: Star,
-    path: '/lyon-prime',
-    module: 'customers',
-  },
-  {
-    label: 'CRM',
-    icon: Target,
-    path: '/crm',
-    module: 'crm',
-  },
-  {
-    label: 'Marketing',
-    icon: Megaphone,
-    path: '/marketing',
-    module: 'marketing',
-  },
-
-  // --- Sempre por último ---
-  {
-    label: 'Configurações',
-    icon: Settings,
-    children: [
-      { label: 'Geral',     path: '/settings', icon: Settings,     module: 'settings' },
-      { label: 'Permissões por setor', path: '/permissoes', icon: ShieldCheck, module: 'settings' },
-      { label: 'Feriados',  path: '/feriados', icon: CalendarDays, module: 'settings' },
-      // O que o cliente vê no catálogo público: famílias, gabaritos da
-      // arte, caixa do liso, ocasiões e o banco de artes.
-      { label: 'Catálogo',  path: '/catalogo-admin', icon: LayoutGrid, module: 'settings' },
-      { label: 'Usuários',  path: '/users',    icon: Users,        adminOnly: true },
-      { label: 'Auditoria', path: '/audit',    icon: ScrollText,   adminOnly: true },
-    ],
-  },
-];
-
-// ── Área do vendedor ─────────────────────────────────────────
-// Cinco itens e mais nada. O princípio é o vendedor entrar no sistema
-// para vender, acompanhar a carteira e avisar de problema — sem
-// esbarrar em estoque, produção, financeiro ou logística. Por isso este
-// menu é uma lista fixa, e não o menu do ERP filtrado: filtro deixa
-// buraco quando alguém acrescenta um módulo novo sem pensar nele.
-const menuVendedor = [
-  { label: 'Dashboard',        sub: 'Acompanhar metas etc.',        path: '/vendedor',          icon: LayoutDashboard, exact: true },
-  { label: 'Pedidos de Venda', sub: 'Controle do fluxo dos clientes', path: '/vendedor/pedidos', icon: ClipboardList },
-  { label: 'Site / Catálogo',  sub: 'Enviar link para clientes',    path: '/vendedor/catalogo', icon: Box },
-  { label: 'Agenda',           sub: 'Anotações e compromissos',     path: '/vendedor/agenda',   icon: CalendarDays },
-  { label: 'Comunicação',      sub: 'Mensagens com o gerente',      path: '/vendedor/comunicacao', icon: MessageSquare },
-];
-
 function SidebarVendedor({ onMobileClose }) {
   const { user, logout, sectorName } = useAuth();
   const [menuAberto, setMenuAberto] = useState(false);
@@ -344,30 +136,32 @@ function SidebarGroup({ item, collapsed, onMobileClose, badges = {} }) {
 
 // Aplica permissões: itens sem module são públicos; adminOnly exige admin;
 // grupos somem quando nenhum filho sobra.
-function filterMenu(items, hasModule, isAdmin) {
-  // module aceita 'stock' ou ['sites','settings'] — basta um deles liberar,
-  // igual à regra que as rotas usam. Menu e rota discordarem é como o
-  // usuário descobre um item que abre e cai fora.
+function filterMenu(items, hasModule, isAdmin, hasScreen) {
+  // Duas perguntas, nesta ordem: o MÓDULO libera (module aceita 'stock'
+  // ou ['sites','settings'] — basta um) e a TELA está liberada para esta
+  // pessoa (cadastro do colaborador → Permissões). Menu e rota
+  // discordarem é como o usuário descobre um item que abre e cai fora.
   const pode = m => hasModule(...(Array.isArray(m) ? m : [m]));
+  const visivel = item => {
+    if (item.adminOnly) return isAdmin;
+    if (item.module && !pode(item.module)) return false;
+    return !item.path || hasScreen(item.path);
+  };
   return items
     .map(item => {
       if (item.children) {
-        const children = item.children.filter(c =>
-          c.adminOnly ? isAdmin : (!c.module || pode(c.module))
-        );
+        const children = item.children.filter(visivel);
         return children.length ? { ...item, children } : null;
       }
-      if (item.adminOnly && !isAdmin) return null;
-      if (item.module && !pode(item.module)) return null;
-      return item;
+      return visivel(item) ? item : null;
     })
     .filter(Boolean);
 }
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
-  const { hasModule, isAdmin, layout } = useAuth();
+  const { hasModule, hasScreen, isAdmin, layout } = useAuth();
   const ehVendedor = layout === 'vendedor';
-  const visibleItems = ehVendedor ? [] : filterMenu(menuItems, hasModule, isAdmin);
+  const visibleItems = ehVendedor ? [] : filterMenu(menuItems, hasModule, isAdmin, hasScreen);
 
   // Pedidos de alteração de cadastro esperando aprovação (só admin enxerga)
   const { data: aprovacoes } = useQuery({

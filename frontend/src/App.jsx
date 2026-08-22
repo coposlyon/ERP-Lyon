@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import Layout from '@/components/Layout/Layout';
@@ -76,6 +76,7 @@ const CustomizationStudio = lazy(() => import('@/pages/Studio/CustomizationStudi
 const PriceTables        = lazy(() => import('@/pages/PriceTable/PriceTables'));
 const Coupons            = lazy(() => import('@/pages/Coupons/Coupons'));
 const Employees          = lazy(() => import('@/pages/Employees/Employees'));
+const EmployeeFull       = lazy(() => import('@/pages/Employees/EmployeeFull'));
 const Logistics          = lazy(() => import('@/pages/Logistics/Logistics'));
 const Returns            = lazy(() => import('@/pages/Returns/Returns'));
 const Quality            = lazy(() => import('@/pages/Quality/Quality'));
@@ -116,9 +117,14 @@ function LevaAoDocumento() {
 }
 
 function Mod({ m, children }) {
-  const { hasModule } = useAuth();
+  const { hasModule, hasScreen } = useAuth();
+  const { pathname } = useLocation();
   const mods = Array.isArray(m) ? m : [m];
-  return hasModule(...mods) ? children : <Navigate to="/" replace />;
+  // Duas perguntas: o módulo libera, e a TELA está liberada para esta
+  // pessoa. Sem a segunda, esconder o item do menu não adiantaria nada —
+  // bastava digitar o endereço.
+  if (!hasModule(...mods)) return <Navigate to="/" replace />;
+  return hasScreen(pathname) ? children : <Navigate to="/" replace />;
 }
 
 function AdminOnly({ children }) {
@@ -185,6 +191,10 @@ function AppRoutes() {
         <Route path="lyon-prime" element={<Mod m="customers"><LyonPrime /></Mod>} />
         <Route path="suppliers" element={<Mod m="suppliers"><Suppliers /></Mod>} />
         <Route path="employees" element={<Mod m="employees"><Employees /></Mod>} />
+        {/* O cadastro completo do colaborador: identidade, família, contrato,
+            documentos e as permissões de acesso dele, em tela cheia. */}
+        <Route path="employees/novo" element={<Mod m="employees"><EmployeeFull /></Mod>} />
+        <Route path="employees/:id" element={<Mod m="employees"><EmployeeFull /></Mod>} />
         <Route path="logistics" element={<Mod m="logistics"><Logistics /></Mod>} />
         <Route path="price-tables" element={<Mod m="price-tables"><PriceTables /></Mod>} />
         <Route path="coupons" element={<Mod m={['price-tables','sales','pdv']}><Coupons /></Mod>} />

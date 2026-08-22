@@ -92,6 +92,8 @@ router.post('/login', async (req, res) => {
         role: userProfile?.role,
         tenant: userProfile?.EMPRESAS,
         allowed_modules: acesso.modules,
+        // Telas liberadas (cadastro do colaborador → Permissões)
+        allowed_screens: acesso.screens,
         // Qual ERP esta pessoa vê: 'erp' inteiro ou a área enxuta do vendedor
         layout: acesso.layout,
         home_path: acesso.home,

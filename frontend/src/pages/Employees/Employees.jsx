@@ -1,10 +1,9 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Edit2, Briefcase, MessageCircle, UserCheck, UserX } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
-import Modal from '@/components/UI/Modal';
-import EmployeeForm from './EmployeeForm';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -36,9 +35,8 @@ export default function Employees() {
   const [search, setSearch]         = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState(''); // '' | 'active' | 'inactive'
-  const [modalOpen, setModalOpen]   = useState(false);
-  const [editing, setEditing]       = useState(null);
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
     queryKey: ['employees', page, search, statusFilter],
@@ -54,10 +52,10 @@ export default function Employees() {
   function handleSearch(e) { e.preventDefault(); setSearch(searchInput); setPage(1); }
   function clearSearch()   { setSearch(''); setSearchInput(''); setPage(1); }
 
-  function openNew()       { setEditing(null); setModalOpen(true); }
-  function openEdit(emp)   { setEditing(emp);  setModalOpen(true); }
-  function closeModal()    { setModalOpen(false); setEditing(null); }
-  function onSaved()       { closeModal(); qc.invalidateQueries(['employees']); }
+  // O cadastro do colaborador é uma TELA, não um modal: são cinco
+  // etapas, documentos e permissões — nada disso cabe numa janelinha.
+  function openNew()     { navigate('/employees/novo'); }
+  function openEdit(emp) { navigate(`/employees/${emp.id}`); }
 
   const total     = data?.total || 0;
   const ativos    = data?.data?.filter(e => e.is_active).length ?? 0;
@@ -190,12 +188,6 @@ export default function Employees() {
         <Pagination page={page} total={total} limit={20} onPageChange={setPage}/>
       </div>
 
-      {/* Modal */}
-      <Modal isOpen={modalOpen} onClose={closeModal}
-        title={editing ? `Editar — ${editing.name}` : 'Novo Colaborador'}
-        size="lg">
-        <EmployeeForm employee={editing} onSaved={onSaved} onCancel={closeModal}/>
-      </Modal>
     </div>
   );
 }

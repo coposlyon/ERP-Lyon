@@ -1,0 +1,307 @@
+// ============================================================
+// O MENU E O REGISTRO DE TELAS DO ERP.
+//
+// Esta lista era privada do Sidebar, e isso custava caro: a tela de
+// permissões tinha a própria cópia dos módulos, escrita à mão. Duas
+// listas para a mesma verdade significam que a tela nova de amanhã
+// aparece no menu e some da permissão — e ninguém descobre até alguém
+// reclamar que não consegue liberar acesso a ela.
+//
+// Agora é uma lista só. O menu desenha a partir dela, e TELAS é a mesma
+// lista achatada: toda tela que existe no menu pode ser liberada ou
+// bloqueada pessoa a pessoa, no cadastro do colaborador.
+//
+// O QUE PERMISSÃO POR TELA É E O QUE NÃO É. Ela decide o que a pessoa
+// VÊ e por onde consegue navegar. O que o servidor entrega continua
+// preso ao MÓDULO (a coluna `module` de cada tela): esconder a tela de
+// Estoque de quem tem o módulo 'stock' tira o caminho, não o direito.
+// Para cortar o direito de verdade, tire o módulo também — as duas
+// coisas ficam lado a lado na mesma tela de cadastro.
+// ============================================================
+import {
+  LayoutDashboard, Package, Users, Truck, ShoppingCart,
+  ShoppingBag, BarChart3, FileText, Settings,
+  Boxes, Wallet, Receipt, ChevronDown, ChevronRight,
+  Monitor, ClipboardList, Palette, Tag,
+  Building2, Percent, PenLine, Briefcase, X, MapPin,
+  RotateCcw, FlaskConical, Target, UserCog,
+  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory, ShieldCheck,
+  Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark, Star,
+  MessageSquare, LogOut, LayoutGrid, Globe,
+} from 'lucide-react';
+import { SITES } from '@/pages/Sites/registro';
+
+export const menuItems = [
+  {
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    path: '/',
+    exact: true,
+    // sem module: visível para todos
+  },
+
+  // --- Módulos com submenu (agrupados) ---
+  {
+    label: 'Comercial',
+    icon: ShoppingCart,
+    children: [
+      { label: 'Painel do Vendedor', path: '/vendedor', icon: Target, module: 'vendedor' },
+      { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart, module: 'sales' },
+      { label: 'Pagamentos da Loja', path: '/store-payments', icon: Wallet, module: 'sales' },
+      { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
+      { label: 'Estúdio 3D', path: '/studio', icon: Box, module: 'customizations' },
+      { label: 'Cupons de Desconto', path: '/coupons', icon: Tag, module: 'sales' },
+    ],
+  },
+  // Sites — um submenu por endereço público. A lista NÃO é escrita aqui:
+  // vem do catálogo em pages/Sites/registro.js, o mesmo que desenha o painel.
+  // Endereço novo registrado lá aparece no menu sozinho.
+  {
+    label: 'Sites',
+    icon: Globe,
+    children: [
+      { label: 'Todos os sites', path: '/sites', icon: LayoutGrid, module: ['sites', 'settings'], exact: true },
+      ...SITES.map(s => ({ label: s.nome, path: `/sites/${s.key}`, icon: s.icone, module: ['sites', 'settings'] })),
+    ],
+  },
+  {
+    label: 'Cadastros',
+    icon: Package,
+    children: [
+      { label: 'Produtos', path: '/products', icon: Package, module: 'products' },
+      { label: 'Clientes', path: '/customers', icon: Users, module: 'customers' },
+      { label: 'Aprovações de Cadastro', path: '/cadastro-aprovacoes', icon: ShieldCheck, adminOnly: true },
+      { label: 'Fornecedores', path: '/suppliers', icon: Truck, module: 'suppliers' },
+      { label: 'Colaboradores', path: '/employees', icon: Briefcase, module: 'employees' },
+      { label: 'Tabelas de Preço', path: '/price-tables', icon: Percent, module: 'price-tables' },
+    ],
+  },
+  {
+    label: 'Logística',
+    icon: MapPin,
+    children: [
+      { label: 'Transportadoras', path: '/logistics', icon: Truck, module: 'logistics' },
+    ],
+  },
+  {
+    label: 'Financeiro',
+    icon: Wallet,
+    children: [
+      { label: 'Central de Contas', path: '/contas', icon: CalendarDays, module: 'financial' },
+      { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet, module: 'financial' },
+      { label: 'Config. Financeira', path: '/financial-config', icon: Building2, module: 'financial' },
+    ],
+  },
+  {
+    label: 'Precificação',
+    icon: Calculator,
+    children: [
+      { label: 'Formação de Preço', path: '/pricing/formacao', icon: Calculator, module: 'financial' },
+      { label: 'Simulador de Preço', path: '/pricing/simulador', icon: SlidersHorizontal, module: 'financial' },
+      { label: 'Relatórios de Preço', path: '/pricing/relatorios', icon: Trophy, module: 'financial' },
+      { label: 'Análise de Produtos', path: '/pricing', icon: LineChart, module: 'financial', exact: true },
+    ],
+  },
+  {
+    label: 'Engenharia de Custos',
+    icon: PieChart,
+    children: [
+      { label: 'Insumos', path: '/engenharia/insumos', icon: FlaskConical, module: 'financial' },
+      { label: 'Despesas Fixas', path: '/rateio/despesas-fixas', icon: Home, module: 'financial' },
+      { label: 'Despesas Variáveis', path: '/rateio/despesas-variaveis', icon: Percent, module: 'financial' },
+      { label: 'Rateio por Produto', path: '/rateio/produto', icon: Package, module: 'financial' },
+      { label: 'Rateio por Pedido', path: '/rateio/pedido', icon: ShoppingCart, module: 'financial' },
+      { label: 'Painel de Rentabilidade', path: '/rateio/rentabilidade', icon: LineChart, module: 'financial' },
+      { label: 'Simulador de Metas', path: '/rateio/metas', icon: Target, module: 'financial' },
+      { label: 'Histórico de Rateios', path: '/rateio/historico', icon: ScrollText, module: 'financial' },
+    ],
+  },
+  {
+    label: 'Relatórios',
+    icon: BarChart3,
+    children: [
+      { label: 'Relatórios', path: '/reports', icon: BarChart3, module: 'reports' },
+      { label: 'Previsão de Demanda', path: '/forecast', icon: LineChart, module: 'reports' },
+    ],
+  },
+  {
+    label: 'Recursos Humanos',
+    icon: UserCog,
+    children: [
+      { label: 'Gestão de Pontos',    path: '/hr/ponto',      icon: Clock,      module: 'hr' },
+      { label: 'Férias',              path: '/hr/ferias',     icon: Umbrella,   module: 'hr' },
+      { label: 'Folha de Pagamento',  path: '/hr/folha',      icon: DollarSign, module: 'hr' },
+      { label: 'Documentos',          path: '/hr/documentos', icon: FileText,   module: 'hr' },
+      { label: 'Conformidade Trab.',  path: '/hr/conformidade', icon: ShieldCheck, module: 'hr' },
+    ],
+  },
+
+  // --- Módulos diretos (sem submenu) ---
+  {
+    label: 'Bater Ponto',
+    icon: Fingerprint,
+    path: '/marcacao',
+    // sem module: todo colaborador pode marcar o próprio ponto
+  },
+  {
+    label: 'Estoque',
+    icon: Boxes,
+    path: '/stock',
+    module: 'stock',
+  },
+  {
+    label: 'Produção',
+    icon: Factory,
+    path: '/production',
+    module: 'production',
+  },
+  {
+    label: 'Fiscal / NF-e',
+    icon: Receipt,
+    path: '/fiscal',
+    module: 'fiscal',
+  },
+  {
+    label: 'Contábil / Fiscal',
+    icon: Landmark,
+    path: '/contabil',
+    module: 'financial',
+  },
+  {
+    label: 'Devoluções',
+    icon: RotateCcw,
+    path: '/returns',
+    module: 'returns',
+  },
+  {
+    label: 'Qualidade',
+    icon: FlaskConical,
+    path: '/quality',
+    module: 'quality',
+  },
+  {
+    label: 'Lyon Prime',
+    icon: Star,
+    path: '/lyon-prime',
+    module: 'customers',
+  },
+  {
+    label: 'CRM',
+    icon: Target,
+    path: '/crm',
+    module: 'crm',
+  },
+  {
+    label: 'Marketing',
+    icon: Megaphone,
+    path: '/marketing',
+    module: 'marketing',
+  },
+
+  // --- Sempre por último ---
+  {
+    label: 'Configurações',
+    icon: Settings,
+    children: [
+      { label: 'Geral',     path: '/settings', icon: Settings,     module: 'settings' },
+      { label: 'Permissões por setor', path: '/permissoes', icon: ShieldCheck, module: 'settings' },
+      { label: 'Feriados',  path: '/feriados', icon: CalendarDays, module: 'settings' },
+      // O que o cliente vê no catálogo público: famílias, gabaritos da
+      // arte, caixa do liso, ocasiões e o banco de artes.
+      { label: 'Catálogo',  path: '/catalogo-admin', icon: LayoutGrid, module: 'settings' },
+      { label: 'Usuários',  path: '/users',    icon: Users,        adminOnly: true },
+      { label: 'Auditoria', path: '/audit',    icon: ScrollText,   adminOnly: true },
+    ],
+  },
+];
+
+export const menuVendedor = [
+  { label: 'Dashboard',        sub: 'Acompanhar metas etc.',        path: '/vendedor',          icon: LayoutDashboard, exact: true },
+  { label: 'Pedidos de Venda', sub: 'Controle do fluxo dos clientes', path: '/vendedor/pedidos', icon: ClipboardList },
+  { label: 'Site / Catálogo',  sub: 'Enviar link para clientes',    path: '/vendedor/catalogo', icon: Box },
+  { label: 'Agenda',           sub: 'Anotações e compromissos',     path: '/vendedor/agenda',   icon: CalendarDays },
+  { label: 'Comunicação',      sub: 'Mensagens com o gerente',      path: '/vendedor/comunicacao', icon: MessageSquare },
+];
+
+// ── O registro de telas ─────────────────────────────────────
+// O menu achatado: cada linha é uma tela que alguém pode abrir.
+function achatar(itens, grupo = null) {
+  const out = [];
+  for (const item of itens) {
+    if (item.children) { out.push(...achatar(item.children, item.label)); continue; }
+    if (!item.path) continue;
+    out.push({
+      path: item.path,
+      label: item.label,
+      grupo: grupo || 'Geral',
+      module: item.module || null,
+      adminOnly: !!item.adminOnly,
+      exact: !!item.exact,
+    });
+  }
+  return out;
+}
+
+export const TELAS = [
+  ...achatar(menuItems),
+  // A área do vendedor é um layout à parte, mas as telas dela também
+  // se liberam uma a uma.
+  ...menuVendedor.map(t => ({
+    path: t.path, label: t.label, grupo: 'Área do vendedor',
+    module: 'vendedor', adminOnly: false, exact: !!t.exact,
+  })),
+  { path: '/vendedor/perfil', label: 'Dados do vendedor', grupo: 'Área do vendedor', module: 'vendedor' },
+  { path: '/vendedor/config', label: 'Configuração do vendedor', grupo: 'Área do vendedor', module: 'vendedor' },
+];
+
+/** As telas agrupadas, na ordem do menu — é assim que a tela de permissões desenha. */
+export function telasPorGrupo() {
+  const g = new Map();
+  for (const t of TELAS) {
+    if (!g.has(t.grupo)) g.set(t.grupo, []);
+    g.get(t.grupo).push(t);
+  }
+  return [...g.entries()].map(([grupo, telas]) => ({ grupo, telas }));
+}
+
+export const TELA_POR_PATH = Object.fromEntries(TELAS.map(t => [t.path, t]));
+
+/**
+ * A pessoa pode abrir esta tela?
+ *
+ * `screens` é a lista de telas liberadas para ela. `null`/`undefined`
+ * significa "nunca foi escolhido nada", e aí vale a regra antiga: o
+ * módulo decide sozinho. Lista vazia é escolha — ninguém vê nada.
+ */
+/**
+ * A tela dona deste endereço.
+ *
+ * /customers/123 e /sales/9/detalhe não estão no menu — são o DETALHE de
+ * uma tela que está. Sem esta resolução por prefixo, quem tivesse a
+ * lista de telas veria a lista de clientes e levaria um chute na cara ao
+ * clicar num cliente.
+ */
+export function telaDoCaminho(path) {
+  if (TELA_POR_PATH[path]) return TELA_POR_PATH[path];
+  let achada = null;
+  for (const t of TELAS) {
+    if (t.path === '/') continue;
+    if (path === t.path || path.startsWith(t.path + '/')) {
+      if (!achada || t.path.length > achada.path.length) achada = t;
+    }
+  }
+  return achada;
+}
+
+export function podeVerTela(path, { isAdmin, hasModule, screens }) {
+  if (isAdmin) return true;
+  const tela = telaDoCaminho(path);
+  if (tela?.adminOnly) return false;
+  if (tela?.module && !hasModule(tela.module)) return false;
+  if (screens == null) return true;
+  // Endereço que não pertence a tela nenhuma do menu (uma rota solta)
+  // continua valendo pelo módulo — a lista de telas não é uma lista de
+  // rotas, e negar o desconhecido travaria o sistema a cada rota nova.
+  if (!tela) return true;
+  return screens.includes(tela.path);
+}

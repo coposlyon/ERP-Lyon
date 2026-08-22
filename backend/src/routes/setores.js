@@ -25,6 +25,9 @@ router.get('/modulos', (req, res) => res.json(MODULOS));
 router.get('/meu-acesso', (req, res) => {
   res.json({
     allowed_modules: req.acesso?.modules ?? null,
+    // Telas liberadas — a tela pergunta a cada carregamento, então
+    // tirar uma permissão vale no próximo F5, não só no próximo login.
+    allowed_screens: req.acesso?.screens ?? null,
     layout: req.acesso?.layout || 'erp',
     home_path: req.acesso?.home || '/',
     sector_key: req.acesso?.setor || null,
