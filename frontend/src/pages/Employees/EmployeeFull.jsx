@@ -332,7 +332,7 @@ export default function EmployeeFull() {
           {etapa === 4 && <ContratoPoliticas f={f} set={set} />}
           {etapa === 5 && (
             isAdmin
-              ? <Revisao f={f} acesso={acesso} setAcesso={setAcesso} resumo={resumo} />
+              ? <Revisao f={f} set={set} acesso={acesso} setAcesso={setAcesso} resumo={resumo} />
               : (
                 <div className="card"><div className="card-body">
                   <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-2">

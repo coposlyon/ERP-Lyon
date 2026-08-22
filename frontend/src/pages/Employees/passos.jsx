@@ -15,7 +15,7 @@ import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   User, Users, Home, Landmark, Monitor, Briefcase, FileText, Upload, Trash2,
-  Download, Loader2, Plus, ShieldCheck, ScrollText, Baby, Check,
+  Download, Loader2, Plus, ShieldCheck, ScrollText, Baby, Check, KeyRound,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -495,7 +495,16 @@ export function ContratoPoliticas({ f, set }) {
 }
 
 // ── 5. Revisão e conclusão ──────────────────────────────────
-export function Revisao({ f, acesso, setAcesso, resumo }) {
+export function Revisao({ f, set, acesso, setAcesso, resumo }) {
+  // O LOGIN NASCE AQUI, NÃO NA ETAPA 1. Antes esta etapa só dizia
+  // "volte para Dados Pessoais e ligue o acesso" — quem estava
+  // cadastrando alguém para USAR o sistema chegava no fim e era mandado
+  // de volta ao começo. Criar o login é parte de concluir a admissão.
+  function criarLogin() {
+    set('has_access', true);
+    if (!f.access_email) set('access_email', f.email_corporativo || f.email || '');
+  }
+
   return (
     <div className="space-y-4">
       <Secao icone={Check} titulo="Confira antes de concluir" descricao="O que vai ser gravado no cadastro." colunas={4}>
@@ -514,8 +523,49 @@ export function Revisao({ f, acesso, setAcesso, resumo }) {
             O que esta pessoa enxerga do sistema — tela por tela.
           </p>
         </div>
-        <div className="card-body">
-          <PermissoesTelas valor={acesso} aoMudar={setAcesso} semAcesso={!f.has_access} />
+        <div className="card-body space-y-5">
+          {!f.has_access ? (
+            <div className="flex flex-col items-start gap-3 bg-gray-50 rounded-xl p-4">
+              <p className="text-sm text-gray-600">
+                Este colaborador ainda <b>não tem login</b>. Crie o acesso para escolher, tela por
+                tela, o que ele enxerga do sistema.
+              </p>
+              <button type="button" onClick={criarLogin} className="btn-primary btn-sm">
+                <KeyRound size={14} /> Criar login de acesso
+              </button>
+              <p className="text-[11px] text-gray-400">
+                Quem só bate ponto e não usa o ERP não precisa de login — pode concluir sem isto.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Os mesmos campos da etapa 1, aqui também: quem chegou até
+                  a conclusão para dar acesso não deveria ter que voltar
+                  duas telas para digitar um e-mail. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Campo label="E-mail de acesso (login)" obrigatorio
+                  dica="É por este e-mail que a pessoa entra no sistema.">
+                  <input type="email" className="input" value={f.access_email || ''}
+                    onChange={e => set('access_email', e.target.value)} />
+                </Campo>
+                <Campo label="Senha inicial"
+                  dica="Em branco, mantém a senha atual de quem já tem acesso.">
+                  <CampoSenha valor={f.access_password} aoMudar={v => set('access_password', v)}
+                    placeholder="mínimo 8 caracteres" />
+                </Campo>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
+                <p className="text-[11px] text-gray-400">
+                  O login é criado (ou atualizado) quando você salvar.
+                </p>
+                <button type="button" onClick={() => set('has_access', false)}
+                  className="text-[11px] text-gray-400 hover:text-red-500">
+                  remover o acesso deste colaborador
+                </button>
+              </div>
+              <PermissoesTelas valor={acesso} aoMudar={setAcesso} semAcesso={false} />
+            </>
+          )}
         </div>
       </section>
     </div>
