@@ -21,6 +21,11 @@ const supabase = require('../config/supabase');
 // Todo módulo que existe no ERP. É esta lista que a tela de Configurações
 // desenha como colunas da matriz — módulo fora daqui não aparece para
 // ninguém marcar, então acrescentar módulo novo começa aqui.
+//
+// CRM e QUALIDADE SAÍRAM DAQUI (e do menu) porque a Lyon não usa
+// nenhum dos dois. As telas e as tabelas continuam no repositório: o
+// que sumiu foi o caminho até elas e a caixinha de permissão. Voltar é
+// devolver a linha aqui e a entrada no menu.
 const MODULOS = [
   { key: 'dashboard',        label: 'Dashboard',            grupo: 'Geral' },
   { key: 'vendedor',         label: 'Painel do Vendedor',   grupo: 'Área do vendedor' },
@@ -33,7 +38,6 @@ const MODULOS = [
   { key: 'quotes',           label: 'Orçamentos',           grupo: 'Comercial' },
   { key: 'customizations',   label: 'Personalizações',      grupo: 'Comercial' },
   { key: 'price-tables',     label: 'Tabelas de Preço',     grupo: 'Comercial' },
-  { key: 'crm',              label: 'CRM',                  grupo: 'Comercial' },
   { key: 'marketing',        label: 'Marketing',            grupo: 'Comercial' },
   { key: 'products',         label: 'Produtos',             grupo: 'Cadastros' },
   { key: 'customers',        label: 'Clientes',             grupo: 'Cadastros' },
@@ -42,7 +46,6 @@ const MODULOS = [
   { key: 'stock',            label: 'Estoque',              grupo: 'Operação' },
   { key: 'purchases',        label: 'Compras',              grupo: 'Operação' },
   { key: 'production',       label: 'Produção',             grupo: 'Operação' },
-  { key: 'quality',          label: 'Qualidade',            grupo: 'Operação' },
   { key: 'logistics',        label: 'Logística',            grupo: 'Operação' },
   { key: 'returns',          label: 'Devoluções',           grupo: 'Operação' },
   { key: 'financial',        label: 'Financeiro',           grupo: 'Administrativo' },

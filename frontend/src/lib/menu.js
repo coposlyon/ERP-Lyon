@@ -51,6 +51,11 @@ export const menuItems = [
       { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
       { label: 'Estúdio 3D', path: '/studio', icon: Box, module: 'customizations' },
       { label: 'Cupons de Desconto', path: '/coupons', icon: Tag, module: 'sales' },
+      // Lyon Prime e Marketing viviam soltos no primeiro nível. Os dois
+      // falam com CLIENTE — fidelidade e campanha — e é isso que a
+      // pessoa do comercial está fazendo quando abre qualquer um deles.
+      { label: 'Lyon Prime', path: '/lyon-prime', icon: Star, module: 'customers' },
+      { label: 'Marketing', path: '/marketing', icon: Megaphone, module: 'marketing' },
     ],
   },
   // Sites — um submenu por endereço público. A lista NÃO é escrita aqui:
@@ -90,6 +95,11 @@ export const menuItems = [
       { label: 'Central de Contas', path: '/contas', icon: CalendarDays, module: 'financial' },
       { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet, module: 'financial' },
       { label: 'Config. Financeira', path: '/financial-config', icon: Building2, module: 'financial' },
+      // Nota fiscal e contabilidade são o mesmo assunto do dinheiro:
+      // dois grupos separados obrigavam quem fecha o mês a passear pelo
+      // menu inteiro para juntar o que sempre foi uma coisa só.
+      { label: 'Fiscal / NF-e', path: '/fiscal', icon: Receipt, module: 'fiscal' },
+      { label: 'Contábil / Fiscal', path: '/contabil', icon: Landmark, module: 'financial' },
     ],
   },
   {
@@ -128,6 +138,11 @@ export const menuItems = [
     label: 'Recursos Humanos',
     icon: UserCog,
     children: [
+      // Bater o próprio ponto NÃO pede módulo: todo colaborador marca o
+      // dele. Por isso este item aparece para qualquer pessoa — e, com
+      // ele aqui dentro, o grupo Recursos Humanos também aparece, ainda
+      // que com um item só, para quem não é do RH.
+      { label: 'Bater Ponto',         path: '/marcacao',      icon: Fingerprint },
       { label: 'Gestão de Pontos',    path: '/hr/ponto',      icon: Clock,      module: 'hr' },
       { label: 'Férias',              path: '/hr/ferias',     icon: Umbrella,   module: 'hr' },
       { label: 'Folha de Pagamento',  path: '/hr/folha',      icon: DollarSign, module: 'hr' },
@@ -138,64 +153,21 @@ export const menuItems = [
 
   // --- Módulos diretos (sem submenu) ---
   {
-    label: 'Bater Ponto',
-    icon: Fingerprint,
-    path: '/marcacao',
-    // sem module: todo colaborador pode marcar o próprio ponto
-  },
-  {
     label: 'Estoque',
     icon: Boxes,
     path: '/stock',
     module: 'stock',
   },
   {
+    // A devolução é o pedido voltando para a fábrica: quem trata dela é
+    // quem produz. Como item solto no menu, ela ficava a doze linhas de
+    // distância da Produção, que é onde a peça devolvida vai parar.
     label: 'Produção',
     icon: Factory,
-    path: '/production',
-    module: 'production',
-  },
-  {
-    label: 'Fiscal / NF-e',
-    icon: Receipt,
-    path: '/fiscal',
-    module: 'fiscal',
-  },
-  {
-    label: 'Contábil / Fiscal',
-    icon: Landmark,
-    path: '/contabil',
-    module: 'financial',
-  },
-  {
-    label: 'Devoluções',
-    icon: RotateCcw,
-    path: '/returns',
-    module: 'returns',
-  },
-  {
-    label: 'Qualidade',
-    icon: FlaskConical,
-    path: '/quality',
-    module: 'quality',
-  },
-  {
-    label: 'Lyon Prime',
-    icon: Star,
-    path: '/lyon-prime',
-    module: 'customers',
-  },
-  {
-    label: 'CRM',
-    icon: Target,
-    path: '/crm',
-    module: 'crm',
-  },
-  {
-    label: 'Marketing',
-    icon: Megaphone,
-    path: '/marketing',
-    module: 'marketing',
+    children: [
+      { label: 'Ordens de Produção', path: '/production', icon: Factory, module: 'production' },
+      { label: 'Devoluções',         path: '/returns',    icon: RotateCcw, module: 'returns' },
+    ],
   },
 
   // --- Sempre por último ---
