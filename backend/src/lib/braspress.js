@@ -5,7 +5,7 @@
 //
 // Credenciais vêm de EMPRESAS.settings.frete (bp_*), com fallback nas
 // variáveis de ambiente BRASPRESS_*. Sem elas, o recurso responde
-// "não configurada" e nada quebra (mesmo padrão da J&T/Melhor Envio).
+// "não configurada" e nada quebra.
 const onlyDigits = s => String(s || '').replace(/\D/g, '');
 
 // Garante protocolo na URL base (o lojista pode digitar "api.braspress.com" sem

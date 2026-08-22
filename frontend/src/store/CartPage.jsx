@@ -42,6 +42,7 @@ export default function CartPage() {
       const res = await storeApi.post('/frete', { cep: c, items: items.map(i => ({ product_id: i.product_id, quantity: i.quantity })) });
       setFreteOpts(res.options || []);
       if ((res.options || []).length) setFreteSel(res.options[0]);
+      else if (res.aviso) toast(res.aviso);
     } catch (e) {
       toast.error(e?.response?.data?.error || 'Não foi possível calcular o frete');
     } finally { setFreteLoading(false); }

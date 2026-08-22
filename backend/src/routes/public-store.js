@@ -12,9 +12,7 @@ const uploadDocs = multer({
 const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
 const { fichaPricing } = require('../lib/rateioLib');
 const { uploadDataUrl } = require('../lib/storage');
-const { calcularFrete, packItem } = require('../lib/frete');
-const { cotar, ufFromCep, getFreteConfig, jtCotar, jtReady } = require('../lib/shipping');
-const { braspressCotar, bpReady } = require('../lib/braspress');
+const { freteDoEstado, ufFromCep, getFreteConfig } = require('../lib/shipping');
 const { fetchInstagramMedia } = require('../lib/social');
 const { acharPorDocumento, criarSolicitacao } = require('../lib/cadastroSolicitacoes');
 const { pixConfig, gerarCobrancaPix, qrBase64 } = require('../lib/pixCobranca');
@@ -1469,95 +1467,63 @@ router.get('/my-orders', async (req, res) => {
 });
 
 // ── Frete por CEP (Melhor Envio) ──────────────────────────
+/**
+ * O FRETE DO SITE VEM DA TABELA POR ESTADO. SÓ DELA.
+ *
+ * Antes esta rota perguntava o preço a três lugares (Melhor Envio,
+ * BrasPress, J&T) e só caía na tabela quando os três falhavam. O
+ * cliente via um valor que dependia de qual API respondeu naquele
+ * minuto, e ainda levava um acréscimo de 14% por cima. Agora o valor é
+ * o que a Lyon escreveu para aquele estado em Configurações →
+ * Transportadora: o mesmo pedido custa o mesmo frete hoje e amanhã.
+ *
+ * O CEP continua sendo pedido porque é dele que sai o estado — e porque
+ * o endereço de entrega vai precisar dele de qualquer jeito.
+ */
 router.post('/frete', async (req, res) => {
   const cep = String(req.body.cep || '').replace(/\D/g, '');
   const items = Array.isArray(req.body.items) ? req.body.items : [];
-  if (cep.length !== 8) return res.status(400).json({ error: 'CEP inválido' });
+  if (cep.length !== 8) return res.status(400).json({ error: 'CEP inv\u00e1lido' });
   try {
-    const cfg = await getFreteConfig(STORE_TENANT);
-    // CEP de origem: 1º o campo de Transportadora (cfg.origin_cep), depois env,
-    // depois o endereço da empresa. Sem ele, BrasPress/Melhor Envio não cotam.
-    let fromCep = String(cfg.origin_cep || '').replace(/\D/g, '') || process.env.STORE_ORIGIN_CEP || '';
-    if (!fromCep) {
-      const { data: emp } = await supabase.from('EMPRESAS').select('address').eq('id', STORE_TENANT).maybeSingle();
-      const addr = emp?.address;
-      if (addr && typeof addr === 'object') fromCep = String(addr.zip || addr.cep || '').replace(/\D/g, '');
-    }
+    const uf = ufFromCep(cep);
+    if (!uf) return res.status(400).json({ error: 'N\u00e3o consegui identificar o estado pelo CEP.' });
 
+    // O subtotal decide só uma coisa: se bateu o frete grátis.
+    let subtotal = 0;
     const ids = [...new Set(items.map(i => i.product_id).filter(Boolean))];
-    let products = [];
-    let qty = 0, subtotal = 0;
     if (ids.length) {
       const { data: prods } = await supabase
-        .from('PRODUTOS').select('id, sale_price, height, weight, length, width')
+        .from('PRODUTOS').select('id, sale_price')
         .eq('tenant_id', STORE_TENANT).in('id', ids);
       const pm = Object.fromEntries((prods || []).map(p => [p.id, p]));
-      products = items.filter(i => pm[i.product_id]).map(i => packItem(pm[i.product_id], i.quantity));
       for (const i of items) {
         const p = pm[i.product_id]; if (!p) continue;
-        qty += Number(i.quantity) || 0;
         subtotal += (Number(p.sale_price) || 0) * (Number(i.quantity) || 0);
       }
     }
 
-    let options = [];
+    const cfg = await getFreteConfig(STORE_TENANT);
+    const r = freteDoEstado(cfg, { uf, subtotal });
 
-    // 1) Melhor Envio (cotação real multi-transportadora) — se houver token
-    if (process.env.MELHORENVIO_TOKEN && products.length) {
-      const out = await calcularFrete({ fromCep, toCep: cep, products });
-      if (out.ok && (out.options || []).length) options = out.options;
+    // Estado sem valor cadastrado: dizer "a combinar" é honesto; mandar
+    // R$ 0,00 seria prometer frete grátis que ninguém combinou.
+    if (r.sem_regra) {
+      return res.json({
+        uf, options: [],
+        aviso: 'Ainda n\u00e3o temos frete fechado para o seu estado. Finalize o pedido que a gente combina o frete com voc\u00ea.',
+      });
     }
 
-    // 2) BrasPress (cotação por CNPJ) — anexa como opção extra, se configurada
-    if (cfg.bp_enabled && bpReady(cfg) && products.length && String(fromCep).replace(/\D/g, '').length === 8) {
-      try {
-        const cubagem = products.map(p => ({
-          comprimento: Math.max((Number(p.length) || 1) / 100, 0.01),
-          largura:     Math.max((Number(p.width)  || 1) / 100, 0.01),
-          altura:      Math.max((Number(p.height) || 1) / 100, 0.01),
-          volumes:     Math.max(1, Number(p.quantity) || 1),
-        }));
-        const pesoTotal    = products.reduce((s, p) => s + (Number(p.weight) || 0) * (Number(p.quantity) || 1), 0);
-        const volumesTotal = products.reduce((s, p) => s + (Number(p.quantity) || 1), 0);
-        const bp = await braspressCotar(cfg, {
-          cepOrigem: fromCep, cepDestino: cep, vlrMercadoria: subtotal,
-          peso: pesoTotal, volumes: volumesTotal, cubagem,
-        });
-        if (bp.price > 0) {
-          options.push({
-            id: 'braspress', company: 'BrasPress',
-            service: cfg.bp_modal === 'A' ? 'Aéreo' : 'Rodoviário',
-            price: bp.price, days: bp.days,
-          });
-        }
-      } catch (e) { console.error('[public-store:frete] BrasPress', e.message); }
-    }
-
-    // 3) J&T Express (cotação + prazo pelo contrato) — anexa como opção extra
-    if (cfg.enabled && jtReady(cfg)) {
-      try {
-        const pesoTotal = products.reduce((s, p) => s + (Number(p.weight) || 0) * (Number(p.quantity) || 1), 0)
-          || (qty * cfg.weight_per_unit_g) / 1000;
-        const jt = await jtCotar(cfg, { cep, weightKg: pesoTotal, subtotal });
-        if (jt.price > 0) {
-          options.push({ id: 'jt', company: 'J&T Express', service: 'Economy', price: jt.price, days: jt.days });
-        }
-      } catch (e) { console.error('[public-store:frete] J&T', e.message); }
-    }
-
-    // 4) Fallback: tabela por estado (Configurações → Transportadora) — só se nada retornou
-    if (!options.length) {
-      const uf = ufFromCep(cep);
-      if (!uf) return res.status(400).json({ error: 'Não consegui identificar o estado pelo CEP.' });
-      const r = await cotar(STORE_TENANT, { uf, cep, qty, subtotal });
-      options = [{ id: 'tabela', company: 'Entrega', service: r.free ? 'Frete grátis' : 'Padrão', price: r.price, days: r.days }];
-    }
-
-    // Markup automático sobre o frete (custo de caixa + variação de peso) — padrão 14%
-    const markup = (cfg.freight_markup != null && cfg.freight_markup !== '') ? Number(cfg.freight_markup) : 14;
-    if (markup) options = options.map(o => ({ ...o, price: Math.round((Number(o.price) || 0) * (1 + markup / 100) * 100) / 100 }));
-
-    res.json({ options });
+    res.json({
+      uf,
+      options: [{
+        id: 'estado',
+        company: 'Entrega',
+        service: r.free ? 'Frete gr\u00e1tis' : 'Padr\u00e3o',
+        price: r.price,
+        days: r.days,
+      }],
+    });
   } catch (err) { fail(res, err); }
 });
 

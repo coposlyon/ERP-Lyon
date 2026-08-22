@@ -417,159 +417,78 @@ export default function Settings() {
           <div className="card-body space-y-6">
             {!isAdmin && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-4 py-2">Apenas admins podem alterar estas configurações.</p>}
 
-            {/* Tabela regional — funciona já */}
+            {/* O PREÇO DO FRETE É ESTA TABELA. Não existe mais cotação por
+                API decidindo o valor: o que estiver escrito aqui é o que o
+                cliente paga, hoje e amanhã. */}
             <div>
-              <h3 className="font-medium text-gray-900">Frete e prazo automáticos (por estado)</h3>
+              <h3 className="font-medium text-gray-900">Frete por estado</h3>
               <p className="text-sm text-gray-500 mt-1">
-                Define o <b>valor do frete</b> e os <b>dias de entrega</b> por estado (UF). O sistema calcula
-                automaticamente no PDV usando o estado do cliente e o peso (nº de copos × peso unitário).
+                Escreva o valor do frete de cada estado. O site e o PDV pegam o valor
+                <b> automaticamente pelo estado do cliente</b> — sem cotação externa, sem cálculo por
+                peso e sem acréscimo por cima. Estado em branco usa o valor padrão abaixo.
               </p>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
-                <label className="label">CEP de origem</label>
-                <input className="input" value={form.settings?.frete?.origin_cep || ''} onChange={e => setFrete('origin_cep', e.target.value)} placeholder="00000-000" disabled={!isAdmin} />
-              </div>
-              <div>
-                <label className="label">Peso por copo (g)</label>
-                <input type="number" className="input" value={form.settings?.frete?.weight_per_unit_g ?? ''} onChange={e => setFrete('weight_per_unit_g', e.target.value)} placeholder="200" disabled={!isAdmin} />
-              </div>
-              <div>
                 <label className="label">Frete grátis acima de (R$)</label>
                 <input type="number" className="input" value={form.settings?.frete?.free_above ?? ''} onChange={e => setFrete('free_above', e.target.value)} placeholder="0 = desligado" disabled={!isAdmin} />
               </div>
               <div>
-                <label className="label">Acréscimo no frete (%)</label>
-                <input type="number" step="0.1" className="input" value={form.settings?.frete?.freight_markup ?? ''} onChange={e => setFrete('freight_markup', e.target.value)} placeholder="14" disabled={!isAdmin} />
-                <p className="text-xs text-gray-400 mt-1">% somado ao frete (caixa + peso). Vazio = 14%. Ex.: R$50 → R$57.</p>
+                <label className="label">Valor padrão (R$)</label>
+                <input type="number" step="0.01" className="input" value={form.settings?.frete?.default_price ?? ''} onChange={e => setFrete('default_price', e.target.value)} placeholder="ex.: 30" disabled={!isAdmin} />
+                <p className="text-[11px] text-gray-400 mt-1">Para estado sem valor. Vazio = “a combinar”.</p>
               </div>
               <div>
                 <label className="label">Prazo padrão (dias)</label>
                 <input type="number" className="input" value={form.settings?.frete?.default_days ?? ''} onChange={e => setFrete('default_days', e.target.value)} placeholder="ex.: 7" disabled={!isAdmin} />
               </div>
               <div>
-                <label className="label">Frete padrão (R$)</label>
-                <input type="number" step="0.01" className="input" value={form.settings?.frete?.default_price ?? ''} onChange={e => setFrete('default_price', e.target.value)} placeholder="ex.: 30" disabled={!isAdmin} />
-                <p className="text-[11px] text-gray-400 mt-1">Usado quando o estado não tem regra própria (e sem cotação por API). Vazio = "A combinar".</p>
-              </div>
-              <div>
-                <label className="label">Frete padrão + por kg (R$)</label>
-                <input type="number" step="0.01" className="input" value={form.settings?.frete?.default_per_kg ?? ''} onChange={e => setFrete('default_per_kg', e.target.value)} placeholder="0" disabled={!isAdmin} />
+                <label className="label">CEP de origem</label>
+                <input className="input" value={form.settings?.frete?.origin_cep || ''} onChange={e => setFrete('origin_cep', e.target.value)} placeholder="00000-000" disabled={!isAdmin} />
+                <p className="text-[11px] text-gray-400 mt-1">De onde a carga sai (usado no rastreio BrasPress).</p>
               </div>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-semibold text-gray-700">Tabela por estado</h4>
-                {isAdmin && (
-                  <button type="button" onClick={() => setFreteTable([...(form.settings?.frete?.table || []), { uf: '', price: '', per_kg: '', days: '' }])}
-                    className="btn-secondary btn-sm"><Plus size={13} /> Adicionar UF</button>
-                )}
-              </div>
-              <div className="space-y-2">
-                <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 px-1">
-                  <span className="col-span-2">UF</span><span className="col-span-3">Frete base (R$)</span>
-                  <span className="col-span-3">+ por kg (R$)</span><span className="col-span-3">Prazo (dias)</span>
-                </div>
-                {(form.settings?.frete?.table || []).map((row, i) => {
-                  const upd = (k, v) => { const t = [...form.settings.frete.table]; t[i] = { ...t[i], [k]: v }; setFreteTable(t); };
-                  return (
-                    <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                      <select className="input col-span-2" value={row.uf || ''} onChange={e => upd('uf', e.target.value)} disabled={!isAdmin}>
-                        <option value="">UF</option>{states.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                      <input type="number" className="input col-span-3" value={row.price ?? ''} onChange={e => upd('price', e.target.value)} placeholder="0,00" disabled={!isAdmin} />
-                      <input type="number" className="input col-span-3" value={row.per_kg ?? ''} onChange={e => upd('per_kg', e.target.value)} placeholder="0,00" disabled={!isAdmin} />
-                      <input type="number" className="input col-span-3" value={row.days ?? ''} onChange={e => upd('days', e.target.value)} placeholder="dias" disabled={!isAdmin} />
-                      {isAdmin && <button type="button" onClick={() => setFreteTable(form.settings.frete.table.filter((_, j) => j !== i))} className="col-span-1 text-red-400 hover:text-red-600 text-lg leading-none">×</button>}
-                    </div>
-                  );
-                })}
-                {(form.settings?.frete?.table || []).length === 0 && <p className="text-xs text-gray-400">Nenhum estado configurado — usa o prazo/frete padrão acima.</p>}
-              </div>
-            </div>
+            <TabelaFretePorEstado
+              linhas={form.settings?.frete?.table || []}
+              aoMudar={setFreteTable}
+              isAdmin={isAdmin}
+            />
 
-            {/* J&T API — precisa de conta/credenciais */}
-            <div className="border-t border-gray-100 pt-5">
-              <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${form.settings?.frete?.enabled ? 'border-primary-300 bg-primary-50' : 'border-gray-200'}`}>
-                <input type="checkbox" className="mt-1 rounded" checked={!!form.settings?.frete?.enabled} onChange={e => setFrete('enabled', e.target.checked)} disabled={!isAdmin} />
-                <span>
-                  <span className="block text-sm font-semibold text-gray-800">Integração J&T Express (envios, etiqueta e rastreio pela API)</span>
-                  <span className="block text-xs text-gray-500 mt-0.5">Preencha com a <b>conta de cliente da API J&T</b> (apiAccount, customerCode, senha e privateKey). Com isso o sistema gera o envio direto da venda, imprime a etiqueta e rastreia. Se os campos ficarem vazios, o servidor usa as credenciais das variáveis de ambiente (JT_*).</span>
-                </span>
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                <div>
-                  <label className="label">apiAccount</label>
-                  <input className="input font-mono" value={form.settings?.frete?.jt_api_account || ''} onChange={e => setFrete('jt_api_account', e.target.value)} disabled={!isAdmin} />
-                </div>
-                <div>
-                  <label className="label">customerCode</label>
-                  <input className="input font-mono" value={form.settings?.frete?.jt_customer_code || ''} onChange={e => setFrete('jt_customer_code', e.target.value)} disabled={!isAdmin} />
-                </div>
-                <div>
-                  <label className="label">Senha (API)</label>
-                  <input type="password" className="input font-mono" value={form.settings?.frete?.jt_password || ''} onChange={e => setFrete('jt_password', e.target.value)} placeholder="senha do cliente J&T" disabled={!isAdmin} />
-                </div>
-                <div>
-                  <label className="label">privateKey</label>
-                  <input className="input font-mono" value={form.settings?.frete?.jt_private_key || ''} onChange={e => setFrete('jt_private_key', e.target.value)} placeholder="cole a chave privada da J&T" disabled={!isAdmin} />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="label">URL base da API</label>
-                  <input className="input font-mono" value={form.settings?.frete?.jt_base_url || ''} onChange={e => setFrete('jt_base_url', e.target.value)} placeholder="https://openapi.jtjms-br.com" disabled={!isAdmin} />
-                  <p className="text-xs text-gray-400 mt-1">Homologação: <code>https://demoopenapi.jtjms-br.com</code> · Produção: <code>https://openapi.jtjms-br.com</code></p>
-                </div>
-              </div>
-            </div>
-
-            {/* BrasPress API — cotação (loja) + rastreio por NF */}
+            {/* BrasPress — rastreio pela nota. NÃO decide preço. */}
             <div className="border-t border-gray-100 pt-5">
               <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${form.settings?.frete?.bp_enabled ? 'border-primary-300 bg-primary-50' : 'border-gray-200'}`}>
                 <input type="checkbox" className="mt-1 rounded" checked={!!form.settings?.frete?.bp_enabled} onChange={e => setFrete('bp_enabled', e.target.checked)} disabled={!isAdmin} />
                 <span>
-                  <span className="block text-sm font-semibold text-gray-800">Integração BrasPress (cotação na loja + rastreio por Nota Fiscal)</span>
-                  <span className="block text-xs text-gray-500 mt-0.5">Com as credenciais da <b>API BrasPress</b> (usuário, senha e CNPJ), a loja passa a mostrar o frete da BrasPress no carrinho e você rastreia a encomenda pela NF na venda (aba Transportadores). Se os campos ficarem vazios, o servidor usa as variáveis de ambiente (BRASPRESS_*).</span>
+                  <span className="block text-sm font-semibold text-gray-800">BrasPress — rastreio da carga pela nota fiscal</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">
+                    Serve para <b>acompanhar a entrega</b> dentro do ERP. Não interfere no valor do frete:
+                    quem define o preço é a tabela por estado acima.
+                  </span>
                 </span>
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                <div>
-                  <label className="label">Usuário (API)</label>
-                  <input className="input font-mono" value={form.settings?.frete?.bp_user || ''} onChange={e => setFrete('bp_user', e.target.value)} placeholder="00000000000000_PRD" disabled={!isAdmin} />
+
+              {form.settings?.frete?.bp_enabled && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="label">Usuário</label>
+                    <input className="input font-mono" value={form.settings?.frete?.bp_user || ''} onChange={e => setFrete('bp_user', e.target.value)} disabled={!isAdmin} />
+                  </div>
+                  <div>
+                    <label className="label">Senha</label>
+                    <input type="password" className="input font-mono" value={form.settings?.frete?.bp_password || ''} onChange={e => setFrete('bp_password', e.target.value)} disabled={!isAdmin} />
+                  </div>
+                  <div>
+                    <label className="label">CNPJ pagador do frete</label>
+                    <input className="input font-mono" value={form.settings?.frete?.bp_cnpj || ''} onChange={e => setFrete('bp_cnpj', e.target.value)} placeholder="somente números" disabled={!isAdmin} />
+                  </div>
+                  <div>
+                    <label className="label">URL base da API</label>
+                    <input className="input font-mono" value={form.settings?.frete?.bp_base_url || ''} onChange={e => setFrete('bp_base_url', e.target.value)} placeholder="https://api.braspress.com" disabled={!isAdmin} />
+                  </div>
                 </div>
-                <div>
-                  <label className="label">Senha (API)</label>
-                  <input type="password" className="input font-mono" value={form.settings?.frete?.bp_password || ''} onChange={e => setFrete('bp_password', e.target.value)} placeholder="senha da API BrasPress" disabled={!isAdmin} />
-                </div>
-                <div>
-                  <label className="label">CNPJ do contrato (remetente / pagador do frete)</label>
-                  <input className="input font-mono" value={form.settings?.frete?.bp_cnpj || ''} onChange={e => setFrete('bp_cnpj', e.target.value)} placeholder="somente números" disabled={!isAdmin} />
-                </div>
-                <div>
-                  <label className="label">CNPJ destinatário padrão (cotação sem CNPJ)</label>
-                  <input className="input font-mono" value={form.settings?.frete?.bp_cnpj_dest || ''} onChange={e => setFrete('bp_cnpj_dest', e.target.value)} placeholder="opcional — usa o do contrato se vazio" disabled={!isAdmin} />
-                  <p className="text-xs text-gray-400 mt-1">A BrasPress exige CNPJ do destinatário na cotação. Na loja, quando o cliente é consumidor, usa-se este CNPJ (a cotação depende de CEP/peso/volume, não do destinatário).</p>
-                </div>
-                <div>
-                  <label className="label">Modal</label>
-                  <select className="input" value={form.settings?.frete?.bp_modal || 'R'} onChange={e => setFrete('bp_modal', e.target.value)} disabled={!isAdmin}>
-                    <option value="R">Rodoviário</option>
-                    <option value="A">Aéreo</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Tipo de frete</label>
-                  <select className="input" value={String(form.settings?.frete?.bp_tipo_frete || 1)} onChange={e => setFrete('bp_tipo_frete', e.target.value)} disabled={!isAdmin}>
-                    <option value="1">CIF (pago pelo remetente)</option>
-                    <option value="2">FOB (pago pelo destinatário)</option>
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="label">URL base da API</label>
-                  <input className="input font-mono" value={form.settings?.frete?.bp_base_url || ''} onChange={e => setFrete('bp_base_url', e.target.value)} placeholder="https://api.braspress.com" disabled={!isAdmin} />
-                </div>
-              </div>
+              )}
             </div>
 
             {isAdmin && (
@@ -803,6 +722,92 @@ export default function Settings() {
           </div>
         </form>
       </Modal>
+    </div>
+  );
+}
+
+
+// ============================================================
+// A TABELA DE FRETE POR ESTADO.
+//
+// Os 27 estados aparecem sempre, na mesma ordem. Antes era uma lista
+// vazia com "Adicionar UF": quem abria não sabia quais estados já
+// tinham valor e quais faltavam, e descobrir isso significava contar
+// linha por linha. Com os 27 na tela, o buraco salta aos olhos — e
+// preencher é digitar, não cadastrar.
+//
+// Estado em branco não é frete zero: é estado sem regra, que cai no
+// valor padrão (ou em "a combinar", se não houver padrão).
+// ============================================================
+const UF_NOMES = {
+  AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará',
+  DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás', MA: 'Maranhão',
+  MT: 'Mato Grosso', MS: 'Mato Grosso do Sul', MG: 'Minas Gerais', PA: 'Pará',
+  PB: 'Paraíba', PR: 'Paraná', PE: 'Pernambuco', PI: 'Piauí', RJ: 'Rio de Janeiro',
+  RN: 'Rio Grande do Norte', RS: 'Rio Grande do Sul', RO: 'Rondônia', RR: 'Roraima',
+  SC: 'Santa Catarina', SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins',
+};
+
+function TabelaFretePorEstado({ linhas, aoMudar, isAdmin }) {
+  const porUf = Object.fromEntries((linhas || []).map(r => [String(r.uf || '').toUpperCase(), r]));
+  const preenchidos = states.filter(uf => {
+    const v = porUf[uf]?.price;
+    return v !== undefined && v !== null && v !== '';
+  }).length;
+
+  // Grava mantendo a tabela como lista (formato que o servidor lê), sem
+  // criar linha para estado que o usuário não tocou.
+  function set(uf, campo, valor) {
+    const atual = porUf[uf];
+    let novas;
+    if (atual) {
+      novas = linhas.map(r => (String(r.uf || '').toUpperCase() === uf ? { ...r, [campo]: valor } : r));
+    } else {
+      novas = [...(linhas || []), { uf, price: '', days: '', [campo]: valor }];
+    }
+    // Estado esvaziado por completo sai da lista: some do banco em vez de
+    // ficar lá como linha em branco.
+    novas = novas.filter(r => (r.price !== '' && r.price != null) || (r.days !== '' && r.days != null));
+    aoMudar(novas);
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-semibold text-gray-700">Valor por estado</h4>
+        <span className={`text-xs ${preenchidos === states.length ? 'text-green-600' : 'text-amber-600'}`}>
+          {preenchidos} de {states.length} estados com valor
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-4 gap-y-2">
+        {states.map(uf => {
+          const row = porUf[uf] || {};
+          const vazio = row.price === undefined || row.price === null || row.price === '';
+          return (
+            <div key={uf} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${vazio ? '' : 'bg-gray-50'}`}>
+              <span className="w-9 shrink-0 text-xs font-bold text-gray-700" title={UF_NOMES[uf]}>{uf}</span>
+              <span className="hidden xl:block flex-1 min-w-0 truncate text-[11px] text-gray-400">{UF_NOMES[uf]}</span>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-gray-400">R$</span>
+                <input type="number" step="0.01" className="input py-1 w-24 text-sm" value={row.price ?? ''}
+                  onChange={e => set(uf, 'price', e.target.value)} placeholder="—" disabled={!isAdmin} />
+              </div>
+              <div className="flex items-center gap-1">
+                <input type="number" className="input py-1 w-14 text-sm" value={row.days ?? ''}
+                  onChange={e => set(uf, 'days', e.target.value)} placeholder="dias" disabled={!isAdmin} />
+                <span className="text-[11px] text-gray-400">d</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {preenchidos === 0 && (
+        <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mt-3">
+          Nenhum estado tem valor: o site vai dizer ao cliente que o frete será combinado depois.
+        </p>
+      )}
     </div>
   );
 }

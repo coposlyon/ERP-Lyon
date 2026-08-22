@@ -108,7 +108,9 @@ export default function Carrinho() {
       const opcoes = r?.options || [];
       setOpcoesFrete(opcoes);
       setFrete(opcoes[0] || null);
-      if (!opcoes.length) toast.error('Não consegui cotar o frete para esse CEP. Fale com um atendente.');
+      // Estado sem valor na tabela: o servidor diz o que houve — repetir
+      // "não consegui cotar" mandaria o cliente achar que é erro dele.
+      if (!opcoes.length) toast(r?.aviso || 'Não consegui cotar o frete para esse CEP. Fale com um atendente.');
     } catch (err) {
       setOpcoesFrete([]);
       setFrete(null);
