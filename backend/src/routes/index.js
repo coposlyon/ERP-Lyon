@@ -109,6 +109,7 @@ router.use('/hr',        requireModules('hr'), hrRoutes);
 // calculado do cadastro mestre (migração 080).
 router.use('/rh', requireModules('hr'), require('./rh-painel'));
 router.use('/rh', requireModules('hr'), require('./rh-ferias'));
+router.use('/rh', requireModules('hr'), require('./rh-ponto'));
 router.use('/esocial',   requireModules('hr','settings'), require('./esocial'));
 router.use('/escalas',   requireModules('hr','employees','settings'), escalasRoutes);
 router.use('/situacoes', requireModules('hr','settings'), situacoesRoutes);

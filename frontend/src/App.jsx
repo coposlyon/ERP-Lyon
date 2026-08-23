@@ -87,6 +87,8 @@ const HR                 = lazy(() => import('@/pages/HR/HR'));
 const PainelRH           = lazy(() => import('@/pages/HR/PainelRH'));
 const EstruturaEmpresa   = lazy(() => import('@/pages/HR/EstruturaEmpresa'));
 const FeriasAfastamentos = lazy(() => import('@/pages/HR/FeriasAfastamentos'));
+const JornadaPonto       = lazy(() => import('@/pages/HR/JornadaPonto'));
+const Ocorrencias        = lazy(() => import('@/pages/HR/Ocorrencias'));
 const HRPonto            = lazy(() => import('@/pages/HR/HRPonto'));
 const HRFerias           = lazy(() => import('@/pages/HR/HRFerias'));
 const HRFolha            = lazy(() => import('@/pages/HR/HRFolha'));
@@ -300,7 +302,10 @@ function AppRoutes() {
               outras — tudo calculado do cadastro mestre. */}
           <Route path="painel"     element={<PainelRH />} />
           <Route path="estrutura"  element={<EstruturaEmpresa />} />
-          <Route path="ponto"      element={<HRPonto />} />
+          {/* Ponto: a ocorrência nasce do fato, não da digitação. */}
+          <Route path="ponto"      element={<JornadaPonto />} />
+          <Route path="ocorrencias" element={<Ocorrencias />} />
+          <Route path="ponto-antigo" element={<HRPonto />} />
           {/* Férias e afastamentos: saldo calculado (CLT art. 130/134),
               atestado com CID e a regra do 16º dia. */}
           <Route path="ferias"     element={<FeriasAfastamentos />} />

@@ -3,6 +3,7 @@ const router  = express.Router();
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { calcINSS, calcIRRF } = require('../lib/calc');
+const { daApuracaoDoPonto } = require('../lib/ocorrencias');
 
 // ── PONTO ─────────────────────────────────────────────────
 
@@ -101,6 +102,21 @@ async function recomputeDay(tenantId, employee_id, work_date, escala_id, opts = 
     .upsert(payload, { onConflict: 'tenant_id,employee_id,work_date' })
     .select().single();
   if (error) throw error;
+
+  // O FATO GERA A OCORRÊNCIA — não o RH digitando de novo.
+  //
+  // Passou da tolerância da escala ou faltou? Nasce uma ocorrência
+  // (uma só por pessoa/dia/tipo) e o colaborador é avisado pelo
+  // WhatsApp pedindo a justificativa. Quem apura o ponto não precisa
+  // saber disso; quem lê Ocorrências não precisa esperar ninguém
+  // digitar.
+  //
+  // `opts.semOcorrencia` existe para o recálculo em massa (fechamento
+  // do mês) não disparar centenas de mensagens de novo.
+  if (!opts.semOcorrencia) {
+    await daApuracaoDoPonto(tenantId, data, { tolerancia: tolerance });
+  }
+
   return data;
 }
 
