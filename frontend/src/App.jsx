@@ -89,6 +89,7 @@ const EstruturaEmpresa   = lazy(() => import('@/pages/HR/EstruturaEmpresa'));
 const FeriasAfastamentos = lazy(() => import('@/pages/HR/FeriasAfastamentos'));
 const JornadaPonto       = lazy(() => import('@/pages/HR/JornadaPonto'));
 const Ocorrencias        = lazy(() => import('@/pages/HR/Ocorrencias'));
+const FolhaBeneficios    = lazy(() => import('@/pages/HR/FolhaBeneficios'));
 const HRPonto            = lazy(() => import('@/pages/HR/HRPonto'));
 const HRFerias           = lazy(() => import('@/pages/HR/HRFerias'));
 const HRFolha            = lazy(() => import('@/pages/HR/HRFolha'));
@@ -310,7 +311,9 @@ function AppRoutes() {
               atestado com CID e a regra do 16º dia. */}
           <Route path="ferias"     element={<FeriasAfastamentos />} />
           <Route path="ferias-antigo" element={<HRFerias />} />
-          <Route path="folha"      element={<HRFolha />} />
+          {/* Folha montada dos fatos; comissão vem do comercial. */}
+          <Route path="folha"      element={<FolhaBeneficios />} />
+          <Route path="folha-antiga" element={<HRFolha />} />
           <Route path="documentos" element={<HRDocumentos />} />
           <Route path="conformidade" element={<HRConformidade />} />
         </Route>
