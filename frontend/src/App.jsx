@@ -90,6 +90,8 @@ const FeriasAfastamentos = lazy(() => import('@/pages/HR/FeriasAfastamentos'));
 const JornadaPonto       = lazy(() => import('@/pages/HR/JornadaPonto'));
 const Ocorrencias        = lazy(() => import('@/pages/HR/Ocorrencias'));
 const FolhaBeneficios    = lazy(() => import('@/pages/HR/FolhaBeneficios'));
+const DocumentosRH       = lazy(() => import('@/pages/HR/Documentos'));
+const ESocial            = lazy(() => import('@/pages/HR/ESocial'));
 const HRPonto            = lazy(() => import('@/pages/HR/HRPonto'));
 const HRFerias           = lazy(() => import('@/pages/HR/HRFerias'));
 const HRFolha            = lazy(() => import('@/pages/HR/HRFolha'));
@@ -314,7 +316,10 @@ function AppRoutes() {
           {/* Folha montada dos fatos; comissão vem do comercial. */}
           <Route path="folha"      element={<FolhaBeneficios />} />
           <Route path="folha-antiga" element={<HRFolha />} />
-          <Route path="documentos" element={<HRDocumentos />} />
+          {/* Central única de anexos + eSocial alimentado pelos fatos. */}
+          <Route path="documentos" element={<DocumentosRH />} />
+          <Route path="esocial"    element={<ESocial />} />
+          <Route path="documentos-antigo" element={<HRDocumentos />} />
           <Route path="conformidade" element={<HRConformidade />} />
         </Route>
       </Route>

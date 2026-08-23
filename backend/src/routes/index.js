@@ -111,6 +111,8 @@ router.use('/rh', requireModules('hr'), require('./rh-painel'));
 router.use('/rh', requireModules('hr'), require('./rh-ferias'));
 router.use('/rh', requireModules('hr'), require('./rh-ponto'));
 router.use('/rh', requireModules('hr'), require('./rh-folha'));
+router.use('/rh', requireModules('hr'), require('./rh-documentos'));
+router.use('/rh', requireModules('hr'), require('./rh-esocial'));
 router.use('/esocial',   requireModules('hr','settings'), require('./esocial'));
 router.use('/escalas',   requireModules('hr','employees','settings'), escalasRoutes);
 router.use('/situacoes', requireModules('hr','settings'), situacoesRoutes);

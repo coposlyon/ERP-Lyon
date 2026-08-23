@@ -27,7 +27,7 @@ import {
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory, ShieldCheck,
   Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark, Star,
-  MessageSquare, LogOut, LayoutGrid, Globe,
+  MessageSquare, LogOut, LayoutGrid, Globe, CloudUpload,
 } from 'lucide-react';
 import { SITES } from '@/pages/Sites/registro';
 
@@ -150,6 +150,7 @@ export const menuItems = [
       { label: 'Férias / Afastamentos', path: '/hr/ferias',   icon: Umbrella,   module: 'hr' },
       { label: 'Folha e Benefícios',  path: '/hr/folha',      icon: DollarSign, module: 'hr' },
       { label: 'Documentos',          path: '/hr/documentos', icon: FileText,   module: 'hr' },
+      { label: 'eSocial / FGTS',      path: '/hr/esocial',    icon: CloudUpload, module: 'hr' },
       { label: 'Conformidade Trab.',  path: '/hr/conformidade', icon: ShieldCheck, module: 'hr' },
     ],
   },
