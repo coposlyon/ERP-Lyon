@@ -213,6 +213,11 @@ export default function Admissoes() {
                     <td className="py-2 text-gray-600">
                       {p.etapa_atual_titulo}
                       <span className="block text-[11px] text-gray-400">{p.concluidas}/{p.total} · {p.pct}%</span>
+                      {!!(p.faltando || []).length && (
+                        <span className="block text-[11px] text-amber-700 mt-0.5">
+                          falta: {p.faltando.map(x => x.rotulo).join(', ')}
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 text-gray-600">{p.documentos}</td>
                     <td className="py-2"><span className={`badge ${CORES[p.status]}`}>{ROTULO[p.status]}</span></td>

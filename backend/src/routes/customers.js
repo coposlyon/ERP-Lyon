@@ -4,6 +4,7 @@ const multer = require('multer');
 const supabase = require('../config/supabase');
 const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
+const { pendenciasDoCadastro, mensagemDePendencias } = require('../lib/colaborador');
 const { getEmailConfig, makeTransport } = require('../lib/mailer');
 const { recomputeRating, recomputeAll } = require('../lib/customerRating');
 const { uploadDataUrl } = require('../lib/storage');
@@ -310,6 +311,16 @@ router.post('/', async (req, res) => {
   } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome do cliente é obrigatório' });
 
+  // Colaborador tem um mínimo inegociável: cada campo desta lista
+  // alimenta uma conta que roda sozinha depois (folha, ponto, férias,
+  // eSocial). Aceitar pela metade é aceitar um erro silencioso.
+  if (type === 'CO') {
+    const faltando = pendenciasDoCadastro({ name, cpf_cnpj, admission_data });
+    if (faltando.length) {
+      return res.status(400).json({ error: mensagemDePendencias(faltando), faltando });
+    }
+  }
+
   try {
     // Verifica CPF/CNPJ duplicado
     if (cpf_cnpj) {
@@ -383,12 +394,22 @@ router.put('/:id', async (req, res) => {
     // um PUT sobrescreveria os documentos já enviados ao Storage.
     const { data: current } = await supabase
       .from('CLIENTES')
-      .select('admission_data')
+      .select('type, admission_data')
       .eq('id', req.params.id)
       .eq('tenant_id', req.tenantId)
       .single();
 
     const existingAttachments = current?.admission_data?.attachments || [];
+
+    // O PUT SUBSTITUI o admission_data, então a checagem é sobre o que
+    // vai ficar gravado — não sobre o que já estava lá. Assim ninguém
+    // apaga o cargo de um colaborador ativo sem ser avisado.
+    if ((type || current?.type) === 'CO') {
+      const faltando = pendenciasDoCadastro({ name, cpf_cnpj, admission_data });
+      if (faltando.length) {
+        return res.status(400).json({ error: mensagemDePendencias(faltando), faltando });
+      }
+    }
 
     // FOTO DO COLABORADOR. A tela manda a imagem em data URL; guardar
     // isso numa coluna de texto seria enfiar 200 KB de base64 em cada

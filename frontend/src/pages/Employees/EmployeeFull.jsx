@@ -68,7 +68,7 @@ const VAZIO = {
 function etapasConcluidas(f, temAnexos, acesso) {
   return [
     !!(f.name && f.cpf_cnpj && f.birth_date && f.address?.city),
-    !!(f.sector && f.start_date && f.salary),
+    !!(f.sector && f.role && f.contract_type && f.start_date && f.salary && f.scale_id),
     temAnexos,
     !!(f.contrato_assinado_em || Object.values(f.politicas || {}).some(Boolean)),
     !f.has_access || !!acesso.role,
@@ -193,9 +193,23 @@ export default function EmployeeFull() {
     { label: 'Documentos', valor: `${anexos.length} anexado(s)` },
   ]), [f, anexos.length]);
 
+  // O MESMO mínimo que o servidor exige (backend/src/lib/colaborador.js).
+  // Aqui é só gentileza: avisar antes de enviar e levar a pessoa à etapa
+  // certa. A regra que vale é a de lá — esta tela não é a única porta.
+  const OBRIGATORIOS = [
+    { ok: () => f.name.trim(), etapa: 1, msg: 'Informe o nome do colaborador' },
+    { ok: () => f.cpf_cnpj, etapa: 1, msg: 'Informe o CPF — sem ele o eSocial não transmite nada' },
+    { ok: () => f.sector, etapa: 2, msg: 'Informe o departamento' },
+    { ok: () => f.role, etapa: 2, msg: 'Informe o cargo — o eSocial rejeita a admissão sem ele' },
+    { ok: () => f.contract_type, etapa: 2, msg: 'Informe o tipo de contrato' },
+    { ok: () => f.start_date, etapa: 2, msg: 'Informe a data de admissão — férias e 13º saem dela' },
+    { ok: () => dinheiroParaNumero(f.salary) > 0, etapa: 2, msg: 'Informe o salário — sem ele a folha fecha em zero' },
+    { ok: () => f.scale_id, etapa: 2, msg: 'Escolha a escala — é ela que define atraso e falta' },
+  ];
+
   async function salvar({ irPara } = {}) {
-    if (!f.name.trim()) { toast.error('Informe o nome do colaborador'); setEtapa(1); return; }
-    if (!f.sector) { toast.error('Informe o departamento'); setEtapa(2); return; }
+    const pendente = OBRIGATORIOS.find(o => !o.ok());
+    if (pendente) { toast.error(pendente.msg); setEtapa(pendente.etapa); return; }
     if (f.has_access && !f.access_email) { toast.error('Informe o e-mail de acesso'); setEtapa(1); return; }
     if (f.has_access && !editando && !f.access_password) {
       toast.error('Informe a senha inicial do acesso'); setEtapa(1); return;

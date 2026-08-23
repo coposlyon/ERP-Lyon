@@ -20,6 +20,7 @@ const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { calcularRescisao, exigencias } = require('../lib/rescisao');
 const { saldoDeFerias } = require('../lib/ferias');
+const { pendenciasDoCadastro } = require('../lib/colaborador');
 
 const hojeISO = () => new Date().toISOString().slice(0, 10);
 
@@ -106,6 +107,10 @@ router.get('/admissoes', async (req, res) => {
           admissao_prevista: c.admission_data?.start_date || null,
           responsavel: processo?.responsible_id || null,
           documentos: `${docsDe(c.id).length}`,
+          // O que exatamente falta — a mesma lista que o servidor exige
+          // na hora de salvar. Dizer "etapa 2 incompleta" faz a pessoa
+          // caçar o campo; dizer "falta o Cargo" resolve.
+          faltando: pendenciasDoCadastro(c),
           ...a,
           status: a.completa ? 'concluida' : (docsDe(c.id).length ? 'em_andamento' : 'aguardando_docs'),
         };
