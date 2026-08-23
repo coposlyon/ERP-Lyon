@@ -196,7 +196,7 @@ router.get('/ferias', async (req, res) => {
  * Férias sem saldo são recusadas aqui, no servidor — a tela pode ter
  * uma versão velha do saldo em mãos, o banco não.
  */
-router.post('/ferias', async (req, res) => {
+const criarFerias = async (req, res) => {
   const t = req.tenantId;
   const {
     employee_id, kind = 'ferias', start_date, end_date, reason, cid, doc_url,
@@ -269,7 +269,8 @@ router.post('/ferias', async (req, res) => {
     });
     res.status(201).json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
-});
+};
+router.post('/ferias', criarFerias);
 
 /**
  * PATCH /api/rh/ferias/:id
@@ -304,3 +305,4 @@ router.patch('/ferias/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.criarFerias = criarFerias;

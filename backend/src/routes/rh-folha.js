@@ -301,3 +301,4 @@ router.get('/folha/holerite/:employeeId', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.montarPrevia = montarPrevia;

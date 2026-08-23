@@ -27,7 +27,7 @@ import {
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory, ShieldCheck,
   Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark, Star,
-  MessageSquare, LogOut, LayoutGrid, Globe, CloudUpload,
+  MessageSquare, LogOut, LayoutGrid, Globe, CloudUpload, UserPlus, UserMinus,
 } from 'lucide-react';
 import { SITES } from '@/pages/Sites/registro';
 
@@ -151,7 +151,21 @@ export const menuItems = [
       { label: 'Folha e Benefícios',  path: '/hr/folha',      icon: DollarSign, module: 'hr' },
       { label: 'Documentos',          path: '/hr/documentos', icon: FileText,   module: 'hr' },
       { label: 'eSocial / FGTS',      path: '/hr/esocial',    icon: CloudUpload, module: 'hr' },
+      { label: 'Admissões',           path: '/hr/admissoes',  icon: UserPlus,  module: 'hr' },
+      { label: 'Desligamentos',       path: '/hr/desligamentos', icon: UserMinus, module: 'hr' },
       { label: 'Conformidade Trab.',  path: '/hr/conformidade', icon: ShieldCheck, module: 'hr' },
+    ],
+  },
+
+  // Os portais não pedem módulo: quem entra é a pessoa, não o setor.
+  // Cada um pode ser liberado individualmente em Permissões.
+  {
+    label: 'Portais',
+    icon: Home,
+    children: [
+      { label: 'Meu Portal',         path: '/portal/eu',       icon: Home },
+      { label: 'Portal do Gestor',   path: '/portal/gestor',   icon: Briefcase },
+      { label: 'Portal do Contador', path: '/portal/contador', icon: Calculator },
     ],
   },
 

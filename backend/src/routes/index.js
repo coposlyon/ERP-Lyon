@@ -113,6 +113,11 @@ router.use('/rh', requireModules('hr'), require('./rh-ponto'));
 router.use('/rh', requireModules('hr'), require('./rh-folha'));
 router.use('/rh', requireModules('hr'), require('./rh-documentos'));
 router.use('/rh', requireModules('hr'), require('./rh-esocial'));
+router.use('/rh', requireModules('hr'), require('./rh-ciclo'));
+// Os portais NÃO passam por requireModules('hr'): o colaborador vê a
+// própria vida, o gestor a própria equipe e o contador só o fiscal.
+// O recorte é por quem você é, não por módulo liberado (item 14).
+router.use('/portal', require('./rh-portais'));
 router.use('/esocial',   requireModules('hr','settings'), require('./esocial'));
 router.use('/escalas',   requireModules('hr','employees','settings'), escalasRoutes);
 router.use('/situacoes', requireModules('hr','settings'), situacoesRoutes);

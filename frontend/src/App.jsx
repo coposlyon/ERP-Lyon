@@ -92,6 +92,11 @@ const Ocorrencias        = lazy(() => import('@/pages/HR/Ocorrencias'));
 const FolhaBeneficios    = lazy(() => import('@/pages/HR/FolhaBeneficios'));
 const DocumentosRH       = lazy(() => import('@/pages/HR/Documentos'));
 const ESocial            = lazy(() => import('@/pages/HR/ESocial'));
+const Admissoes          = lazy(() => import('@/pages/HR/Admissoes'));
+const Desligamentos      = lazy(() => import('@/pages/HR/Desligamentos'));
+const PortalColaborador  = lazy(() => import('@/pages/Portais/PortalColaborador'));
+const PortalGestor       = lazy(() => import('@/pages/Portais/PortalGestor'));
+const PortalContador     = lazy(() => import('@/pages/Portais/PortalContador'));
 const HRPonto            = lazy(() => import('@/pages/HR/HRPonto'));
 const HRFerias           = lazy(() => import('@/pages/HR/HRFerias'));
 const HRFolha            = lazy(() => import('@/pages/HR/HRFolha'));
@@ -299,6 +304,9 @@ function AppRoutes() {
         <Route path="crm"      element={<Mod m="crm"><CRM /></Mod>}      />
         <Route path="marketing" element={<Mod m={['marketing','crm']}><Marketing /></Mod>} />
         <Route path="production" element={<Mod m={['production','quality','stock']}><Production /></Mod>} />
+        <Route path="portal/eu"       element={<PortalColaborador />} />
+        <Route path="portal/gestor"   element={<PortalGestor />} />
+        <Route path="portal/contador" element={<PortalContador />} />
         <Route path="hr" element={<Mod m="hr"><HR /></Mod>}>
           <Route index element={<Navigate to="painel" replace />} />
           {/* Painel e Estrutura: as duas telas que alimentam todas as
@@ -320,6 +328,9 @@ function AppRoutes() {
           <Route path="documentos" element={<DocumentosRH />} />
           <Route path="esocial"    element={<ESocial />} />
           <Route path="documentos-antigo" element={<HRDocumentos />} />
+          {/* As duas pontas do ciclo: o processo de entrada e o de saída. */}
+          <Route path="admissoes"    element={<Admissoes />} />
+          <Route path="desligamentos" element={<Desligamentos />} />
           <Route path="conformidade" element={<HRConformidade />} />
         </Route>
       </Route>
