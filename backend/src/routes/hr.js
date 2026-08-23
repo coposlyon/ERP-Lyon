@@ -8,9 +8,11 @@ const { daApuracaoDoPonto } = require('../lib/ocorrencias');
 // ── PONTO ─────────────────────────────────────────────────
 
 // Busca a escala aplicável a um colaborador (por escala_id explícita,
-// ou via admission_data.scale_id / scale name). Fallback 8h / tol 10min.
+// ou via admission_data.scale_id / scale name). Fallback 8h / tol 5min
+// — a tolerância combinada é de 5 minutos, e quem ainda não tem escala
+// atribuída não pode ser julgado por uma régua mais frouxa que a regra.
 async function getEscala(tenantId, employee_id, escala_id) {
-  const fallback = { daily_minutes: 480, tolerance_minutes: 10, weekdays: [1,2,3,4,5], id: null };
+  const fallback = { daily_minutes: 480, tolerance_minutes: 5, weekdays: [1,2,3,4,5], id: null };
   try {
     if (escala_id) {
       const { data } = await supabase.from('ESCALAS').select('*')
@@ -71,7 +73,7 @@ async function recomputeDay(tenantId, employee_id, work_date, escala_id, opts = 
 
   const escala    = await getEscala(tenantId, employee_id, escala_id);
   const expected  = escala.daily_minutes ?? 480;
-  const tolerance = escala.tolerance_minutes ?? 10;
+  const tolerance = escala.tolerance_minutes ?? 5;
   const { extra_minutes, late_minutes, status } = apurarDia({ total_minutes: total, hasMarks, expected, tolerance });
 
   const { data: existing } = await supabase

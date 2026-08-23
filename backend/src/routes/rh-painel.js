@@ -19,6 +19,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+const { exigidosPara } = require('../lib/documentosCatalogo');
 
 /** Consulta que pode falhar por tabela ausente: devolve [] e segue. */
 async function tentar(fn) {
@@ -76,7 +77,7 @@ router.get('/painel', async (req, res) => {
         .select('employee_id, status, net_salary, gross_salary, reference_month')
         .eq('tenant_id', t).eq('reference_month', comp)),
       tentar(() => supabase.from('RH_DOCUMENTOS')
-        .select('id, employee_id, type, description, document_date, file_url')
+        .select('id, employee_id, doc_key, type, description, document_date, file_url')
         .eq('tenant_id', t)),
       tentar(() => supabase.from('RH_OCORRENCIAS')
         .select('id, employee_id, kind, status, severity, occurred_on, sla_due_at, decided_at')
@@ -131,17 +132,29 @@ router.get('/painel', async (req, res) => {
 
     // ── Documentos ──────────────────────────────
     //
-    // RH_DOCUMENTOS guarda o que FOI ANEXADO — não o que falta, nem
-    // validade. "Pendente" exige uma lista de obrigatórios por tipo de
-    // contrato, que é o assunto da tela de Documentos. Até lá: conta o
-    // que existe e devolve `null` no que não dá para saber.
+    // RH_DOCUMENTOS guarda o que FOI ANEXADO. O que FALTA sai do
+    // catálogo — a MESMA função que a tela de Documentos usa, filtrada
+    // pelo contrato, estado civil e filhos de cada um.
     //
-    // E vale a regra do item 9 desde já: documento sem validade NÃO
-    // vence — contrato CLT indeterminado nunca deve aparecer vencendo.
+    // Contar aqui de um jeito e lá de outro faria as duas telas darem
+    // números diferentes para a mesma pergunta, e uma delas estaria
+    // mentindo (item 13).
+    //
+    // Item 9 continua valendo: documento sem validade NÃO vence —
+    // contrato CLT indeterminado nunca aparece vencendo.
     const docsAnexados = DOCS.length;
-    const docsPendentes = null;
-    const docsCriticos = null;
-    avisos.push('Documentos pendentes: falta a lista de obrigat\u00f3rios por tipo de contrato (tela de Documentos, pr\u00f3xima fase).');
+    const temDoc = (empId, key) =>
+      DOCS.some(d => d.employee_id === empId && (d.doc_key === key || d.type === key));
+
+    let docsPendentes = 0;
+    let docsCriticos = 0;
+    for (const p of ativos) {
+      for (const cat of exigidosPara(p)) {
+        if (temDoc(p.id, cat.key)) continue;
+        docsPendentes += 1;
+        if (cat.obrigatorio) docsCriticos += 1;
+      }
+    }
 
     // ── Ocorrências (uma leitura, todos os cartões) ─────────
     const ocorAbertas = OCOR.filter(o => ['aberta', 'em_analise', 'encaminhada'].includes(o.status));

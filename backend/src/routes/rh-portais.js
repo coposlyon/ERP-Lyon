@@ -255,18 +255,28 @@ router.post('/eu/demissao', async (req, res) => {
 
 // ── PORTAL DO GESTOR ────────────────────────────────────────
 
-/** A equipe de quem está logado: o departamento em que ele é gestor. */
+/**
+ * A equipe de quem está logado: o departamento em que ele é gestor.
+ *
+ * Sem cadastro de colaborador não há equipe nenhuma. Sem esta guarda,
+ * `p.admission_data?.manager_id === eu?.id` vira `undefined ===
+ * undefined` — e um usuário sem vínculo passa a enxergar todo mundo
+ * cujo gestor ainda não foi definido, ou seja, a empresa inteira.
+ */
 async function minhaEquipe(req, eu) {
+  if (!eu?.id) return { departamentos: [], time: [] };
   const t = req.tenantId;
   const [{ data: deps }, { data: pessoas }] = await Promise.all([
     supabase.from('RH_DEPARTAMENTOS').select('id, code, name, manager_id').eq('tenant_id', t),
     supabase.from('CLIENTES').select('id, name, is_active, admission_data').eq('tenant_id', t).eq('type', 'CO'),
   ]);
-  const meus = (deps || []).filter(d => d.manager_id === eu?.id);
-  const chaves = new Set(meus.flatMap(d => [d.code, d.name]));
-  const time = (pessoas || []).filter(p =>
-    p.is_active !== false && p.id !== eu?.id &&
-    (chaves.has(p.admission_data?.sector) || p.admission_data?.manager_id === eu?.id));
+  const meus = (deps || []).filter(d => d.manager_id && d.manager_id === eu.id);
+  const chaves = new Set(meus.flatMap(d => [d.code, d.name]).filter(Boolean));
+  const time = (pessoas || []).filter(p => {
+    if (p.is_active === false || p.id === eu.id) return false;
+    const adm = p.admission_data || {};
+    return (adm.sector && chaves.has(adm.sector)) || (adm.manager_id && adm.manager_id === eu.id);
+  });
   return { departamentos: meus, time };
 }
 
@@ -279,10 +289,11 @@ router.get('/gestor', async (req, res) => {
   try {
     const eu = await euSou(req);
     const t = req.tenantId;
-    const ehAdmin = req.userProfile?.role === 'admin';
     const { departamentos, time } = await minhaEquipe(req, eu);
 
-    if (!departamentos.length && !time.length && !ehAdmin) {
+    // Vale para todo mundo, inclusive admin: sem equipe, esta tela não
+    // tem o que mostrar — e dizer isso é melhor que exibir zeros.
+    if (!departamentos.length && !time.length) {
       return res.json({
         gestor: eu ? { id: eu.id, nome: eu.name } : null,
         equipe: [], aprovacoes: [], cartoes: {},
