@@ -108,6 +108,7 @@ router.use('/hr',        requireModules('hr'), hrRoutes);
 // O painel do RH e a estrutura da empresa: leitura agregada, tudo
 // calculado do cadastro mestre (migração 080).
 router.use('/rh', requireModules('hr'), require('./rh-painel'));
+router.use('/rh', requireModules('hr'), require('./rh-ferias'));
 router.use('/esocial',   requireModules('hr','settings'), require('./esocial'));
 router.use('/escalas',   requireModules('hr','employees','settings'), escalasRoutes);
 router.use('/situacoes', requireModules('hr','settings'), situacoesRoutes);

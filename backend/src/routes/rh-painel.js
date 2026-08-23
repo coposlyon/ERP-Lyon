@@ -67,7 +67,7 @@ router.get('/painel', async (req, res) => {
         .select('id, name, is_active, created_at, admission_data')
         .eq('tenant_id', t).eq('type', 'CO')),
       tentar(() => supabase.from('RH_FERIAS')
-        .select('id, employee_id, status, start_date, end_date, days, notes')
+        .select('id, employee_id, status, start_date, end_date, days, kind, reason, cid, doc_url, exame_retorno_exigido, exame_retorno_em')
         .eq('tenant_id', t)),
       tentar(() => supabase.from('RH_PONTO')
         .select('employee_id, work_date, status, absence, late_minutes, extra_minutes')
@@ -116,17 +116,18 @@ router.get('/painel', async (req, res) => {
 
     // ── Férias e afastamentos ──────────────────────
     //
-    // RH_FERIAS ainda NÃO SEPARA férias de afastamento — a tabela tem
-    // período e status, e mais nada. Enquanto a coluna não existir, o
-    // cartão de afastamentos devolve `null` (a tela mostra travessão) em
-    // vez de zero: dizer "0 afastamentos" quando o sistema não sabe é a
-    // mentira que faz o RH parar de olhar o cartão.
+    // A migração 081 separou os dois: `kind` diz se a linha é férias,
+    // afastamento, licença ou suspensão. Antes disso o painel não sabia
+    // responder quantas pessoas estavam afastadas — atestado de 20 dias
+    // e férias de janeiro eram a mesma linha.
+    const ehAfastamento = f => f.kind && f.kind !== 'ferias';
     const ativoHoje = f => (f.start_date || '') <= hojeISO && (f.end_date || '') >= hojeISO;
-    const feriasProgramadas = FERIAS.filter(f => (f.start_date || '') > hojeISO && f.status !== 'cancelled');
-    const feriasEmCurso = FERIAS.filter(ativoHoje);
+    const afastamentos = FERIAS.filter(ehAfastamento);
+    const feriasProgramadas = FERIAS.filter(f => !ehAfastamento(f) && (f.start_date || '') > hojeISO && f.status !== 'cancelled');
+    const feriasEmCurso = FERIAS.filter(f => !ehAfastamento(f) && ativoHoje(f));
     const retornos15 = FERIAS.filter(f => (f.end_date || '') >= hojeISO && (f.end_date || '') <= em15);
-    const afastamentosAtivos = null;   // sem origem: ver migração do módulo de Afastamentos
-    avisos.push('Afastamentos: RH_FERIAS ainda n\u00e3o separa f\u00e9rias de afastamento (tela de F\u00e9rias/Afastamentos, pr\u00f3xima fase).');
+    const afastamentosAtivos = afastamentos.filter(ativoHoje).length;
+    const examesPendentes = afastamentos.filter(f => f.exame_retorno_exigido && !f.exame_retorno_em).length;
 
     // ── Documentos ──────────────────────────────
     //
@@ -198,7 +199,8 @@ router.get('/painel', async (req, res) => {
         documentos_pendentes: docsPendentes,
         documentos_criticos: docsCriticos,
         afastamentos_ativos: afastamentosAtivos,
-        afastamentos_ate_15_dias: null,
+        afastamentos_ate_15_dias: afastamentos.filter(f => (f.end_date || '') >= hojeISO && (f.end_date || '') <= em15).length,
+        exames_retorno_pendentes: examesPendentes,
         ferias_em_curso: feriasEmCurso.length,
         retornos_15_dias: retornos15.length,
         ferias_programadas: feriasProgramadas.length,
@@ -237,8 +239,14 @@ router.get('/painel', async (req, res) => {
       graficos: { evolucao, admissoes_x_desligamentos: admVsDes },
       // Pendências: cada linha aponta para a tela que resolve
       pendencias: [
+        ...(examesPendentes ? [{ tipo: 'ferias', titulo: 'Exames de retorno pendentes', qtd: examesPendentes, prioridade: 'alta', destino: '/hr/ferias' }] : []),
+        ...(FERIAS.filter(f => f.status === 'pending').length ? [{ tipo: 'ferias', titulo: 'Solicitações de férias aguardando decisão', qtd: FERIAS.filter(f => f.status === 'pending').length, prioridade: 'media', destino: '/hr/ferias' }] : []),
         ...(ocorVencidas.length ? [{ tipo: 'ocorrencias', titulo: 'Ocorrências com prazo vencido', qtd: ocorVencidas.length, prioridade: 'alta', destino: '/hr/ocorrencias' }] : []),
         ...(ADM.filter(a => a.status === 'aguardando_docs').length ? [{ tipo: 'admissoes', titulo: 'Admissões aguardando documentos', qtd: ADM.filter(a => a.status === 'aguardando_docs').length, prioridade: 'media', destino: '/hr/admissoes' }] : []),
+        ...(afastamentos.filter(f => f.exame_retorno_exigido && !f.exame_retorno_em).length
+          ? [{ tipo: 'ferias', titulo: 'Exames de retorno pendentes', qtd: afastamentos.filter(f => f.exame_retorno_exigido && !f.exame_retorno_em).length, prioridade: 'alta', destino: '/hr/ferias' }] : []),
+        ...(FERIAS.filter(f => f.status === 'pending').length
+          ? [{ tipo: 'ferias', titulo: 'Solicitações de férias aguardando decisão', qtd: FERIAS.filter(f => f.status === 'pending').length, prioridade: 'media', destino: '/hr/ferias' }] : []),
         ...(ESOC.filter(e => String(e.status).toLowerCase() === 'pendente').length ? [{ tipo: 'esocial', titulo: 'Eventos eSocial aguardando envio', qtd: ESOC.filter(e => String(e.status).toLowerCase() === 'pendente').length, prioridade: 'baixa', destino: '/hr/esocial' }] : []),
       ],
       // Próximos vencimentos — só o que TEM validade. Enquanto

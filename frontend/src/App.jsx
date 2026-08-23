@@ -86,6 +86,7 @@ const Production         = lazy(() => import('@/pages/Production/Production'));
 const HR                 = lazy(() => import('@/pages/HR/HR'));
 const PainelRH           = lazy(() => import('@/pages/HR/PainelRH'));
 const EstruturaEmpresa   = lazy(() => import('@/pages/HR/EstruturaEmpresa'));
+const FeriasAfastamentos = lazy(() => import('@/pages/HR/FeriasAfastamentos'));
 const HRPonto            = lazy(() => import('@/pages/HR/HRPonto'));
 const HRFerias           = lazy(() => import('@/pages/HR/HRFerias'));
 const HRFolha            = lazy(() => import('@/pages/HR/HRFolha'));
@@ -300,7 +301,10 @@ function AppRoutes() {
           <Route path="painel"     element={<PainelRH />} />
           <Route path="estrutura"  element={<EstruturaEmpresa />} />
           <Route path="ponto"      element={<HRPonto />} />
-          <Route path="ferias"     element={<HRFerias />} />
+          {/* Férias e afastamentos: saldo calculado (CLT art. 130/134),
+              atestado com CID e a regra do 16º dia. */}
+          <Route path="ferias"     element={<FeriasAfastamentos />} />
+          <Route path="ferias-antigo" element={<HRFerias />} />
           <Route path="folha"      element={<HRFolha />} />
           <Route path="documentos" element={<HRDocumentos />} />
           <Route path="conformidade" element={<HRConformidade />} />
