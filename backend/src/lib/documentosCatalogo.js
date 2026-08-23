@@ -111,6 +111,7 @@ const CATEGORIAS = {
   politica: 'Políticas internas',
   conjuge: 'Cônjuge',
   dependente: 'Filhos e dependentes',
+  desligamento: 'Desligamento',
 };
 
 const porChave = Object.fromEntries(CATALOGO.map(d => [d.key, d]));
@@ -123,13 +124,80 @@ const porChave = Object.fromEntries(CATALOGO.map(d => [d.key, d]));
  * filho, e cobrar isso de todo mundo transforma a lista de pendências
  * em ruído que ninguém lê.
  */
+/**
+ * OS DOCUMENTOS DA SAÍDA.
+ *
+ * Ficam separados do catálogo de admissão por `fase`. Se morassem na
+ * mesma lista, todo colaborador ATIVO apareceria devendo um termo de
+ * rescisão — e a conta de pendências viraria ruído.
+ *
+ * Quais valem depende do TIPO do desligamento, nunca de todos:
+ * carta de pedido de demissão só existe quando foi o colaborador que
+ * pediu; termo de acordo só no art. 484-A.
+ *
+ * O que NÃO entra aqui, de propósito: chave de conectividade do FGTS.
+ * Ela não é obrigação padrão do fluxo atual — o recolhimento rescisório
+ * sai do FGTS Digital, alimentado pelo eSocial. Colocá-la no checklist
+ * criaria uma tarefa que ninguém precisa cumprir.
+ */
+const DESLIGAMENTO = [
+  { key: 'trct', titulo: 'TRCT — Termo de Rescisão do Contrato de Trabalho', categoria: 'desligamento',
+    fase: 'desligamento', origem: 'gerado', obrigatorio: true, sem_validade: true, assina: true,
+    ajuda: 'Sai do cálculo rescisório — verba a verba, sem redigitação.' },
+
+  { key: 'aviso_previo', titulo: 'Aviso prévio', categoria: 'desligamento',
+    fase: 'desligamento', origem: 'gerado', obrigatorio: true, sem_validade: true, assina: true,
+    quando: c => c.notice && c.notice !== 'dispensado',
+    ajuda: 'Indica se foi trabalhado ou indenizado e quantos dias.' },
+
+  { key: 'carta_demissao', titulo: 'Carta de pedido de demissão', categoria: 'desligamento',
+    fase: 'desligamento', origem: 'gerado', obrigatorio: true, sem_validade: true, assina: true,
+    quando: c => c.kind === 'pedido_demissao',
+    ajuda: 'Quando o pedido vem do portal, nasce com o texto que o colaborador escreveu.' },
+
+  { key: 'termo_acordo', titulo: 'Termo de acordo (CLT art. 484-A)', categoria: 'desligamento',
+    fase: 'desligamento', origem: 'gerado', obrigatorio: true, sem_validade: true, assina: true,
+    quando: c => c.kind === 'acordo',
+    ajuda: 'Metade do aviso e 20% de multa — as duas partes assinam.' },
+
+  { key: 'comunicado_justa_causa', titulo: 'Comunicado de dispensa por justa causa', categoria: 'desligamento',
+    fase: 'desligamento', origem: 'gerado', obrigatorio: true, sem_validade: true, assina: true,
+    quando: c => c.kind === 'justa_causa',
+    ajuda: 'Precisa descrever o fato e a data — é o que se sustenta depois.' },
+
+  { key: 'aso_demissional_doc', titulo: 'ASO demissional', categoria: 'desligamento',
+    fase: 'desligamento', origem: 'externo', obrigatorio: true,
+    quando: c => c.exame_exigido,
+    ajuda: 'Só quando não há ASO recente dentro do prazo da NR-7.' },
+
+  { key: 'termo_homologacao', titulo: 'Termo de homologação / assistência sindical', categoria: 'desligamento',
+    fase: 'desligamento', origem: 'externo', obrigatorio: true, sem_validade: true,
+    quando: c => c.homologacao_exigida,
+    ajuda: 'Não é obrigatória por lei desde 2017 — só quando a CCT exige.' },
+
+  { key: 'comprovante_pagamento_rescisao', titulo: 'Comprovante de pagamento das verbas', categoria: 'desligamento',
+    fase: 'desligamento', origem: 'externo', obrigatorio: true, sem_validade: true,
+    ajuda: 'Art. 477: até 10 dias corridos do término do contrato.' },
+];
+
+/**
+ * Os documentos que ESTE desligamento exige.
+ * `contexto`: { kind, notice, exame_exigido, homologacao_exigida }
+ */
+function exigidosNoDesligamento(contexto = {}) {
+  return DESLIGAMENTO.filter(d => !d.quando || d.quando(contexto))
+    .map(({ quando, ...d }) => d);
+}
+
 function exigidosPara(colaborador) {
   const adm = colaborador?.admission_data || {};
   const contrato = adm.contract_type || 'CLT';
   const casado = /casad|uni/i.test(adm.estado_civil || '');
   const temFilhos = Array.isArray(adm.filhos) && adm.filhos.length > 0;
 
+  // Documento de SAÍDA não é pendência de quem está trabalhando.
   return CATALOGO.filter(d => {
+    if (d.fase && d.fase !== 'admissao') return false;
     if (d.contratos && !d.contratos.includes(contrato)) return false;
     if (d.condicao === 'casado' && !casado) return false;
     if (d.condicao === 'tem_filhos' && !temFilhos) return false;
@@ -142,4 +210,4 @@ function exigidosPara(colaborador) {
   }));
 }
 
-module.exports = { CATALOGO, CATEGORIAS, porChave, exigidosPara };
+module.exports = { CATALOGO, CATEGORIAS, DESLIGAMENTO, porChave, exigidosPara, exigidosNoDesligamento };

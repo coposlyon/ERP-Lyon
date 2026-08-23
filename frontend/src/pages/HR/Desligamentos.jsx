@@ -242,6 +242,29 @@ export default function Desligamentos() {
                   </div>
                 )}
 
+                {!!(d.documentos || []).length && (
+                  <div className="mt-2 rounded-lg bg-gray-50 p-2.5">
+                    <p className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Documentos deste desligamento</p>
+                    <div className="space-y-1">
+                      {d.documentos.map(doc => (
+                        <div key={doc.key} className="flex items-start justify-between gap-2 text-[12px]">
+                          <span className="text-gray-700">
+                            {doc.titulo}
+                            {!doc.obrigatorio && <span className="text-gray-400"> (opcional)</span>}
+                            {doc.ajuda && <span className="block text-[10px] text-gray-400">{doc.ajuda}</span>}
+                          </span>
+                          <span className={`badge shrink-0 ${
+                            doc.status === 'pendente' ? (doc.obrigatorio ? 'badge-yellow' : 'badge-gray')
+                              : doc.status === 'aguardando_assinatura' ? 'badge-blue' : 'badge-green'
+                          }`}>
+                            {doc.status === 'aguardando_assinatura' ? 'a assinar' : doc.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {d.status !== 'concluido' && d.status !== 'cancelado' && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {d.exam_required && !d.exam_done_on && (
@@ -343,6 +366,20 @@ export default function Desligamentos() {
                 <ul className="text-[11px] text-gray-500 space-y-0.5 list-disc pl-4">
                   {sim.calculo.observacoes.map((o, i) => <li key={i}>{o}</li>)}
                 </ul>
+              )}
+
+              {!!(sim.documentos || []).length && (
+                <div className="rounded-lg border border-gray-100 p-3">
+                  <p className="text-xs font-medium text-gray-700 mb-1">Documentos que este caminho exige</p>
+                  <ul className="text-[11px] text-gray-600 space-y-0.5 list-disc pl-4">
+                    {sim.documentos.map(doc => (
+                      <li key={doc.key}>
+                        {doc.titulo}
+                        <span className="text-gray-400"> — {doc.origem === 'gerado' ? 'gerado pelo sistema' : 'anexar'}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
 
               <div className="rounded-lg border border-gray-100 p-3 space-y-1.5">

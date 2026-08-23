@@ -243,12 +243,49 @@ router.post('/eu/demissao', async (req, res) => {
     }).select().single();
     if (error) throw error;
 
+    // A CARTA nasce junto com o processo. O texto que a pessoa escreveu
+    // aqui é o documento — pedir que ela escreva de novo em papel seria
+    // duplicar a mesma declaração e deixar as duas discordarem.
+    let carta = null;
+    try {
+      const r = await supabase.from('RH_DOCUMENTOS').insert({
+        tenant_id: req.tenantId,
+        employee_id: eu.id,
+        doc_key: 'carta_demissao',
+        // `type` é a coluna antiga e NOT NULL; a tela de Documentos casa
+        // por doc_key OU type, então as duas recebem a mesma chave.
+        type: 'carta_demissao',
+        category: 'desligamento',
+        description: motivo && motivo.trim()
+          ? `Pedido de demissão registrado pelo portal em ${hojeISO()}. Motivo informado: ${motivo.trim()}`
+          : `Pedido de demissão registrado pelo portal em ${hojeISO()}, sem motivo informado.`,
+        document_date: hojeISO(),
+        status: 'aguardando_assinatura',
+        sem_validade: true,
+        required: true,
+        origin: 'portal',
+      }).select().single();
+      if (r.error) throw new Error(r.error.message);
+      carta = r.data || null;
+    } catch (e) {
+      // A carta não pode derrubar o pedido: o processo já existe, e o RH
+      // consegue anexar o documento depois pela tela de Desligamentos.
+      // Mas o erro NÃO some calado — foi exatamente isso que escondeu
+      // uma coluna NOT NULL a primeira vez.
+      console.error('[portal] carta de demissão não gerada:', e.message);
+      carta = null;
+    }
+
     audit(req, 'create', 'desligamento', data.id, { origem: 'portal', colaborador: eu.name, motivo: motivo || null });
+    if (carta) audit(req, 'create', 'documento', carta.id, { doc: 'carta_demissao', origem: 'portal' });
     res.status(201).json({
       desligamento: data,
       calculo,
       exigencias: exige,
-      aviso: 'Seu pedido foi registrado. O RH vai confirmar a data e as condições com você.',
+      carta,
+      aviso: carta
+        ? 'Seu pedido foi registrado e a carta ficou anexada ao seu prontuário, aguardando assinatura. O RH vai confirmar a data e as condições com você.'
+        : 'Seu pedido foi registrado. O RH vai confirmar a data e as condições com você.',
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

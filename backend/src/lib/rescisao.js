@@ -214,6 +214,8 @@ function calcularRescisao({ colaborador, kind = 'sem_justa_causa', exit_date, no
     liquido: round2(proventos - totalDescontos),
     // O que a tela precisa avisar em voz alta.
     observacoes: [
+      ...(round2(proventos - totalDescontos) < 0
+        ? ['O desconto do aviso é maior que as verbas: a rescisão fecha NEGATIVA. Confira o art. 477 § 5º antes de cobrar a diferença.'] : []),
       ...(fgtsSaldoInformado == null
         ? ['Saldo do FGTS ESTIMADO (8% por mês trabalhado). Informe o saldo do extrato para a multa sair exata.'] : []),
       ...(kind === 'justa_causa'

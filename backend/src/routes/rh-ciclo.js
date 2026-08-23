@@ -21,6 +21,7 @@ const { audit } = require('../lib/audit');
 const { calcularRescisao, exigencias } = require('../lib/rescisao');
 const { saldoDeFerias } = require('../lib/ferias');
 const { pendenciasDoCadastro } = require('../lib/colaborador');
+const { exigidosNoDesligamento } = require('../lib/documentosCatalogo');
 
 const hojeISO = () => new Date().toISOString().slice(0, 10);
 
@@ -182,15 +183,32 @@ async function contextoDe(t, employeeId, exitDate) {
 router.get('/desligamentos', async (req, res) => {
   const t = req.tenantId;
   try {
-    const [desl, colab] = await Promise.all([
+    const [desl, colab, docs] = await Promise.all([
       tentar(() => supabase.from('RH_DESLIGAMENTOS').select('*').eq('tenant_id', t).order('created_at', { ascending: false })),
       tentar(() => supabase.from('CLIENTES').select('id, name, admission_data, created_at').eq('tenant_id', t).eq('type', 'CO')),
+      tentar(() => supabase.from('RH_DOCUMENTOS').select('id, employee_id, doc_key, file_url, status, created_at').eq('tenant_id', t)),
     ]);
     const nomeDe = id => colab.linhas.find(p => p.id === id)?.name || '—';
     const cargoDe = id => colab.linhas.find(p => p.id === id)?.admission_data?.role || null;
 
+    // Os papéis que ESTE desligamento exige — a lista se monta pelo
+    // tipo, não é a mesma para todo mundo.
+    const documentosDe = d => exigidosNoDesligamento({
+      kind: d.kind, notice: d.notice,
+      exame_exigido: d.exam_required, homologacao_exigida: d.homolog_required,
+    }).map(cat => {
+      const doc = docs.linhas.find(x => x.employee_id === d.employee_id && x.doc_key === cat.key) || null;
+      return {
+        key: cat.key, titulo: cat.titulo, obrigatorio: cat.obrigatorio,
+        origem: cat.origem, ajuda: cat.ajuda || null,
+        status: doc ? (doc.status || 'anexado') : 'pendente',
+        url: doc?.file_url || null,
+      };
+    });
+
     const lista = desl.linhas.map(d => ({
       ...d,
+      documentos: documentosDe(d),
       colaborador: nomeDe(d.employee_id),
       cargo: cargoDe(d.employee_id),
       // O prazo do art. 477: 10 dias corridos da saída.
@@ -202,6 +220,16 @@ router.get('/desligamentos', async (req, res) => {
         ...(!d.access_revoked_at ? ['Bloqueio de acesso ao sistema'] : []),
         ...(!d.rescission_total ? ['Cálculo rescisório'] : []),
         ...(!d.esocial_status ? ['Evento S-2299'] : []),
+        // Documento obrigatório que ainda não existe é pendência de
+        // verdade — some da lista sozinho quando o papel entra.
+        //
+        // O ASO e o termo de homologação ficam de fora: já estão acima
+        // como etapa do processo, e listá-los duas vezes faria a mesma
+        // pendência parecer duas.
+        ...documentosDe(d)
+          .filter(x => x.obrigatorio && x.status === 'pendente')
+          .filter(x => !['aso_demissional_doc', 'termo_homologacao'].includes(x.key))
+          .map(x => x.titulo),
       ],
     }));
 
@@ -211,7 +239,7 @@ router.get('/desligamentos', async (req, res) => {
         no_mes: lista.filter(d => String(d.exit_date || '').startsWith(hojeISO().slice(0, 7))).length,
         em_andamento: abertos.length,
         aguardando_homologacao: abertos.filter(d => d.homolog_required && !d.homolog_on).length,
-        documentos_pendentes: abertos.filter(d => d.exam_required && !d.exam_done_on).length,
+        documentos_pendentes: abertos.reduce((n, d) => n + d.documentos.filter(x => x.obrigatorio && x.status === 'pendente').length, 0),
         acessos_revogados: lista.filter(d => d.access_revoked_at).length,
         verbas: Math.round(lista.reduce((s, d) => s + (Number(d.rescission_total) || 0), 0) * 100) / 100,
       },
@@ -255,7 +283,17 @@ router.post('/desligamentos/simular', async (req, res) => {
       kind, admissao, exit_date, ultimo_aso: ctx.ultimo_aso, cct_exige_homologacao,
     });
 
-    res.json({ colaborador: { id: pessoa.id, nome: pessoa.name, admissao }, calculo, exigencias: exige });
+    res.json({
+      colaborador: { id: pessoa.id, nome: pessoa.name, admissao },
+      calculo,
+      exigencias: exige,
+      // Os papéis que este caminho vai exigir — antes de decidir por ele.
+      documentos: exigidosNoDesligamento({
+        kind, notice,
+        exame_exigido: exige.exame_demissional.exigido,
+        homologacao_exigida: exige.homologacao.exigida,
+      }),
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
