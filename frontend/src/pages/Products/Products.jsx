@@ -28,6 +28,9 @@ export default function Products() {
   const [delTarget, setDelTarget] = useState(null); // produto a apagar (confirmação)
   const [exporting, setExporting] = useState(false);
   const [categoryId, setCategoryId] = useState('');
+  // Liso x personalizado. '' = os dois juntos, que é como a tela sempre
+  // funcionou — quem abre Produtos sem escolher continua vendo tudo.
+  const [catalogo, setCatalogo] = useState('');
   const [linha, setLinha] = useState('');   // '' | tradicional | degrad | bicolor | jateado
   const [cor, setCor] = useState('');       // nome da cor (ex.: AMARELO LIMÃO)
   const [borda, setBorda] = useState('');   // '' | 'borda' (com) | '-borda' (sem)
@@ -92,7 +95,7 @@ export default function Products() {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['products', page, effectiveSearch, borderParam, volumeParam, categoryId, sort],
+    queryKey: ['products', page, effectiveSearch, borderParam, volumeParam, categoryId, sort, catalogo],
     queryFn: () => {
       let url = `/products?page=${page}&limit=50`;
       if (effectiveSearch) url += `&search=${encodeURIComponent(effectiveSearch)}`;
@@ -100,6 +103,7 @@ export default function Products() {
       if (volumeParam)     url += `&volume=${volumeParam}`;
       if (categoryId)      url += `&category_id=${categoryId}`;
       if (sort)            url += `&sort=${sort}`;
+      if (catalogo)        url += `&catalogo=${catalogo}`;
       return api.get(url);
     },
   });
@@ -397,7 +401,11 @@ export default function Products() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Produtos</h1>
-          <p className="text-sm text-gray-500 mt-1">{data?.total || 0} produtos cadastrados</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {data?.total || 0} produto{(data?.total || 0) === 1 ? '' : 's'}
+            {catalogo === 'liso' && ' — vendidos lisos na loja'}
+            {catalogo === 'personalizado' && ' — publicados em /personalizados'}
+          </p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setCatalogOpen(true)} className="btn-secondary">
@@ -410,6 +418,22 @@ export default function Products() {
             <Plus size={16} /> Novo Produto
           </button>
         </div>
+      </div>
+
+      {/* Onde o produto é vendido. O cadastro é o mesmo; muda a vitrine. */}
+      <div className="flex gap-1 p-1 rounded-lg bg-gray-100 w-fit">
+        {[
+          { k: '', r: 'Todos' },
+          { k: 'liso', r: 'Produtos lisos' },
+          { k: 'personalizado', r: 'Produtos personalizados' },
+        ].map(t => (
+          <button key={t.k} onClick={() => { setCatalogo(t.k); setPage(1); }}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              catalogo === t.k ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+            }`}>
+            {t.r}
+          </button>
+        ))}
       </div>
 
       <div className="card">

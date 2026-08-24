@@ -196,7 +196,7 @@ export default function Carrinho() {
       }
 
       carrinho.limpar();
-      navigate(`/catalogo/pagamento/${r.pedido_id}`);
+      navigate(`/personalizados/pagamento/${r.pedido_id}`);
     } catch (err) {
       if (err.codigo === 'LOGIN_REQUIRED') {
         // Não é erro: é a hora do cadastro. O carrinho fica onde está.
@@ -225,7 +225,7 @@ export default function Carrinho() {
   if (orcamento) {
     return (
       <CatalogoShell largura="max-w-xl" titulo="Orçamento gerado"
-        trilha={[{ nome: 'Catálogo', para: '/catalogo' }, { nome: 'Orçamento' }]}>
+        trilha={[{ nome: 'Catálogo', para: '/personalizados' }, { nome: 'Orçamento' }]}>
         <Painel cor={NEON.ciano}>
           <div className="text-center py-4">
             <Check size={40} className="mx-auto mb-3" style={{ color: NEON.ciano }} />
@@ -241,7 +241,7 @@ export default function Carrinho() {
             </p>
           </div>
           <div className="space-y-2.5 mt-2">
-            <Botao cheio icone={ArrowLeft} onClick={() => navigate('/catalogo')}>
+            <Botao cheio icone={ArrowLeft} onClick={() => navigate('/personalizados')}>
               Voltar ao catálogo
             </Botao>
             <AtendenteBotao />
@@ -255,7 +255,7 @@ export default function Carrinho() {
   if (!itens.length) {
     return (
       <CatalogoShell largura="max-w-xl" titulo="Seu carrinho está vazio"
-        trilha={[{ nome: 'Catálogo', para: '/catalogo' }, { nome: 'Carrinho' }]}>
+        trilha={[{ nome: 'Catálogo', para: '/personalizados' }, { nome: 'Carrinho' }]}>
         <Painel cor={NEON.azul}>
           <div className="text-center py-6">
             <ShoppingCart size={34} className="mx-auto mb-3" style={{ color: NEON.fraco }} />
@@ -263,7 +263,7 @@ export default function Carrinho() {
               Escolha uma categoria, monte seu copo e ele aparece aqui.
             </p>
           </div>
-          <Botao cheio icone={ArrowLeft} onClick={() => navigate('/catalogo')}>
+          <Botao cheio icone={ArrowLeft} onClick={() => navigate('/personalizados')}>
             Ver o catálogo
           </Botao>
         </Painel>
@@ -275,7 +275,7 @@ export default function Carrinho() {
     <CatalogoShell
       titulo="Seu carrinho"
       subtitulo="Confira os itens, informe a entrega e escolha entre orçamento ou pagamento."
-      trilha={[{ nome: 'Catálogo', para: '/catalogo' }, { nome: 'Carrinho' }]}
+      trilha={[{ nome: 'Catálogo', para: '/personalizados' }, { nome: 'Carrinho' }]}
       largura="max-w-6xl">
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.62fr)]">
@@ -292,7 +292,7 @@ export default function Carrinho() {
             </ul>
 
             <div className="mt-4">
-              <Botao cor={NEON.azul} icone={ArrowLeft} onClick={() => navigate('/catalogo')}>
+              <Botao cor={NEON.azul} icone={ArrowLeft} onClick={() => navigate('/personalizados')}>
                 Continuar comprando
               </Botao>
             </div>

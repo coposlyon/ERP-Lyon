@@ -7,7 +7,7 @@ const ThemeCtx = createContext({ isDark: true, toggleTheme: () => {} });
 // creme e laranja, o cadastro é azul-marinho com neon — e nenhuma delas
 // é o ERP.
 const PUBLICAS = [
-  '/loja', '/catalogo', '/acompanhar',
+  '/loja', '/personalizados', '/catalogo', '/acompanhar',
   '/cadastro', '/cadastro-fornecedor', '/cadastro-transportadora',
 ];
 

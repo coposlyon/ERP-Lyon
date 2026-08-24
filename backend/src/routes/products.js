@@ -85,6 +85,13 @@ router.get('/', async (req, res) => {
   // Filtro de tamanho (ML). Também é em memória: o match é no número extraído
   // do nome, não um "contém 400" que pegaria 2400, 1400, 4000...
   const volumeFilter = parseInt(req.query.volume) || 0;
+
+  // Liso x personalizado. `show_in_catalogo` é a coluna que o cadastro
+  // mestre usa para publicar em /personalizados (migração 077); o resto
+  // do catálogo é liso e vive na /loja. A comparação com `true` é
+  // proposital: quem nunca foi marcado tem NULL, e NULL é liso — não
+  // é "indefinido" que some das duas listas.
+  const tipoCatalogo = ['liso', 'personalizado'].includes(req.query.catalogo) ? req.query.catalogo : ''
   const emMemoria = !!borderFilter || !!volumeFilter;
 
   const buildQuery = (useCreatedAt) => {
@@ -103,6 +110,9 @@ router.get('/', async (req, res) => {
     if (search) query = applySearchTerms(query, search);
     if (category_id) query = query.eq('category_id', category_id);
     if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
+
+    if (tipoCatalogo === 'personalizado') query = query.eq('show_in_catalogo', true);
+    else if (tipoCatalogo === 'liso') query = query.or('show_in_catalogo.is.null,show_in_catalogo.eq.false');
 
     // Sem filtro em memória: pagina no banco (comportamento normal). Com filtro:
     // traz o conjunto (limitado, igual ao /filters) e pagina depois em memória.

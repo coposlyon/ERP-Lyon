@@ -91,10 +91,10 @@ export default function Pagamento() {
   if (erro) {
     return (
       <CatalogoShell largura="max-w-lg" titulo="Pedido não encontrado"
-        trilha={[{ nome: 'Catálogo', para: '/catalogo' }, { nome: 'Pagamento' }]}>
+        trilha={[{ nome: 'Catálogo', para: '/personalizados' }, { nome: 'Pagamento' }]}>
         <Painel cor={NEON.magenta}>
           <p className="text-[13px] text-center py-4" style={{ color: '#fca5a5' }}>{erro}</p>
-          <Botao icone={ArrowLeft} onClick={() => navigate('/catalogo')}>Voltar ao catálogo</Botao>
+          <Botao icone={ArrowLeft} onClick={() => navigate('/personalizados')}>Voltar ao catálogo</Botao>
         </Painel>
       </CatalogoShell>
     );
@@ -118,7 +118,7 @@ export default function Pagamento() {
     return (
       <CatalogoShell largura="max-w-lg"
         titulo={expirado ? 'Cobrança encerrada' : 'Pagamento confirmado'}
-        trilha={[{ nome: 'Catálogo', para: '/catalogo' }, { nome: 'Pagamento' }]}>
+        trilha={[{ nome: 'Catálogo', para: '/personalizados' }, { nome: 'Pagamento' }]}>
         <Painel cor={expirado ? NEON.magenta : NEON.ciano}>
           <div className="text-center py-4">
             {expirado
@@ -155,7 +155,7 @@ export default function Pagamento() {
                 <PackageCheck size={17} /> Acompanhar meu pedido
               </Link>
             )}
-            <Botao cor={NEON.azul} icone={ArrowLeft} onClick={() => navigate('/catalogo')}>
+            <Botao cor={NEON.azul} icone={ArrowLeft} onClick={() => navigate('/personalizados')}>
               Voltar ao catálogo
             </Botao>
           </div>
@@ -168,7 +168,7 @@ export default function Pagamento() {
   return (
     <CatalogoShell largura="max-w-lg" titulo="Pague com PIX"
       subtitulo="Assim que confirmarmos o pagamento, seu pedido entra na produção."
-      trilha={[{ nome: 'Catálogo', para: '/catalogo' }, { nome: 'Pagamento' }]}>
+      trilha={[{ nome: 'Catálogo', para: '/personalizados' }, { nome: 'Pagamento' }]}>
 
       <Painel cor={NEON.ciano} icone={QrCode} titulo={`Total a pagar — ${brl(pedido.total)}`}>
         {pedido.pix_qr_base64 ? (

@@ -67,7 +67,7 @@ export default function Familias() {
         </div>
 
         {carrinho.pecas > 0 && (
-          <button type="button" onClick={() => navigate('/catalogo/carrinho')}
+          <button type="button" onClick={() => navigate('/personalizados/carrinho')}
             className="rounded-lg px-4 py-2.5 text-[13px] font-medium flex items-center gap-2 shrink-0"
             style={{ ...bordaNeon(NEON.rosa), color: NEON.rosa }}>
             <ShoppingCart size={15} /> Carrinho · {carrinho.pecas} un
@@ -99,7 +99,7 @@ export default function Familias() {
             const cor = espectro[i % espectro.length];
             return (
               <button key={f.id} type="button"
-                onClick={() => navigate(`/catalogo/${f.slug}`)}
+                onClick={() => navigate(`/personalizados/${f.slug}`)}
                 className="text-left p-4 transition-transform active:scale-[0.985] hover:-translate-y-0.5"
                 style={bordaNeon(cor)}>
 

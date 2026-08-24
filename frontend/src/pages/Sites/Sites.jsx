@@ -12,7 +12,7 @@
 // ============================================================
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Globe, ExternalLink, Link2, Check, RefreshCw, PenLine, Lock } from 'lucide-react';
+import { Globe, ExternalLink, Link2, Check, RefreshCw, PenLine, Lock , Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { SITES, CORES, urlDoSite, copiarTexto } from './registro';
 import { MiniPreview } from './Preview';
@@ -59,10 +59,18 @@ function CartaoSite({ site, versao }) {
           <span className="truncate">{url}</span>
         </button>
 
+        {/* O endereço também copia ao ser clicado, mas só isso não basta:
+            texto cinza não parece botão, e quem precisa do link não
+            adivinha que pode clicar nele. */}
         <div className="flex gap-2 mt-auto pt-1">
           <Link to={`/sites/${site.key}`} className="btn-primary btn-sm flex-1 justify-center">
             <PenLine size={14} /> Ver e editar
           </Link>
+          <button type="button" onClick={copiar} className="btn-secondary btn-sm" title="Copiar o link do site">
+            {copiado
+              ? <><Check size={14} className="text-green-500" /> Copiado</>
+              : <><Copy size={14} /> Copiar link</>}
+          </button>
           <a href={site.caminho} target="_blank" rel="noreferrer" className="btn-secondary btn-sm" title="Abrir em outra aba">
             <ExternalLink size={14} />
           </a>

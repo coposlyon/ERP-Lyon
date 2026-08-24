@@ -176,7 +176,13 @@ function AppRoutes() {
       <Route path="/loja/*" element={<StoreApp />} />
       {/* Catálogo de Produtos Personalizados — o link que o vendedor
           manda ao cliente. Fora do ERP e sem login, igual à loja. */}
-      <Route path="/catalogo/*" element={<CatalogoApp />} />
+      {/* O catálogo de personalizados agora mora em /personalizados.
+          /catalogo continua existindo e redirecionando: o link já foi
+          mandado para clientes por WhatsApp, está em QR code e no
+          Instagram — quebrá-lo perderia venda de gente que nem saberia
+          por quê. O `*` preserva o resto do caminho. */}
+      <Route path="/personalizados/*" element={<CatalogoApp />} />
+      <Route path="/catalogo/*" element={<RedirecionaPersonalizados />} />
       {/* Autocadastro de cliente — link público p/ enviar ao cliente */}
       <Route path="/cadastro" element={<CadastroCliente />} />
       {/* Autocadastro de fornecedora — link público p/ enviar à fornecedora */}
@@ -338,6 +344,12 @@ function AppRoutes() {
     </Routes>
     </Suspense>
   );
+}
+
+/** /catalogo/xyz → /personalizados/xyz, mantendo o que vem depois. */
+function RedirecionaPersonalizados() {
+  const { pathname, search } = useLocation();
+  return <Navigate to={pathname.replace(/^\/catalogo/, '/personalizados') + search} replace />;
 }
 
 export default function App() {

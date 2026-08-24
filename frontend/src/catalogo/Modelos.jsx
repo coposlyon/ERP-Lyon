@@ -43,17 +43,17 @@ export default function Modelos() {
 
   function abrir(m) {
     const query = m.acabamento_id ? `?acabamento=${m.acabamento_id}` : '';
-    navigate(`/catalogo/configurar/${m.chave}${query}`);
+    navigate(`/personalizados/configurar/${m.chave}${query}`);
   }
 
   return (
     <CatalogoShell
       titulo={nomeFamilia ? `Categoria: ${nomeFamilia}` : 'Categoria'}
       subtitulo="Escolha o modelo para configurar cores, acabamento e personalização."
-      trilha={[{ nome: 'Catálogo', para: '/catalogo' }, { nome: nomeFamilia || '…' }]}>
+      trilha={[{ nome: 'Catálogo', para: '/personalizados' }, { nome: nomeFamilia || '…' }]}>
 
       <div className="flex flex-wrap items-center gap-3 mb-5">
-        <Link to="/catalogo"
+        <Link to="/personalizados"
           className="rounded-lg px-3.5 py-2.5 text-[13px] flex items-center gap-2 shrink-0"
           style={{ ...bordaNeon(NEON.azul), color: NEON.azul }}>
           <ArrowLeft size={15} /> Voltar
@@ -66,7 +66,7 @@ export default function Modelos() {
         </div>
 
         {carrinho.pecas > 0 && (
-          <button type="button" onClick={() => navigate('/catalogo/carrinho')}
+          <button type="button" onClick={() => navigate('/personalizados/carrinho')}
             className="rounded-lg px-4 py-2.5 text-[13px] font-medium flex items-center gap-2 shrink-0"
             style={{ ...bordaNeon(NEON.rosa), color: NEON.rosa }}>
             <ShoppingCart size={15} /> Carrinho · {carrinho.pecas} un

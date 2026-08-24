@@ -211,8 +211,8 @@ export default function Configurador() {
     carrinho.adicionar(montarItem());
     limparRascunho(chave);
     toast.success('Item adicionado ao carrinho');
-    if (depois === 'continuar') navigate('/catalogo');
-    else if (depois) navigate(`/catalogo/carrinho?acao=${depois}&pagamento=${estado.pagamento}`);
+    if (depois === 'continuar') navigate('/personalizados');
+    else if (depois) navigate(`/personalizados/carrinho?acao=${depois}&pagamento=${estado.pagamento}`);
     else setEstado({ ...INICIAL, acabamento_id: estado.acabamento_id });
   }
 
@@ -222,7 +222,7 @@ export default function Configurador() {
       return;
     }
     gravarRascunho(chave, estado);
-    navigate(`/catalogo/arte/${chave}`);
+    navigate(`/personalizados/arte/${chave}`);
   }
 
   if (isLoading) {
@@ -241,7 +241,7 @@ export default function Configurador() {
           {error?.message || 'Esse modelo saiu do catálogo.'}
         </p>
         <div className="max-w-xs mx-auto">
-          <Botao icone={ArrowLeft} onClick={() => navigate('/catalogo')}>Voltar ao catálogo</Botao>
+          <Botao icone={ArrowLeft} onClick={() => navigate('/personalizados')}>Voltar ao catálogo</Botao>
         </div>
       </CatalogoShell>
     );
@@ -255,7 +255,7 @@ export default function Configurador() {
       titulo="Configurar Produto, Gerar Orçamento e Pagamento"
       subtitulo="Selecione o modelo, acabamento, personalização e forma de pagamento."
       trilha={[
-        { nome: 'Catálogo', para: '/catalogo' },
+        { nome: 'Catálogo', para: '/personalizados' },
         { nome: cfg.modelo.base },
         { nome: preco?.nome || cfg.modelo.nome },
       ]}>
@@ -548,7 +548,7 @@ export default function Configurador() {
               disabled={!podeFechar}>
               Adicionar ao carrinho
             </Botao>
-            <Botao icone={ArrowLeft} cor={NEON.azul} onClick={() => navigate('/catalogo')}>
+            <Botao icone={ArrowLeft} cor={NEON.azul} onClick={() => navigate('/personalizados')}>
               Continuar comprando
             </Botao>
             <Botao icone={FileText} cor={NEON.roxo} onClick={() => adicionar('orcamento')}

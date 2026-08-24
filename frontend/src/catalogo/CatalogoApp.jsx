@@ -3,12 +3,12 @@
 //
 // Seis telas, um caminho só (§34):
 //
-//   /catalogo                     famílias
-//   /catalogo/:familia            modelos daquela família
-//   /catalogo/configurar/:chave   acabamento, cores, personalização
-//   /catalogo/arte/:chave         o editor da arte
-//   /catalogo/carrinho            orçamento ou pagamento
-//   /catalogo/pagamento/:id       a cobrança
+//   /personalizados                     famílias
+//   /personalizados/:familia            modelos daquela família
+//   /personalizados/configurar/:chave   acabamento, cores, personalização
+//   /personalizados/arte/:chave         o editor da arte
+//   /personalizados/carrinho            orçamento ou pagamento
+//   /personalizados/pagamento/:id       a cobrança
 //
 // UMA TELA POR ETAPA, NUNCA UMA POR PRODUTO. Canecas, Long Drink e o
 // que entrar amanhã passam por estas mesmas seis. Família nova é linha
@@ -60,7 +60,7 @@ export default function CatalogoApp() {
               "carrinho" e "arte" se viesse antes, e o cliente cairia
               numa vitrine vazia chamada "carrinho". */}
           <Route path=":familia" element={<Modelos />} />
-          <Route path="*" element={<Navigate to="/catalogo" replace />} />
+          <Route path="*" element={<Navigate to="/personalizados" replace />} />
         </Routes>
       </Suspense>
     </CarrinhoProvider>

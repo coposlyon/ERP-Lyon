@@ -203,7 +203,7 @@ export default function CriarArte() {
       });
 
       toast.success('Arte confirmada');
-      navigate(`/catalogo/configurar/${chave}`);
+      navigate(`/personalizados/configurar/${chave}`);
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -225,7 +225,7 @@ export default function CriarArte() {
   if (!medidas) {
     return (
       <CatalogoShell titulo="Criar sua arte"
-        trilha={[{ nome: 'Catálogo', para: '/catalogo' }, { nome: 'Criar sua arte' }]}>
+        trilha={[{ nome: 'Catálogo', para: '/personalizados' }, { nome: 'Criar sua arte' }]}>
         <div className="max-w-md mx-auto text-center">
           <AlertTriangle size={34} className="mx-auto mb-3" style={{ color: '#fbbf24' }} />
           <p className="text-sm leading-relaxed" style={{ color: NEON.suave }}>
@@ -234,7 +234,7 @@ export default function CriarArte() {
             Fale com um de nossos atendentes que montamos para você.
           </p>
           <div className="mt-5">
-            <Botao icone={ArrowLeft} onClick={() => navigate(`/catalogo/configurar/${chave}`)}>
+            <Botao icone={ArrowLeft} onClick={() => navigate(`/personalizados/configurar/${chave}`)}>
               Voltar à configuração
             </Botao>
           </div>
@@ -252,8 +252,8 @@ export default function CriarArte() {
       titulo="Criar sua arte"
       subtitulo={`${cfg?.modelo?.nome || ''} — área de impressão ${medidas.largura_mm} × ${medidas.altura_mm} mm`}
       trilha={[
-        { nome: 'Catálogo', para: '/catalogo' },
-        { nome: cfg?.modelo?.base || '…', para: '/catalogo' },
+        { nome: 'Catálogo', para: '/personalizados' },
+        { nome: cfg?.modelo?.base || '…', para: '/personalizados' },
         { nome: 'Criar sua arte' },
       ]}>
 
@@ -264,7 +264,7 @@ export default function CriarArte() {
           <Painel titulo="Gabarito da arte" cor={NEON.ciano} icone={Ruler}>
             <div className="flex flex-wrap items-center gap-2 mb-4">
               <Botao cor={NEON.azul} icone={ArrowLeft} className="!w-auto !py-2 !px-3 !text-[12.5px]"
-                onClick={() => navigate(`/catalogo/configurar/${chave}`)}>
+                onClick={() => navigate(`/personalizados/configurar/${chave}`)}>
                 Voltar
               </Botao>
               <div className="flex gap-1.5 ml-auto">
@@ -458,7 +458,7 @@ export default function CriarArte() {
               {salvando ? 'Salvando…' : 'Confirmar arte e voltar'}
             </Botao>
             <Botao cor={NEON.azul} icone={ArrowLeft}
-              onClick={() => navigate(`/catalogo/configurar/${chave}`)}>
+              onClick={() => navigate(`/personalizados/configurar/${chave}`)}>
               Voltar sem salvar
             </Botao>
           </div>

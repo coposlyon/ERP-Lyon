@@ -46,7 +46,7 @@ export const SITES = [
   {
     key: 'catalogo',
     nome: 'Catálogo Personalizado',
-    caminho: '/catalogo',
+    caminho: '/personalizados',
     resumo: 'Copo com arte — o link que o vendedor manda',
     descricao: 'O caminho inteiro do copo personalizado: família, modelo, acabamento, '
       + 'criação da arte, visualização em 3D e pedido. É o link principal para o cliente.',

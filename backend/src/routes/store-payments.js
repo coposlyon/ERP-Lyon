@@ -17,6 +17,42 @@ const STATUS = ['aguardando_pagamento', 'pago', 'expirado', 'cancelado'];
 
 // Pedido vencido continua na fila (ninguém apaga venda potencial), mas
 // aparece marcado para quem estiver conferindo.
+/**
+ * Os dados do cliente, buscados à parte.
+ *
+ * Antes isto era um embed do PostgREST — `CLIENTES(id, name, ...)`
+ * dentro do select. Não existe chave estrangeira declarada entre
+ * PEDIDOS_LOJA e CLIENTES, então o PostgREST recusava a consulta
+ * INTEIRA com 'Could not find a relationship', e a fila de pagamentos
+ * respondia 500. O pedido estava no banco o tempo todo; era a tela que
+ * não conseguia listá-lo.
+ *
+ * Uma segunda consulta também é mais honesta com o dado: o pedido
+ * guarda um retrato do cliente em `customer` (nome e telefone do
+ * momento da compra), e visitante sem cadastro tem customer_id nulo.
+ */
+async function clientesDe(tenantId, pedidos) {
+  const ids = [...new Set(pedidos.map(p => p.customer_id).filter(Boolean))];
+  if (!ids.length) return {};
+  const { data } = await supabase.from('CLIENTES')
+    .select('id, name, phone, email, display_id').eq('tenant_id', tenantId).in('id', ids);
+  return Object.fromEntries((data || []).map(c => [c.id, c]));
+}
+
+/** O pedido pronto para a tela: cliente resolvido e vencimento marcado. */
+function paraTela(p, porId) {
+  return {
+    ...p,
+    CLIENTES: porId[p.customer_id] || null,
+    // O retrato do momento da compra vale quando não há cadastro.
+    cliente_nome: porId[p.customer_id]?.name || p.customer?.name || 'Cliente do site',
+    cliente_fone: porId[p.customer_id]?.phone || p.customer?.phone || null,
+    expirado: vencido(p),
+    // Quem avisou que pagou vai na frente da fila.
+    avisou_pagamento: !!p.paid_notified_at,
+  };
+}
+
 const vencido = p => p.status === 'aguardando_pagamento'
   && p.expires_at && new Date(p.expires_at) < new Date();
 
@@ -26,15 +62,22 @@ router.get('/', async (req, res) => {
   try {
     const { data, error, count } = await supabase
       .from('PEDIDOS_LOJA')
-      .select('*, CLIENTES(id, name, phone, email, display_id)', { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('tenant_id', req.tenantId)
       .eq('status', status)
       .order('created_at', { ascending: false })
       .limit(limit);
     if (error) throw error;
+
+    const porId = await clientesDe(req.tenantId, data || []);
+    const linhas = (data || []).map(p => paraTela(p, porId));
+    // Quem avisou que pagou primeiro — é quem está esperando resposta.
+    linhas.sort((a, b) => (b.avisou_pagamento ? 1 : 0) - (a.avisou_pagamento ? 1 : 0));
+
     res.json({
-      data: (data || []).map(p => ({ ...p, expirado: vencido(p) })),
-      total: count ?? (data || []).length,
+      data: linhas,
+      total: count ?? linhas.length,
+      aguardando_conferencia: linhas.filter(l => l.avisou_pagamento).length,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -53,11 +96,12 @@ router.get('/:id', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('PEDIDOS_LOJA')
-      .select('*, CLIENTES(id, name, phone, email, display_id)')
+      .select('*')
       .eq('tenant_id', req.tenantId).eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Pedido não encontrado' });
-    res.json({ ...data, expirado: vencido(data) });
+    const porId = await clientesDe(req.tenantId, [data]);
+    res.json(paraTela(data, porId));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

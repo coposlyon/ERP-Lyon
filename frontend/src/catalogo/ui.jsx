@@ -72,7 +72,7 @@ export function CatalogoShell({ titulo, subtitulo, trilha = [], largura = 'max-w
 
       <div className={`${largura} mx-auto px-4 sm:px-6 py-7 relative z-10`}>
         <div className="text-center">
-          <Link to="/catalogo" className="inline-block">
+          <Link to="/personalizados" className="inline-block">
             <img src="/lyon-logo.png" alt="Lyon Copos" width={190} height={54} draggable={false}
               className="mx-auto mb-3 w-[190px] max-w-[60%]"
               onError={e => { e.target.style.display = 'none'; }} />
@@ -208,16 +208,26 @@ export function Campo({ className = '', ...props }) {
   );
 }
 
-/** Select com a seta desenhada — a nativa some no fundo escuro. */
+/**
+ * Select com a seta desenhada — a nativa some no fundo escuro.
+ *
+ * `colorScheme: dark` não é detalhe: a LISTA de opções é desenhada pelo
+ * sistema, não pela página, e ela herda o esquema de cor do documento.
+ * Sem isso o popup abre BRANCO sobre o catálogo escuro, e ainda por
+ * cima com o fundo translúcido do campo resolvendo para branco.
+ * A classe `lj-select` pinta as opções no navegador que ignora o
+ * color-scheme.
+ */
 export function Seletor({ children, className = '', ...props }) {
   return (
     <div className="relative">
       <select {...props}
-        className={`w-full appearance-none rounded-lg pl-3 pr-8 py-2.5 text-[13.5px] outline-none ${className}`}
+        className={`lj-select w-full appearance-none rounded-lg pl-3 pr-8 py-2.5 text-[13.5px] outline-none ${className}`}
         style={{
           background: 'rgba(255,255,255,0.045)',
           border: '1px solid rgba(255,255,255,0.13)',
           color: NEON.texto,
+          colorScheme: 'dark',
           ...(props.style || {}),
         }}>
         {children}
