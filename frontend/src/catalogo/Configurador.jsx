@@ -25,7 +25,7 @@ import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import {
   Box, Palette, CalendarDays, Eye, FileText, ShoppingCart, ArrowLeft, Lock,
   Loader2, Info, Headphones, CreditCard, QrCode, Barcode, Droplet, Layers,
-  PenTool, Sparkles, AlertTriangle, PackageCheck, Check,
+  PenTool, Sparkles, AlertTriangle, PackageCheck, Check, Maximize2, X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from './api';
@@ -34,7 +34,6 @@ import {
   Rotulo, Opcao, Botao, Campo, Seletor, Bolinha, Nota, brl,
 } from './ui';
 import CopoPreview from './CopoPreview';
-import Visualizar3D from './Visualizar3D';
 import { useCarrinho } from './carrinhoContexto';
 import { lerRascunho, gravarRascunho, limparRascunho } from './rascunho';
 
@@ -64,7 +63,7 @@ export default function Configurador() {
   const [estado, setEstado] = useState(() => lerRascunho(chave) || INICIAL);
   const [preco, setPreco] = useState(null);
   const [calculando, setCalculando] = useState(false);
-  const [ver3D, setVer3D] = useState(false);
+  const [telaCheia, setTelaCheia] = useState(false);
 
   const { data: cfg, isLoading, error } = useQuery({
     queryKey: ['catalogo', 'modelo', chave],
@@ -117,7 +116,15 @@ export default function Configurador() {
     mudar({ acabamento_id: novo.id, campos: restante });
   }
 
-  const opcoesDoCampo = campo => (cfg?.cores?.[campo.grupo] || []);
+  // As cores que o campo aceita. `apenas` restringe dentro do grupo —
+  // a cor da boca sai do mesmo grupo «pintura» das dez tintas, mas só
+  // Gelo e Transparente existem como acabamento de boca.
+  const opcoesDoCampo = campo => {
+    const todas = cfg?.cores?.[campo.grupo] || [];
+    if (!Array.isArray(campo.apenas) || !campo.apenas.length) return todas;
+    const querem = campo.apenas.map(x => String(x).toLowerCase());
+    return todas.filter(c => querem.includes(String(c.name).toLowerCase()));
+  };
 
   // §10: só "1 cor" e "Arte colorida". Quem é quem sai do cadastro (o
   // processo de uma cor e o colorido), não de nomes escritos aqui.
@@ -535,8 +542,8 @@ export default function Configurador() {
             )}
 
             <div className="mt-3">
-              <Botao icone={Eye} cor={NEON.ciano} onClick={() => setVer3D(true)}>
-                Visualizar em 3D
+              <Botao icone={Maximize2} cor={NEON.ciano} onClick={() => setTelaCheia(true)}>
+                Ver em tela cheia
               </Botao>
             </div>
           </Painel>
@@ -693,19 +700,33 @@ export default function Configurador() {
         </div>
       </div>
 
-      {ver3D && (
-        <Visualizar3D
-          escolha={escolhaVisual}
-          faces={personalizado ? {
-            frente: arteFrente,
-            verso: estado.posicao === 'frente_verso' ? arteVerso : null,
-          } : {}}
-          gabarito={gabarito}
-          // A forma 3D sai da CATEGORIA do cadastro: caneca tem alça,
-          // taça tem pé, long drink é cônico. Sem isso todo produto
-          // apareceria como o mesmo copo.
-          modelo={{ ...cfg.modelo, nome: preco?.nome || cfg.modelo.nome }}
-          onFechar={() => setVer3D(false)} />
+      {/* O copo em tela cheia. O 3D exigia carregar a biblioteca inteira
+          de WebGL para mostrar um copo que o cliente só quer ver maior —
+          e no celular fraco ele travava antes de girar. */}
+      {telaCheia && (
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'rgba(4,8,22,0.97)' }}
+          onClick={() => setTelaCheia(false)}>
+          <div className="flex items-center justify-between px-5 py-3">
+            <span className="text-[13px]" style={{ color: NEON.suave }}>
+              {cfg?.modelo?.nome || 'Seu copo'}
+            </span>
+            <button type="button" onClick={() => setTelaCheia(false)}
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.08)', color: NEON.texto }} aria-label="Fechar">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="flex-1 flex items-end justify-center gap-8 pb-10 px-4"
+            onClick={e => e.stopPropagation()}>
+            <CopoPreview escolha={escolhaVisual} arte={arteFrente} face="frente"
+              gabarito={gabarito} altura={Math.min(560, window.innerHeight * 0.68)} />
+            {personalizado && estado.posicao === 'frente_verso' && (
+              <CopoPreview escolha={escolhaVisual} arte={arteVerso} face="verso"
+                gabarito={gabarito} altura={Math.min(560, window.innerHeight * 0.68)} />
+            )}
+          </div>
+        </div>
+      )}
       )}
     </CatalogoShell>
   );

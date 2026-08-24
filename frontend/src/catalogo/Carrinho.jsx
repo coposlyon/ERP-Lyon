@@ -27,8 +27,10 @@ import {
   ShoppingCart, Trash2, ArrowLeft, FileText, Lock, Loader2, Truck,
   MapPin, CalendarDays, Info, Headphones, AlertTriangle, Check,
   QrCode, CreditCard, Barcode, UserRound, PackageCheck,
+  FileDown, Image as ImageIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { generateQuotePng, downloadPng } from '@/lib/quotePng';
 import api, { lojaApi } from './api';
 import {
   CatalogoShell, Painel, NEON, bordaNeon, corComAlfa,
@@ -141,6 +143,45 @@ export default function Carrinho() {
     projeto_id: i.projeto_id,
   }));
 
+  /**
+   * Baixa o orçamento como arquivo.
+   *
+   * O cliente pediu o orçamento: ele já deve sair com o arquivo na mão,
+   * sem ter que descobrir onde clicar. O PNG é gerado no navegador (o
+   * mesmo desenho do PDV) e o PDF é esse PNG numa página — assim os dois
+   * mostram exatamente a mesma coisa, que é o que evita a discussão de
+   * "mas no meu apareceu diferente".
+   */
+  async function baixarOrcamento(formato = 'png') {
+    const q = orcamento?.paraArquivo;
+    if (!q) return;
+    const nomeArq = `orcamento-${String(q.number).padStart(4, '0')}`;
+    try {
+      const dataUrl = generateQuotePng(q);
+      if (formato === 'png') { downloadPng(dataUrl, `${nomeArq}.png`); return; }
+
+      const { jsPDF } = await import('jspdf');
+      const img = new Image();
+      await new Promise((ok, falhou) => { img.onload = ok; img.onerror = falhou; img.src = dataUrl; });
+      // Retrato ou paisagem conforme o desenho, para o orçamento nunca
+      // sair cortado numa folha que não cabe.
+      const pdf = new jsPDF({
+        orientation: img.width > img.height ? 'landscape' : 'portrait',
+        unit: 'px', format: [img.width, img.height],
+      });
+      pdf.addImage(dataUrl, 'PNG', 0, 0, img.width, img.height);
+      pdf.save(`${nomeArq}.pdf`);
+    } catch (err) {
+      toast.error('Não consegui gerar o arquivo. Tente o outro formato.');
+    }
+  }
+
+  // Assim que o orçamento existe, o arquivo cai sozinho.
+  useEffect(() => {
+    if (orcamento?.paraArquivo) baixarOrcamento('png');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orcamento?.numero]);
+
   // ── Gerar orçamento (§29) ─────────────────────────────────
   async function gerarOrcamento() {
     if (!itens.length) return;
@@ -160,7 +201,26 @@ export default function Carrinho() {
         cep: entrega.cep || null,
         retirar: entrega.retirar,
       });
-      setOrcamento(r);
+      // O retrato do orçamento tem de ser tirado ANTES de limpar o
+      // carrinho — depois de `limpar()` não há mais item para desenhar,
+      // e o arquivo baixado sairia em branco.
+      setOrcamento({
+        ...r,
+        paraArquivo: {
+          number: r.numero,
+          created_at: new Date().toISOString(),
+          customer: { name: nome, phone: contato.telefone, email: contato.email },
+          items: itens.map(i => ({
+            product_name: i.nome,
+            quantity: i.quantidade,
+            unit_price: i.valor_unitario,
+            notes: Object.entries(i.resumo || {}).map(([k, v]) => `${k}: ${v}`).join(' · '),
+          })),
+          discount: 0,
+          freight: valorFrete,
+          validade: r.validade,
+        },
+      });
       carrinho.limpar();
       toast.success(`Orçamento ${r.numero} gerado`);
     } catch (err) {
@@ -241,6 +301,12 @@ export default function Carrinho() {
             </p>
           </div>
           <div className="space-y-2.5 mt-2">
+            <Botao icone={ImageIcon} cor={NEON.ciano} onClick={() => baixarOrcamento('png')}>
+              Baixar em imagem (PNG)
+            </Botao>
+            <Botao icone={FileDown} cor={NEON.roxo} onClick={() => baixarOrcamento('pdf')}>
+              Baixar em PDF
+            </Botao>
             <Botao cheio icone={ArrowLeft} onClick={() => navigate('/personalizados')}>
               Voltar ao catálogo
             </Botao>
