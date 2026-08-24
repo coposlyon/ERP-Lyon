@@ -58,17 +58,6 @@ export const menuItems = [
       { label: 'Marketing', path: '/marketing', icon: Megaphone, module: 'marketing' },
     ],
   },
-  // Sites — um submenu por endereço público. A lista NÃO é escrita aqui:
-  // vem do catálogo em pages/Sites/registro.js, o mesmo que desenha o painel.
-  // Endereço novo registrado lá aparece no menu sozinho.
-  {
-    label: 'Sites',
-    icon: Globe,
-    children: [
-      { label: 'Todos os sites', path: '/sites', icon: LayoutGrid, module: ['sites', 'settings'], exact: true },
-      ...SITES.map(s => ({ label: s.nome, path: `/sites/${s.key}`, icon: s.icone, module: ['sites', 'settings'] })),
-    ],
-  },
   {
     label: 'Cadastros',
     icon: Package,
@@ -185,6 +174,18 @@ export const menuItems = [
     children: [
       { label: 'Ordens de Produção', path: '/production', icon: Factory, module: 'production' },
       { label: 'Devoluções',         path: '/returns',    icon: RotateCcw, module: 'returns' },
+    ],
+  },
+
+  // Sites — um submenu por endereço público. A lista NÃO é escrita aqui:
+  // vem do catálogo em pages/Sites/registro.js, o mesmo que desenha o painel.
+  // Endereço novo registrado lá aparece no menu sozinho.
+  {
+    label: 'Sites',
+    icon: Globe,
+    children: [
+      { label: 'Todos os sites', path: '/sites', icon: LayoutGrid, module: ['sites', 'settings'], exact: true },
+      ...SITES.map(s => ({ label: s.nome, path: `/sites/${s.key}`, icon: s.icone, module: ['sites', 'settings'] })),
     ],
   },
 
