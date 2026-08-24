@@ -68,7 +68,7 @@ export default function PortalContador() {
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['portal-contador', mes],
-    queryFn: () => api.get('/portal/contador', { params: { competencia: mes } }).then(r => r.data),
+    queryFn: () => api.get('/portal/contador', { params: { competencia: mes } }),
   });
 
   if (isLoading) {

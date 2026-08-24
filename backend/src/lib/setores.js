@@ -58,6 +58,16 @@ const MODULOS = [
 
 const MODULO_KEYS = new Set(MODULOS.map(m => m.key));
 
+// Sete módulos que NENHUM item do menu lateral alcança: ou a tela não
+// está no menu (PDV, Compras), ou o item existe sem exigir módulo
+// (Dashboard), ou pertence ao layout do vendedor, que é um menu à
+// parte. Marcar páginas na árvore jamais liberaria estes.
+//
+// Eles aparecem na tela de Permissões numa seção própria, em vez de
+// sumirem: um acesso que existe na API e não aparece em lugar nenhum
+// para configurar é um acesso que ninguém revisa.
+const MODULOS_SEM_TELA = ['dashboard', 'pdv', 'purchases', 'vendedor', 'pedidos-vendedor', 'catalogo', 'agenda', 'comunicacao'];
+
 // Dois jeitos de o ERP se apresentar. 'erp' é o sistema inteiro; 'vendedor'
 // é a área enxuta de cinco itens do layout aprovado.
 const LAYOUTS = ['erp', 'vendedor'];
@@ -96,21 +106,45 @@ async function listSetores(tenantId) {
  * inicial. Uma função só, usada pelo middleware e por /auth/me — assim
  * o servidor e a tela nunca discordam sobre quem pode o quê.
  */
+/**
+ * As TELAS efetivas desta pessoa.
+ *
+ * Uma pergunta, três respostas possíveis, nesta ordem:
+ *
+ *   lista própria no usuário  → vale a dela, e só a dela
+ *   senão, lista do setor      → herda do setor
+ *   nenhuma das duas           → null: sem restrição por tela
+ *
+ * Herdar é o padrão de propósito. Copiar as telas do setor para dentro
+ * de cada pessoa faria o setor virar decoração: mudar o setor depois
+ * não mudaria ninguém, e o administrador descobriria isso tarde.
+ *
+ * Lista VAZIA é escolha, não ausência — por isso a comparação é com
+ * Array.isArray e nunca com o valor ser falsy.
+ */
+function telasEfetivas(userProfile, setor) {
+  if (Array.isArray(userProfile?.allowed_screens)) return userProfile.allowed_screens;
+  if (Array.isArray(setor?.screens)) return setor.screens;
+  return null;
+}
+
+/** O usuário segue o setor ou tem lista própria? A tela precisa saber. */
+function herdaDoSetor(userProfile) {
+  return !Array.isArray(userProfile?.allowed_screens);
+}
+
 function resolverAcesso(userProfile, setor) {
-  // Telas liberadas para esta pessoa. `undefined` (coluna ainda não
-  // criada) e `null` (ninguém escolheu) valem a mesma coisa: sem
-  // restrição por tela. Lista vazia é escolha — não vê nada.
-  const telas = Array.isArray(userProfile?.allowed_screens) ? userProfile.allowed_screens : null;
+  const telas = telasEfetivas(userProfile, setor);
 
   if (userProfile?.role === 'admin') {
-    return { modules: null, screens: null, layout: 'erp', home: '/', setor: setor?.key || null, setorName: setor?.name || 'Administrador' };
+    return { modules: null, screens: null, layout: 'erp', home: '/', setor: setor?.key || null, setorName: setor?.name || 'Administrador', herda: false };
   }
 
   const extras = Array.isArray(userProfile?.allowed_modules) ? userProfile.allowed_modules : null;
 
   if (!setor) {
     // Regra antiga, intocada: null = sem restrição, lista = só a lista.
-    return { modules: extras, screens: telas, layout: 'erp', home: '/', setor: null, setorName: null };
+    return { modules: extras, screens: telas, layout: 'erp', home: '/', setor: null, setorName: null, herda: false };
   }
 
   const doSetor = Array.isArray(setor.modules) ? setor.modules : [];
@@ -123,6 +157,7 @@ function resolverAcesso(userProfile, setor) {
     home: setor.home_path || '/',
     setor: setor.key,
     setorName: setor.name,
+    herda: herdaDoSetor(userProfile),
   };
 }
 
@@ -133,4 +168,8 @@ function podeModulo(acesso, ...modulos) {
   return modulos.some(m => acesso.modules.includes(m));
 }
 
-module.exports = { MODULOS, MODULO_KEYS, LAYOUTS, loadSetor, listSetores, resolverAcesso, podeModulo, tabelaAusente };
+module.exports = {
+  MODULOS, MODULO_KEYS, LAYOUTS, MODULOS_SEM_TELA,
+  loadSetor, listSetores, resolverAcesso, podeModulo, tabelaAusente,
+  telasEfetivas, herdaDoSetor,
+};

@@ -94,18 +94,18 @@ export default function Admissoes() {
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['rh-admissoes'],
-    queryFn: () => api.get('/rh/admissoes').then(r => r.data),
+    queryFn: () => api.get('/rh/admissoes'),
   });
 
   const criar = useMutation({
-    mutationFn: p => api.post('/rh/admissoes/captacao', p).then(r => r.data),
+    mutationFn: p => api.post('/rh/admissoes/captacao', p),
     onSuccess: () => {
       toast.success('Candidato registrado na captação.');
       setModal(false);
       setCand({ candidate_name: '', expected_date: '', cargo_id: '' });
       qc.invalidateQueries({ queryKey: ['rh-admissoes'] });
     },
-    onError: e => toast.error(e.response?.data?.error || 'Não foi possível registrar.'),
+    onError: e => toast.error(e.error || 'Não foi possível registrar.'),
   });
 
   const c = data?.cartoes || {};

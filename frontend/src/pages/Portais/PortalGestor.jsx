@@ -62,17 +62,17 @@ export default function PortalGestor() {
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['portal-gestor'],
-    queryFn: () => api.get('/portal/gestor').then(r => r.data),
+    queryFn: () => api.get('/portal/gestor'),
   });
 
   const decidir = useMutation({
-    mutationFn: p => api.post('/portal/gestor/decidir', p).then(r => r.data),
+    mutationFn: p => api.post('/portal/gestor/decidir', p),
     onSuccess: (_, v) => {
       toast.success(v.decisao === 'aprovar' ? 'Aprovado.' : 'Recusado.');
       setRecusa(null); setMotivo('');
       qc.invalidateQueries({ queryKey: ['portal-gestor'] });
     },
-    onError: e => toast.error(e.response?.data?.error || 'Não foi possível decidir.'),
+    onError: e => toast.error(e.error || 'Não foi possível decidir.'),
   });
 
   if (isLoading) {

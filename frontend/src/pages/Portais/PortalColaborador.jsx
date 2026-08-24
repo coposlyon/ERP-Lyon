@@ -75,49 +75,49 @@ export default function PortalColaborador() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['portal-eu', mes],
-    queryFn: () => api.get('/portal/eu', { params: { competencia: mes } }).then(r => r.data),
+    queryFn: () => api.get('/portal/eu', { params: { competencia: mes } }),
     retry: false,
   });
 
   const enviarJust = useMutation({
     mutationFn: () => api.post('/portal/eu/justificativa', {
       occurred_on: just.data, texto,
-    }).then(r => r.data),
+    }),
     onSuccess: () => {
       toast.success('Justificativa enviada. Seu gestor vai analisar.');
       setJust(null); setTexto('');
       qc.invalidateQueries({ queryKey: ['portal-eu'] });
     },
-    onError: e => toast.error(e.response?.data?.error || 'Não foi possível enviar.'),
+    onError: e => toast.error(e.error || 'Não foi possível enviar.'),
   });
 
   const solicitarFerias = useMutation({
     mutationFn: () => api.post('/portal/eu/ferias', {
       ...ferias, abono_dias: ferias.abono_dias ? Number(ferias.abono_dias) : undefined,
       abono_pecuniario: !!ferias.abono_dias,
-    }).then(r => r.data),
+    }),
     onSuccess: () => {
       toast.success('Pedido enviado para aprovação.');
       setPedirFerias(false); setFerias({ start_date: '', end_date: '', abono_dias: '' });
       qc.invalidateQueries({ queryKey: ['portal-eu'] });
     },
-    onError: e => toast.error(e.response?.data?.error || 'Não foi possível solicitar.'),
+    onError: e => toast.error(e.error || 'Não foi possível solicitar.'),
   });
 
   const pedirDemissao = useMutation({
-    mutationFn: () => api.post('/portal/eu/demissao', pedido).then(r => r.data),
+    mutationFn: () => api.post('/portal/eu/demissao', pedido),
     onSuccess: r => {
       toast.success(r.aviso || 'Pedido registrado.');
       setDemissao(false);
       qc.invalidateQueries({ queryKey: ['portal-eu'] });
     },
-    onError: e => toast.error(e.response?.data?.error || 'Não foi possível registrar.'),
+    onError: e => toast.error(e.error || 'Não foi possível registrar.'),
   });
 
   const verHolerite = useMutation({
-    mutationFn: comp => api.get('/portal/eu/holerite', { params: { competencia: comp } }).then(r => r.data),
+    mutationFn: comp => api.get('/portal/eu/holerite', { params: { competencia: comp } }),
     onSuccess: setHolerite,
-    onError: e => toast.error(e.response?.data?.error || 'Holerite indisponível.'),
+    onError: e => toast.error(e.error || 'Holerite indisponível.'),
   });
 
   if (isLoading) {
@@ -127,8 +127,8 @@ export default function PortalColaborador() {
     return (
       <div className="card"><div className="card-body text-center py-10">
         <AlertTriangle className="mx-auto text-amber-500 mb-2" size={28} />
-        <p className="text-sm text-gray-700">{error.response?.data?.error || 'Não foi possível abrir o portal.'}</p>
-        {error.response?.data?.dica && <p className="text-xs text-gray-500 mt-1">{error.response.data.dica}</p>}
+        <p className="text-sm text-gray-700">{error.error || 'Não foi possível abrir o portal.'}</p>
+        {error.dica && <p className="text-xs text-gray-500 mt-1">{error.dica}</p>}
       </div></div>
     );
   }

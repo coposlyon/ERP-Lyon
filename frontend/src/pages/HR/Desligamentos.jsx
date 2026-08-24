@@ -132,45 +132,46 @@ export default function Desligamentos() {
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['rh-desligamentos'],
-    queryFn: () => api.get('/rh/desligamentos').then(r => r.data),
+    queryFn: () => api.get('/rh/desligamentos'),
   });
   const { data: pessoas } = useQuery({
     queryKey: ['colaboradores-ativos'],
-    queryFn: () => api.get('/customers', { params: { type: 'CO', limit: 500 } }).then(r => r.data),
+    queryFn: () => api.get('/customers', { params: { type: 'CO', limit: 500 } })
+      .then(r => r.data || []),   // /customers responde { data, total, ... }
   });
 
   const simular = useMutation({
     mutationFn: () => api.post('/rh/desligamentos/simular', {
       ...form, fgts_saldo: form.fgts_saldo ? Number(form.fgts_saldo) : undefined,
-    }).then(r => r.data),
+    }),
     onSuccess: setSim,
-    onError: e => toast.error(e.response?.data?.error || 'Não foi possível calcular.'),
+    onError: e => toast.error(e.error || 'Não foi possível calcular.'),
   });
 
   const abrir = useMutation({
     mutationFn: () => api.post('/rh/desligamentos', {
       ...form, fgts_saldo: form.fgts_saldo ? Number(form.fgts_saldo) : undefined,
-    }).then(r => r.data),
+    }),
     onSuccess: () => {
       toast.success('Processo de desligamento aberto.');
       setModal(false); setSim(null);
       qc.invalidateQueries({ queryKey: ['rh-desligamentos'] });
     },
-    onError: e => toast.error(e.response?.data?.error || 'Não foi possível abrir.'),
+    onError: e => toast.error(e.error || 'Não foi possível abrir.'),
   });
 
   const avancar = useMutation({
-    mutationFn: ({ id, ...p }) => api.patch(`/rh/desligamentos/${id}`, p).then(r => r.data),
+    mutationFn: ({ id, ...p }) => api.patch(`/rh/desligamentos/${id}`, p),
     onSuccess: () => {
       toast.success('Processo atualizado.');
       qc.invalidateQueries({ queryKey: ['rh-desligamentos'] });
     },
-    onError: e => toast.error(e.response?.data?.error || 'Falhou.'),
+    onError: e => toast.error(e.error || 'Falhou.'),
   });
 
   const c = data?.cartoes || {};
   const lista = data?.desligamentos || [];
-  const listaPessoas = (pessoas?.data || pessoas || []).filter?.(p => p.is_active !== false) || [];
+  const listaPessoas = (pessoas || []).filter(p => p.is_active !== false);
 
   if (isLoading) {
     return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-gray-400" size={28} /></div>;
