@@ -94,8 +94,12 @@ export default function Modelos() {
                 className="text-left p-3.5 flex flex-col transition-transform active:scale-[0.985] hover:-translate-y-0.5"
                 style={bordaNeon(cor)}>
 
+                {/* Fundo CLARO atrás da foto. Os PNGs dos copos são
+                    recortados, sem fundo — sobre o azul-noite do catálogo
+                    o copo preto sumia e o branco virava um borrão. É o
+                    mesmo creme que a /loja usa atrás da mesma foto. */}
                 <span className="h-28 rounded-lg mb-3 flex items-center justify-center overflow-hidden"
-                  style={{ background: 'rgba(255,255,255,0.04)' }}>
+                  style={{ background: '#FFF7F1' }}>
                   {m.imagem
                     ? <img src={m.imagem} alt="" loading="lazy" className="h-full w-full object-contain"
                         onError={e => { e.target.style.display = 'none'; }} />

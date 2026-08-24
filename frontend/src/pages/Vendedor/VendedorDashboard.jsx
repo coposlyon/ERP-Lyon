@@ -197,15 +197,11 @@ export default function VendedorDashboard() {
               {meses.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
           </div>
-          <button onClick={() => setEnvios(true)} className="btn-secondary btn-sm"
-            title="Registro de cada oferta enviada: cliente, produto, hora, status e resposta">
-            <ClipboardList size={14} /> Envios
-          </button>
-          {gestor && (
-            <Link to="/vendedor/config" className="btn-secondary btn-sm" title="Plano de metas, território, artes e promoções">
-              <Settings size={14} /> Administrar
-            </Link>
-          )}
+          {/* "Envios" e "Administrar" saíram daqui. Este painel é do
+              VENDEDOR olhando o próprio mês — configuração de meta não
+              mora na tela de quem é medido por ela. A meta e a comissão
+              agora saem do cadastro do colaborador, que já é de onde a
+              folha as lê: um lugar só, e não dois que podem discordar. */}
         </div>
       </div>
 
@@ -311,7 +307,7 @@ export default function VendedorDashboard() {
           hint="A regra que o vendedor está cumprindo neste mês, vinda do plano cadastrado pelo Administrativo.">
           {!plano ? (
             <p className="text-sm py-6 text-center" style={{ color: v.empty }}>
-              Nenhuma faixa cobre este mês. O Administrativo configura em Administrar → Plano de metas.
+              Nenhuma faixa cobre este mês. A meta é configurada no cadastro do colaborador.
             </p>
           ) : (
             <div className="space-y-2 text-sm">
@@ -349,7 +345,7 @@ export default function VendedorDashboard() {
             <div className="space-y-2 overflow-auto" style={{ maxHeight: 190 }}>
               {territorio.length === 0 ? (
                 <p className="text-xs" style={{ color: v.empty }}>
-                  Nenhuma UF definida. O Administrativo configura em Administrar → Vendedores.
+                  Nenhuma UF definida. O território é configurado no cadastro do colaborador.
                 </p>
               ) : territorio.map(uf => {
                 const comprou = (compradores[uf] || 0) > 0;

@@ -103,9 +103,16 @@ export default function Familias() {
                 className="text-left p-4 transition-transform active:scale-[0.985] hover:-translate-y-0.5"
                 style={bordaNeon(cor)}>
 
-                <span className="w-11 h-11 rounded-xl flex items-center justify-center mb-3"
-                  style={{ background: corComAlfa(cor, 0.16), border: `1px solid ${corComAlfa(cor, 0.4)}` }}>
-                  <IconeDaFamilia nome={f.icone} size={21} style={{ color: cor }} />
+                {/* A MESMA foto que a /loja mostra na categoria. O ícone
+                    ficou de reserva: categoria sem produto fotografado
+                    ainda precisa de um card reconhecível. */}
+                <span className="h-32 rounded-lg mb-3 flex items-center justify-center overflow-hidden"
+                  style={{ background: f.imagem ? '#FFF7F1' : corComAlfa(cor, 0.16),
+                           border: `1px solid ${corComAlfa(cor, 0.25)}` }}>
+                  {f.imagem
+                    ? <img src={f.imagem} alt="" loading="lazy" className="h-full w-full object-contain p-2"
+                        onError={e => { e.target.style.display = 'none'; }} />
+                    : <IconeDaFamilia nome={f.icone} size={26} style={{ color: cor }} />}
                 </span>
 
                 <span className="block font-semibold text-[15px] leading-snug" style={{ color: NEON.texto }}>

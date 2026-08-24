@@ -164,40 +164,55 @@ const lerChave = chave => {
  * A contagem não é enfeite: família cadastrada e vazia é um card que
  * leva o cliente a uma tela em branco. Aqui ela simplesmente não sai.
  */
+/**
+ * As CATEGORIAS publicadas — a primeira tela do catálogo.
+ *
+ * Antes isto vinha de CATALOGO_FAMILIAS, uma curadoria à parte: dez
+ * famílias cadastradas, quatro com vínculo. O cliente via quatro cards
+ * ("Canecas", "Taças"...) enquanto a /loja mostrava sete ("CANECA SLIM
+ * TRADICIONAL", "CANECA TRADICIONAL"...) — dois agrupamentos
+ * diferentes do MESMO catálogo, e por isso as contagens nunca batiam:
+ * "2 modelos" aqui e "14 modelos" lá, para os mesmos copos.
+ *
+ * Agora as duas vitrines agrupam pela mesma coisa: a categoria do
+ * cadastro. Categoria nova entra nas duas sozinha, e ninguém precisa
+ * lembrar de vincular nada.
+ *
+ * A tabela de famílias continua no banco — nada foi apagado — mas
+ * deixou de decidir o que aparece.
+ */
 async function familias(tenantId) {
-  const { data: fams, error } = await supabase
-    .from('CATALOGO_FAMILIAS')
-    .select('id, name, slug, descricao, icone, seq')
-    .eq('tenant_id', tenantId).eq('is_active', true).order('seq');
-
-  if (error) {
-    if (tabelaAusente(error)) return { config_ausente: true, familias: [] };
-    throw error;
-  }
-  if (!fams?.length) return { familias: [] };
-
-  const [itensRes, visiveis] = await Promise.all([
-    supabase.from('CATALOGO_FAMILIA_ITENS')
-      .select('familia_id, category_id, product_id').eq('tenant_id', tenantId),
+  const [visiveis, catsRes] = await Promise.all([
     produtosPublicados(tenantId, 'id, name, category_id, image_url, photos, show_in_store'),
+    supabase.from('CATEGORIAS').select('id, name, nome_catalogo').eq('tenant_id', tenantId),
   ]);
-  if (itensRes.error) throw itensRes.error;
+  if (catsRes.error) throw catsRes.error;
 
-  const lista = fams.map(f => {
-    const produtos = produtosDaFamilia(f.id, itensRes.data || [], visiveis);
-    const modelos = new Set(produtos.map(p => {
-      const { capacidade } = partesDoNome(p.name);
-      return chaveModelo(p.category_id, capacidade);
-    }));
+  const catPorId = Object.fromEntries((catsRes.data || []).map(c => [c.id, c]));
+
+  const porCategoria = new Map();
+  for (const p of visiveis) {
+    if (!p.category_id) continue;
+    if (!porCategoria.has(p.category_id)) porCategoria.set(p.category_id, []);
+    porCategoria.get(p.category_id).push(p);
+  }
+
+  const lista = [...porCategoria.entries()].map(([catId, produtos]) => {
+    const cat = catPorId[catId];
+    const nome = nomeDaCategoria(cat) || '(sem categoria)';
     return {
-      id: f.id, nome: f.name, slug: f.slug,
-      descricao: f.descricao || null,
-      icone: f.icone || null,
-      modelos: modelos.size,
+      id: catId,
+      nome,
+      slug: slugify(cat?.name || nome),
+      descricao: null,
+      icone: null,
+      // A MESMA conta da loja: quantos produtos a categoria publica.
+      modelos: produtos.length,
       imagem: produtos.map(primeiraFoto).find(Boolean) || null,
     };
   }).filter(f => f.modelos > 0);
 
+  lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   return { familias: lista };
 }
 
@@ -235,23 +250,37 @@ function produtosDaFamilia(familiaId, itens, produtos) {
  * sem tocar em nenhuma tela.
  */
 async function modelosDaFamilia(tenantId, slug) {
-  const { data: fam, error: erroFam } = await supabase
-    .from('CATALOGO_FAMILIAS').select('id, name, slug, descricao')
-    .eq('tenant_id', tenantId).eq('slug', slug).eq('is_active', true).maybeSingle();
-  if (erroFam) { if (tabelaAusente(erroFam)) return { config_ausente: true }; throw erroFam; }
-  if (!fam) return { erro: 'Família não encontrada' };
-
-  const [itensRes, publicados, catsRes] = await Promise.all([
-    supabase.from('CATALOGO_FAMILIA_ITENS').select('familia_id, category_id, product_id')
-      .eq('tenant_id', tenantId).eq('familia_id', fam.id),
+  const [publicados, catsRes] = await Promise.all([
     produtosPublicados(tenantId,
       'id, name, code, category_id, sale_price, price_tiers, min_order_qty, image_url, photos, show_in_store, ink_type'),
     supabase.from('CATEGORIAS').select('id, name, nome_catalogo').eq('tenant_id', tenantId),
   ]);
-  for (const r of [itensRes, catsRes]) if (r.error) throw r.error;
+  if (catsRes.error) throw catsRes.error;
 
   const catPorId = Object.fromEntries((catsRes.data || []).map(c => [c.id, c]));
-  const produtos = produtosDaFamilia(fam.id, itensRes.data || [], publicados);
+
+  // O slug é o da CATEGORIA. Links antigos apontando para o slug de uma
+  // família continuam abrindo: a família é procurada como segunda
+  // tentativa e resolvida para as categorias dela.
+  const cat = (catsRes.data || []).find(c => slugify(c.name) === slug);
+  let produtos, tituloFamilia, slugFamilia;
+
+  if (cat) {
+    produtos = publicados.filter(p => p.category_id === cat.id);
+    tituloFamilia = nomeDaCategoria(cat);
+    slugFamilia = slug;
+  } else {
+    const { data: fam } = await supabase
+      .from('CATALOGO_FAMILIAS').select('id, name, slug, descricao')
+      .eq('tenant_id', tenantId).eq('slug', slug).eq('is_active', true).maybeSingle();
+    if (!fam) return { erro: 'Categoria não encontrada' };
+    const { data: itens } = await supabase.from('CATALOGO_FAMILIA_ITENS')
+      .select('familia_id, category_id, product_id')
+      .eq('tenant_id', tenantId).eq('familia_id', fam.id);
+    produtos = produtosDaFamilia(fam.id, itens || [], publicados);
+    tituloFamilia = fam.name;
+    slugFamilia = fam.slug;
+  }
 
   // Agrupa em modelos (categoria + capacidade).
   const grupos = new Map();
@@ -263,7 +292,7 @@ async function modelosDaFamilia(tenantId, slug) {
     }
     grupos.get(chave).produtos.push(p);
   }
-  if (!grupos.size) return { familia: { nome: fam.name, slug: fam.slug }, modelos: [] };
+  if (!grupos.size) return { familia: { nome: tituloFamilia, slug: slugFamilia }, modelos: [] };
 
   const acabPorCategoria = await acabamentosPorCategoria(tenantId, [...grupos.values()].map(g => g.categoryId));
 
@@ -296,7 +325,7 @@ async function modelosDaFamilia(tenantId, slug) {
 
   modelos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   return {
-    familia: { nome: fam.name, slug: fam.slug, descricao: fam.descricao || null },
+    familia: { nome: tituloFamilia, slug: slugFamilia, descricao: null },
     modelos,
   };
 }
