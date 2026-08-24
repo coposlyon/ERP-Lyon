@@ -33,16 +33,38 @@ function todasAsRotas() {
   ].filter(Boolean);
 }
 
+// A área do vendedor é um app à parte, com menu próprio. Cada rota dela
+// exige um módulo diferente na API — e nenhum desses módulos tem item
+// no menu do ERP para ser marcado.
+const MODULO_DO_VENDEDOR = {
+  '/vendedor':              'vendedor',
+  '/vendedor/pedidos':      'pedidos-vendedor',
+  '/vendedor/catalogo':     'catalogo',
+  '/vendedor/agenda':       'agenda',
+  '/vendedor/comunicacao':  'comunicacao',
+};
+
 /**
  * Os módulos que estas rotas exigem.
  *
- * A API confere MÓDULO a cada requisição, não tela. Se o administrador
- * liberasse a página de Estoque sem o módulo 'stock', o item apareceria
- * no menu e a tela abriria vazia com 403 no console — que é
- * exatamente o tipo de bug que ninguém associa a permissão.
+ * A API confere MÓDULO a cada requisição, não tela. Se alguém liberasse
+ * a página de Estoque sem o módulo 'stock', o item apareceria no menu e
+ * a tela abriria vazia com 403 no console — o tipo de bug que ninguém
+ * associa a permissão.
+ *
+ * Três módulos entram sozinhos porque nenhuma tela do menu os alcança:
+ *
+ *   dashboard  é público e não guarda rota nenhuma da API
+ *   pdv        nunca é a única exigência de rota alguma — quem tem
+ *              'sales' já passa em todas elas
+ *   vendedor   sai das próprias rotas da área, pelo mapa acima
+ *
+ * Antes isso era uma seção de caixinhas soltas no fim da tela, que
+ * obrigava quem configura a saber de cor quais módulos o menu não
+ * cobre. Não é conhecimento que se deva exigir de ninguém.
  */
 function modulosDe(rotas) {
-  const necessarios = new Set();
+  const necessarios = new Set(['dashboard']);
   const visitar = itens => {
     for (const item of itens) {
       if (item.children) { visitar(item.children); continue; }
@@ -51,8 +73,39 @@ function modulosDe(rotas) {
     }
   };
   visitar(menuItems);
-  if (menuVendedor.some(i => rotas.includes(i.path))) necessarios.add('vendedor');
+  for (const [rota, modulo] of Object.entries(MODULO_DO_VENDEDOR)) {
+    if (rotas.includes(rota)) necessarios.add(modulo);
+  }
+  if (necessarios.has('sales')) necessarios.add('pdv');
   return [...necessarios];
+}
+
+/**
+ * Para onde esta pessoa vai quando entrar, e em qual dos dois apps.
+ *
+ * Eram dois campos que quem configura tinha de preencher à mão — e
+ * errar o caminho da tela inicial jogava a pessoa numa página que ela
+ * nem podia abrir. Agora as duas coisas saem do que foi marcado:
+ * marcou só a área do vendedor, ela abre o app do vendedor; marcou
+ * qualquer coisa do ERP, abre o ERP na primeira tela liberada.
+ */
+function derivarAcesso(screens) {
+  const lista = screens || [];
+  const rotasVendedor = Object.keys(MODULO_DO_VENDEDOR);
+  const soVendedor = lista.length > 0 && lista.every(p => rotasVendedor.includes(p));
+  if (soVendedor) return { layout: 'vendedor', home_path: '/vendedor' };
+  const primeira = todasAsRotas().find(p => lista.includes(p));
+  return { layout: 'erp', home_path: primeira || '/' };
+}
+
+/** O nome que a pessoa vê no menu para uma rota — não o caminho. */
+function rotuloDaRota(path) {
+  for (const item of menuItems) {
+    if (item.path === path) return item.label;
+    for (const filho of item.children || []) if (filho.path === path) return `${item.label} › ${filho.label}`;
+  }
+  const v = menuVendedor.find(i => i.path === path);
+  return v ? `Área do vendedor › ${v.label}` : 'Dashboard';
 }
 
 /** A flag da linha: o que esta rota é para esta pessoa. */
@@ -266,4 +319,4 @@ export default function ArvorePermissoes({
   );
 }
 
-export { modulosDe, todasAsRotas };
+export { modulosDe, todasAsRotas, derivarAcesso, rotuloDaRota };

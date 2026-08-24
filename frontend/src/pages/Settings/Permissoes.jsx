@@ -23,22 +23,17 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ShieldCheck, Plus, Save, Trash2, Loader2, Users, Building2, AlertTriangle,
-  RotateCcw, Check, X, Link2,
+  RotateCcw, Link2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import ArvorePermissoes from '@/components/Permissoes/ArvorePermissoes';
-
-const LAYOUTS = [
-  { key: 'erp',      label: 'ERP completo',     desc: 'O menu inteiro, filtrado pelas telas liberadas' },
-  { key: 'vendedor', label: 'Área do vendedor', desc: 'Só os cinco itens da área enxuta do vendedor' },
-];
+import ArvorePermissoes, { derivarAcesso, rotuloDaRota } from '@/components/Permissoes/ArvorePermissoes';
 
 const mesmaLista = (a, b) => JSON.stringify([...(a || [])].sort()) === JSON.stringify([...(b || [])].sort());
 
 /* ══ Aba: Setores ═══════════════════════════════════════════ */
-function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
+function AbaSetores({ setores, usuarios, isAdmin }) {
   const qc = useQueryClient();
   const [selecionado, setSelecionado] = useState(null);
   const [rascunho, setRascunho] = useState(null);
@@ -50,8 +45,6 @@ function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
     if (!setor) { setRascunho(null); return; }
     setRascunho({
       name: setor.name,
-      layout: setor.layout,
-      home_path: setor.home_path,
       sort: setor.sort,
       screens: Array.isArray(setor.screens) ? setor.screens : null,
       modules: setor.modules || [],
@@ -61,12 +54,18 @@ function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
   const invalidar = () => { qc.invalidateQueries({ queryKey: ['setores'] }); qc.invalidateQueries({ queryKey: ['setores-usuarios'] }); };
 
   const salvar = useMutation({
-    mutationFn: () => api.put(`/setores/${setor.id}`, { ...rascunho, screens: rascunho.screens || [] }),
+    // Layout e tela inicial não são mais digitados: saem das telas
+    // marcadas, aqui, no momento de salvar.
+    mutationFn: () => api.put(`/setores/${setor.id}`, {
+      ...rascunho,
+      screens: rascunho.screens || [],
+      ...derivarAcesso(rascunho.screens),
+    }),
     onSuccess: () => { toast.success('Setor salvo'); invalidar(); },
     onError: e => toast.error(e.error || 'Erro ao salvar'),
   });
   const criar = useMutation({
-    mutationFn: () => api.post('/setores', { ...novo, screens: [], modules: [] }),
+    mutationFn: () => api.post('/setores', { ...novo, screens: [], modules: [], layout: 'erp', home_path: '/' }),
     onSuccess: s => { toast.success('Setor criado'); setNovo(null); setSelecionado(s.id); invalidar(); },
     onError: e => toast.error(e.error || 'Erro ao criar'),
   });
@@ -78,13 +77,19 @@ function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
 
   const sujo = setor && rascunho && (
     rascunho.name !== setor.name ||
-    rascunho.layout !== setor.layout ||
-    rascunho.home_path !== setor.home_path ||
     !mesmaLista(rascunho.screens, setor.screens) ||
     !mesmaLista(rascunho.modules, setor.modules)
   );
 
   const gente = key => usuarios.filter(u => u.sector_key === key);
+
+  // Para onde a pessoa vai ao entrar — mostrado, não digitado.
+  const destino = (() => {
+    const d = derivarAcesso(rascunho?.screens);
+    return d.layout === 'vendedor'
+      ? { ...d, rotulo: 'Área do vendedor' }
+      : { ...d, rotulo: rotuloDaRota(d.home_path) };
+  })();
 
   return (
     <div className="grid lg:grid-cols-[16rem_1fr] gap-4">
@@ -92,7 +97,7 @@ function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
       <div className="space-y-2">
         {isAdmin && (
           <button className="btn-secondary btn-sm w-full"
-            onClick={() => setNovo({ key: '', name: '', layout: 'erp', home_path: '/', sort: 99 })}>
+            onClick={() => setNovo({ key: '', name: '', sort: 99 })}>
             <Plus size={14} /> Novo setor
           </button>
         )}
@@ -106,13 +111,13 @@ function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
                   ativo ? 'bg-primary-50 border-l-2 border-primary-600' : 'hover:bg-gray-50 border-l-2 border-transparent'
                 }`}>
                 <p className={`text-sm truncate ${ativo ? 'font-semibold text-primary-900' : 'text-gray-800'}`}>{s.name}</p>
-                <p className="text-[11px] text-gray-400 flex items-center gap-2">
-                  <span className="font-mono">{s.key}</span>
-                  <span>· {gente(s.key).length} pessoa(s)</span>
+                <p className="text-[11px] text-gray-400">
+                  {gente(s.key).length} pessoa{gente(s.key).length === 1 ? '' : 's'}
+                  {' · '}
+                  {semLista
+                    ? <span className="text-amber-600">a configurar</span>
+                    : `${s.screens.length} tela${s.screens.length === 1 ? '' : 's'}`}
                 </p>
-                {semLista && (
-                  <p className="text-[10px] text-amber-600 mt-0.5">sem lista de telas</p>
-                )}
               </button>
             );
           })}
@@ -124,21 +129,16 @@ function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
         {novo && (
           <div className="card p-4 space-y-3">
             <p className="font-semibold text-gray-900">Novo setor</p>
-            <div className="grid sm:grid-cols-3 gap-3">
+            <div className="grid sm:grid-cols-2 gap-3">
               <div>
-                <label className="label">Chave</label>
-                <input className="input" value={novo.key} placeholder="comercial"
-                  onChange={e => setNovo(n => ({ ...n, key: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }))} />
-              </div>
-              <div>
-                <label className="label">Nome</label>
+                <label className="label">Nome do setor</label>
                 <input className="input" value={novo.name} placeholder="Comercial"
                   onChange={e => setNovo(n => ({ ...n, name: e.target.value }))} />
               </div>
               <div>
-                <label className="label">Tela inicial</label>
-                <input className="input" value={novo.home_path}
-                  onChange={e => setNovo(n => ({ ...n, home_path: e.target.value }))} />
+                <label className="label">Apelido curto</label>
+                <input className="input" value={novo.key} placeholder="comercial"
+                  onChange={e => setNovo(n => ({ ...n, key: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }))} />
               </div>
             </div>
             <div className="flex gap-2">
@@ -148,7 +148,7 @@ function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
                 {criar.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Criar
               </button>
             </div>
-            <p className="text-xs text-gray-400">O setor nasce sem nenhuma tela. Marque no menu abaixo.</p>
+            <p className="text-xs text-gray-400">Depois de criar, marque no menu o que este setor pode abrir.</p>
           </div>
         )}
 
@@ -165,19 +165,6 @@ function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
                     <label className="label">Nome do setor</label>
                     <input className="input w-48" value={rascunho.name} disabled={!isAdmin}
                       onChange={e => setRascunho(r => ({ ...r, name: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="label">Layout</label>
-                    <select className="input w-44" value={rascunho.layout} disabled={!isAdmin}
-                      title={LAYOUTS.find(l => l.key === rascunho.layout)?.desc}
-                      onChange={e => setRascunho(r => ({ ...r, layout: e.target.value }))}>
-                      {LAYOUTS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label">Tela inicial</label>
-                    <input className="input w-32" value={rascunho.home_path} disabled={!isAdmin}
-                      onChange={e => setRascunho(r => ({ ...r, home_path: e.target.value }))} />
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -196,17 +183,15 @@ function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
                 </div>
               </div>
 
-              {rascunho.layout === 'vendedor' && (
-                <p className="text-xs text-violet-700 bg-violet-50 rounded-lg px-3 py-2">
-                  Este setor abre a área do vendedor: o menu lateral mostra só os cinco itens dela,
-                  independentemente do que estiver marcado nos grupos do ERP.
-                </p>
-              )}
-
-              {!Array.isArray(setor.screens) && (
+              {/* Um aviso só, e sempre o mais urgente. Dois empilhados
+                  viram parede de texto e ninguém lê nenhum dos dois. */}
+              {!Array.isArray(setor.screens) ? (
                 <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  Este setor ainda usa a regra antiga, só de módulos. Marque as telas abaixo e salve —
-                  a partir daí o menu passa a ser exatamente o que estiver marcado.
+                  Este setor ainda não tem telas escolhidas. Marque abaixo o que ele pode ver e salve.
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  Ao entrar, quem é deste setor abre em <b>{destino.rotulo}</b>.
                 </p>
               )}
             </div>
@@ -214,18 +199,10 @@ function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
             <ArvorePermissoes
               telas={rascunho.screens || []}
               somenteLeitura={!isAdmin}
-              aoMudar={({ screens, modules }) => setRascunho(r => ({
-                ...r, screens,
-                // Os módulos avulsos que o admin marcou à mão não podem
-                // sumir só porque uma tela foi desmarcada.
-                modules: [...new Set([...modules, ...r.modules.filter(m => semTela.includes(m))])],
-              }))}
-              rodape={`Quem está aqui: ${gente(setor.key).map(u => u.name).join(', ') || 'ninguém ainda'}`}
-            />
-
-            <ModulosAvulsos
-              semTela={semTela} modulos={modulos} valor={rascunho.modules} isAdmin={isAdmin}
-              aoMudar={mods => setRascunho(r => ({ ...r, modules: mods }))}
+              aoMudar={({ screens, modules }) => setRascunho(r => ({ ...r, screens, modules }))}
+              rodape={gente(setor.key).length
+                ? `Vale para ${gente(setor.key).map(u => u.name).join(', ')}.`
+                : 'Ninguém está neste setor ainda — associe pessoas na aba Por pessoa.'}
             />
           </>
         )}
@@ -235,7 +212,7 @@ function AbaSetores({ setores, usuarios, isAdmin, semTela, modulos }) {
 }
 
 /* ══ Aba: Usuários ══════════════════════════════════════════ */
-function AbaUsuarios({ setores, usuarios, isAdmin, semTela, modulos }) {
+function AbaUsuarios({ setores, usuarios, isAdmin }) {
   const qc = useQueryClient();
   const [selecionado, setSelecionado] = useState(null);
   const [rascunho, setRascunho] = useState(null);
@@ -386,21 +363,13 @@ function AbaUsuarios({ setores, usuarios, isAdmin, semTela, modulos }) {
                   telas={rascunho.screens}
                   referencia={herda ? null : telasDoSetor}
                   somenteLeitura={!isAdmin}
-                  aoMudar={({ screens, modules }) => setRascunho(r => ({
-                    ...r, screens,
-                    modules: [...new Set([...modules, ...r.modules.filter(m => semTela.includes(m))])],
-                  }))}
+                  aoMudar={({ screens, modules }) => setRascunho(r => ({ ...r, screens, modules }))}
                   rodape={herda
                     ? 'Marcar qualquer tela aqui cria um acesso próprio para esta pessoa.'
                     : <span className="flex flex-wrap items-center gap-3">
                         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-sky-500 inline-block" /> a mais que o setor</span>
                         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500 inline-block" /> retirada do setor</span>
                       </span>}
-                />
-
-                <ModulosAvulsos
-                  semTela={semTela} modulos={modulos} valor={rascunho.modules} isAdmin={isAdmin}
-                  aoMudar={mods => setRascunho(r => ({ ...r, modules: mods }))}
                 />
               </>
             )}
@@ -411,50 +380,10 @@ function AbaUsuarios({ setores, usuarios, isAdmin, semTela, modulos }) {
   );
 }
 
-/* ══ Os módulos que nenhuma tela do menu alcança ════════════ */
-function ModulosAvulsos({ semTela, modulos, valor, aoMudar, isAdmin }) {
-  const lista = modulos.filter(m => semTela.includes(m.key));
-  if (!lista.length) return null;
-
-  return (
-    <div className="card p-4">
-      <p className="text-sm font-semibold text-gray-900">Acessos sem tela no menu</p>
-      <p className="text-xs text-gray-500 mt-0.5 mb-3">
-        Estes existem só na API ou em outro layout — nenhum item do menu lateral chega até eles, então
-        marcar páginas acima jamais os libera. Ficam aqui em vez de sumirem: acesso que não aparece em
-        lugar nenhum é acesso que ninguém revisa.
-      </p>
-      <div className="flex flex-wrap gap-1.5">
-        {lista.map(m => {
-          const on = (valor || []).includes(m.key);
-          return (
-            <button key={m.key} type="button" disabled={!isAdmin}
-              onClick={() => aoMudar(on ? valor.filter(x => x !== m.key) : [...valor, m.key])}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 transition-colors ${
-                on ? 'bg-primary-100 border-primary-300 text-primary-800'
-                   : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-              } ${isAdmin ? '' : 'cursor-default opacity-70'}`}>
-              {on ? <Check size={11} /> : <X size={11} className="opacity-40" />}
-              {m.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 /* ══ A página ═══════════════════════════════════════════════ */
 export default function Permissoes() {
   const { isAdmin } = useAuth();
   const [aba, setAba] = useState('setores');
-
-  const { data: modulos = [] } = useQuery({
-    queryKey: ['setores-modulos'], queryFn: () => api.get('/setores/modulos'), staleTime: Infinity,
-  });
-  const { data: semTela = [] } = useQuery({
-    queryKey: ['modulos-sem-tela'], queryFn: () => api.get('/setores/modulos-sem-tela'), staleTime: Infinity,
-  });
   const { data, isLoading } = useQuery({ queryKey: ['setores'], queryFn: () => api.get('/setores') });
   const { data: usuarios = [] } = useQuery({
     queryKey: ['setores-usuarios'], queryFn: () => api.get('/setores/usuarios'),
@@ -483,7 +412,7 @@ export default function Permissoes() {
           <div>
             <h1 className="page-title">Permissões</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              O menu que cada um enxerga, tela por tela — do jeito que ele aparece na barra lateral.
+              Marque o que cada um pode abrir. É o mesmo menu que a pessoa vai ver.
             </p>
           </div>
         </div>
@@ -515,8 +444,8 @@ export default function Permissoes() {
       )}
 
       {aba === 'setores'
-        ? <AbaSetores setores={setores} usuarios={usuarios} isAdmin={isAdmin} semTela={semTela} modulos={modulos} />
-        : <AbaUsuarios setores={setores} usuarios={usuarios} isAdmin={isAdmin} semTela={semTela} modulos={modulos} />}
+        ? <AbaSetores setores={setores} usuarios={usuarios} isAdmin={isAdmin} />
+        : <AbaUsuarios setores={setores} usuarios={usuarios} isAdmin={isAdmin} />}
     </div>
   );
 }

@@ -160,10 +160,17 @@ export const menuItems = [
 
   // --- Módulos diretos (sem submenu) ---
   {
+    // Compras estava fora do menu: a tela existia, a rota existia, e
+    // só se chegava nela digitando o endereço. Fora do menu, ela
+    // também ficava fora da tela de permissões — acesso que ninguém
+    // consegue revisar. Entra aqui porque compra é o que alimenta o
+    // estoque.
     label: 'Estoque',
     icon: Boxes,
-    path: '/stock',
-    module: 'stock',
+    children: [
+      { label: 'Estoque',  path: '/stock',     icon: Boxes,        module: 'stock' },
+      { label: 'Compras',  path: '/purchases', icon: ShoppingCart, module: 'purchases' },
+    ],
   },
   {
     // A devolução é o pedido voltando para a fábrica: quem trata dela é
