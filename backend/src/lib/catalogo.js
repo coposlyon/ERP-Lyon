@@ -302,12 +302,30 @@ async function modelosDaFamilia(tenantId, slug) {
     const base = nomeDaCategoria(cat);
     const acabs = acabPorCategoria[g.categoryId] || [];
     const precoBase = Math.min(...g.produtos.map(p => precoDe(p)).filter(v => v > 0), Infinity);
-    const imagem = g.produtos.map(primeiraFoto).find(Boolean) || null;
+    // AS FOTOS SÃO AS DO CADASTRO, uma por COR.
+    //
+    // Não existe foto por acabamento: o cadastro tem
+    // "CANECA TRADICIONAL - PRETO - 450 ML", "- PINK OPACO -", uma linha
+    // e uma foto por cor. Os 14 acabamentos (Bicolor, Degradê, Jateado)
+    // nascem da matriz de compatibilidade, não do cadastro.
+    //
+    // Antes o card pegava a PRIMEIRA foto do grupo e repetia nos 14
+    // acabamentos — a grade virava a mesma caneca preta quatorze vezes,
+    // e parecia foto aleatória. Agora cada card leva as fotos das cores
+    // reais daquele modelo e alterna entre elas, como a /loja faz.
+    const fotos = [...new Set(g.produtos.map(primeiraFoto).filter(Boolean))];
+    const imagem = fotos[0] || null;
 
     // Sem acabamento cadastrado o modelo ainda existe — sai um card só,
     // do produto como ele é. Melhor que sumir da vitrine.
     const variantes = acabs.length ? acabs : [null];
-    for (const a of variantes) {
+    variantes.forEach((a, iAcab) => {
+      // Cada acabamento começa numa COR diferente. Sem isso os catorze
+      // cards abrem todos na mesma caneca preta — tecnicamente certo,
+      // visualmente uma grade quebrada.
+      const giradas = fotos.length
+        ? fotos.map((_, k) => fotos[(k + iAcab) % fotos.length])
+        : [];
       modelos.push({
         chave: g.chave,
         acabamento_id: a?.id || null,
@@ -316,11 +334,12 @@ async function modelosDaFamilia(tenantId, slug) {
         acabamento: a ? nomeDoAcabamento(a) : null,
         categoria: cat?.name || null,
         cores: g.produtos.length,
-        imagem,
+        imagem: giradas[0] || imagem,
+        imagens: giradas.slice(0, 8),
         preco_de: Number.isFinite(precoBase) ? precoBase + Number(a?.preco_adicional || 0) : null,
         qtd_minima: Math.max(...g.produtos.map(p => p.min_order_qty || 1)),
       });
-    }
+    });
   }
 
   modelos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));

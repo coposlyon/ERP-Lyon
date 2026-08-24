@@ -1,0 +1,1 @@
+import{j as t}from"./index-J1fJZm08.js";import{u as r,T as m}from"./HR-DVMHI5ID.js";import"./Modal-CQQhcxcq.js";import"./format-DE3CduTx.js";import"./parseISO-DHpDC6vJ.js";import"./pt-BR-Cyf2Iald.js";import"./addMonths-9ooywFVs.js";function f(){const{employee:o}=r();return t.jsx(m,{employee:o})}export{f as default};

@@ -12,13 +12,44 @@
 // propósito: quem procura degradê procura degradê, e não "Long Drink,
 // e depois mexa nas opções".
 // ============================================================
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Search, Loader2, ArrowLeft, ShoppingCart, ImageOff } from 'lucide-react';
 import api from './api';
 import { CatalogoShell, NEON, bordaNeon, corComAlfa, Campo, brl } from './ui';
 import { useCarrinho } from './carrinhoContexto';
+
+/**
+ * As fotos do modelo, alternando.
+ *
+ * São as fotos do CADASTRO, uma por cor. Um modelo com 14 cores tem 14
+ * fotos reais — mostrar só a primeira fazia a grade inteira parecer a
+ * mesma caneca repetida. É o mesmo comportamento do card de categoria
+ * da /loja.
+ */
+function FotoModelo({ imagens, imagem, alt }) {
+  const fotos = (imagens && imagens.length ? imagens : [imagem]).filter(Boolean);
+  const [i, setI] = useState(0);
+
+  useEffect(() => {
+    if (fotos.length <= 1) return undefined;
+    const t = setInterval(() => setI(v => (v + 1) % fotos.length), 2600);
+    return () => clearInterval(t);
+  }, [fotos.length]);
+
+  if (!fotos.length) return <ImageOff size={22} style={{ color: NEON.fraco }} />;
+  return (
+    <>
+      {fotos.map((src, k) => (
+        <img key={src + k} src={src} alt={alt} loading="lazy"
+          className="absolute inset-0 h-full w-full object-contain p-1 transition-opacity duration-500"
+          style={{ opacity: k === i ? 1 : 0 }}
+          onError={e => { e.target.style.display = 'none'; }} />
+      ))}
+    </>
+  );
+}
 
 export default function Modelos() {
   const { familia } = useParams();
@@ -98,12 +129,9 @@ export default function Modelos() {
                     recortados, sem fundo — sobre o azul-noite do catálogo
                     o copo preto sumia e o branco virava um borrão. É o
                     mesmo creme que a /loja usa atrás da mesma foto. */}
-                <span className="h-28 rounded-lg mb-3 flex items-center justify-center overflow-hidden"
+                <span className="relative h-28 rounded-lg mb-3 flex items-center justify-center overflow-hidden"
                   style={{ background: '#FFF7F1' }}>
-                  {m.imagem
-                    ? <img src={m.imagem} alt="" loading="lazy" className="h-full w-full object-contain"
-                        onError={e => { e.target.style.display = 'none'; }} />
-                    : <ImageOff size={22} style={{ color: NEON.fraco }} />}
+                  <FotoModelo imagens={m.imagens} imagem={m.imagem} alt={m.nome} />
                 </span>
 
                 <span className="block font-semibold text-[13.5px] leading-snug" style={{ color: NEON.texto }}>
