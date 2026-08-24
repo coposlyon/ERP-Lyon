@@ -7,6 +7,7 @@
 // ============================================================
 import { useState } from 'react';
 
+import { TOM } from '@/components/RH/kit';
 // ── Máscaras ────────────────────────────────────────────────
 export const soDigitos = v => String(v ?? '').replace(/\D/g, '');
 
@@ -78,22 +79,24 @@ export function Campo({ label, obrigatorio, dica, erro, col = 1, children }) {
 export function Secao({ icone: Icone, titulo, descricao, acao, children, colunas = 4 }) {
   const grade = { 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4' }[colunas];
   return (
-    <section className="card">
-      <div className="card-header flex items-start justify-between gap-3">
+    <section className="rounded-xl mb-4"
+      style={{ background: TOM.cartao, border: `1px solid ${TOM.borda}` }}>
+      <div className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-2">
         <div className="flex items-start gap-2.5">
           {Icone && (
-            <span className="w-8 h-8 rounded-lg bg-primary-100 text-primary-600 flex items-center justify-center shrink-0">
+            <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: 'rgba(77,141,246,.12)', color: TOM.azul }}>
               <Icone size={16} />
             </span>
           )}
           <div>
-            <h2 className="font-semibold text-gray-900 text-[15px]">{titulo}</h2>
-            {descricao && <p className="text-xs text-gray-500 mt-0.5">{descricao}</p>}
+            <h2 className="font-medium text-[15px]" style={{ color: TOM.azul }}>{titulo}</h2>
+            {descricao && <p className="text-[11.5px] mt-0.5" style={{ color: TOM.texto3 }}>{descricao}</p>}
           </div>
         </div>
         {acao}
       </div>
-      <div className={`card-body grid grid-cols-1 ${grade} gap-4`}>{children}</div>
+      <div className={`px-4 pb-4 grid grid-cols-1 ${grade} gap-4`}>{children}</div>
     </section>
   );
 }

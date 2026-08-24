@@ -24,12 +24,14 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, ArrowRight, Save, Loader2, Check, Camera, Trash2, UserCircle2,
+  ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { DadosPessoais, DadosTrabalhistas, Documentacao, ContratoPoliticas, Revisao } from './passos';
 import { StatusDocumentos, CapturaFacial } from './pecas';
+import { TOM, Pagina, Bloco, Medidor, ItemResumo } from '@/components/RH/kit';
 import {
   dinheiroParaNumero, numeroParaDinheiro, fmtMoeda, soDigitos, mCEP,
 } from './campos';
@@ -290,55 +292,65 @@ export default function EmployeeFull() {
   const ultima = etapa === ETAPAS.length;
 
   return (
-    <div className="space-y-4">
-      {/* Cabeçalho */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="flex items-start gap-3">
-          <Link to="/employees" className="btn-ghost btn-sm text-gray-500 mt-1" title="Voltar">
-            <ArrowLeft size={16} />
-          </Link>
-          <div>
-            <p className="text-xs text-gray-400">
-              <Link to="/employees" className="hover:text-primary-600">Cadastros › Colaboradores</Link>
-              {' › '}{editando ? f.name || 'Colaborador' : 'Novo colaborador'}
-            </p>
-            <h1 className="page-title mt-0.5">{editando ? f.name || 'Colaborador' : 'Novo Colaborador'}</h1>
-            <p className="text-sm text-gray-500">
-              {editando ? 'Cadastro completo, documentos e permissões de acesso.' : 'Cadastre um novo colaborador na empresa.'}
-            </p>
-          </div>
+    <Pagina>
+      {/* Cabeçalho: trilha, título e as duas ações — na ordem da imagem. */}
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+        <div>
+          <p className="text-[12px] flex items-center gap-1.5" style={{ color: TOM.texto3 }}>
+            <Link to="/hr/painel" className="hover:underline" style={{ color: TOM.texto2 }}>RH</Link>
+            <ChevronRight size={12} />
+            <Link to="/employees" className="hover:underline" style={{ color: TOM.texto2 }}>Colaboradores</Link>
+            <ChevronRight size={12} />
+            <span>{editando ? f.name || 'Colaborador' : 'Novo Colaborador'}</span>
+          </p>
+          <h1 className="text-2xl font-semibold mt-1" style={{ color: TOM.texto }}>
+            {editando ? f.name || 'Colaborador' : 'Novo Colaborador'}
+          </h1>
+          <p className="text-sm mt-0.5" style={{ color: TOM.texto2 }}>
+            {editando ? 'Cadastro completo, documentos e permissões de acesso.' : 'Cadastre um novo colaborador na empresa.'}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link to="/employees" className="btn-secondary">Cancelar</Link>
-          <button onClick={() => salvar({ irPara: ultima ? undefined : etapa + 1 })} disabled={salvando} className="btn-primary">
+          <Link to="/employees" className="px-4 py-2 rounded-lg text-[13px]"
+            style={{ color: TOM.texto2, border: `1px solid ${TOM.borda}` }}>Cancelar</Link>
+          <button onClick={() => salvar({ irPara: ultima ? undefined : etapa + 1 })} disabled={salvando}
+            className="px-4 py-2 rounded-lg text-[13px] font-medium inline-flex items-center gap-2 disabled:opacity-60"
+            style={{ background: TOM.azul, color: '#07101F' }}>
             {salvando ? <><Loader2 size={15} className="animate-spin" /> Salvando…</>
-              : ultima ? <><Check size={15} /> Salvar e concluir</>
-              : <>Salvar e próximo <ArrowRight size={15} /></>}
+              : ultima ? <><Check size={15} /> Concluir Admissão</>
+              : <>Salvar e Próximo <ArrowRight size={15} /></>}
           </button>
         </div>
       </div>
 
-      {/* Etapas */}
-      <div className="card">
-        <div className="card-body flex flex-wrap gap-2">
-          {ETAPAS.map(e => {
-            const ativa = etapa === e.n;
-            const feita = concluidas[e.n - 1];
-            return (
-              <button key={e.n} onClick={() => setEtapa(e.n)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                  ativa ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                  ativa ? 'bg-white/20' : feita ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                  {feita && !ativa ? <Check size={12} /> : e.n}
+      {/* As cinco etapas em linha, ligadas — só a atual acesa. */}
+      <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+        {ETAPAS.map((e, i) => {
+          const ativa = etapa === e.n;
+          const feita = concluidas[e.n - 1];
+          return (
+            <div key={e.n} className="flex items-center gap-2 shrink-0">
+              <button onClick={() => setEtapa(e.n)} className="flex items-center gap-2.5">
+                <span className="w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-semibold"
+                  style={ativa
+                    ? { background: TOM.azul, color: '#07101F' }
+                    : feita
+                      ? { background: 'rgba(45,212,167,.15)', color: TOM.verde, border: `1px solid rgba(45,212,167,.35)` }
+                      : { background: 'transparent', color: TOM.texto3, border: `1px solid ${TOM.borda}` }}>
+                  {feita && !ativa ? <Check size={13} /> : e.n}
                 </span>
-                <span className="hidden sm:inline">{e.titulo}</span>
+                <span className="text-[13px] whitespace-nowrap"
+                  style={{ color: ativa ? TOM.texto : TOM.texto3, fontWeight: ativa ? 600 : 400 }}>
+                  {e.titulo}
+                </span>
               </button>
-            );
-          })}
-        </div>
+              {i < ETAPAS.length - 1 && (
+                <span className="w-8 sm:w-16 h-px shrink-0" style={{ background: TOM.borda }} />
+              )}
+            </div>
+          );
+        })}
       </div>
-
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
         {/* Formulário */}
         <div className="xl:col-span-9 space-y-4">
@@ -366,48 +378,51 @@ export default function EmployeeFull() {
           {/* Só consulta o que a etapa 4 guardou — nenhum upload aqui. */}
           <StatusDocumentos anexos={anexos} f={f} />
 
-          <section className="card">
-            <div className="card-header"><h2 className="font-semibold text-gray-900 text-sm">Resumo da admissão</h2></div>
-            <div className="card-body space-y-2">
-              {resumo.slice(0, 6).map(r => (
-                <div key={r.label} className="flex items-baseline justify-between gap-2">
-                  <span className="text-xs text-gray-400">{r.label}</span>
-                  <span className="text-sm font-semibold text-gray-800 text-right truncate">{r.valor || '—'}</span>
-                </div>
-              ))}
-            </div>
-          </section>
+          {/* O resumo NÃO guarda cópia de nada: lê os mesmos campos do
+              formulário. Enquanto a etapa 2 não for preenchida, sai
+              traço — e traço é a informação honesta de "ainda não". */}
+          <Bloco titulo="Resumo da Admissão">
+            {resumo.slice(0, 6).map(r => (
+              <ItemResumo key={r.label} rotulo={r.label} valor={r.valor || '—'} />
+            ))}
+            <button type="button" onClick={() => setEtapa(5)}
+              className="text-[12px] mt-2 hover:underline" style={{ color: TOM.azul }}>
+              Ver detalhes completos
+            </button>
+          </Bloco>
 
-          <section className="card">
-            <div className="card-header"><h2 className="font-semibold text-gray-900 text-sm">Progresso</h2></div>
-            <div className="card-body">
-              <div className="flex items-center gap-3">
-                <div className="text-2xl font-bold text-primary-600">{progresso}%</div>
-                <div className="flex-1">
-                  <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                    <div className="h-full bg-primary-500 transition-all" style={{ width: `${progresso}%` }} />
-                  </div>
-                  <p className="text-[11px] text-gray-400 mt-1">
-                    {concluidas.filter(Boolean).length} de {ETAPAS.length} etapas
-                  </p>
-                </div>
-              </div>
-              <ul className="mt-3 space-y-1.5">
-                {ETAPAS.map(e => (
-                  <li key={e.n} className="flex items-center gap-2 text-xs">
-                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] ${
-                      concluidas[e.n - 1] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
-                      {concluidas[e.n - 1] ? <Check size={9} /> : e.n}
-                    </span>
-                    <button onClick={() => setEtapa(e.n)}
-                      className={`truncate ${etapa === e.n ? 'text-primary-600 font-semibold' : 'text-gray-500 hover:text-gray-800'}`}>
-                      {e.titulo}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+          <Bloco titulo="Progresso da Admissão">
+            <div className="flex flex-col items-center">
+              <Medidor valor={progresso} tamanho={104} espessura={9}
+                tom={progresso === 100 ? 'verde' : 'azul'} />
+              <p className="text-[11.5px] mt-2" style={{ color: TOM.texto3 }}>
+                {concluidas.filter(Boolean).length} de {ETAPAS.length} etapas concluídas
+              </p>
             </div>
-          </section>
+            <div className="mt-3 space-y-1">
+              {ETAPAS.map(e => {
+                const feita = concluidas[e.n - 1];
+                const atual = etapa === e.n;
+                return (
+                  <button key={e.n} onClick={() => setEtapa(e.n)}
+                    className="w-full flex items-center gap-2.5 py-1 text-left">
+                    <span className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0"
+                      style={feita
+                        ? { background: 'rgba(45,212,167,.15)', color: TOM.verde }
+                        : atual
+                          ? { background: TOM.azul, color: '#07101F' }
+                          : { border: `1px solid ${TOM.borda}`, color: TOM.texto3 }}>
+                      {feita ? <Check size={10} /> : e.n}
+                    </span>
+                    <span className="text-[12.5px] truncate"
+                      style={{ color: atual ? TOM.texto : TOM.texto2, fontWeight: atual ? 600 : 400 }}>
+                      {e.titulo}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </Bloco>
 
           <CapturaFacial
             foto={foto || fotoAtual}
@@ -417,6 +432,6 @@ export default function EmployeeFull() {
           />
         </div>
       </div>
-    </div>
+    </Pagina>
   );
 }

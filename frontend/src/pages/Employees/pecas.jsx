@@ -21,6 +21,7 @@ import {
   Home, Landmark, Loader2, Eye,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { TOM, Bloco } from '@/components/RH/kit';
 
 /* ── Sim / Não ───────────────────────────────────────────── */
 
@@ -81,27 +82,24 @@ export function StatusDocumentos({ anexos = [], f = {}, aoVer }) {
     (!g.seCasado || casado) && (!g.seTemFilhos || temFilhos) && (!g.sePossuiCnh || possuiCnh));
 
   return (
-    <section className="card">
-      <div className="card-header flex items-center gap-2">
-        <ShieldCheck size={16} className="text-primary-600" />
-        <h2 className="font-semibold text-gray-900 text-sm">Documentação</h2>
-      </div>
-      <div className="card-body space-y-2">
+    <Bloco titulo="Documentação" icone={ShieldCheck} tomIcone="azul">
+      <div className="space-y-2">
         {visiveis.map(g => {
           const ok = anexado(g.docs);
           const arquivo = anexos.find(a => g.docs.includes(a.doc_key) || g.docs.includes(a.type));
           return (
             <div key={g.chave}
-              className={`rounded-xl border px-3 py-2.5 flex items-start gap-2.5 ${
-                ok ? 'border-green-200 bg-green-50/40' : 'border-red-200 bg-red-50/30'}`}>
+              className="rounded-lg px-3 py-2.5 flex items-start gap-2.5"
+              style={{ background: ok ? 'rgba(45,212,167,.07)' : 'rgba(242,84,91,.07)',
+                       border: `1px solid ${ok ? 'rgba(45,212,167,.28)' : 'rgba(242,84,91,.28)'}` }}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
                 ok ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-500'}`}>
                 {ok ? <Check size={12} /> : <X size={12} />}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-medium text-gray-800 leading-tight">{g.titulo}</p>
-                <p className="text-[11px] text-gray-400 leading-tight">{g.sub}</p>
-                <p className={`text-[11px] mt-0.5 ${ok ? 'text-green-600' : 'text-red-500'}`}>
+                <p className="text-[13px] font-medium leading-tight" style={{ color: TOM.texto }}>{g.titulo}</p>
+                <p className="text-[11px] leading-tight" style={{ color: TOM.texto3 }}>{g.sub}</p>
+                <p className="text-[11px] mt-0.5" style={{ color: ok ? TOM.verde : TOM.vermelho }}>
                   {ok ? 'Documento anexado' : 'Aguardando documento'}
                 </p>
               </div>
@@ -113,11 +111,11 @@ export function StatusDocumentos({ anexos = [], f = {}, aoVer }) {
             </div>
           );
         })}
-        <p className="text-[11px] text-gray-400 pt-1">
+        <p className="text-[11px] pt-1" style={{ color: TOM.texto3 }}>
           Os arquivos são anexados na etapa 4. Aqui é só a conferência.
         </p>
       </div>
-    </section>
+    </Bloco>
   );
 }
 
@@ -179,20 +177,17 @@ export function CapturaFacial({ foto, aoCapturar, aoRemover, capturadaEm }) {
   const mostrando = previa || foto;
 
   return (
-    <section className="card">
-      <div className="card-header">
-        <h2 className="font-semibold text-gray-900 text-sm">Foto facial do colaborador</h2>
-        <p className="text-[11px] text-gray-400">Capture pela câmera do aparelho.</p>
-      </div>
-      <div className="card-body">
-        <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center">
+    <Bloco titulo="Foto facial colaborador" descricao="Capture essa do colaborador.">
+      <div>
+        <div className="relative aspect-[3/4] rounded-xl overflow-hidden flex items-center justify-center"
+          style={{ background: TOM.cartaoAlt, border: `1px solid ${TOM.azul}` }}>
           {ligada ? (
             <video ref={video} playsInline muted className="w-full h-full object-cover"
               style={{ transform: 'scaleX(-1)' }} />
           ) : mostrando ? (
             <img src={mostrando} alt="Foto do colaborador" className="w-full h-full object-cover" />
           ) : (
-            <Camera size={40} className="text-gray-300" />
+            <Camera size={40} style={{ color: TOM.texto3 }} />
           )}
 
           {!ligada && !previa && (
@@ -248,6 +243,6 @@ export function CapturaFacial({ foto, aoCapturar, aoRemover, capturadaEm }) {
           </p>
         )}
       </div>
-    </section>
+    </Bloco>
   );
 }
