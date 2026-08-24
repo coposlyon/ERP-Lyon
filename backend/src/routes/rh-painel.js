@@ -63,7 +63,7 @@ router.get('/painel', async (req, res) => {
   const anota = (nome, r) => { if (!r.ok) avisos.push(`${nome}: ${r.erro}`); return r.linhas; };
 
   try {
-    const [colab, ferias, ponto, folha, docs, ocor, esoc, adm, desl] = await Promise.all([
+    const [colab, ferias, ponto, folha, docs, ocor, esoc, adm, desl, notif] = await Promise.all([
       tentar(() => supabase.from('CLIENTES')
         .select('id, name, is_active, created_at, admission_data')
         .eq('tenant_id', t).eq('type', 'CO')),
@@ -77,7 +77,7 @@ router.get('/painel', async (req, res) => {
         .select('employee_id, status, net_salary, gross_salary, reference_month')
         .eq('tenant_id', t).eq('reference_month', comp)),
       tentar(() => supabase.from('RH_DOCUMENTOS')
-        .select('id, employee_id, doc_key, type, description, document_date, file_url')
+        .select('id, employee_id, doc_key, type, description, document_date, file_url, expires_at, sem_validade')
         .eq('tenant_id', t)),
       tentar(() => supabase.from('RH_OCORRENCIAS')
         .select('id, employee_id, kind, status, severity, occurred_on, sla_due_at, decided_at')
@@ -88,6 +88,8 @@ router.get('/painel', async (req, res) => {
         .select('id, stage, status, expected_date, created_at').eq('tenant_id', t)),
       tentar(() => supabase.from('RH_DESLIGAMENTOS')
         .select('id, employee_id, exit_date, status, created_at').eq('tenant_id', t)),
+      tentar(() => supabase.from('RH_NOTIFICACOES')
+        .select('id, status, created_at').eq('tenant_id', t)),
     ]);
 
     const COLAB = anota('colaboradores', colab);
@@ -99,8 +101,10 @@ router.get('/painel', async (req, res) => {
     const ESOC = anota('eSocial', esoc);
     const ADM = anota('admissões', adm);
     const DESL = anota('desligamentos', desl);
+    const NOTIF = anota('notificações', notif);
 
     const ativos = COLAB.filter(c => c.is_active !== false);
+    const nomeDe = id => (COLAB.find(x => x.id === id)?.name || '').trim() || 'Colaborador';
     const admitidoEm = c => (c.admission_data?.start_date || c.created_at || '').slice(0, 10);
 
     // ── Quadro ──────────────────────────────────────────────
@@ -199,6 +203,66 @@ router.get('/painel', async (req, res) => {
       });
     }
 
+    // ── Automação: o que a máquina fez sozinha ────────────
+    //
+    // Estes três blocos existem nas telas aprovadas com números
+    // bonitos (92%, 95%, 100%). Aqui eles saem de FATO, e devolvem
+    // `null` quando não há do que tirar. Um painel de automação que
+    // inventa a própria eficiência é pior que não ter painel: ele
+    // afirma que está tudo certo justamente quando ninguém olhou.
+    const pct = (parte, total) => (total > 0 ? Math.round((parte / total) * 100) : null);
+
+    const ocorAutomaticas = OCOR.filter(o => o.origin === 'ponto' || o.origin === 'sistema').length;
+    const notifEntregues = NOTIF.filter(n => n.status === 'enviada').length;
+    const esocEnviados = ESOC.filter(e => ['aceito', 'processado', 'enviado'].includes(String(e.status))).length;
+    const folhaFechada = FOLHA.length > 0;
+    const diasApurados = PONTO.filter(x => x.absence !== null).length;
+
+    const checklist = [
+      { item: 'Folha de pagamento', ok: folhaFechada,
+        detalhe: folhaFechada ? null : 'competência ainda aberta' },
+      { item: 'Envio de eventos eSocial', ok: ESOC.length > 0 && esocEnviados === ESOC.length,
+        detalhe: ESOC.length ? `${esocEnviados}/${ESOC.length} enviados` : 'nenhum evento gerado' },
+      { item: 'Fechamento de ponto', ok: PONTO.length > 0 && diasApurados === PONTO.length,
+        detalhe: PONTO.length ? `${diasApurados}/${PONTO.length} dias apurados` : 'nenhum dia apurado' },
+      { item: 'Documentos obrigatórios', ok: docsCriticos === 0,
+        detalhe: docsCriticos ? `${docsCriticos} pendente(s)` : null },
+      { item: 'Ocorrências analisadas', ok: OCOR.filter(o => o.status === 'aberta').length === 0,
+        detalhe: `${OCOR.filter(o => o.status === 'aberta').length} em aberto` },
+    ];
+
+    const automacao = {
+      checklist,
+      checklist_pct: pct(checklist.filter(c => c.ok).length, checklist.length),
+      // Cada linha diz se AQUELA automação está de fato rodando — não
+      // se ela existe no código.
+      status: [
+        { rotulo: 'Ocorrências criadas pelo ponto', ativo: ocorAutomaticas > 0,
+          detalhe: `${ocorAutomaticas} registrada(s)` },
+        { rotulo: 'Notificações ao colaborador', ativo: notifEntregues > 0,
+          detalhe: NOTIF.length ? `${notifEntregues}/${NOTIF.length} entregues` : 'nenhuma disparada' },
+        { rotulo: 'Integração com o eSocial', ativo: esocEnviados > 0,
+          detalhe: ESOC.length ? `${esocEnviados} transmitido(s)` : 'sem transmissor' },
+        { rotulo: 'Geração automática da folha', ativo: folhaFechada,
+          detalhe: folhaFechada ? 'competência fechada' : 'aguardando fechamento' },
+      ],
+      // Eficiência: `valor` null significa "sem base para medir", e a
+      // tela mostra um traço em vez de um número convincente.
+      eficiencia: [
+        { rotulo: 'Ocorrências sem digitação', valor: pct(ocorAutomaticas, OCOR.length),
+          sub: `${ocorAutomaticas} de ${OCOR.length}` },
+        { rotulo: 'Notificações entregues', valor: pct(notifEntregues, NOTIF.length),
+          sub: NOTIF.length ? `${notifEntregues} de ${NOTIF.length}` : 'nenhuma ainda' },
+        { rotulo: 'Eventos do eSocial enviados', valor: pct(esocEnviados, ESOC.length),
+          sub: ESOC.length ? `${esocEnviados} de ${ESOC.length}` : 'nenhum ainda' },
+        { rotulo: 'Ponto apurado sozinho', valor: pct(diasApurados, PONTO.length),
+          sub: PONTO.length ? `${diasApurados} de ${PONTO.length} dias` : 'sem marcações' },
+        { rotulo: 'Documentos em conformidade',
+          valor: pct(docsAnexados, docsAnexados + docsPendentes),
+          sub: `${docsAnexados} anexados` },
+      ],
+    };
+
     res.json({
       competencia: comp,
       gerado_em: new Date().toISOString(),
@@ -238,6 +302,7 @@ router.get('/painel', async (req, res) => {
       },
       // Monitor do dia — percentual sobre quem estava ESCALADO hoje,
       // não sobre o quadro inteiro (item 5).
+      automacao,
       monitor_dia: {
         data: hojeISO,
         escalados,
@@ -251,21 +316,48 @@ router.get('/painel', async (req, res) => {
       },
       graficos: { evolucao, admissoes_x_desligamentos: admVsDes },
       // Pendências: cada linha aponta para a tela que resolve
+      // Pendências: cada linha aponta para a tela que resolve.
+      //
+      // A lista era montada com dois blocos repetidos — exames de
+      // retorno e solicitações de férias apareciam duas vezes cada,
+      // e o painel contava a mesma pendência em dobro.
       pendencias: [
-        ...(examesPendentes ? [{ tipo: 'ferias', titulo: 'Exames de retorno pendentes', qtd: examesPendentes, prioridade: 'alta', destino: '/hr/ferias' }] : []),
-        ...(FERIAS.filter(f => f.status === 'pending').length ? [{ tipo: 'ferias', titulo: 'Solicitações de férias aguardando decisão', qtd: FERIAS.filter(f => f.status === 'pending').length, prioridade: 'media', destino: '/hr/ferias' }] : []),
-        ...(ocorVencidas.length ? [{ tipo: 'ocorrencias', titulo: 'Ocorrências com prazo vencido', qtd: ocorVencidas.length, prioridade: 'alta', destino: '/hr/ocorrencias' }] : []),
-        ...(ADM.filter(a => a.status === 'aguardando_docs').length ? [{ tipo: 'admissoes', titulo: 'Admissões aguardando documentos', qtd: ADM.filter(a => a.status === 'aguardando_docs').length, prioridade: 'media', destino: '/hr/admissoes' }] : []),
-        ...(afastamentos.filter(f => f.exame_retorno_exigido && !f.exame_retorno_em).length
-          ? [{ tipo: 'ferias', titulo: 'Exames de retorno pendentes', qtd: afastamentos.filter(f => f.exame_retorno_exigido && !f.exame_retorno_em).length, prioridade: 'alta', destino: '/hr/ferias' }] : []),
+        ...(examesPendentes
+          ? [{ tipo: 'ferias', titulo: 'Exames de retorno pendentes', qtd: examesPendentes,
+               prioridade: 'alta', destino: '/hr/ferias' }] : []),
+        ...(ocorVencidas.length
+          ? [{ tipo: 'ocorrencias', titulo: 'Ocorrências com prazo vencido', qtd: ocorVencidas.length,
+               prioridade: 'alta', destino: '/hr/ocorrencias' }] : []),
         ...(FERIAS.filter(f => f.status === 'pending').length
-          ? [{ tipo: 'ferias', titulo: 'Solicitações de férias aguardando decisão', qtd: FERIAS.filter(f => f.status === 'pending').length, prioridade: 'media', destino: '/hr/ferias' }] : []),
-        ...(ESOC.filter(e => String(e.status).toLowerCase() === 'pendente').length ? [{ tipo: 'esocial', titulo: 'Eventos eSocial aguardando envio', qtd: ESOC.filter(e => String(e.status).toLowerCase() === 'pendente').length, prioridade: 'baixa', destino: '/hr/esocial' }] : []),
+          ? [{ tipo: 'ferias', titulo: 'Solicitações de férias aguardando decisão',
+               qtd: FERIAS.filter(f => f.status === 'pending').length,
+               prioridade: 'media', destino: '/hr/ferias' }] : []),
+        ...(ADM.filter(a => a.status === 'aguardando_docs').length
+          ? [{ tipo: 'admissoes', titulo: 'Admissões aguardando documentos',
+               qtd: ADM.filter(a => a.status === 'aguardando_docs').length,
+               prioridade: 'media', destino: '/hr/admissoes' }] : []),
+        ...(docsCriticos
+          ? [{ tipo: 'documentos', titulo: 'Documentos obrigatórios faltando', qtd: docsCriticos,
+               prioridade: 'media', destino: '/hr/documentos' }] : []),
+        ...(ESOC.filter(e => String(e.status).toLowerCase() === 'pendente').length
+          ? [{ tipo: 'esocial', titulo: 'Eventos eSocial aguardando envio',
+               qtd: ESOC.filter(e => String(e.status).toLowerCase() === 'pendente').length,
+               prioridade: 'baixa', destino: '/hr/esocial' }] : []),
       ],
-      // Próximos vencimentos — só o que TEM validade. Enquanto
-      // RH_DOCUMENTOS não guardar data de validade, a lista sai vazia
-      // (e não inventa vencimento para contrato indeterminado).
-      vencimentos: [],
+      // Próximos vencimentos — só o que TEM data. Documento sem
+      // validade NÃO vence: contrato por prazo indeterminado, RG e CPF
+      // nunca entram aqui (item 9).
+      vencimentos: DOCS
+        .filter(d => d.expires_at && !d.sem_validade)
+        .map(d => ({
+          titulo: d.description || d.doc_key || d.type,
+          detalhe: nomeDe(d.employee_id),
+          data: d.expires_at,
+          vencido: d.expires_at < hojeISO,
+          dias: Math.round((new Date(d.expires_at) - new Date(hojeISO)) / 864e5),
+        }))
+        .sort((a, b) => String(a.data).localeCompare(String(b.data)))
+        .slice(0, 12),
       // O que o painel não conseguiu ler (migração pendente, por exemplo)
       avisos,
     });
