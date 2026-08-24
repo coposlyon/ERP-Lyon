@@ -786,3 +786,66 @@ html.dark .shadow-lg  { box-shadow: 0 10px 15px -3px rgba(0,0,0,.7), 0 4px 6px -
   background-color: #0F1730;
   color: #E7EDF9;
 }
+
+/* ============================================================
+   TEXTO ESCURO SOBRE FUNDO ESCURO.
+
+   As telas usam pares do tipo `bg-primary-50 text-primary-700` — no
+   claro, um azul bem pálido com letra azul-escura. No escuro só o
+   FUNDO era convertido (vira azul translúcido), e a letra continuava
+   #4338ca. Resultado: roxo sobre roxo, que é o que se vê no botão
+   "Sem borda" do Lançamento de Produto e nas abas selecionadas.
+
+   A regra converte os tons ESCUROS (600–900) das três famílias em
+   claros. Os tons 200–400 já são legíveis no escuro e ficam como estão
+   — mexer neles apagaria hierarquia que hoje funciona.
+   ============================================================ */
+html.dark .text-primary-600,
+html.dark .text-primary-700,
+html.dark .text-primary-800,
+html.dark .text-primary-900 { color: #93b4ff !important; }
+
+html.dark .text-indigo-600,
+html.dark .text-indigo-700,
+html.dark .text-indigo-800,
+html.dark .text-indigo-900 { color: #a5b8ff !important; }
+
+html.dark .text-violet-600,
+html.dark .text-violet-700,
+html.dark .text-violet-800,
+html.dark .text-violet-900 { color: #c4b1fd !important; }
+
+/* O mesmo problema nas famílias de estado, que aparecem em pastilhas
+   e avisos: fundo tingido convertido, letra escura esquecida. */
+html.dark .text-emerald-700, html.dark .text-emerald-800,
+html.dark .text-green-700,   html.dark .text-green-800   { color: #6ee7b7 !important; }
+html.dark .text-amber-700,   html.dark .text-amber-800,
+html.dark .text-yellow-700,  html.dark .text-yellow-800  { color: #fcd34d !important; }
+html.dark .text-red-700,     html.dark .text-red-800,
+html.dark .text-rose-700,    html.dark .text-rose-800    { color: #fca5a5 !important; }
+html.dark .text-blue-700,    html.dark .text-blue-800    { color: #93c5fd !important; }
+
+/* A opção destacada do <select> nativo: o realce usa a cor de sistema,
+   que no Windows sai clara e engole a letra branca. */
+html.dark select option:checked,
+html.dark select option:hover { background-color: #2f6bff; color: #ffffff; }
+
+/* ============================================================
+   O Lançamento de Produto fala em CAIXA ALTA — é assim que o nome do
+   produto, a cor e o acabamento aparecem no pedido impresso e na
+   produção. Deixar a digitação em minúscula criava "Branco" e
+   "BRANCO" como coisas diferentes no relatório.
+
+   `text-transform` cuida do que é EXIBIDO; os campos que gravam texto
+   também normalizam no onChange, para o banco receber igual ao que a
+   tela mostra.
+   ============================================================ */
+.lj-caixa-alta,
+.lj-caixa-alta input[type="text"],
+.lj-caixa-alta select,
+.lj-caixa-alta option { text-transform: uppercase; }
+
+/* Números e dinheiro não têm caixa — e forçar maiúscula em campo
+   numérico só atrapalha o teclado do celular. */
+.lj-caixa-alta input[type="number"],
+.lj-caixa-alta input[inputmode="decimal"] { text-transform: none; }

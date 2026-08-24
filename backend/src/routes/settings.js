@@ -3,6 +3,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const { uploadDataUrl } = require('../lib/storage');
 const { randomUUID } = require('crypto');
+const { audit } = require('../lib/audit');
 
 // Sobe as fotos do hero (data URLs) para o Storage e troca por URLs públicas.
 // Mantém garrafas coloridas (sem foto) intactas. Nunca lança.
@@ -101,6 +102,64 @@ router.put('/', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Tintas da personalização ───────────────────────────
+//
+// A cor da personalização era texto livre com sugestões: cada vendedor
+// escrevia do seu jeito e "BRANCO", "Branco" e "BCO" viravam três cores
+// diferentes em qualquer relatório.
+//
+// Agora é um cadastro, e cada tinta carrega o VALOR POR ML — que é o que
+// permite a personalização entrar no custo em vez de ser chute.
+//
+// Mora em EMPRESAS.settings.tintas:
+//   [{ nome: 'BRANCO', valor_ml: 0.35 }, ...]
+router.get('/tintas', async (req, res) => {
+  try {
+    const { data } = await supabase.from('EMPRESAS').select('settings').eq('id', req.tenantId).maybeSingle();
+    const lista = data?.settings?.tintas;
+    res.json(Array.isArray(lista) ? lista : []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/tintas', async (req, res) => {
+  const nome = String(req.body.nome || '').trim().toUpperCase();
+  // Aceita '0,35' e '0.35' — quem cadastra digita como fala.
+  const valor = Number(String(req.body.valor_ml ?? '').replace(',', '.'));
+  if (!nome) return res.status(400).json({ error: 'Informe o nome da tinta' });
+  if (!Number.isFinite(valor) || valor < 0) return res.status(400).json({ error: 'Informe o valor por ML' });
+  try {
+    const { data: emp } = await supabase.from('EMPRESAS').select('settings').eq('id', req.tenantId).maybeSingle();
+    const settings = emp?.settings || {};
+    const lista = Array.isArray(settings.tintas) ? [...settings.tintas] : [];
+    const i = lista.findIndex(t => String(t.nome).toUpperCase() === nome);
+    // Cadastrar de novo ATUALIZA o valor em vez de duplicar a tinta.
+    if (i >= 0) lista[i] = { ...lista[i], nome, valor_ml: valor };
+    else lista.push({ nome, valor_ml: valor });
+    lista.sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+    const { error } = await supabase.from('EMPRESAS')
+      .update({ settings: { ...settings, tintas: lista } }).eq('id', req.tenantId);
+    if (error) throw error;
+    audit(req, i >= 0 ? 'update' : 'create', 'tinta', nome, { valor_ml: valor });
+    res.json(lista);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/tintas', async (req, res) => {
+  const nome = String(req.query.nome || '').trim().toUpperCase();
+  if (!nome) return res.status(400).json({ error: 'Informe a tinta' });
+  try {
+    const { data: emp } = await supabase.from('EMPRESAS').select('settings').eq('id', req.tenantId).maybeSingle();
+    const settings = emp?.settings || {};
+    const lista = (Array.isArray(settings.tintas) ? settings.tintas : [])
+      .filter(t => String(t.nome).toUpperCase() !== nome);
+    const { error } = await supabase.from('EMPRESAS')
+      .update({ settings: { ...settings, tintas: lista } }).eq('id', req.tenantId);
+    if (error) throw error;
+    audit(req, 'delete', 'tinta', nome, null);
+    res.json(lista);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Catálogo de acabamentos (cores/bordas por acabamento) ──────────

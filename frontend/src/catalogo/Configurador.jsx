@@ -282,16 +282,14 @@ export default function Configurador() {
                 </div>
               </div>
 
+              {/* Este é o catálogo de PERSONALIZADOS: escolher "liso"
+                  aqui levava o cliente para o produto errado — liso se
+                  compra na /loja, que tem preço e caixa próprios. O tipo
+                  fica visível para o cliente saber o que está pedindo,
+                  mas não é mais uma escolha. */}
               <div>
                 <Rotulo>Tipo de pedido</Rotulo>
-                <div className="grid grid-cols-2 gap-2">
-                  <Opcao titulo="Liso" icone={Box} cor={NEON.ciano} quebrar
-                    ativo={!personalizado}
-                    onClick={() => mudar({ tipo_pedido: 'liso', quantidade: '' })} />
-                  <Opcao titulo="Personalizado" icone={PenTool} cor={NEON.roxo} quebrar
-                    ativo={personalizado}
-                    onClick={() => mudar({ tipo_pedido: 'personalizado', quantidade: '' })} />
-                </div>
+                <Opcao titulo="Personalizado" icone={PenTool} cor={NEON.roxo} quebrar ativo />
               </div>
             </div>
 

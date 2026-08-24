@@ -183,6 +183,24 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       setDeliveryDate(withYear);
     }
   }
+  // Mudou a data do EVENTO → leva o ano dela para saída e entrega.
+  //
+  // Quem digita 01/01/2026 no evento está vendendo para o ano que vem, e
+  // as outras duas datas são quase sempre do mesmo ano. Repetir 2026 à
+  // mão em cada campo é onde nascia o pedido com saída em 2025 e evento
+  // em 2026 — erro que só aparece na produção, atrasada.
+  //
+  // Só o ANO viaja: o dia e o mês de cada etapa continuam sendo escolha
+  // de quem vende.
+  function changeEventDate(v) {
+    setEventDate(v);
+    const y = String(v || '').slice(0, 4);
+    if (!/^\d{4}$/.test(y)) return;
+    const comAno = iso => (iso && iso.slice(0, 4) !== y ? `${y}${iso.slice(4)}` : iso);
+    setShipDate(comAno);
+    setDeliveryDate(comAno);
+  }
+
   const [showCustomerInfo, setShowCustomerInfo] = useState(false);
   // Chave aleatória de até 5 dígitos para o pedido
   const genKey = () => String(Math.floor(Math.random() * 100000)).padStart(5, '0');
@@ -287,6 +305,25 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     queryKey: ['acab-catalog'],
     queryFn: () => api.get('/settings/acabamentos'),
   });
+  // As tintas cadastradas, com o valor por ML de cada uma.
+  const { data: tintas = [], refetch: refetchTintas } = useQuery({
+    queryKey: ['tintas'],
+    queryFn: () => api.get('/settings/tintas'),
+  });
+  const [novaTinta, setNovaTinta] = useState(null);   // { nome, valor_ml }
+
+  async function salvarTinta() {
+    const nome = String(novaTinta?.nome || '').trim().toUpperCase();
+    if (!nome) { toast.error('Informe o nome da tinta'); return; }
+    try {
+      await api.post('/settings/tintas', { nome, valor_ml: novaTinta.valor_ml });
+      await refetchTintas();
+      setLaunch(l => (l ? { ...l, color: nome } : l));
+      setNovaTinta(null);
+      toast.success('Tinta cadastrada');
+    } catch (err) { toast.error(err.error || 'Erro ao cadastrar a tinta'); }
+  }
+
   // Cadastra uma cor/borda no catálogo e já seleciona no lançamento.
   async function addAcabValor(chave, onPicked) {
     const raw = window.prompt(`Cadastrar novo(a) para "${chave === '__borda' ? 'Borda' : chave}":`);
@@ -1101,7 +1138,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Data do evento *</label>
-              <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => setEventDate(e.target.value)}
+              <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => changeEventDate(e.target.value)}
                 onBlur={() => setEventDate(d => forwardDate(d))} />
             </div>
             <div>
@@ -1470,7 +1507,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       </Modal>
 
       {/* Lançamento do produto: abre ao escolher o item na lista */}
-      <Modal isOpen={!!launch} onClose={() => setLaunch(null)} title="Lançamento de Produto" size="lg"
+      <Modal isOpen={!!launch} onClose={() => setLaunch(null)} title="LANÇAMENTO DE PRODUTO" size="lg"
         footer={
           <>
             <button type="button" onClick={() => setLaunch(null)} className="btn-secondary">
@@ -1486,7 +1523,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           </>
         }>
         {launch && (
-          <div className="space-y-4">
+          <div className="space-y-4 lj-caixa-alta">
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Produto</label>
               <div className="input bg-gray-50 flex items-center gap-2 text-sm">
@@ -1532,12 +1569,31 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 <label className="text-xs font-medium text-gray-500 block mb-1">
                   Cor da personalização <span className="text-red-500">*</span>
                 </label>
-                <input type="text" className="input text-sm w-full" list="pdv-launch-colors"
-                  placeholder="ex.: BRANCO, PRETO, DOURADO"
-                  value={launch.color} onChange={e => setLaunch(l => ({ ...l, color: e.target.value }))} />
-                <datalist id="pdv-launch-colors">
-                  {launchColorOptions.map(c => <option key={c} value={c} />)}
-                </datalist>
+                <div className="flex gap-2">
+                  <select className="input text-sm flex-1" value={launch.color}
+                    onChange={e => setLaunch(l => ({ ...l, color: e.target.value.toUpperCase() }))}>
+                    <option value="">Selecione a tinta…</option>
+                    {tintas.map(t => (
+                      <option key={t.nome} value={t.nome}>
+                        {t.nome}{t.valor_ml ? ` — ${maskMoney(t.valor_ml)}/ML` : ''}
+                      </option>
+                    ))}
+                    {/* Cor que veio de um pedido antigo, antes do cadastro:
+                        continua visível em vez de sumir da tela. */}
+                    {launch.color && !tintas.some(t => t.nome === launch.color) && (
+                      <option value={launch.color}>{launch.color}</option>
+                    )}
+                  </select>
+                  <button type="button" title="Cadastrar uma tinta"
+                    onClick={() => setNovaTinta({ nome: '', valor_ml: '' })}
+                    className="btn-secondary px-3">+</button>
+                </div>
+                {(() => {
+                  const t = tintas.find(x => x.nome === launch.color);
+                  return t?.valor_ml
+                    ? <p className="text-[10px] text-gray-500 mt-0.5">{maskMoney(t.valor_ml)} por ML</p>
+                    : null;
+                })()}
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-500 block mb-1">Borda</label>
@@ -1604,6 +1660,37 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               <div className="text-lg font-bold text-gray-900">
                 Total líquido do item: <span className="text-primary-600">{fmt(lNet)}</span>
               </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Cadastro rápido de tinta. É um diálogo e não um prompt do
+          navegador porque são DOIS campos — e porque o valor por ML
+          precisa ser conferido antes de virar custo em todo pedido. */}
+      <Modal isOpen={!!novaTinta} onClose={() => setNovaTinta(null)} title="Cadastrar tinta" size="sm"
+        footer={<>
+          <button type="button" className="btn-secondary" onClick={() => setNovaTinta(null)}>Cancelar</button>
+          <button type="button" className="btn-primary" onClick={salvarTinta}>Salvar tinta</button>
+        </>}>
+        {novaTinta && (
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Nome da tinta</label>
+              <input autoFocus className="input text-sm w-full uppercase" placeholder="BRANCO"
+                value={novaTinta.nome}
+                onChange={e => setNovaTinta(t => ({ ...t, nome: e.target.value.toUpperCase() }))} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Valor por ML (R$)</label>
+              <input className="input text-sm w-full text-right" inputMode="decimal" placeholder="0,35"
+                value={novaTinta.valor_ml}
+                onChange={e => setNovaTinta(t => ({ ...t, valor_ml: e.target.value.replace(/[^\d.,]/g, '') }))}
+                onKeyDown={e => { if (e.key === 'Enter') salvarTinta(); }} />
+              <p className="text-[10px] text-gray-400 mt-1">
+                É o que faz a personalização entrar no custo em vez de ser chute.
+                Cadastrar uma tinta que já existe atualiza o valor dela.
+              </p>
             </div>
           </div>
         )}
