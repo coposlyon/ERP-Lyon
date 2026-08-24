@@ -29,15 +29,19 @@ import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { DadosPessoais, DadosTrabalhistas, Documentacao, ContratoPoliticas, Revisao } from './passos';
+import { StatusDocumentos, CapturaFacial } from './pecas';
 import {
   dinheiroParaNumero, numeroParaDinheiro, fmtMoeda, soDigitos, mCEP,
 } from './campos';
 
+// A ordem aprovada. Estava trocada aqui — Documentação em 3º e Contrato
+// em 4º — enquanto o servidor e a tela de Admissões já usavam a ordem
+// certa. As duas discordavam sobre em que etapa a pessoa estava.
 const ETAPAS = [
   { n: 1, titulo: 'Dados Pessoais' },
   { n: 2, titulo: 'Dados Trabalhistas' },
-  { n: 3, titulo: 'Documentação' },
-  { n: 4, titulo: 'Contrato e Políticas' },
+  { n: 3, titulo: 'Contrato e Políticas' },
+  { n: 4, titulo: 'Documentação' },
   { n: 5, titulo: 'Revisão e Conclusão' },
 ];
 
@@ -69,8 +73,8 @@ function etapasConcluidas(f, temAnexos, acesso) {
   return [
     !!(f.name && f.cpf_cnpj && f.birth_date && f.address?.city),
     !!(f.sector && f.role && f.contract_type && f.start_date && f.salary && f.scale_id),
-    temAnexos,
     !!(f.contrato_assinado_em || Object.values(f.politicas || {}).some(Boolean)),
+    temAnexos,
     !f.has_access || !!acesso.role,
   ];
 }
@@ -342,8 +346,8 @@ export default function EmployeeFull() {
             <DadosPessoais f={f} set={set} setEndereco={setEndereco} buscandoCep={buscandoCep} buscarCep={buscarCep} />
           )}
           {etapa === 2 && <DadosTrabalhistas f={f} set={set} />}
-          {etapa === 3 && <Documentacao colaboradorId={id} />}
-          {etapa === 4 && <ContratoPoliticas f={f} set={set} />}
+          {etapa === 3 && <ContratoPoliticas f={f} set={set} />}
+          {etapa === 4 && <Documentacao colaboradorId={id} />}
           {etapa === 5 && (
             isAdmin
               ? <Revisao f={f} set={set} acesso={acesso} setAcesso={setAcesso} resumo={resumo} />
@@ -359,6 +363,9 @@ export default function EmployeeFull() {
 
         {/* Coluna da direita */}
         <div className="xl:col-span-3 space-y-4">
+          {/* Só consulta o que a etapa 4 guardou — nenhum upload aqui. */}
+          <StatusDocumentos anexos={anexos} f={f} />
+
           <section className="card">
             <div className="card-header"><h2 className="font-semibold text-gray-900 text-sm">Resumo da admissão</h2></div>
             <div className="card-body space-y-2">
@@ -402,31 +409,12 @@ export default function EmployeeFull() {
             </div>
           </section>
 
-          <section className="card">
-            <div className="card-header"><h2 className="font-semibold text-gray-900 text-sm">Foto do colaborador</h2></div>
-            <div className="card-body">
-              <div className="aspect-[3/4] rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
-                {(foto || fotoAtual)
-                  ? <img src={foto || fotoAtual} alt={f.name} className="w-full h-full object-cover" />
-                  : <UserCircle2 size={54} className="text-gray-300" />}
-              </div>
-              <input ref={entradaFoto} type="file" accept="image/*" className="hidden" onChange={escolherFoto} />
-              <div className="flex gap-2 mt-3">
-                <button type="button" onClick={() => entradaFoto.current?.click()} className="btn-secondary btn-sm flex-1 justify-center">
-                  <Camera size={14} /> {(foto || fotoAtual) ? 'Trocar' : 'Adicionar'}
-                </button>
-                {(foto || fotoAtual) && (
-                  <button type="button" onClick={() => { setFoto(null); setFotoAtual(null); }}
-                    className="btn-secondary btn-sm text-gray-400" title="Remover">
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-              <p className="text-[11px] text-gray-400 mt-2">
-                A foto só vai para o servidor quando você salvar.
-              </p>
-            </div>
-          </section>
+          <CapturaFacial
+            foto={foto || fotoAtual}
+            capturadaEm={f.foto_capturada_em}
+            aoCapturar={(dataUrl, quando) => { setFoto(dataUrl); set('foto_capturada_em', quando); }}
+            aoRemover={() => { setFoto(null); setFotoAtual(null); set('foto_capturada_em', null); }}
+          />
         </div>
       </div>
     </div>

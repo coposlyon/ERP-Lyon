@@ -15,11 +15,12 @@ import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   User, Users, Home, Landmark, Monitor, Briefcase, FileText, Upload, Trash2,
-  Download, Loader2, Plus, ShieldCheck, ScrollText, Baby, Check, KeyRound,
+  Download, Loader2, Plus, ShieldCheck, ScrollText, Baby, Check, KeyRound, CreditCard,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import PermissoesTelas from './PermissoesTelas';
+import { SimNao } from './pecas';
 import {
   Campo, Secao, Chave, CampoSenha, UFS, DEPARTAMENTOS, TIPOS_CONTRATO,
   ESTADOS_CIVIS, GENEROS, METODOS_PONTO, mCPF, mTelefone, mCEP, mPIS,
@@ -76,6 +77,35 @@ export function DadosPessoais({ f, set, setEndereco, buscandoCep, buscarCep }) {
         </Campo>
       </Secao>
 
+      {/* CNH. A pergunta vem antes dos campos: quem não dirige não
+          precisa ver quatro caixas vazias, e campo preenchido por quem
+          respondeu "não" vira dado órfão no cadastro. */}
+      <Secao icone={CreditCard} titulo="CNH" descricao="O arquivo da habilitação é anexado na etapa 4." colunas={4}>
+        <div className="sm:col-span-4">
+          <SimNao label="Possui CNH?" valor={!!f.possui_cnh}
+            aoMudar={v => set('possui_cnh', v)} />
+        </div>
+        {f.possui_cnh && (
+          <>
+            <Campo label="Nº da CNH">
+              <input className="input" value={f.cnh || ''} onChange={e => set('cnh', e.target.value)} />
+            </Campo>
+            <Campo label="Categoria">
+              <input className="input" value={f.cnh_categoria || ''}
+                onChange={e => set('cnh_categoria', e.target.value.toUpperCase())} placeholder="AB" />
+            </Campo>
+            <Campo label="Validade">
+              <input type="date" className="input" value={f.cnh_validade || ''}
+                onChange={e => set('cnh_validade', e.target.value)} />
+            </Campo>
+            <Campo label="1ª habilitação">
+              <input type="date" className="input" value={f.cnh_primeira || ''}
+                onChange={e => set('cnh_primeira', e.target.value)} />
+            </Campo>
+          </>
+        )}
+      </Secao>
+
       {/* O cônjuge só é perguntado a quem tem cônjuge. */}
       {casado && (
         <Secao icone={Users} titulo="Dados do cônjuge" descricao="Entram no imposto de renda e nos benefícios com dependente.">
@@ -94,6 +124,13 @@ export function DadosPessoais({ f, set, setEndereco, buscandoCep, buscarCep }) {
         </Secao>
       )}
 
+      <div className="card"><div className="card-body">
+        <SimNao label="Possui filhos?" valor={filhos.length > 0 || !!f.possui_filhos}
+          aoMudar={v => { set('possui_filhos', v); if (!v) set('filhos', []); }}
+          dica="Marcar «não» limpa a lista." />
+      </div></div>
+
+      {(filhos.length > 0 || f.possui_filhos) && (
       <Secao icone={Baby} titulo="Filhos" descricao="Salário-família, vale-creche e dependentes do IR saem daqui."
         colunas={4}
         acao={
@@ -132,6 +169,7 @@ export function DadosPessoais({ f, set, setEndereco, buscandoCep, buscarCep }) {
           </div>
         ))}
       </Secao>
+      )}
 
       <Secao icone={Home} titulo="Contato e endereço" descricao="Para onde vai o holerite, e por onde a empresa fala com a pessoa.">
         <Campo label="CEP" dica={buscandoCep ? 'buscando…' : 'Preenche o resto sozinho.'}>
