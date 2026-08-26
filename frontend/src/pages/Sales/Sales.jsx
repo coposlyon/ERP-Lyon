@@ -222,8 +222,19 @@ export default function Sales() {
             painel lateral ao clicar na linha. Nada saiu do sistema:
             mudou de lugar, para um lugar que cabe. */}
         <div>
-            <div className="flex items-center gap-2 px-3 py-2.5"
-              style={{ borderBottom: `1px solid ${v.divider}`, color: v.textMuted }}>
+            {/* CABECALHO CONGELADO.
+                Rolando a lista, os titulos das colunas saiam da tela e a
+                pessoa perdia de vista o que era cada numero — justamente
+                em tabela larga, que e quando mais importa.
+                O fundo precisa ser OPACO: o cartao e translucido, e com
+                ele as linhas passariam por tras do cabecalho. #0a1130 e
+                a mesma cor que o ERP ja usa em cabecalho de tabela. */}
+            <div className="flex items-center gap-2 px-3 py-2.5 sticky top-0 z-10"
+              style={{
+                borderBottom: `1px solid ${v.divider}`,
+                color: v.textMuted,
+                background: v.isDark ? '#0a1130' : '#ffffff',
+              }}>
               <span className={`${th} w-20 shrink-0`}>Pedido</span>
               <span className={`${th} w-32 shrink-0`}>Data / Hora</span>
               <span className={`${th} w-20 shrink-0`}>Cód.</span>

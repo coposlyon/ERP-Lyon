@@ -140,26 +140,19 @@ function AbaPlanos() {
             </Campo>
           </div>
 
-          <div className="mt-3">
-            <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: v.textSubtle }}>
-              Meses cobertos por esta faixa
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {MESES.map((m, idx) => {
-                const mes = idx + 1;
-                const on = f.months.includes(mes);
-                return (
-                  <button key={mes} onClick={() => toggleMes(i, mes)}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-medium"
-                    style={on
-                      ? { background: '#2563eb', color: 'white' }
-                      : { background: v.surface, color: v.textMuted, border: `1px solid ${v.divider}` }}>
-                    {m.slice(0, 3)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* OS MESES SAIRAM DAQUI.
+              Esta faixa era escolhida pelo CALENDARIO: marcava-se
+              jan/fev/mar e a meta valia nesses meses. O efeito era um
+              vendedor abrindo o painel em agosto devendo 45.000 pecas
+              sem nunca ter vendido uma.
+              Agora a faixa e conquistada, nao agendada — e um seletor
+              de meses que nao muda mais nada e pior que nenhum: quem
+              configurasse ia marcar achando que definiu alguma coisa. */}
+          <p className="text-[11px] mt-3" style={{ color: v.textSubtle }}>
+            Esta faixa passa a valer quando o vendedor fecha o ciclo da faixa anterior —
+            {' '}{f.cycle_months || 3} meses seguidos batendo a meta dela. Não há mês de calendário
+            envolvido.
+          </p>
         </Panel>
       ))}
 

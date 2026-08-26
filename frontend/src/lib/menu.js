@@ -26,7 +26,7 @@ import {
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory, ShieldCheck,
-  Calculator, PieChart, Home, Landmark, Star,
+  Calculator, PieChart, Home, Landmark, Star, Trophy,
   MessageSquare, LogOut, LayoutGrid, Globe, CloudUpload, UserPlus, UserMinus,
 } from 'lucide-react';
 import { SITES } from '@/pages/Sites/registro';
@@ -46,6 +46,11 @@ export const menuItems = [
     icon: ShoppingCart,
     children: [
       { label: 'Painel do Vendedor', path: '/vendedor', icon: Target, module: 'vendedor' },
+      // A tela onde as METAS sao definidas. Ela existia so como
+      // endereco: nenhum item de menu e nenhum botao levavam ate ela, e
+      // quem precisasse subir a meta de 15 para 20 mil tinha que saber
+      // digitar /vendedor/config de cabeca.
+      { label: 'Plano de Metas', path: '/vendedor/config', icon: Trophy, adminOnly: true },
       { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart, module: 'sales' },
       { label: 'Pagamentos da Loja', path: '/store-payments', icon: Wallet, module: 'sales' },
       { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
