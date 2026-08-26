@@ -18,7 +18,7 @@ import {
   CircleCheck, Star, MapPin, Circle, Wallet, Hourglass, PenTool, FileImage,
   FileCheck, FlaskConical, Brush, CircleDashed, GlassWater, Settings,
   PackageOpen, ShieldQuestion, ShieldCheck, Camera, ImageUp, PackageSearch,
-  PackageCheck, ShoppingCart, Eye,
+  PackageCheck, ShoppingCart, Eye, PersonStanding, IdCard, MessageCircle,
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -58,6 +58,7 @@ export default function PedidoCliente() {
   const [verTudo, setVerTudo] = useState(false);
   // Qual item está com a linha do tempo aberta (índice na lista).
   const [itemAberto, setItemAberto] = useState(null);
+  const [formRetirada, setFormRetirada] = useState(false);
   // O olho pisca até a primeira vez que alguém clica nele — e nunca mais.
   // Depois disso o cliente já sabe para que serve; continuar piscando
   // vira barulho.
@@ -76,7 +77,7 @@ export default function PedidoCliente() {
 
   useEffect(() => { if (!token) navigate('/acompanhar', { replace: true }); }, [token, navigate]);
 
-  const { data: p, isLoading, error } = useQuery({
+  const { data: p, isLoading, error, refetch } = useQuery({
     queryKey: ['acompanhar-pedido', id],
     queryFn: () => api.get(`/acompanhar/pedido/${id}`, { headers: { Authorization: `Bearer ${token}` } }),
     enabled: !!token,
@@ -272,6 +273,16 @@ export default function PedidoCliente() {
             </table>
           </div>
         </Card>
+
+        {/* ── Quem vai retirar ────────────────────────────────── */}
+        {p.retirada && (
+          <ChamadoRetirada retirada={p.retirada} onAbrir={() => setFormRetirada(true)} />
+        )}
+
+        {formRetirada && (
+          <FormRetirada pedidoId={id} codigo={p.pedido.codigo} retirada={p.retirada}
+            onClose={() => setFormRetirada(false)} onSalvo={() => { setFormRetirada(false); refetch(); }} />
+        )}
 
         {/* ── Linha do tempo ──────────────────────────────────── */}
         <Card Icon={Clock} titulo="Linha do Tempo do Pedido">
@@ -668,6 +679,207 @@ function EtapasDoItem({ item, onClose }) {
           As etapas mudam de produto para produto: pintura só aparece em degradê, bicolor ou jateado,
           e a aplicação de borda só em quem tem borda contratada.
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ── RETIRADA ─────────────────────────────────────────────────
+
+/**
+ * O BONECO QUE CHAMA.
+ *
+ * A pergunta "quem vai retirar?" só faz sentido no instante em que o
+ * pedido fica pronto esperando alguém buscar — antes é ansiedade, e
+ * depois é tarde. Como esse instante chega sozinho, sem ninguém avisar,
+ * ele precisa se anunciar: o boneco acena até alguém responder.
+ *
+ * Depois de informado, ele para de acenar e vira só o registro do que
+ * ficou combinado. Convite atendido que continua chamando vira barulho.
+ */
+function ChamadoRetirada({ retirada, onAbrir }) {
+  const jaTem = !!retirada.autorizado;
+  if (!retirada.pedir_agora && !jaTem) return null;
+
+  return (
+    <div className="rounded-2xl p-4 sm:p-5"
+      style={{
+        background: jaTem ? 'rgba(34,197,94,0.07)' : 'rgba(251,191,36,0.08)',
+        border: `1px solid ${jaTem ? 'rgba(74,222,128,0.35)' : 'rgba(251,191,36,0.45)'}`,
+      }}>
+      <style>{`
+        @keyframes lyonAcena {
+          0%, 60%, 100% { transform: rotate(0deg); }
+          70%           { transform: rotate(-22deg); }
+          80%           { transform: rotate(14deg); }
+          90%           { transform: rotate(-14deg); }
+        }
+        @keyframes lyonPula {
+          0%, 100% { transform: translateY(0); }
+          50%      { transform: translateY(-4px); }
+        }
+      `}</style>
+
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative shrink-0"
+          style={{ animation: jaTem ? 'none' : 'lyonPula 1.6s ease-in-out infinite' }}>
+          <PersonStanding size={44} style={{ color: jaTem ? '#4ade80' : '#fbbf24' }} />
+          {!jaTem && (
+            <span className="absolute -top-1 -right-2 text-2xl"
+              style={{ animation: 'lyonAcena 1.8s ease-in-out infinite', transformOrigin: '50% 90%' }}>
+              👋
+            </span>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          {jaTem ? (
+            <>
+              <p className="text-sm font-semibold" style={{ color: '#4ade80' }}>
+                Retirada combinada com {retirada.autorizado.nome}
+              </p>
+              <p className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.65)' }}>
+                CPF {retirada.autorizado.cpf} · <b>é preciso apresentar documento com foto no ato da retirada.</b>
+              </p>
+              <p className="text-[11px] mt-1.5 flex items-start gap-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                <MessageCircle size={12} className="shrink-0 mt-0.5" />
+                Se outra pessoa for buscar, mande a ela o código do pedido pelo WhatsApp: com o código
+                ela assume a retirada no lugar de {String(retirada.autorizado.nome).split(' ')[0]}.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-white">Seu pedido está pronto para retirada</p>
+              <p className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                Precisamos saber quem vem buscar.
+              </p>
+            </>
+          )}
+        </div>
+
+        <button onClick={onAbrir}
+          className="px-4 py-2.5 rounded-xl text-sm font-semibold shrink-0 transition-transform hover:-translate-y-0.5"
+          style={jaTem
+            ? { border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.8)', background: 'rgba(255,255,255,0.05)' }
+            : { background: '#fbbf24', color: '#3b2900', boxShadow: '0 0 20px rgba(251,191,36,0.35)' }}>
+          {jaTem ? 'Trocar quem vai retirar' : 'Clique aqui'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * O formulário: nome, CPF e — quando é troca — o código do pedido.
+ *
+ * O código só é exigido para SUBSTITUIR quem já estava autorizado. Ele
+ * é o segredo que só quem comprou tem: o titular manda pelo WhatsApp a
+ * quem for buscar no lugar. Sem essa porta, o irmão que veio no lugar
+ * de quem ficou doente voltaria de mãos vazias.
+ */
+function FormRetirada({ pedidoId, codigo, retirada, onClose, onSalvo }) {
+  const jaTem = !!retirada.autorizado;
+  const [nome, setNome] = useState('');
+  const [cpf, setCpf] = useState('');
+  const [codigoPedido, setCodigoPedido] = useState('');
+
+  const salvar = useMutation({
+    mutationFn: () => api.post(`/acompanhar/pedido/${pedidoId}/retirada`, {
+      nome, cpf, ...(jaTem ? { codigo: codigoPedido } : {}),
+    }),
+    onSuccess: onSalvo,
+  });
+
+  const mascara = v => String(v).replace(/\D/g, '').slice(0, 11)
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+
+  const pode = nome.trim().length >= 5
+    && String(cpf).replace(/\D/g, '').length === 11
+    && (!jaTem || codigoPedido.trim().length >= 3);
+
+  const campo = {
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.15)',
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(3,6,18,0.8)' }} onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl p-5 sm:p-6" onClick={e => e.stopPropagation()}
+        style={{
+          background: 'linear-gradient(180deg, #0b1024 0%, #080d1e 100%)',
+          border: '1px solid rgba(251,191,36,0.4)',
+          boxShadow: '0 0 30px rgba(251,191,36,0.18)',
+        }}>
+
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-lg font-bold text-white leading-tight">Quem vai retirar o pedido?</h2>
+            <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              Por gentileza, informe o nome e o CPF de quem irá retirar.
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg shrink-0"
+            style={{ color: 'rgba(255,255,255,0.6)' }} aria-label="Fechar"><X size={18} /></button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>Nome completo</label>
+            <input className="w-full rounded-xl px-3 py-2.5 text-sm text-white" value={nome}
+              placeholder="Nome e sobrenome" onChange={e => setNome(e.target.value)} style={campo} />
+          </div>
+          <div>
+            <label className="block text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>CPF</label>
+            <input className="w-full rounded-xl px-3 py-2.5 text-sm text-white" value={cpf}
+              inputMode="numeric" placeholder="000.000.000-00"
+              onChange={e => setCpf(mascara(e.target.value))} style={campo} />
+          </div>
+
+          {jaTem && (
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                Código do pedido — peça ao titular da compra pelo WhatsApp
+              </label>
+              <input className="w-full rounded-xl px-3 py-2.5 text-sm text-white font-mono" value={codigoPedido}
+                placeholder={codigo} onChange={e => setCodigoPedido(e.target.value)}
+                style={{ ...campo, border: '1px solid rgba(251,191,36,0.35)' }} />
+              <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                Isto substitui {retirada.autorizado.nome} como quem vai retirar.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2.5 rounded-xl p-3 mt-4"
+          style={{ background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.3)' }}>
+          <IdCard size={18} className="shrink-0 mt-0.5" style={{ color: '#fbbf24' }} />
+          <p className="text-[12px]" style={{ color: 'rgba(255,255,255,0.8)' }}>
+            No ato da retirada é preciso <b>apresentar documento com foto</b>. Se outra pessoa for
+            buscar, ela retira apresentando o <b>código do pedido</b>, que você manda por WhatsApp.
+          </p>
+        </div>
+
+        {salvar.isError && (
+          <p className="text-[12px] mt-3" style={{ color: '#f87171' }}>
+            {salvar.error?.error || 'Não foi possível registrar.'}
+            {salvar.error?.dica ? <><br />{salvar.error.dica}</> : null}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm"
+            style={{ border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.75)' }}>
+            Cancelar
+          </button>
+          <button onClick={() => salvar.mutate()} disabled={!pode || salvar.isPending}
+            className="px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-40"
+            style={{ background: '#fbbf24', color: '#3b2900' }}>
+            {salvar.isPending ? <Loader2 size={15} className="animate-spin" /> : 'Confirmar'}
+          </button>
+        </div>
       </div>
     </div>
   );

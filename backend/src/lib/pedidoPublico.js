@@ -152,6 +152,18 @@ function montarPedidoDoCliente(venda, extra = {}) {
     // trabalha o dia inteiro na tela quer o resumo. Pintura e borda só
     // aparecem se este pedido passar por elas.
     linha_do_tempo: A.linhaDoTempo(venda, etapasDosItens(detalhados)),
+
+    // ── RETIRADA ─────────────────────────────────────────────
+    // Só existe quando o pedido é para buscar. Em entrega o bloco não
+    // vem, e a tela não tem como perguntar por engano quem retira um
+    // pedido que vai de caminhão.
+    retirada: A.ehRetirada(venda) ? {
+      // O momento de perguntar é quando o pedido está pronto esperando
+      // alguém buscar — antes disso a pergunta é ansiedade, e depois é
+      // tarde.
+      pedir_agora: venda.status === 'aguardando_coleta',
+      autorizado: paraOCliente(venda.pickup_person),
+    } : null,
     historico: A.historicoPedido(venda),
     documentos: documentos(venda, extra.temNota),
     avisos: (extra.avisos && extra.avisos.length) ? extra.avisos : AVISOS_PADRAO,

@@ -19,6 +19,7 @@
 const express  = require('express');
 const router   = express.Router();
 const jwt      = require('jsonwebtoken');
+const { montarAutorizacao, paraOCliente } = require('../lib/retirada');
 const rateLimit = require('express-rate-limit');
 const supabase = require('../config/supabase');
 const P        = require('../lib/pedidoPublico');
@@ -68,7 +69,7 @@ const CAMPOS_PEDIDO = `
   carrier_id, user_id, tenant_id, production_log,
   -- Entrega ou retirada (migração 090) + o texto antigo do catálogo, que
   -- é o que responde pelos pedidos gravados antes de a coluna existir.
-  delivery_mode, notes,
+  delivery_mode, notes, pickup_person,
   CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating ),
   VENDA_ITENS ( id, product_name, quantity, unit_price, total, customization,
                 PRODUTOS ( id, code, name, ink_type ) )
@@ -245,6 +246,71 @@ router.get('/pedidos', exigirToken, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Não foi possível carregar seus pedidos agora.' });
+  }
+});
+
+/**
+ * POST /acompanhar/pedido/:id/retirada
+ *
+ * Quem vai buscar o pedido. Duas portas para a mesma gravação:
+ *
+ *   sem `codigo`  o dono do pedido informando pelo portal — o token já
+ *                 provou quem ele é;
+ *   com `codigo`  OUTRA pessoa assumindo a retirada, provando com o
+ *                 código do pedido que o cliente passou a ela por
+ *                 WhatsApp. Substitui a autorização anterior.
+ *
+ * A segunda porta existe porque a primeira sozinha trava o mundo real:
+ * quem ia buscar ficou doente e mandou o irmão. O código é o segredo
+ * que só quem comprou tem — e a troca fica registrada no lugar da
+ * anterior, com data.
+ */
+router.post('/pedido/:id/retirada', exigirToken, async (req, res) => {
+  try {
+    const saleId = await pedidoDoCliente(req.params.id, req.customerId);
+    if (!saleId) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    const { data: venda } = await supabase.from('VENDAS')
+      .select('id, number, status, delivery_mode, notes, pickup_person')
+      .eq('id', saleId).maybeSingle();
+    if (!venda) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    if (!A.ehRetirada(venda)) {
+      return res.status(409).json({
+        error: 'Este pedido é para entrega, não para retirada.',
+        dica: 'Fale com o vendedor se você quiser buscar na fábrica.',
+      });
+    }
+
+    // Substituir quem já estava autorizado exige o código do pedido.
+    const codigoEsperado = `PV-${String(venda.number).padStart(6, '0')}`;
+    const jaTem = !!venda.pickup_person?.nome;
+    const codigo = String(req.body?.codigo || '').trim().toUpperCase().replace(/\s/g, '');
+    if (jaTem && codigo.replace(/^PV-?0*/, '') !== String(venda.number)) {
+      return res.status(403).json({
+        error: `Já existe alguém autorizado a retirar (${venda.pickup_person.nome}).`,
+        dica: `Para trocar, informe o código do pedido (${codigoEsperado}) — peça ao titular da compra.`,
+        code: 'CODIGO_NECESSARIO',
+      });
+    }
+
+    const { autorizacao, erro } = montarAutorizacao({
+      nome: req.body?.nome, cpf: req.body?.cpf,
+      origem: jaTem ? 'portal (substituição pelo código)' : 'portal',
+    });
+    if (erro) return res.status(400).json({ error: erro });
+
+    const { error } = await supabase.from('VENDAS')
+      .update({ pickup_person: autorizacao }).eq('id', saleId);
+    if (error) throw error;
+
+    res.status(201).json({
+      autorizado: paraOCliente(autorizacao),
+      substituiu: jaTem ? venda.pickup_person.nome : null,
+      aviso: 'No ato da retirada é preciso apresentar documento com foto.',
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Não foi possível registrar quem vai retirar.' });
   }
 });
 

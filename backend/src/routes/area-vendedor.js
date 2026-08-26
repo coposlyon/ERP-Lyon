@@ -10,6 +10,7 @@ const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
 const A        = require('../lib/atencao');
+const { paraOBalcao } = require('../lib/retirada');
 const { ORIGENS } = require('../lib/origens');
 const { autorizar, excluirVenda } = require('../lib/excluirVenda');
 const { audit } = require('../lib/audit');
@@ -131,7 +132,7 @@ router.get('/pedidos/:id', async (req, res) => {
     const CAMPOS = `
       id, number, status, origin, source, subtotal, discount, freight, total,
       created_at, operation_date, event_date, ship_date, delivery_date, max_delivery_date,
-      payment_method, notes, delivery_mode, artwork_url, artwork_notes, receipt_url, user_id, carrier_id,
+      payment_method, notes, delivery_mode, pickup_person, artwork_url, artwork_notes, receipt_url, user_id, carrier_id,
       tracking_code, freight_quote, avisos, production_log, collect_date, transport_days,
       CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating, created_at ),
       USUARIOS ( id, name ),
@@ -144,7 +145,7 @@ router.get('/pedidos/:id', async (req, res) => {
     if (error && /column|does not exist|schema cache/i.test(error.message || '')) {
       const basico = CAMPOS
         .replace(/freight_quote, avisos, production_log, collect_date, transport_days,/, 'production_log,')
-        .replace(/, delivery_mode/, '')
+        .replace(/, delivery_mode, pickup_person/, '')
         .replace(/, event_date/, '');
       ({ data, error } = await supabase.from('VENDAS').select(basico)
         .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle());
@@ -188,6 +189,9 @@ router.get('/pedidos/:id', async (req, res) => {
       vendedor: data.USUARIOS?.name || null,
       transportadora,
       status_label: info.label,
+      // Retirada: quem está autorizado a buscar, com o CPF INTEIRO —
+      // é ele que confere com o documento na mão da pessoa no balcão.
+      retirada: A.ehRetirada(data) ? { autorizado: paraOBalcao(data.pickup_person) } : null,
       status_cor: info.cor,
       atencao: A.calcularAtencao(data, new Date(), alertas.get(data.id) || null),
       // Uma bolinha por FASE, não por status: "aguardando arte" e "arte
