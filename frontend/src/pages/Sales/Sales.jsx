@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Eye, CheckCircle2, Siren, RotateCcw } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Eye, CheckCircle2, Siren, RotateCcw, Wrench, Maximize2, Minimize2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,6 +9,7 @@ import { useVend, fmtBRL } from '@/components/UI/theme';
 import { corStatus, NIVEL_ATENCAO, CSS_ATENCAO, codigoPedido, codigoCliente } from '@/lib/pedidoUi';
 import { saleStatusLabel } from '@/lib/saleStatus';
 import { format, parseISO } from 'date-fns';
+import { useTelaCheia } from '@/contexts/TelaCheiaContext';
 
 const fmt = fmtBRL;
 const dataHora = iso => { if (!iso) return '—'; try { return format(parseISO(iso), 'dd/MM/yyyy HH:mm'); } catch { return iso; } };
@@ -42,7 +43,11 @@ export default function Sales() {
   const [porPagina, setPorPagina] = useState(10);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  // O que abre e fecha aqui é a CAIXA DE FERRAMENTAS (Incluir, Alterar,
+  // Relatórios). Os filtros não: filtro escondido é filtro que ninguém
+  // usa, e depois se estranha que a pessoa role trezentos pedidos à mão
+  // procurando um de agosto.
+  const [showTools, setShowTools] = useState(false);
   const [delTarget, setDelTarget] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const { isAdmin, isManager } = useAuth();
@@ -51,6 +56,7 @@ export default function Sales() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const searchRef = useRef();
+  const telaCheia = useTelaCheia();
 
   // O fluxo (label, cor e quem responde por cada etapa) vem do servidor —
   // a mesma fonte que a carteira do vendedor lê, para as duas telas nunca
@@ -111,15 +117,19 @@ export default function Sales() {
       else if (e.key === 'Escape') {
         const a = document.activeElement;
         if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
-        // Esc fecha o lateral primeiro; só sai da tela quando não há
-        // nada aberto — senão fechar o painel jogaria a pessoa para fora.
+        // Esc desfaz UMA camada por vez, da mais recente para a mais
+        // antiga: tela cheia, painel lateral, e só então a tela. Sair da
+        // tela cheia jogando a pessoa para fora do módulo seria a mesma
+        // armadilha que fechar o painel a jogava.
         e.preventDefault();
-        if (selectedId) setSelectedId(null); else navigate('/');
+        if (telaCheia.ativo) telaCheia.sair();
+        else if (selectedId) setSelectedId(null);
+        else navigate('/');
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId, isAdmin, delTarget]); // eslint-disable-line
+  }, [selectedId, isAdmin, delTarget, telaCheia.ativo]); // eslint-disable-line
 
   const th = 'text-[11px] font-semibold uppercase tracking-wider';
 
@@ -136,9 +146,25 @@ export default function Sales() {
             {hasFilters && ' · filtrado'}
           </p>
         </div>
-        <button onClick={() => navigate('/sales/new')} className="btn-primary">
-          <Plus size={16} /> Novo Pedido
-        </button>
+        <div className="flex items-center gap-2">
+          {/* TELA CHEIA. Catorze colunas contra um menu de 260 pontos: em
+              notebook, o menu é a coluna que falta. Quem vai passar a
+              tarde na fila de pedidos aperta aqui e recupera a largura;
+              ESC ou o mesmo botão devolvem o menu, e trocar de módulo
+              também. */}
+          <button type="button" onClick={telaCheia.alternar}
+            className="flex items-center gap-2 px-3 py-2.5 rounded-[0.6rem] text-sm"
+            title={telaCheia.ativo
+              ? 'Sair da tela cheia (ESC) — traz o menu e o cabeçalho de volta'
+              : 'Tela cheia — esconde o menu lateral e o cabeçalho, e dá a largura toda para a lista'}
+            style={{ background: v.control.background, color: v.textPrimary, border: v.control.border }}>
+            {telaCheia.ativo ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            <span className="hidden sm:inline">{telaCheia.ativo ? 'Sair da tela cheia' : 'Tela cheia'}</span>
+          </button>
+          <button onClick={() => navigate('/sales/new')} className="btn-primary">
+            <Plus size={16} /> Novo Pedido
+          </button>
+        </div>
       </div>
 
       {/* ── Filtros ───────────────────────────────────────────── */}
@@ -167,24 +193,41 @@ export default function Sales() {
           {statusList.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
 
+        {/* PERÍODO, na barra e não na gaveta. Era o único filtro que
+            exigia descobrir uma setinha para existir — e é o mais pedido
+            depois do status, porque "o pedido de agosto" é como o
+            cliente fala. */}
+        <div className="flex items-center gap-1.5">
+          <label className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: v.textSubtle }}>De</label>
+          <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }}
+            title="Data inicial do pedido"
+            style={{ ...v.control, padding: '0.55rem 0.6rem', colorScheme: v.isDark ? 'dark' : 'light' }} />
+          <label className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: v.textSubtle }}>Até</label>
+          <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }}
+            title="Data final do pedido"
+            style={{ ...v.control, padding: '0.55rem 0.6rem', colorScheme: v.isDark ? 'dark' : 'light' }} />
+        </div>
+
         <button onClick={clearFilters}
           className="flex items-center gap-2 px-4 py-2.5 rounded-[0.6rem] text-sm"
           style={{ background: v.control.background, color: v.textPrimary, border: v.control.border }}>
           <RotateCcw size={15} /> Limpar filtros
         </button>
 
-        <button onClick={() => setShowFilters(x => !x)}
+        <button onClick={() => setShowTools(x => !x)}
           className="flex items-center gap-2 px-3 py-2.5 rounded-[0.6rem] text-sm"
-          title="Filtro por período e ferramentas do pedido"
+          title="Ferramentas do pedido (F2 incluir, F3 alterar, F4 excluir, F5 atualizar, F6 importar)"
           style={{ background: v.control.background, color: v.textMuted, border: v.control.border }}>
-          <ChevronRight size={15} style={{ transform: showFilters ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+          <Wrench size={15} />
+          <ChevronRight size={13} style={{ transform: showTools ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
         </button>
       </div>
 
-      {/* Ferramentas e período — recolhido por padrão para não competir
-          com a tabela, mas com os atalhos de sempre funcionando */}
-      {showFilters && (
-        <div style={{ ...v.card, padding: '0.75rem 1rem' }} className="space-y-3">
+      {/* A CAIXA DE FERRAMENTAS — recolhida por padrão para não competir
+          com a tabela, e com os atalhos de sempre funcionando mesmo
+          fechada: quem usa F2 nunca precisou abrir isto aqui. */}
+      {showTools && (
+        <div style={{ ...v.card, padding: '0.75rem 1rem' }}>
           <div className="flex items-center gap-1 flex-wrap">
             <TBtn icon={Plus}      label="Incluir"   sub="F2" onClick={() => navigate('/sales/new')} />
             <TBtn icon={Pencil}    label="Alterar"   sub="F3" onClick={alterar} disabled={!selectedId} />
@@ -194,17 +237,6 @@ export default function Sales() {
             <TBtn icon={FileInput} label="Importar Orçamento" sub="F6" onClick={() => navigate('/quotes')} />
             <TBtn icon={FileText}  label="Relatórios" onClick={() => window.print()} />
             <TBtn icon={X}         label="Fechar"    sub="ESC" onClick={() => navigate('/')} />
-          </div>
-          <div className="flex gap-3 flex-wrap items-end">
-            <div>
-              <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: v.textSubtle }}>De</label>
-              <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} style={v.control} />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider font-semibold block mb-1" style={{ color: v.textSubtle }}>Até</label>
-              <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} style={v.control} />
-            </div>
-            <button onClick={handleSearch} className="btn-secondary btn-sm">Aplicar busca</button>
           </div>
         </div>
       )}
