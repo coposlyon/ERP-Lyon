@@ -172,8 +172,16 @@ router.get('/pedidos/:id', async (req, res) => {
       transportadora = t ? (t.trade_name || t.name) : null;
     }
 
+    // OS DADOS DA EMPRESA VÊM COM O PEDIDO, e não do login guardado no
+    // navegador. O documento circula fora do ERP (vai para o cliente,
+    // para a transportadora, para o contador): CNPJ e endereço nele
+    // precisam ser os de agora, não os do dia em que aquela aba abriu.
+    const { data: empresa } = await supabase.from('EMPRESAS')
+      .select('name, cnpj, address, phone, email').eq('id', req.tenantId).maybeSingle();
+
     res.json({
       ...data,
+      empresa: empresa || null,
       codigo: `PV-${String(data.number).padStart(6, '0')}`,
       codigo_cliente: data.CLIENTES?.display_id != null ? String(data.CLIENTES.display_id).padStart(4, '0') : null,
       vendedor: data.USUARIOS?.name || null,
@@ -302,12 +310,16 @@ const FORA_DE_ALCANCE = ['mercadoria_coletada', 'produto_retirado', 'em_transito
 /**
  * ANEXAR ARQUIVO AO PEDIDO — arte ou comprovante.
  *
- * Anexar NÃO aprova. O pedido continua "aguardando anexo da arte" até
- * que quem aprova aprove: um arquivo subir não quer dizer que a arte
- * está certa, e mover o status sozinho faria a produção começar em cima
- * de um PDF que ninguém conferiu.
+ * A PRIMEIRA arte anexada MOVE o pedido para "aguardando impressão de
+ * vegetal". Antes não movia — a intenção era boa (arquivo que chega não
+ * é arte aprovada), mas o efeito era um pedido escrito "Aguardando
+ * Anexo da Arte" com a arte anexada havia cinco dias, porque alguém
+ * tinha que lembrar de avançar a etapa à mão e ninguém lembrava.
  *
- * Fica no histórico quem anexou e quando. Substituir também fica — a
+ * Substituir NÃO mexe no status, e pede autorização de gerente: a arte
+ * antiga pode já ter virado vegetal, tela e copo impresso.
+ *
+ * Fica no histórico quem anexou, quando, e quem autorizou a troca — a
  * segunda arte de um pedido é exatamente o que alguém vai querer
  * explicar depois.
  */

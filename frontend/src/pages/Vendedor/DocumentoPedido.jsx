@@ -1,26 +1,37 @@
 // ============================================================
-// O PEDIDO EM PAPEL — a folha A4 que vira PDF.
+// O PEDIDO DE VENDA — DOCUMENTO.
 //
-// Abre pelo "Pedido em PDF" do card Documentos, tanto no ERP quanto na
-// carteira do vendedor, e lê o MESMO pedido da tela de detalhes: um
-// documento que discorda da tela que o gerou é pior que documento
-// nenhum, porque ele é o que sai da empresa.
+// Uma tela, dois documentos: o que se VÊ e o que se IMPRIME.
+//
+// Na tela ele segue o visual do sistema — escuro, com os blocos
+// destacados —, porque é ali que o vendedor confere antes de mandar.
+// No papel ele vira preto e branco: o ERP é escuro, papel não é, e
+// imprimir a tela escura gasta meio cartucho para sair ilegível no fax
+// do contador. É a mesma marcação, com um `@media print` que troca o
+// mundo inteiro para branco.
 //
 // POR QUE IMPRESSÃO E NÃO UMA BIBLIOTECA DE PDF. O navegador já sabe
 // paginar, quebrar tabela entre páginas, respeitar margem e gerar PDF
-// com texto selecionável e pesquisável. Gerador de PDF por imagem
-// (html2canvas) entrega uma foto: não dá para copiar o número do pedido,
-// borra na impressão e engorda o arquivo. `window.print()` com CSS de
-// impressão é mais simples E o resultado é melhor.
+// com texto selecionável. Gerador por imagem (html2canvas) entrega uma
+// foto: não dá para copiar o número do pedido, borra na impressão e
+// engorda o arquivo.
 //
-// FUNDO BRANCO, DE PROPÓSITO. O ERP é escuro; papel não é. Imprimir a
-// tela escura gastaria meio cartucho e sairia ilegível no fax do
-// contador.
+// COM ARTE / SEM ARTE é escolha de impressão, não de conteúdo. A arte
+// pesa e nem sempre interessa a quem vai receber o papel — mas some só
+// do papel, nunca da conferência na tela.
+//
+// OS DADOS DA EMPRESA VÊM COM O PEDIDO (rota /area-vendedor/pedidos/:id),
+// e não do login guardado no navegador: este documento circula fora do
+// ERP, e o CNPJ nele precisa ser o de agora.
 // ============================================================
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Printer, Loader2 } from 'lucide-react';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import {
+  ArrowLeft, Printer, Loader2, Download, Eye, Image as ImageIcon, Frame,
+  Building2, FileText, MapPin, Phone, Globe, User, CalendarDays, ShoppingCart,
+  DollarSign, Truck, ShieldCheck, CircleCheck, Paperclip,
+} from 'lucide-react';
 import api from '@/lib/api';
 import { fmtBRL, fmtUn, fmtDate } from './ui';
 
@@ -30,14 +41,32 @@ const PAGAMENTO = {
   check: 'Cheque', a_prazo: 'A prazo', boleto: 'Boleto',
 };
 
+const CIANO = '#22d3ee';
+const ROSA = '#e8187a';
+
 const dataHora = iso => iso
   ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
   : '—';
+
+/** 57860708000130 → 57.860.708/0001-30 · 02005463922 → 020.054.639-22 */
+function documento(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  return v || '—';
+}
+
+const cep = v => {
+  const d = String(v || '').replace(/\D/g, '');
+  return d.length === 8 ? d.replace(/(\d{5})(\d{3})/, '$1-$2') : (v || '');
+};
 
 export default function DocumentoPedido() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [params] = useSearchParams();
+  const [comArte, setComArte] = useState(true);
 
   const { data: p, isLoading, error } = useQuery({
     queryKey: ['pedido-vendedor', id],
@@ -52,6 +81,20 @@ export default function DocumentoPedido() {
     document.title = `${p.codigo} - Lyon Copos`;
     return () => { document.title = antes; };
   }, [p]);
+
+  /**
+   * "Imprimir em preto e branco" chega aqui com ?imprimir=1.
+   *
+   * O diálogo só abre DEPOIS de a folha existir — chamar print() com o
+   * documento ainda carregando imprime uma página em branco. Por isso
+   * ele espera `p` chegar, e um quadro a mais para o navegador ter
+   * pintado o que acabou de montar.
+   */
+  useEffect(() => {
+    if (!p || params.get('imprimir') !== '1') return;
+    const t = setTimeout(() => window.print(), 400);
+    return () => clearTimeout(t);
+  }, [p, params]);
 
   const voltar = () => navigate(pathname.startsWith('/sales')
     ? `/sales/${id}/detalhe`
@@ -74,10 +117,12 @@ export default function DocumentoPedido() {
   }
 
   const cli = p.CLIENTES || {};
+  const emp = p.empresa || {};
   const itens = p.itens || [];
 
-  // As colunas do meio saem dos itens DESTE pedido, como na tela: um
-  // tradicional não abre "Cor da boca" vazia no documento do cliente.
+  // As colunas do meio saem dos itens DESTE pedido, como na tela de
+  // detalhes: um copo tradicional não abre "Cor da boca" vazia no
+  // documento que vai para o cliente.
   const colunas = [];
   for (const item of itens) {
     for (const campo of item.campos || []) {
@@ -87,176 +132,378 @@ export default function DocumentoPedido() {
   const valorDe = (item, rotulo) =>
     (item.campos || []).find(c => c.rotulo === rotulo)?.valor || '—';
 
-  const endereco = [
+  const enderecoCli = [
     cli.address?.street && `${cli.address.street}, ${cli.address.number || 's/n'}`,
     cli.address?.complement,
     cli.address?.neighborhood,
+  ].filter(Boolean).join(', ');
+  const cidadeCli = [
     [cli.address?.city, cli.address?.state].filter(Boolean).join('/'),
-    cli.address?.zip && `CEP ${cli.address.zip}`,
+    cli.address?.zip && `CEP ${cep(cli.address.zip)}`,
   ].filter(Boolean).join(' — ');
+
+  const enderecoEmp = [
+    emp.address?.street && `${emp.address.street}, ${emp.address.number || 's/n'}`,
+    emp.address?.neighborhood || emp.address?.district,
+  ].filter(Boolean).join(', ');
+  const cidadeEmp = [
+    [emp.address?.city, emp.address?.state].filter(Boolean).join(' - '),
+    emp.address?.zip && `CEP ${cep(emp.address.zip)}`,
+  ].filter(Boolean).join(', ');
+
+  const temArte = !!p.artwork_url;
+  const ehImagem = temArte && /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(p.artwork_url);
 
   return (
     <>
-      {/* A barra some na impressão: ela é da tela, não do documento. */}
       <style>{`
+        /* O PAPEL É BRANCO. Na tela o documento acompanha o sistema; ao
+           imprimir, tudo vira preto no branco — inclusive o fundo escuro
+           do ERP em volta, que sairia como uma mancha de tinta. */
         @media print {
-          .doc-barra { display: none !important; }
-          .doc-folha { box-shadow: none !important; margin: 0 !important; width: auto !important; }
-          @page { size: A4; margin: 14mm 12mm; }
+          html, body, .erp-shell, main { background: #ffffff !important; }
+          .doc-chrome, .doc-aside { display: none !important; }
+          .doc-folha, .doc-folha * {
+            background: #ffffff !important;
+            color: #000000 !important;
+            border-color: #9ca3af !important;
+            box-shadow: none !important;
+            text-shadow: none !important;
+          }
+          .doc-folha { border: 1px solid #374151 !important; border-radius: 0 !important; }
+          .doc-folha .doc-forte { font-weight: 700 !important; }
+          .doc-sem-arte .doc-arte { display: none !important; }
           /* Linha de item não pode ser partida ao meio pela quebra de
              página: metade da quantidade numa folha e metade na outra é
              como nasce divergência de conferência. */
           tr, .doc-bloco { break-inside: avoid; }
           thead { display: table-header-group; }
+          @page { size: A4; margin: 12mm; }
         }
       `}</style>
 
-      <div className="doc-barra flex flex-wrap items-center justify-between gap-3 mb-4">
-        <button onClick={voltar} className="btn-secondary">
-          <ArrowLeft size={15} /> Voltar ao pedido
-        </button>
-        <div className="flex items-center gap-3">
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
-            Em “Destino”, escolha <b>Salvar como PDF</b>.
-          </p>
-          <button onClick={() => window.print()} className="btn-primary">
-            <Printer size={15} /> Imprimir / Salvar em PDF
+      {/* ── Barra de ações (só da tela) ──────────────────────── */}
+      <div className="doc-chrome flex flex-wrap items-start justify-between gap-4 mb-4">
+        <div className="flex items-start gap-3">
+          <button onClick={voltar} className="btn-secondary mt-0.5">
+            <ArrowLeft size={15} />
           </button>
+          <div>
+            <h1 className="text-2xl font-bold text-white leading-tight">Pedido de Venda — Documento</h1>
+            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              Visualização do pedido em formato A4
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <BotaoNeon cor={CIANO} onClick={() => window.print()} Icon={Download}>Baixar PDF</BotaoNeon>
+            <BotaoNeon cor="#60a5fa" onClick={() => window.print()} Icon={Printer}>Imprimir em preto e branco</BotaoNeon>
+            <BotaoNeon cor={ROSA} Icon={Eye} desabilitado={!temArte}
+              onClick={() => temArte && window.open(p.artwork_url, '_blank', 'noopener')}>
+              Visualizar arte
+            </BotaoNeon>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-xl px-3 py-1.5"
+            style={{ border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.03)' }}>
+            <span className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Opção de impressão:</span>
+            <Opcao ativa={comArte} onClick={() => setComArte(true)} Icon={ImageIcon}>Com arte</Opcao>
+            <Opcao ativa={!comArte} onClick={() => setComArte(false)} Icon={Frame}>Sem arte</Opcao>
+          </div>
         </div>
       </div>
 
-      {/* ── A folha ──────────────────────────────────────────── */}
-      <div className="doc-folha mx-auto bg-white text-gray-900 rounded-lg"
-        style={{ width: '210mm', maxWidth: '100%', padding: '12mm', boxShadow: '0 10px 40px rgba(0,0,0,0.45)' }}>
+      <div className={`flex flex-col xl:flex-row gap-4 items-start ${comArte ? '' : 'doc-sem-arte'}`}>
 
-        {/* Cabeçalho */}
-        <div className="flex items-start justify-between gap-6 pb-4 mb-5" style={{ borderBottom: '2px solid #111827' }}>
-          <div>
-            <img src="/lyon-logo-dark.png" alt="" className="h-12 mb-2"
-              onError={e => { e.target.style.display = 'none'; }} />
-            <p className="text-lg font-bold leading-tight">Lyon Copos Acrílicos</p>
-            <p className="text-[11px] text-gray-600">Copos personalizados · lyoncopos.com.br</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[11px] uppercase tracking-widest text-gray-500">Pedido de Venda</p>
-            <p className="text-3xl font-bold leading-none">{p.codigo}</p>
-            <p className="text-[11px] text-gray-600 mt-1">
-              Emitido em {dataHora(p.operation_date ? `${p.operation_date}T12:00:00` : p.created_at)}
-            </p>
-            <p className="text-[11px] font-semibold mt-1">{p.status_label}</p>
-          </div>
-        </div>
+        {/* ══ A FOLHA ══════════════════════════════════════════ */}
+        <div className="doc-folha flex-1 min-w-0 rounded-2xl p-5 sm:p-7"
+          style={{
+            background: 'linear-gradient(180deg, #0b1024 0%, #080d1e 100%)',
+            border: `1px solid ${CIANO}55`,
+            boxShadow: `0 0 24px ${CIANO}22, 0 0 60px ${ROSA}11`,
+            width: '100%',
+          }}>
 
-        {/* Cliente e dados */}
-        <div className="grid grid-cols-2 gap-6 mb-5 doc-bloco">
-          <Quadro titulo="Cliente">
-            <Linha r="Nome" v={cli.name || 'Consumidor final'} forte />
-            <Linha r="Código" v={p.codigo_cliente || '—'} />
-            <Linha r={cli.cpf_cnpj?.replace(/\D/g, '').length > 11 ? 'CNPJ' : 'CPF'} v={cli.cpf_cnpj || '—'} />
-            <Linha r="Telefone" v={cli.mobile || cli.phone || '—'} />
-            <Linha r="E-mail" v={cli.email || '—'} />
-            {endereco && <Linha r="Endereço" v={endereco} />}
-          </Quadro>
-
-          <Quadro titulo="Dados do Pedido">
-            <Linha r="Data do pedido" v={dataHora(p.operation_date ? `${p.operation_date}T12:00:00` : p.created_at)} />
-            <Linha r="Data do evento" v={p.event_date ? fmtDate(p.event_date) : '—'} />
-            <Linha r="Vendedor" v={p.vendedor || '—'} />
-            <Linha r="Origem" v={p.origin || '—'} />
-            <Linha r="Pagamento" v={PAGAMENTO[p.payment_method] || p.payment_method || '—'} />
-            <Linha r="Transportadora" v={p.transportadora || '—'} />
-            {p.freight_quote && <Linha r="Cotação" v={p.freight_quote} />}
-          </Quadro>
-        </div>
-
-        {/* Itens */}
-        <p className="text-[11px] uppercase tracking-widest text-gray-500 mb-1.5">Itens do pedido</p>
-        <table className="w-full text-[11px] mb-5" style={{ borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: '#f3f4f6' }}>
-              {['Código', 'Produto', 'Linha', 'Categoria', ...colunas, 'Qtd', 'Valor unit.', 'Total'].map((h, i, t) => (
-                <th key={h} className="px-2 py-1.5 font-semibold whitespace-nowrap"
-                  style={{ border: '1px solid #d1d5db', textAlign: i >= t.length - 3 ? 'right' : 'left' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {itens.map(i => (
-              <tr key={i.id}>
-                <td className="px-2 py-1.5 font-mono" style={{ border: '1px solid #e5e7eb' }}>{i.codigo || '—'}</td>
-                <td className="px-2 py-1.5" style={{ border: '1px solid #e5e7eb' }}>{i.produto}</td>
-                <td className="px-2 py-1.5" style={{ border: '1px solid #e5e7eb' }}>{i.linha || '—'}</td>
-                <td className="px-2 py-1.5" style={{ border: '1px solid #e5e7eb' }}>{i.categoria}</td>
-                {colunas.map(c => (
-                  <td key={c} className="px-2 py-1.5" style={{ border: '1px solid #e5e7eb' }}>{valorDe(i, c)}</td>
-                ))}
-                <td className="px-2 py-1.5 text-right" style={{ border: '1px solid #e5e7eb' }}>{fmtUn(i.quantidade)}</td>
-                <td className="px-2 py-1.5 text-right" style={{ border: '1px solid #e5e7eb' }}>{fmtBRL(i.valor_unitario)}</td>
-                <td className="px-2 py-1.5 text-right font-semibold" style={{ border: '1px solid #e5e7eb' }}>{fmtBRL(i.valor_total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* Valores e prazos */}
-        <div className="grid grid-cols-2 gap-6 mb-5 doc-bloco">
-          <Quadro titulo="Prazos e entrega">
-            <Linha r="Previsão de saída" v={p.ship_date ? fmtDate(p.ship_date) : '—'} />
-            <Linha r="Data de coleta" v={p.collect_date ? fmtDate(p.collect_date) : '—'} />
-            <Linha r="Previsão de entrega" v={p.delivery_date ? fmtDate(p.delivery_date) : '—'} />
-            <Linha r="Dias úteis de transporte" v={p.transport_days ? `${p.transport_days} dias` : '—'} />
-          </Quadro>
-
-          <div>
-            <div className="px-3 py-2" style={{ border: '1px solid #d1d5db' }}>
-              <Linha r="Valor dos produtos" v={fmtBRL(p.subtotal)} />
-              <Linha r="Frete" v={fmtBRL(p.freight)} />
-              {Number(p.discount) > 0 && <Linha r="Desconto" v={`− ${fmtBRL(p.discount)}`} />}
-              <div className="flex items-baseline justify-between gap-3 mt-2 pt-2" style={{ borderTop: '2px solid #111827' }}>
-                <span className="text-sm font-bold">Valor total</span>
-                <span className="text-2xl font-bold">{fmtBRL(p.total)}</span>
+          {/* Cabeçalho: empresa × pedido */}
+          <div className="flex flex-wrap items-start justify-between gap-6 pb-5 mb-5 doc-bloco"
+            style={{ borderBottom: `1px solid ${CIANO}44` }}>
+            <div className="flex items-start gap-4 min-w-0">
+              <img src="/lyon-logo.png" alt="" style={{ height: 56, width: 'auto', objectFit: 'contain' }}
+                onError={e => { e.target.style.display = 'none'; }} />
+              <div className="text-[12px] space-y-1 min-w-0" style={{ color: 'rgba(255,255,255,0.82)' }}>
+                <DadoEmpresa Icon={Building2} v={emp.name || 'Lyon Copos Acrílicos'} forte />
+                <DadoEmpresa Icon={FileText} v={`CNPJ ${documento(emp.cnpj)}`} />
+                {enderecoEmp && <DadoEmpresa Icon={MapPin} v={enderecoEmp} />}
+                {cidadeEmp && <DadoEmpresa Icon={MapPin} v={cidadeEmp} invisivel />}
+                {emp.phone && <DadoEmpresa Icon={Phone} v={emp.phone} />}
+                <DadoEmpresa Icon={Globe} v="LyonCopos.com.br" />
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Avisos */}
-        {(p.avisos || []).length > 0 && (
-          <div className="doc-bloco mb-5">
-            <p className="text-[11px] uppercase tracking-widest text-gray-500 mb-1.5">Informações importantes</p>
-            <ul className="text-[11px] space-y-1">
-              {p.avisos.map((a, i) => <li key={i}>• {a}</li>)}
-            </ul>
+            <div className="text-right shrink-0">
+              <p className="text-[11px] uppercase tracking-[0.2em] doc-forte"
+                style={{ color: 'rgba(255,255,255,0.75)' }}>Pedido de Venda</p>
+              <p className="text-3xl font-extrabold leading-tight doc-forte" style={{ color: CIANO }}>
+                {p.codigo}
+              </p>
+              <span className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg text-[12px] font-semibold"
+                style={{ border: `1px solid ${CIANO}77`, color: CIANO, background: `${CIANO}12` }}>
+                <CircleCheck size={14} /> {p.status_label}
+              </span>
+              <p className="text-[10px] mt-2" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                Emitido em {dataHora(p.operation_date ? `${p.operation_date}T12:00:00` : p.created_at)}
+              </p>
+            </div>
           </div>
-        )}
 
-        <p className="text-[10px] text-gray-500 leading-relaxed doc-bloco" style={{ borderTop: '1px solid #e5e7eb', paddingTop: 8 }}>
-          A entrega será realizada no endereço informado no cadastro, em horário comercial, das 8h às 18h,
-          em dias úteis. É necessário que haja alguém disponível no local para receber a mercadoria.
-          {/* A data de emissão fica no papel porque o documento circula
+          {/* Cliente × Pedido */}
+          <div className="grid md:grid-cols-2 gap-4 mb-4">
+            <Quadro titulo="Dados do Cliente" Icon={User} cor={CIANO}>
+              <Linha r="Cliente" v={cli.name || 'Consumidor final'} forte />
+              <Linha r="Código" v={p.codigo_cliente || '—'} />
+              <Linha r={String(cli.cpf_cnpj || '').replace(/\D/g, '').length > 11 ? 'CNPJ' : 'CPF'}
+                v={documento(cli.cpf_cnpj)} />
+              <Linha r="Telefone" v={cli.mobile || cli.phone || '—'} />
+              <Linha r="E-mail" v={cli.email || '—'} />
+              {enderecoCli && <Linha r="Endereço" v={enderecoCli} />}
+              {cidadeCli && <Linha r="" v={cidadeCli} />}
+            </Quadro>
+
+            <Quadro titulo="Dados do Pedido" Icon={CalendarDays} cor={ROSA}>
+              <Linha r="Número do Pedido" v={p.codigo} forte />
+              <Linha r="Data do Pedido" v={dataHora(p.operation_date ? `${p.operation_date}T12:00:00` : p.created_at)} />
+              <Linha r="Data do Evento" v={p.event_date ? fmtDate(p.event_date) : '—'} />
+              <Linha r="Origem" v={p.origin || '—'} />
+              <Linha r="Vendedor" v={p.vendedor || '—'} />
+              <Linha r="Pagamento" v={PAGAMENTO[p.payment_method] || p.payment_method || '—'} />
+              <Linha r="Transportadora" v={p.transportadora || '—'} />
+              {p.freight_quote && <Linha r="Cotação" v={p.freight_quote} />}
+            </Quadro>
+          </div>
+
+          {/* Itens */}
+          <Quadro titulo="Itens do Pedido" Icon={ShoppingCart} cor={CIANO} className="mb-4">
+            <div className="overflow-x-auto -mx-1">
+              <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Código', 'Produto', 'Linha', 'Categoria', ...colunas, 'Quantidade', 'Valor Unit.', 'Valor Total']
+                      .map((h, i, t) => (
+                        <th key={h} className="px-2 py-2 font-semibold whitespace-nowrap doc-forte"
+                          style={{
+                            color: CIANO, borderBottom: `1px solid ${CIANO}44`,
+                            textAlign: i >= t.length - 3 ? 'right' : 'left',
+                          }}>{h}</th>
+                      ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {itens.map(i => (
+                    <tr key={i.id} style={{ color: 'rgba(255,255,255,0.88)' }}>
+                      <Celula>{i.codigo || '—'}</Celula>
+                      <Celula>{i.produto}</Celula>
+                      <Celula>{i.linha || '—'}</Celula>
+                      <Celula>{i.categoria}</Celula>
+                      {colunas.map(c => <Celula key={c}>{valorDe(i, c)}</Celula>)}
+                      <Celula alinha="right">{fmtUn(i.quantidade)}</Celula>
+                      <Celula alinha="right">{fmtBRL(i.valor_unitario)}</Celula>
+                      <Celula alinha="right" forte>{fmtBRL(i.valor_total)}</Celula>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Quadro>
+
+          {/* Resumo × Entrega */}
+          <div className="grid md:grid-cols-2 gap-4 mb-4">
+            <Quadro titulo="Resumo Financeiro" Icon={DollarSign} cor={CIANO}>
+              <Linha r="Valor dos Produtos" v={fmtBRL(p.subtotal)} />
+              <Linha r="Frete" v={fmtBRL(p.freight)} />
+              {Number(p.discount) > 0 && <Linha r="Desconto" v={`− ${fmtBRL(p.discount)}`} />}
+              <div className="flex items-baseline justify-between gap-3 mt-2 pt-2"
+                style={{ borderTop: `1px solid ${CIANO}44` }}>
+                <span className="text-sm font-bold doc-forte" style={{ color: CIANO }}>VALOR TOTAL:</span>
+                <span className="text-2xl font-extrabold doc-forte" style={{ color: CIANO }}>{fmtBRL(p.total)}</span>
+              </div>
+            </Quadro>
+
+            <Quadro titulo="Observação da Entrega" Icon={Truck} cor={ROSA}>
+              <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.78)' }}>
+                A entrega será realizada no endereço cadastrado do cliente, em dias úteis,
+                no horário comercial. É necessário que haja alguém no local para receber a mercadoria.
+              </p>
+              {(p.avisos || []).length > 0 && (
+                <ul className="text-[11px] mt-2 space-y-1" style={{ color: 'rgba(255,255,255,0.68)' }}>
+                  {p.avisos.map((a, i) => <li key={i}>• {a}</li>)}
+                </ul>
+              )}
+              <div className="grid grid-cols-2 gap-x-3 mt-3 pt-2" style={{ borderTop: `1px solid ${ROSA}33` }}>
+                <Linha r="Previsão de saída" v={p.ship_date ? fmtDate(p.ship_date) : '—'} />
+                <Linha r="Coleta" v={p.collect_date ? fmtDate(p.collect_date) : '—'} />
+                <Linha r="Previsão de entrega" v={p.delivery_date ? fmtDate(p.delivery_date) : '—'} />
+                <Linha r="Transporte" v={p.transport_days ? `${p.transport_days} dias úteis` : '—'} />
+              </div>
+            </Quadro>
+          </div>
+
+          {/* A arte no papel — some quando a impressão é "Sem arte". */}
+          {temArte && ehImagem && (
+            <div className="doc-arte doc-bloco mb-4">
+              <Quadro titulo="Arte do Pedido" Icon={Paperclip} cor={ROSA}>
+                <img src={p.artwork_url} alt="Arte do pedido"
+                  style={{ maxHeight: 300, maxWidth: '100%', objectFit: 'contain', margin: '0 auto', display: 'block' }} />
+                {p.artwork_notes && (
+                  <p className="text-[11px] text-center mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                    {p.artwork_notes}
+                  </p>
+                )}
+              </Quadro>
+            </div>
+          )}
+
+          {/* Rodapé assinado */}
+          <div className="flex flex-wrap items-center justify-between gap-4 pt-4 doc-bloco"
+            style={{ borderTop: `1px solid ${CIANO}44` }}>
+            <div className="flex items-start gap-2.5">
+              <ShieldCheck size={20} style={{ color: CIANO }} className="shrink-0 mt-0.5" />
+              <p className="text-[11px] leading-snug" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                Documento gerado eletronicamente pelo sistema Lyon Copos<br />
+                Assinado digitalmente por {emp.name || 'Lyon Copos'}
+              </p>
+            </div>
+
+            <div className="text-center">
+              <p style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontStyle: 'italic', fontSize: 20, color: ROSA }}>
+                Lyon Copos
+              </p>
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.35)', width: 180, margin: '2px auto 4px' }} />
+              <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.65)' }}>
+                {emp.name || 'Lyon Copos Acrílicos'}<br />{documento(emp.cnpj)}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <ShieldCheck size={18} style={{ color: CIANO }} />
+              <p className="text-[9px] uppercase tracking-wider leading-tight doc-forte"
+                style={{ color: CIANO }}>
+                Documento<br />assinado<br />digitalmente
+              </p>
+            </div>
+          </div>
+
+          {/* A data de geração fica no papel porque o documento circula
               solto: sem ela, ninguém sabe se está lendo a versão de hoje
               ou a de três semanas atrás. */}
-          <br />Documento gerado em {new Date().toLocaleString('pt-BR')} — {p.codigo}.
-        </p>
+          <p className="text-[9px] mt-3 text-center" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            Gerado em {new Date().toLocaleString('pt-BR')} — {p.codigo}
+          </p>
+        </div>
+
+        {/* ══ LATERAL: a arte anexada ══════════════════════════ */}
+        <aside className="doc-aside w-full xl:w-64 shrink-0">
+          <div className="rounded-2xl p-4"
+            style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${temArte ? `${CIANO}44` : 'rgba(255,255,255,0.10)'}` }}>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <p className="text-sm font-semibold text-white">
+                {temArte ? 'Arte anexada' : 'Sem arte'}
+              </p>
+              <span className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ background: temArte ? '#4ade80' : 'rgba(255,255,255,0.25)' }} />
+            </div>
+
+            {temArte ? (
+              <>
+                <button onClick={() => window.open(p.artwork_url, '_blank', 'noopener')}
+                  className="w-full rounded-xl overflow-hidden mb-3 flex items-center justify-center"
+                  style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.10)', minHeight: 140 }}>
+                  {ehImagem
+                    ? <img src={p.artwork_url} alt="Arte anexada"
+                        style={{ maxHeight: 180, maxWidth: '100%', objectFit: 'contain' }} />
+                    : <span className="text-xs px-3 py-6" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                        Arquivo anexado — clique para abrir
+                      </span>}
+                </button>
+                <p className="text-[11px] flex items-center gap-1.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                  <Paperclip size={12} /> 1 arte anexada
+                </p>
+              </>
+            ) : (
+              <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                Este pedido ainda não tem arte anexada. Anexe pela tela do pedido para ela
+                aparecer aqui e na impressão.
+              </p>
+            )}
+          </div>
+        </aside>
       </div>
     </>
   );
 }
 
-function Quadro({ titulo, children }) {
+// ── Peças ────────────────────────────────────────────────────
+
+function BotaoNeon({ cor, Icon, children, onClick, desabilitado }) {
   return (
-    <div className="doc-bloco">
-      <p className="text-[11px] uppercase tracking-widest text-gray-500 mb-1.5">{titulo}</p>
-      <div className="px-3 py-2" style={{ border: '1px solid #d1d5db' }}>{children}</div>
-    </div>
+    <button onClick={onClick} disabled={desabilitado}
+      className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{ border: `1px solid ${cor}77`, color: cor, background: `${cor}12` }}>
+      <Icon size={16} /> {children}
+    </button>
+  );
+}
+
+function Opcao({ ativa, onClick, Icon, children }) {
+  return (
+    <button onClick={onClick}
+      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
+      style={ativa
+        ? { background: `${CIANO}1f`, color: CIANO, border: `1px solid ${CIANO}66` }
+        : { color: 'rgba(255,255,255,0.55)', border: '1px solid transparent' }}>
+      <Icon size={13} /> {children}
+    </button>
+  );
+}
+
+function DadoEmpresa({ Icon, v, forte, invisivel }) {
+  return (
+    <p className={`flex items-start gap-1.5 ${forte ? 'font-bold text-[13px] doc-forte' : ''}`}>
+      <Icon size={12} className="shrink-0 mt-0.5" style={{ color: invisivel ? 'transparent' : CIANO }} />
+      <span>{v}</span>
+    </p>
+  );
+}
+
+function Quadro({ titulo, Icon, cor, children, className = '' }) {
+  return (
+    <section className={`doc-bloco rounded-xl p-3.5 ${className}`}
+      style={{ border: `1px solid ${cor}44`, background: 'rgba(255,255,255,0.02)' }}>
+      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider mb-2.5 doc-forte"
+        style={{ color: cor }}>
+        <Icon size={14} /> {titulo}
+      </p>
+      {children}
+    </section>
   );
 }
 
 function Linha({ r, v, forte }) {
   return (
     <div className="flex items-start justify-between gap-3 py-0.5 text-[11px]">
-      <span className="text-gray-600 shrink-0">{r}:</span>
-      <span className={`text-right ${forte ? 'font-bold text-[12px]' : ''}`}>{v}</span>
+      <span className="shrink-0" style={{ color: 'rgba(255,255,255,0.55)' }}>{r ? `${r}:` : ''}</span>
+      <span className={`text-right ${forte ? 'font-bold text-[12px] doc-forte' : ''}`}
+        style={{ color: 'rgba(255,255,255,0.9)' }}>{v}</span>
     </div>
+  );
+}
+
+function Celula({ children, alinha = 'left', forte }) {
+  return (
+    <td className={`px-2 py-1.5 ${forte ? 'font-semibold doc-forte' : ''}`}
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', textAlign: alinha }}>
+      {children}
+    </td>
   );
 }

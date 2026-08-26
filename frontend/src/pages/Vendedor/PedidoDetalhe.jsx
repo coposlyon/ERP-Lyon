@@ -33,6 +33,7 @@ import { useVend, fmtBRL, fmtUn, fmtDate } from './ui';
 import { corStatus } from '@/lib/pedidoUi';
 import LogoOrigem from '@/components/UI/LogoOrigem';
 import SubstituirArteModal from '@/components/UI/SubstituirArteModal';
+import EscolherDocumentoModal from '@/components/UI/EscolherDocumentoModal';
 
 /**
  * Os ícones da linha do tempo, um a um.
@@ -89,6 +90,7 @@ export default function PedidoDetalhe() {
   const [verHistorico, setVerHistorico] = useState(false);
   const [enviando, setEnviando] = useState(null);   // 'arte' | 'comprovante'
   const [trocarArte, setTrocarArte] = useState(null); // pedido cuja arte se quer substituir
+  const [escolherDoc, setEscolherDoc] = useState(false); // "Baixar Pedido de Venda" → escolha uma opção
   const qc = useQueryClient();
   const inputArte = useRef(null);
   const inputComprovante = useRef(null);
@@ -561,7 +563,11 @@ export default function PedidoDetalhe() {
                   onClick={() => {
                     // O pedido em PDF é uma TELA, e não um download cego: o
                     // vendedor confere o que vai sair antes de mandar.
-                    if (doc.key === 'pedido') return navigate(documentoEm);
+                    // Três caminhos para o mesmo documento — imprimir,
+                    // ver a arte ou baixar o PDF. Perguntar qual custa um
+                    // clique e evita abrir a folha inteira para quem só
+                    // queria conferir o desenho.
+                    if (doc.key === 'pedido') return setEscolherDoc(true);
                     // O comprovante não vem na resposta: é pedido na hora e
                     // volta um link que expira em dez minutos, para o
                     // endereço do arquivo não ficar guardado na aba.
@@ -627,6 +633,15 @@ export default function PedidoDetalhe() {
           </p>
         </div>
       </div>
+
+      <EscolherDocumentoModal
+        aberto={escolherDoc}
+        temArte={!!p.artwork_url}
+        onClose={() => setEscolherDoc(false)}
+        onImprimir={() => { setEscolherDoc(false); navigate(`${documentoEm}?imprimir=1`); }}
+        onBaixarPdf={() => { setEscolherDoc(false); navigate(documentoEm); }}
+        onVerArte={() => { setEscolherDoc(false); window.open(p.artwork_url, '_blank', 'noopener'); }}
+      />
 
       {/* Trocar arte já anexada: passa pelo gerente. */}
       <SubstituirArteModal
