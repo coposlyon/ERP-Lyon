@@ -238,7 +238,7 @@ export default function PedidoCliente() {
               <thead>
                 <tr style={{ color: 'rgba(147,197,253,0.8)' }}>
                   <th className="px-2 py-2.5" style={{ borderBottom: '1px solid rgba(96,165,250,0.22)' }} />
-                  {['Cód. Produto', 'Produto', 'Capacidade', 'Linha', 'Categoria', ...colunasItem, 'Qtd', 'Valor Unit.', 'Valor Total']
+                  {['Cód. Produto', 'Produto', 'Capacidade', 'Categoria', ...colunasItem, 'Linha', 'Qtd', 'Valor Unit.', 'Valor Total']
                     .map((h, i, todas) => (
                       <th key={h} className={`px-3 py-2.5 text-[11px] font-semibold whitespace-nowrap ${i >= todas.length - 3 ? 'text-right' : 'text-left'}`}
                         style={{ borderBottom: '1px solid rgba(96,165,250,0.22)' }}>{h}</th>
@@ -254,7 +254,6 @@ export default function PedidoCliente() {
                     <td className="px-3 py-2.5 font-mono text-white">{i.codigo || '—'}</td>
                     <td className="px-3 py-2.5 text-white">{i.produto}</td>
                     <td className="px-3 py-2.5" style={{ color: 'rgba(255,255,255,0.7)' }}>{i.capacidade || '—'}</td>
-                    <td className="px-3 py-2.5" style={{ color: 'rgba(255,255,255,0.7)' }}>{i.linha || '—'}</td>
                     <td className="px-3 py-2.5">
                       <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
                         style={{ background: 'rgba(99,102,241,0.18)', color: '#c7d2fe' }}>{i.categoria}</span>
@@ -264,6 +263,9 @@ export default function PedidoCliente() {
                         {(i.campos || []).find(c => c.rotulo === rotulo)?.valor || '—'}
                       </td>
                     ))}
+                    {/* A linha (tipo de tinta) fica ao lado da cor da
+                        personalização, que é o que ela explica. */}
+                    <td className="px-3 py-2.5" style={{ color: 'rgba(255,255,255,0.7)' }}>{i.linha || '—'}</td>
                     <td className="px-3 py-2.5 text-right text-white">{i.quantidade}</td>
                     <td className="px-3 py-2.5 text-right" style={{ color: 'rgba(255,255,255,0.7)' }}>{brl(i.valor_unitario)}</td>
                     <td className="px-3 py-2.5 text-right font-semibold text-white">{brl(i.valor_total)}</td>

@@ -350,7 +350,7 @@ export default function PedidoDetalhe() {
               <table className="w-full text-sm" style={{ minWidth: 760 + colunasItem.length * 120 }}>
                 <thead>
                   <tr style={{ color: v.textMuted }}>
-                    {['Cód. Produto', 'Produto', 'Linha', 'Categoria', ...colunasItem, 'Acessório', 'Qtd', 'Valor Unit.', 'Valor Total']
+                    {['Cód. Produto', 'Produto', 'Categoria', ...colunasItem, 'Linha', 'Acessório', 'Qtd', 'Valor Unit.', 'Valor Total']
                       .map((h, i, todas) => (
                         <th key={h} className={`px-3 py-2.5 text-[11px] font-semibold whitespace-nowrap ${i >= todas.length - 3 ? 'text-right' : 'text-left'}`}
                           style={{ borderBottom: `1px solid ${v.divider}` }}>{h}</th>
@@ -368,7 +368,6 @@ export default function PedidoDetalhe() {
                     <tr key={i.id} style={{ borderBottom: `1px solid ${v.divider}` }}>
                       <td className="px-3 py-2.5 font-mono" style={{ color: v.textPrimary }}>{i.codigo || '—'}</td>
                       <td className="px-3 py-2.5" style={{ color: v.textPrimary }}>{i.produto}</td>
-                      <td className="px-3 py-2.5" style={{ color: v.textMuted }}>{i.linha || '—'}</td>
                       <td className="px-3 py-2.5">
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
                           style={{ background: 'rgba(96,165,250,0.16)', color: '#93c5fd' }}>
@@ -380,6 +379,9 @@ export default function PedidoDetalhe() {
                           {valorDoCampo(i, rotulo)}
                         </td>
                       ))}
+                      {/* A linha (tipo de tinta) ao lado da cor da
+                          personalização, que é o que ela explica. */}
+                      <td className="px-3 py-2.5" style={{ color: v.textMuted }}>{i.linha || '—'}</td>
                       <td className="px-3 py-2.5" style={{ color: v.textMuted }}>{i.acessorio || '—'}</td>
                       <td className="px-3 py-2.5 text-right" style={{ color: v.textPrimary }}>{fmtUn(i.quantidade)}</td>
                       <td className="px-3 py-2.5 text-right" style={{ color: v.textMuted }}>{fmtBRL(i.valor_unitario)}</td>

@@ -346,7 +346,13 @@ export default function DocumentoPedido() {
               <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    {['Código', 'Produto', 'Linha', 'Categoria', ...colunas, 'Quantidade', 'Valor Unit.', 'Valor Total']
+                    {/* A LINHA ANDA COM A PERSONALIZAÇÃO.
+                        "Linha" é o tipo de tinta (PS), e ela entrava entre
+                        Produto e Categoria — longe justamente do campo que
+                        explica: a cor da personalização. Passa a ser a
+                        coluna logo depois dela, que é sempre a última das
+                        características. */}
+                    {['Código', 'Produto', 'Categoria', ...colunas, 'Linha', 'Quantidade', 'Valor Unit.', 'Valor Total']
                       .map((h, i, t) => (
                         <th key={h} className="px-2 py-2 font-semibold whitespace-nowrap doc-forte"
                           style={{
@@ -361,9 +367,9 @@ export default function DocumentoPedido() {
                     <tr key={i.id} style={{ color: 'rgba(255,255,255,0.88)' }}>
                       <Celula>{i.codigo || '—'}</Celula>
                       <Celula>{i.produto}</Celula>
-                      <Celula>{i.linha || '—'}</Celula>
                       <Celula>{i.categoria}</Celula>
                       {colunas.map(c => <Celula key={c}>{valorDe(i, c)}</Celula>)}
+                      <Celula>{i.linha || '—'}</Celula>
                       <Celula alinha="right">{fmtUn(i.quantidade)}</Celula>
                       <Celula alinha="right">{fmtBRL(i.valor_unitario)}</Celula>
                       <Celula alinha="right" forte>{fmtBRL(i.valor_total)}</Celula>
