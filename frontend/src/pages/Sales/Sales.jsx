@@ -205,14 +205,21 @@ export default function Sales() {
       {/* ── Tabela ────────────────────────────────────────────── */}
       <div style={v.card}>
         <div className="overflow-x-auto">
-          <div style={{ minWidth: 1120 }}>
+          {/* AS COLUNAS FIXAS SOMAM 1292px (larguras + espacos + recuo).
+              Com minWidth 1120 nao cabiam, e quem pagava a conta era a
+              unica coluna flexivel: o Cliente encolhia ate zero e o
+              cabecalho "Cliente" ficava por cima de "Valor Total" —
+              exatamente com o menu lateral aberto, que e quando sobra
+              menos tela. 1500 = as fixas + 208 de Cliente; abaixo disso
+              a tabela rola na horizontal, que ja e o comportamento. */}
+          <div style={{ minWidth: 1500 }}>
             <div className="flex items-center gap-3 px-4 py-3"
               style={{ borderBottom: `1px solid ${v.divider}`, color: v.textMuted }}>
               <span className={`${th} w-24 shrink-0`}>Pedido</span>
               <span className={`${th} w-36 shrink-0`}>Data / Hora</span>
               <span className={`${th} w-36 shrink-0`}>Origem</span>
               <span className={`${th} w-28 shrink-0`}>Cód. Cliente</span>
-              <span className={`${th} flex-1 min-w-0`}>Cliente</span>
+              <span className={`${th} flex-1`} style={{ minWidth: 200 }}>Cliente</span>
               <span className={`${th} w-28 shrink-0 text-right`}>Valor Total</span>
               <span className={`${th} w-24 shrink-0 text-right`}>Frete</span>
               {/* w-64: cabe "Em processo de coleta / retirada", que é o
@@ -261,7 +268,7 @@ export default function Sales() {
                   <span className="w-28 shrink-0 font-mono" style={{ color: v.textMuted }}>
                     {codigoCliente(row.CLIENTES?.display_id) || '—'}
                   </span>
-                  <span className="flex-1 min-w-0 truncate" style={{ color: v.textPrimary }}>
+                  <span className="flex-1 truncate" style={{ color: v.textPrimary, minWidth: 200 }}>
                     {row.CLIENTES?.name || 'Consumidor Final'}
                   </span>
                   <span className="w-28 shrink-0 text-right font-semibold" style={{ color: '#22d3ee' }}>
