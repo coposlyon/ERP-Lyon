@@ -28,6 +28,8 @@
 // desenhar um copo que não é aquele não era.
 // ============================================================
 
+import { useState, useEffect } from 'react';
+
 /** Socorro para cor sem hex no cadastro. Some sozinho conforme o Administrativo preenche. */
 const POR_NOME = {
   'amarelo': '#facc15', 'amarelo canario': '#fde047', 'amarelo neon': '#fef08a',
@@ -191,7 +193,7 @@ const PADRAO = FORMATOS['long-drink'];
  * que é o plano B.
  */
 function Desenho({
-  escolha = {}, familia = null, arte = null, altura = 300, gabarito = null,
+  escolha = {}, familia = null, arte = null, altura = 300, gabarito = null, espelhar = false,
 }) {
   const { acabamento, campos = {} } = escolha;
   const requer = acabamento?.requer || {};
@@ -222,7 +224,8 @@ function Desenho({
   return (
     <figure className="flex flex-col items-center m-0">
       <svg viewBox={`0 0 ${F.vb} 268`} height={altura} width={altura * F.vb / 268} role="img"
-        aria-label="Prévia da peça">
+        aria-label="Prévia da peça"
+        style={{ transform: espelhar ? 'scaleX(-1)' : undefined }}>
         <defs>
           <linearGradient id={`${id}-corpo`} x1="0" y1="1" x2="0" y2="0">
             <stop offset="0%" stopColor={corBase} stopOpacity={vidro ? 0.34 : 0.98} />
@@ -282,13 +285,150 @@ function Desenho({
             <foreignObject x={F.arte.cx - larguraArte / 2} y={F.arte.topo}
               width={larguraArte} height={alturaArte}>
               <div xmlns="http://www.w3.org/1999/xhtml"
-                style={{ width: '100%', height: '100%', color: '#111318' }}
+                style={{ width: '100%', height: '100%', color: '#111318',
+                         transform: espelhar ? 'scaleX(-1)' : undefined }}
                 dangerouslySetInnerHTML={{ __html: arte }} />
             </foreignObject>
           </g>
         )}
       </svg>
     </figure>
+  );
+}
+
+
+// ── A FOTO SEM O FUNDO ───────────────────────────────────────
+//
+// As fotos do cadastro vêm do estúdio: peça centralizada sobre papel
+// branco. Sobre o azul-noite do catálogo aquele branco vira um cartão
+// retangular atrás do copo — a peça deixa de flutuar e passa a parecer
+// um adesivo colado num papel.
+//
+// Recortar 97 fotos à mão não é resposta. Esta é: o navegador abre a
+// foto num canvas e apaga o fundo antes de mostrar. O apagador entra
+// PELAS BORDAS e vai andando de pixel em pixel enquanto encontra a cor
+// do papel — é assim que o branco de dentro do copo, o brilho da alça e
+// a etiqueta clara continuam lá: eles não encostam na borda, e o
+// apagador nunca chega neles.
+//
+// A borda do recorte não é seca. Quanto mais o pixel se afasta da cor do
+// papel, mais opaco ele fica — é o que impede o serrilhado branco em
+// volta da peça preta.
+//
+// TRÊS PORTAS DE SAÍDA, todas devolvendo a foto original intacta:
+// PNG que já vem recortado (canto transparente), foto de outro domínio
+// que o canvas se recusa a ler, e recorte que comeu quase tudo — se
+// sobrou menos de um décimo da imagem, quem estava errado era o
+// apagador, não a foto.
+
+/** Duas fotos iguais em Frente e Verso: recorta uma vez, serve as duas. */
+const CACHE_RECORTE = new Map();
+
+/** Distância entre duas cores, sem raiz quadrada — só serve para comparar. */
+const distancia2 = (r, g, b, fr, fg, fb) =>
+  (r - fr) * (r - fr) + (g - fg) * (g - fg) + (b - fb) * (b - fb);
+
+// Igual ao papel: some. Longe do papel: fica. No meio: meio a meio, que é
+// o que faz a sombra suave do estúdio virar transparência suave.
+const PERTO = 34 * 34 * 3;   // ainda é o papel
+const LONGE = 96 * 96 * 3;   // já é a peça
+
+function recortarFundo(src) {
+  if (CACHE_RECORTE.has(src)) return CACHE_RECORTE.get(src);
+
+  const promessa = new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onerror = () => resolve(null);
+    img.onload = () => {
+      try {
+        const { naturalWidth: L, naturalHeight: A } = img;
+        if (!L || !A) return resolve(null);
+
+        const tela = document.createElement('canvas');
+        tela.width = L; tela.height = A;
+        const ctx = tela.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0);
+
+        const dados = ctx.getImageData(0, 0, L, A);
+        const px = dados.data;
+
+        // Canto já transparente? O PNG veio recortado do cadastro —
+        // mexer nele só teria como resultado estragá-lo.
+        if (px[3] < 250) return resolve(null);
+
+        const fr = px[0], fg = px[1], fb = px[2];
+
+        // O apagador anda pela imagem a partir das quatro bordas. Fila
+        // em Int32Array porque um array comum de meio milhão de índices
+        // é lento no celular, que é onde o cliente escolhe o copo.
+        const visto = new Uint8Array(L * A);
+        const fila = new Int32Array(L * A);
+        let inicio = 0, fim = 0;
+        const enfileirar = i => { if (!visto[i]) { visto[i] = 1; fila[fim++] = i; } };
+
+        for (let x = 0; x < L; x++) { enfileirar(x); enfileirar((A - 1) * L + x); }
+        for (let y = 0; y < A; y++) { enfileirar(y * L); enfileirar(y * L + L - 1); }
+
+        let apagados = 0;
+        while (inicio < fim) {
+          const i = fila[inicio++];
+          const p = i * 4;
+          const d = distancia2(px[p], px[p + 1], px[p + 2], fr, fg, fb);
+          if (d >= LONGE) continue;            // chegou na peça: para aqui
+
+          if (d <= PERTO) { px[p + 3] = 0; }   // é papel: some
+          else {
+            // A franja: o pixel vira meio transparente na mesma medida em
+            // que se afasta do papel.
+            px[p + 3] = Math.round(255 * (d - PERTO) / (LONGE - PERTO));
+            continue;                          // franja não propaga
+          }
+          apagados++;
+
+          const x = i % L, y = (i - x) / L;
+          if (x > 0) enfileirar(i - 1);
+          if (x < L - 1) enfileirar(i + 1);
+          if (y > 0) enfileirar(i - L);
+          if (y < A - 1) enfileirar(i + L);
+        }
+
+        // Comeu a imagem inteira? Então a foto não era peça sobre papel —
+        // devolve o original e ninguém fica sabendo.
+        if (apagados > L * A * 0.9) return resolve(null);
+
+        ctx.putImageData(dados, 0, 0);
+        resolve(tela.toDataURL('image/png'));
+      } catch {
+        resolve(null); // canvas sujo por CORS: a foto original serve
+      }
+    };
+    img.src = src;
+  });
+
+  CACHE_RECORTE.set(src, promessa);
+  return promessa;
+}
+
+/**
+ * A foto da peça, recortada quando dá. Enquanto o recorte não fica
+ * pronto mostra a foto original: prévia que pisca em branco é pior que
+ * meio segundo com o fundo do estúdio.
+ */
+function FotoDaPeca({ src, espelhar }) {
+  const [recortada, setRecortada] = useState(null);
+
+  useEffect(() => {
+    let vivo = true;
+    setRecortada(null);
+    recortarFundo(src).then(url => { if (vivo && url) setRecortada(url); });
+    return () => { vivo = false; };
+  }, [src]);
+
+  return (
+    <img src={recortada || src} alt="Foto da peça escolhida" draggable={false}
+      className="absolute inset-0 w-full h-full object-contain"
+      style={{ transform: espelhar ? 'scaleX(-1)' : undefined }} />
   );
 }
 
@@ -310,6 +450,11 @@ export default function CopoPreview({
   arte = null, face = 'frente', altura = 300, gabarito = null,
 }) {
   const { campos = {} } = escolha;
+  // O VERSO É A MESMA PEÇA VISTA POR TRÁS. A foto do cadastro é uma só,
+  // da frente; espelhá-la é o que põe a alça da caneca do outro lado,
+  // que é onde ela está quando se olha o copo por trás. A arte NÃO
+  // espelha junto — nome de casal ao contrário não é verso, é erro.
+  const espelhar = face === 'verso';
 
   // A foto DA COR ESCOLHIDA vence a do modelo. Escolheu Preto, aparece a
   // peça preta — e não a foto genérica que o catálogo usa na vitrine.
@@ -333,7 +478,7 @@ export default function CopoPreview({
     return (
       <figure className="flex flex-col items-center m-0">
         <Desenho escolha={escolha} familia={familia} arte={arte}
-          altura={altura} gabarito={gabarito} />
+          altura={altura} gabarito={gabarito} espelhar={espelhar} />
         {rodape}
         <Aplicados itens={aplicados} />
       </figure>
@@ -344,13 +489,13 @@ export default function CopoPreview({
 
   return (
     <figure className="flex flex-col items-center m-0">
-      {/* Fundo CLARO atrás da foto, o mesmo creme da vitrine e da /loja.
-          Os PNGs dos copos são recortados, sem fundo: sobre o azul-noite
-          do catálogo a peça preta sumia e a branca virava um borrão. */}
-      <div className="relative rounded-xl overflow-hidden"
-        style={{ height: altura, width: altura * 0.78, background: '#FFF7F1' }}>
-        <img src={foto} alt="Foto da peça escolhida" draggable={false}
-          className="absolute inset-0 w-full h-full object-contain p-2" />
+      {/* SEM CARTÃO ATRÁS. O retângulo creme que ficava aqui existia para
+          esconder o papel branco do estúdio; agora quem tira o papel é o
+          recorte, e a peça fica sobre o azul-noite do catálogo se lendo
+          pelo brilho e pelo contorno — até a caneca preta. Emoldurar a
+          peça era o preço que se pagava por não ter recortado. */}
+      <div className="relative" style={{ height: altura, width: altura * 0.78 }}>
+        <FotoDaPeca src={foto} espelhar={espelhar} />
 
         {/* A ARTE, na janela onde a impressão realmente sai. Vem como SVG
             e é embutida por dangerouslySetInnerHTML — o vetor é da Lyon,
@@ -359,7 +504,9 @@ export default function CopoPreview({
             em CriarArte). */}
         {arte && (
           <div className="absolute" style={{
-            left: `${(janela.cx - janela.largura / 2) * 100}%`,
+            // A janela acompanha o espelho: na caneca o corpo trocou de
+            // lado junto com a alça, e é no corpo que a arte é impressa.
+            left: `${((espelhar ? 1 - janela.cx : janela.cx) - janela.largura / 2) * 100}%`,
             top: `${janela.topo * 100}%`,
             width: `${janela.largura * 100}%`,
             height: `${janela.altura * 100}%`,
