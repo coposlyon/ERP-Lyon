@@ -190,8 +190,17 @@ export default function CidadesUfModal({ uf, onClose }) {
                           <span style={{ color: v.textSubtle }}>Só a sede</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5" style={{ color: c.cep_start ? v.textMuted : v.textSubtle }}>
-                        {c.cep_start ? `${c.cep_start} a ${c.cep_end || '—'}` : '—'}
+                      {/* CEP ÚNICO x FAIXA. Cidade pequena inteira usa um
+                          número só, e aí "de 86460-000 a 86460-000" é ruído:
+                          mostra o número e diz que é único. Cidade grande tem
+                          faixa, que só o DNE dos Correios fornece — fica em
+                          branco de propósito, com o rodapé explicando. */}
+                      <td className="px-4 py-2.5 tabular-nums"
+                        style={{ color: c.cep_start ? v.textMuted : v.textSubtle }}>
+                        {!c.cep_start ? '—'
+                          : c.cep_end && c.cep_end !== c.cep_start
+                            ? `${c.cep_start} a ${c.cep_end}`
+                            : <span title="A cidade inteira usa este CEP">{c.cep_start}</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right" style={{ color: c.ddd ? cor.text : v.textSubtle }}>
                         {c.ddd ? `(${c.ddd})` : '—'}
@@ -215,17 +224,16 @@ export default function CidadesUfModal({ uf, onClose }) {
 
             {/* ── Rodapé: de onde vêm os dados ──────────────── */}
             <div className="px-5 py-3 space-y-1.5" style={{ borderTop: `1px solid ${v.divider}` }}>
-              {data?.cep_indisponivel && (
-                <div className="flex items-start gap-2 text-[11px]" style={{ color: '#fbbf24' }}>
-                  <Info size={13} className="shrink-0 mt-0.5" />
-                  <span>
-                    A faixa de CEP está vazia porque não existe fonte pública dela: quem
-                    tem a faixa por município é o DNE dos Correios, que é pago. A coluna
-                    está pronta para receber a base no dia em que ela chegar — melhor
-                    vazio do que um CEP chutado virando etiqueta errada.
-                  </span>
-                </div>
-              )}
+              <div className="flex items-start gap-2 text-[11px]" style={{ color: '#fbbf24' }}>
+                <Info size={13} className="shrink-0 mt-0.5" />
+                <span>
+                  As cidades de CEP único aparecem com o número; são a maioria dos
+                  municípios. As que estão em branco usam FAIXA de CEP — o CEP muda
+                  de rua para rua — e faixa por município só existe no DNE dos
+                  Correios, que é pago. Continua em branco de propósito: melhor
+                  vazio do que um CEP chutado virando etiqueta errada.
+                </span>
+              </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" style={{ color: v.textSubtle }}>
                 <span className="flex items-center gap-1"><MapPin size={11} /> Municípios, distritos e regiões metropolitanas: IBGE</span>
                 <span className="flex items-center gap-1"><Users size={11} /> Habitantes: Censo 2022</span>

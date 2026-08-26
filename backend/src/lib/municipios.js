@@ -13,13 +13,20 @@
 //   região metropolitana IBGE / regiões metropolitanas
 //   habitantes           IBGE / Censo 2022 (agregado 4709, variável 93)
 //   DDD                  BrasilAPI
+//   CEP único            ViaCEP (scripts/seed-cep-unico.js)
 //   faixa de CEP         NÃO EXISTE de graça — ver abaixo
 //
-// A faixa de CEP por município está no DNE dos Correios, que é um
-// produto pago. Não há API pública que devolva "de 80000-000 até
-// 82999-999". Dá para descobrir o CEP de UMA rua (ViaCEP), não a faixa
-// da cidade. Então cep_start/cep_end ficam vazios até alguém trazer a
-// base — e a tela mostra vazio, não um palpite.
+// CEP TEM DOIS FORMATOS, e só um deles é de graça.
+//
+// Cidade pequena usa CEP ÚNICO: a cidade inteira é um número só, e a
+// ViaCEP devolve. É a maioria dos municípios do país, e o
+// scripts/seed-cep-unico.js grava esse número em cep_start = cep_end.
+//
+// Cidade grande usa FAIXA: o CEP muda de rua para rua, e a faixa por
+// município ("de 80000-000 até 82999-999") só existe no DNE dos
+// Correios, que é um produto pago. Dá para descobrir o CEP de UMA rua,
+// não a faixa da cidade. Essas continuam com cep_start nulo até alguém
+// trazer a base — e a tela mostra vazio, não um palpite.
 // ============================================================
 const supabase = require('../config/supabase');
 
@@ -352,9 +359,6 @@ async function cidadesDaUf(uf) {
     total: cidades.length,
     habitantes: cidades.reduce((s, c) => s + (c.population || 0), 0),
     synced_at: data?.[0]?.synced_at || null,
-    // A tela precisa saber que o vazio é falta de fonte, não falta de
-    // dado, para escrever o motivo em vez de um traço mudo.
-    cep_indisponivel: cidades.every(c => !c.cep_start),
   };
 }
 
