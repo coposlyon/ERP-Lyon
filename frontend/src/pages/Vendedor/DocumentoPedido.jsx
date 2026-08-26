@@ -16,9 +16,12 @@
 // foto: não dá para copiar o número do pedido, borra na impressão e
 // engorda o arquivo.
 //
-// COM ARTE / SEM ARTE é escolha de impressão, não de conteúdo. A arte
-// pesa e nem sempre interessa a quem vai receber o papel — mas some só
-// do papel, nunca da conferência na tela.
+// COM ARTE / SEM ARTE é uma PRÉVIA, não um interruptor de impressão. Ao
+// escolher "Sem arte" a arte sai da lateral e do documento na hora, e é
+// assim que ela vai sair no papel — a tela mostra o que vai acontecer,
+// em vez de prometer uma coisa e imprimir outra. Para ver a arte sem
+// mudar a escolha existe o botão "Visualizar arte", que abre o arquivo
+// à parte.
 //
 // OS DADOS DA EMPRESA VÊM COM O PEDIDO (rota /area-vendedor/pedidos/:id),
 // e não do login guardado no navegador: este documento circula fora do
@@ -350,7 +353,7 @@ export default function DocumentoPedido() {
           </div>
 
           {/* A arte no papel — some quando a impressão é "Sem arte". */}
-          {temArte && ehImagem && (
+          {comArte && temArte && ehImagem && (
             <div className="doc-arte doc-bloco mb-4">
               <Quadro titulo="Arte do Pedido" Icon={Paperclip} cor={ROSA}>
                 <img src={p.artwork_url} alt="Arte do pedido"
@@ -403,6 +406,11 @@ export default function DocumentoPedido() {
         </div>
 
         {/* ══ LATERAL: a arte anexada ══════════════════════════ */}
+        {/* "Sem arte" tira a arte daqui também, e não só do papel: o
+            botão é uma PRÉVIA do que vai sair. Enquanto a miniatura
+            continuava na lateral, a tela dizia que a arte estava no
+            documento e o papel saía sem ela. */}
+        {comArte && (
         <aside className="doc-aside w-full xl:w-64 shrink-0">
           <div className="rounded-2xl p-4"
             style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${temArte ? `${CIANO}44` : 'rgba(255,255,255,0.10)'}` }}>
@@ -438,6 +446,7 @@ export default function DocumentoPedido() {
             )}
           </div>
         </aside>
+        )}
       </div>
     </>
   );
