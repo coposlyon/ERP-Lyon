@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star, Plus, MoreHorizontal, MessageCircle, Download } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
+import SeletorOrigem from '@/components/UI/SeletorOrigem';
 import { generateQuotePng, buildQuoteNotes, downloadPng } from '@/lib/quotePng';
 import toast from 'react-hot-toast';
 import { expandVariants, expandVariantsWithCode } from '@/pages/Products/ProductVariantsModal';
@@ -969,15 +970,14 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 {/* Sem isto a coluna Origem nasce vazia. É a pergunta que
                     responde "de onde vieram nossas vendas" — e a mesma
                     que a integração do Mercado Livre vai preencher
-                    sozinha quando entrar. */}
+                    sozinha quando entrar.
+
+                    O seletor mostra o selo da marca, não emoji: é o
+                    mesmo LogoOrigem que a lista de Vendas já pinta, para
+                    o canal ser o mesmo desenho na hora de gravar e na
+                    hora de conferir. */}
                 <label className="text-xs font-medium text-gray-500 block mb-1">Origem da venda</label>
-                <select className="input text-sm w-full" value={origem} onChange={e => setOrigem(e.target.value)}
-                  title="De onde este cliente veio. Fica gravado no pedido e alimenta o relatório de canal.">
-                  <option value="">— não informar —</option>
-                  {(origens || []).map(o => (
-                    <option key={o.key} value={o.key}>{o.icone} {o.key}</option>
-                  ))}
-                </select>
+                <SeletorOrigem origens={origens} value={origem} onChange={setOrigem} />
               </div>
             )}
           </div>

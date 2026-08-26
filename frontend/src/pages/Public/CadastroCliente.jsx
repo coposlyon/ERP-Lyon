@@ -18,6 +18,18 @@ const maskCNPJ = v => v.replace(/\D/g,'').slice(0,14).replace(/(\d{2})(\d)/,'$1.
 const maskPhone = v => { const d=v.replace(/\D/g,'').slice(0,11); return d.length<=10 ? d.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{4})(\d{1,4})$/,'$1-$2') : d.replace(/(\d{2})(\d)/,'($1) $2').replace(/(\d{5})(\d{1,4})$/,'$1-$2'); };
 const maskCEP = v => v.replace(/\D/g,'').slice(0,8).replace(/(\d{5})(\d)/,'$1-$2');
 const maskDate = v => v.replace(/\D/g,'').slice(0,8).replace(/(\d{2})(\d)/,'$1/$2').replace(/(\d{2})(\d)/,'$1/$2');
+
+// NOME DE PESSOA NÃO TEM NÚMERO.
+//
+// O campo é o mesmo para os dois tipos de cadastro, e por isso a regra
+// não pode ser do campo: RAZÃO SOCIAL tem número com frequência ("3M do
+// Brasil", "Copos 24h Ltda") e travar dígito ali quebraria cadastro
+// legítimo. Só a Pessoa Física perde os números.
+//
+// Fica na digitação, não na validação: o cliente não recebe um "erro"
+// depois de preencher, o dígito simplesmente não entra. Ponto, hífen e
+// apóstrofo continuam passando — existe "D'Ávila" e existe "Jr.".
+const soNomeDeGente = v => v.replace(/[0-9]/g, '');
 const igHandle = v => String(v||'').trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i,'').replace(/[/?].*$/,'').replace(/^@/,'');
 // Valida o @perfil: 1–30 caracteres, só letras/números/ponto/_, sem ponto no início/fim nem ".."
 function validIG(v) {
@@ -528,14 +540,22 @@ export default function CadastroCliente() {
           <div className="flex gap-6">
             {['PF','PJ'].map(t => (
               <label key={t} className="flex items-center gap-2 cursor-pointer text-sm">
-                <input type="radio" checked={type===t} onChange={() => setType(t)} className="accent-violet-600 w-4 h-4" />
+                {/* Trocar para PF limpa os números que a Razão Social podia
+                    ter — senão "COPOS 24H" sobrevive à troca de tipo. */}
+                <input type="radio" checked={type===t}
+                  onChange={() => { setType(t); if (t === 'PF') set('name', soNomeDeGente(f.name)); }}
+                  className="accent-violet-600 w-4 h-4" />
                 {t==='PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}
               </label>
             ))}
           </div>
 
           <Field label={`${isPJ ? 'Razão Social' : 'Nome Completo'} *`}>
-            <input className={INPUT} value={f.name} onChange={e => set('name', e.target.value.toUpperCase())} />
+            <input className={INPUT} value={f.name}
+              onChange={e => {
+                const bruto = e.target.value.toUpperCase();
+                set('name', isPJ ? bruto : soNomeDeGente(bruto));
+              }} />
           </Field>
 
           {isPJ ? (

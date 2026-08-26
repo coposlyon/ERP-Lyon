@@ -46,11 +46,6 @@ export const menuItems = [
     icon: ShoppingCart,
     children: [
       { label: 'Painel do Vendedor', path: '/vendedor', icon: Target, module: 'vendedor' },
-      // A tela onde as METAS sao definidas. Ela existia so como
-      // endereco: nenhum item de menu e nenhum botao levavam ate ela, e
-      // quem precisasse subir a meta de 15 para 20 mil tinha que saber
-      // digitar /vendedor/config de cabeca.
-      { label: 'Plano de Metas', path: '/vendedor/config', icon: Trophy, adminOnly: true },
       { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart, module: 'sales' },
       { label: 'Pagamentos da Loja', path: '/store-payments', icon: Wallet, module: 'sales' },
       { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
@@ -61,6 +56,16 @@ export const menuItems = [
       // pessoa do comercial está fazendo quando abre qualquer um deles.
       { label: 'Lyon Prime', path: '/lyon-prime', icon: Star, module: 'customers' },
       { label: 'Marketing', path: '/marketing', icon: Megaphone, module: 'marketing' },
+      // A tela onde as METAS sao definidas. Ela existia so como
+      // endereco: nenhum item de menu e nenhum botao levavam ate ela, e
+      // quem precisasse subir a meta de 15 para 20 mil tinha que saber
+      // digitar /vendedor/config de cabeca.
+      //
+      // Fica no PE do grupo de proposito: e configuracao, nao rotina. O
+      // comercial abre Pedidos dez vezes por dia e o Plano de Metas dez
+      // vezes por ano — deixa-lo no topo custava um item de leitura em
+      // toda vez que alguem procurava o que realmente usa.
+      { label: 'Plano de Metas', path: '/vendedor/config', icon: Trophy, adminOnly: true },
     ],
   },
   {

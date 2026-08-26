@@ -12,20 +12,25 @@
 // o ícone — nada mais precisa mudar. Marketplace novo entra AQUI.
 // ============================================================
 
+// O `icone` que existia aqui era um emoji, e emoji não identifica
+// marca: 🛍️ e 🏬 são a mesma bolsinha cinza, e cada sistema operacional
+// desenha o seu. O desenho de cada canal mora no frontend, em
+// components/UI/LogoOrigem.jsx, com a cor da marca. O servidor manda o
+// vocabulário; quem pinta é a tela.
 const ORIGENS = [
-  { key: 'Site',           icone: '🌐', grupo: 'Próprio' },
-  { key: 'WhatsApp',       icone: '💬', grupo: 'Atendimento' },
-  { key: 'Instagram',      icone: '📷', grupo: 'Redes' },
-  { key: 'Facebook',       icone: '👥', grupo: 'Redes' },
-  { key: 'TikTok',         icone: '🎵', grupo: 'Redes' },
-  { key: 'Shopee',         icone: '🛍️', grupo: 'Marketplace' },
-  { key: 'Mercado Livre',  icone: '🤝', grupo: 'Marketplace' },
-  { key: 'Amazon',         icone: '📦', grupo: 'Marketplace' },
-  { key: 'Magalu',         icone: '🏬', grupo: 'Marketplace' },
-  { key: 'Presencial',     icone: '🏪', grupo: 'Atendimento' },
-  { key: 'Telefone',       icone: '📞', grupo: 'Atendimento' },
-  { key: 'Indicação',      icone: '⭐', grupo: 'Atendimento' },
-  { key: 'Outro',          icone: '•',  grupo: 'Outros' },
+  { key: 'Site',           grupo: 'Próprio' },
+  { key: 'WhatsApp',       grupo: 'Atendimento' },
+  { key: 'Instagram',      grupo: 'Redes' },
+  { key: 'Facebook',       grupo: 'Redes' },
+  { key: 'TikTok',         grupo: 'Redes' },
+  { key: 'Shopee',         grupo: 'Marketplace' },
+  { key: 'Mercado Livre',  grupo: 'Marketplace' },
+  { key: 'Amazon',         grupo: 'Marketplace' },
+  { key: 'Magalu',         grupo: 'Marketplace' },
+  { key: 'Presencial',     grupo: 'Atendimento' },
+  { key: 'Telefone',       grupo: 'Atendimento' },
+  { key: 'Indicação',      grupo: 'Atendimento' },
+  { key: 'Outro',          grupo: 'Outros' },
 ];
 
 const CHAVES = new Set(ORIGENS.map(o => o.key));
