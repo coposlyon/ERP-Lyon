@@ -391,24 +391,33 @@ async function persistCommission(tenantId, userId, referenceMonth, goal, pct, ro
  */
 function cycleProgress(unitsByMonth, plans, year, month, cycleMonths) {
   const total = Math.max(1, Number(cycleMonths) || 3);
-  let cursor = { year, month };
-  let streak = 0;
 
   // A meta de cada mês passado é a da fase que valia NAQUELE mês. Usar
   // a meta de hoje reprovaria retroativamente meses que na época foram
   // cumpridos — e o vendedor perderia o ciclo por ter subido de fase.
   const fases = fasesPorMes(plans, unitsByMonth, year, month);
+  const alvo = monthKey(year, month);
 
-  for (let i = 0; i < total; i++) {
-    const key = monthKey(cursor.year, cursor.month);
-    const goal = planGoal(fases.get(key));
-    const sold = Number(unitsByMonth[key]) || 0;
-    if (goal <= 0 || sold < goal) break;
-    streak++;
-    cursor = prevMonthOf(cursor);
+  // NUNCA VOLTA, SEMPRE CRESCE.
+  //
+  // Antes o ciclo era uma sequência: três meses SEGUIDOS batendo a meta,
+  // e um mês fraco jogava o contador de volta ao zero. Na prática isso
+  // apagava trabalho já feito — dois meses cumpridos viravam nada por
+  // causa de um mês ruim, e o bônus ficava sempre fora de alcance para
+  // quem tem sazonalidade.
+  //
+  // Agora é um acumulado: cada mês em que a meta VIGENTE NAQUELE MÊS foi
+  // cumprida conta um, para sempre. Mês fraco não soma, mas também não
+  // tira. O contador só anda para a frente.
+  let feitos = 0;
+  for (const [chave, fase] of fases) {
+    if (chave > alvo) continue;
+    const goal = planGoal(fase);
+    if (goal <= 0) continue;
+    if ((Number(unitsByMonth[chave]) || 0) >= goal) feitos++;
   }
 
-  return { streak, total, unlocked: streak >= total };
+  return { streak: Math.min(feitos, total), total, unlocked: feitos >= total, feitos };
 }
 
 /** Unidades vendidas mês a mês, do mês mais antigo ao mês escolhido. */
