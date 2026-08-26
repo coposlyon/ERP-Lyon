@@ -154,14 +154,110 @@ async function loadPlans(tenantId, planGroup = 'padrao') {
   return { plans: data || [], missing: false };
 }
 
-// A faixa que cobre o mês. Sem faixa configurada, meta zero — o painel
-// mostra tudo que vendeu e nenhuma cobrança inventada.
+// A faixa pela lista de MESES da configuração.
+//
+// APOSENTADA: a meta deixou de ser do calendário e passou a ser da
+// fase (ver fasesPorMes, logo abaixo). Fica só porque a tela de
+// configuração ainda mostra em que meses cada faixa foi cadastrada —
+// nenhuma conta do painel passa por aqui.
 function planForMonth(plans, month) {
   const found = (plans || []).find(p => (p.months || []).includes(month));
   return found || null;
 }
 
 const planGoal = plan => Number(plan?.monthly_goal) || 0;
+
+// ── A FASE DO VENDEDOR ───────────────────────────────────────
+//
+// A META NÃO É DO MÊS, É DA FASE.
+//
+// Antes cada faixa carregava uma lista de MESES (Meta 1 = jan/fev/mar,
+// Meta 2 = abr/mai/jun...) e a meta vigente era simplesmente a faixa
+// que cobria o mês do calendário. O efeito: em agosto o vendedor abria
+// o painel devendo 45.000 peças sem nunca ter vendido uma — a meta
+// tinha subido sozinha, pelo calendário, sem ele ter conquistado nada.
+//
+// Agora ela sobe por CONQUISTA. Todo mundo começa na primeira faixa;
+// bateu a meta dela num mês, a faixa seguinte passa a valer do mês
+// seguinte em diante.
+//
+// FASE NÃO REBAIXA. Quem chegou aos 30.000 fica nos 30.000, mesmo que
+// venha um mês fraco. O que zera no mês fraco é o CICLO DO BÔNUS — que
+// recomeça em 1/3, com a meta da fase que a pessoa já conquistou.
+//
+// A coluna `months` continua no banco e deixou de ser lida: apagá-la
+// exigiria uma migração destrutiva para desfazer uma regra que pode
+// voltar. Ela dorme.
+
+/**
+ * A fase vigente em CADA mês, do primeiro mês com venda até o mês
+ * pedido.
+ *
+ * Devolve um Map 'AAAA-MM' -> faixa, e é ele que o ciclo do bônus usa:
+ * um mês de 2023 tem que ser conferido contra a meta que valia NAQUELE
+ * mês, não contra a de hoje. Sem isso, subir de fase reprovaria
+ * retroativamente meses que na época foram cumpridos.
+ */
+function fasesPorMes(plans, unitsByMonth, year, month) {
+  const faixas = (plans || []).slice().sort((a, b) => (a.seq || 0) - (b.seq || 0));
+  const mapa = new Map();
+  if (!faixas.length) return mapa;
+
+  // Começa no mês mais antigo com venda registrada — antes disso não há
+  // história que possa ter promovido ninguém.
+  const chaves = Object.keys(unitsByMonth || {}).sort();
+  const alvo = monthKey(year, month);
+  let cursor = chaves.length
+    ? { year: Number(chaves[0].slice(0, 4)), month: Number(chaves[0].slice(5, 7)) }
+    : { year, month };
+
+  let i = 0;
+  for (let guarda = 0; guarda < 600; guarda++) {
+    const chave = monthKey(cursor.year, cursor.month);
+    mapa.set(chave, faixas[i]);
+
+    // Bateu a meta da fase neste mês? A próxima vale a partir do mês
+    // seguinte — nunca no mesmo mês, senão bater a meta faria a pessoa
+    // ficar em falta no instante seguinte.
+    const vendido = Number(unitsByMonth?.[chave]) || 0;
+    const meta = Number(faixas[i]?.monthly_goal) || 0;
+    if (meta > 0 && vendido >= meta) i = Math.min(i + 1, faixas.length - 1);
+
+    if (chave === alvo) break;
+    cursor = nextMonthOf(cursor);
+  }
+  return mapa;
+}
+
+/** A faixa vigente no mês pedido. */
+function faseDoMes(plans, unitsByMonth, year, month) {
+  const mapa = fasesPorMes(plans, unitsByMonth, year, month);
+  const faixas = (plans || []).slice().sort((a, b) => (a.seq || 0) - (b.seq || 0));
+  return mapa.get(monthKey(year, month)) || faixas[0] || null;
+}
+
+/** O mês seguinte — o espelho de prevMonthOf. */
+function nextMonthOf({ year, month }) {
+  return month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
+}
+
+/**
+ * Unidades vendidas mês a mês desde a PRIMEIRA venda do vendedor.
+ *
+ * A fase depende da história inteira: quem bateu 15.000 há dois anos
+ * já subiu, e uma janela curta apagaria essa conquista. É uma consulta
+ * só, e o filtro de vendedor já está no banco.
+ */
+async function unitsByMonthAll(tenantId, userId, year, month) {
+  const fim = monthBounds(year, month).end;
+  const sales = await fetchSales(tenantId, userId, '2000-01-01', fim);
+  const out = {};
+  for (const s of sales) {
+    const key = effectiveDate(s).slice(0, 7);
+    out[key] = (out[key] || 0) + saleUnits(s);
+  }
+  return out;
+}
 
 // ── Configuração do vendedor ─────────────────────────────────
 
@@ -298,9 +394,14 @@ function cycleProgress(unitsByMonth, plans, year, month, cycleMonths) {
   let cursor = { year, month };
   let streak = 0;
 
+  // A meta de cada mês passado é a da fase que valia NAQUELE mês. Usar
+  // a meta de hoje reprovaria retroativamente meses que na época foram
+  // cumpridos — e o vendedor perderia o ciclo por ter subido de fase.
+  const fases = fasesPorMes(plans, unitsByMonth, year, month);
+
   for (let i = 0; i < total; i++) {
     const key = monthKey(cursor.year, cursor.month);
-    const goal = planGoal(planForMonth(plans, cursor.month));
+    const goal = planGoal(fases.get(key));
     const sold = Number(unitsByMonth[key]) || 0;
     if (goal <= 0 || sold < goal) break;
     streak++;
@@ -606,6 +707,7 @@ module.exports = {
   parseMonth, monthKey, prevMonthOf, monthBounds, daysInMonth, effectiveDate,
   fetchSales, saleUnits, saleRevenue, chronological,
   loadPlans, planForMonth, planGoal, tabelaAusente,
+  fasesPorMes, faseDoMes, nextMonthOf, unitsByMonthAll,
   loadSellerConfig, DEFAULT_CONFIG,
   computeCommission, persistCommission,
   cycleProgress, unitsByMonthBack,

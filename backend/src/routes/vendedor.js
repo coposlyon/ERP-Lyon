@@ -51,7 +51,12 @@ router.get('/dashboard', async (req, res) => {
 
     const config = await V.loadSellerConfig(tenantId, userId);
     const { plans, missing } = await V.loadPlans(tenantId, config.plan_group);
-    const plan   = V.planForMonth(plans, month);
+
+    // A META VEM DA FASE, NÃO DO CALENDÁRIO. Precisa da história toda:
+    // quem bateu 15.000 há dois anos já subiu de faixa, e uma janela
+    // curta apagaria a conquista.
+    const unitsByMonth = await V.unitsByMonthAll(tenantId, userId, year, month);
+    const plan   = V.faseDoMes(plans, unitsByMonth, year, month);
     const goal   = V.planGoal(plan);
     const pct    = Number(plan?.commission_pct) || 0;
     const cycleMonths = Number(plan?.cycle_months) || 3;
@@ -68,8 +73,8 @@ router.get('/dashboard', async (req, res) => {
     const referenceMonth = V.monthKey(year, month);
     await V.persistCommission(tenantId, userId, referenceMonth, goal, pct, commission.rows);
 
-    // O ciclo do bônus olha para trás: precisa dos meses anteriores.
-    const unitsByMonth = await V.unitsByMonthBack(tenantId, userId, year, month, cycleMonths);
+    // O ciclo do bônus olha para trás, sobre as mesmas unidades por mês
+    // que decidiram a fase — uma consulta serve às duas contas.
     const cycle = V.cycleProgress(unitsByMonth, plans, year, month, cycleMonths);
 
     const states  = V.statesRanking(sales, config.territory);
