@@ -46,8 +46,6 @@ const FinancialConfig    = lazy(() => import('@/pages/Financial/FinancialConfig'
 const Contas             = lazy(() => import('@/pages/Financial/Contas'));
 const Pricing            = lazy(() => import('@/pages/Pricing/Pricing'));
 const PriceFormation     = lazy(() => import('@/pages/Pricing/PriceFormation'));
-const PriceSimulator     = lazy(() => import('@/pages/Pricing/PriceSimulator'));
-const PricingReports     = lazy(() => import('@/pages/Pricing/PricingReports'));
 const DespesasFixas      = lazy(() => import('@/pages/Rateio/DespesasFixas'));
 const DespesasVariaveis  = lazy(() => import('@/pages/Rateio/DespesasVariaveis'));
 const RateioProduto      = lazy(() => import('@/pages/Rateio/RateioProduto'));
@@ -269,8 +267,12 @@ function AppRoutes() {
         {/* Precificação (Formação de Preço / Simulador / Relatórios) */}
         <Route path="pricing/formacao" element={<Mod m={['financial','products','settings']}><PriceFormation /></Mod>} />
         <Route path="pricing/rateio" element={<Navigate to="/rateio/despesas-fixas" replace />} />
-        <Route path="pricing/simulador" element={<Mod m={['financial','products','settings']}><PriceSimulator /></Mod>} />
-        <Route path="pricing/relatorios" element={<Mod m={['financial','products','settings']}><PricingReports /></Mod>} />
+        {/* Simulador e Relatórios de Preço saíram: a simulação vive dentro
+            da própria Formação de Preço e o relatório é o botão de imprimir
+            a ficha. Os endereços continuam existindo e levando para lá —
+            quebrar um link salvo no favorito de alguém não ensina nada. */}
+        <Route path="pricing/simulador" element={<Navigate to="/pricing/formacao" replace />} />
+        <Route path="pricing/relatorios" element={<Navigate to="/pricing/formacao" replace />} />
         {/* Rateio de Custos (Despesas / Produto / Pedido / Metas / Histórico) */}
         <Route path="rateio" element={<Navigate to="/rateio/despesas-fixas" replace />} />
         <Route path="rateio/despesas-fixas" element={<Mod m={['financial','products','settings']}><DespesasFixas /></Mod>} />

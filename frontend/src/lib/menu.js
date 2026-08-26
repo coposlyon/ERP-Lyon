@@ -26,7 +26,7 @@ import {
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory, ShieldCheck,
-  Calculator, PieChart, SlidersHorizontal, Trophy, Home, Landmark, Star,
+  Calculator, PieChart, Home, Landmark, Star,
   MessageSquare, LogOut, LayoutGrid, Globe, CloudUpload, UserPlus, UserMinus,
 } from 'lucide-react';
 import { SITES } from '@/pages/Sites/registro';
@@ -66,7 +66,6 @@ export const menuItems = [
       { label: 'Clientes', path: '/customers', icon: Users, module: 'customers' },
       { label: 'Aprovações de Cadastro', path: '/cadastro-aprovacoes', icon: ShieldCheck, adminOnly: true },
       { label: 'Fornecedores', path: '/suppliers', icon: Truck, module: 'suppliers' },
-      { label: 'Colaboradores', path: '/employees', icon: Briefcase, module: 'employees' },
       { label: 'Tabelas de Preço', path: '/price-tables', icon: Percent, module: 'price-tables' },
     ],
   },
@@ -91,20 +90,23 @@ export const menuItems = [
       { label: 'Contábil / Fiscal', path: '/contabil', icon: Landmark, module: 'financial' },
     ],
   },
-  {
-    label: 'Precificação',
-    icon: Calculator,
-    children: [
-      { label: 'Formação de Preço', path: '/pricing/formacao', icon: Calculator, module: 'financial' },
-      { label: 'Simulador de Preço', path: '/pricing/simulador', icon: SlidersHorizontal, module: 'financial' },
-      { label: 'Relatórios de Preço', path: '/pricing/relatorios', icon: Trophy, module: 'financial' },
-      { label: 'Análise de Produtos', path: '/pricing', icon: LineChart, module: 'financial', exact: true },
-    ],
-  },
+  // PREÇO E CUSTO VIRARAM UM GRUPO SÓ.
+  //
+  // "Precificação" e "Engenharia de Custos" eram dois menus para a
+  // mesma conta: a despesa fixa cadastrada num vira o rateio por
+  // unidade do outro. Separados, quem ia formar preço não achava de
+  // onde saía o rateio, e quem cadastrava despesa não via o efeito.
+  //
+  // O Simulador de Preço e os Relatórios de Preço saíram: o simulador
+  // já mora dentro da própria Formação de Preço, e o relatório é o
+  // botão de imprimir a ficha. Dois caminhos para a mesma coisa é o
+  // que fazia o menu parecer maior do que o sistema.
   {
     label: 'Engenharia de Custos',
     icon: PieChart,
     children: [
+      { label: 'Formação de Preço', path: '/pricing/formacao', icon: Calculator, module: 'financial' },
+      { label: 'Análise de Produtos', path: '/pricing', icon: LineChart, module: 'financial', exact: true },
       { label: 'Insumos', path: '/engenharia/insumos', icon: FlaskConical, module: 'financial' },
       { label: 'Despesas Fixas', path: '/rateio/despesas-fixas', icon: Home, module: 'financial' },
       { label: 'Despesas Variáveis', path: '/rateio/despesas-variaveis', icon: Percent, module: 'financial' },
@@ -132,6 +134,10 @@ export const menuItems = [
       // ele aqui dentro, o grupo Recursos Humanos também aparece, ainda
       // que com um item só, para quem não é do RH.
       { label: 'Painel RH',           path: '/hr/painel',     icon: LayoutDashboard, module: 'hr' },
+      // O cadastro do colaborador estava em Cadastros, ao lado de
+      // Produtos e Fornecedores. Quem admite, demite e mexe em salário
+      // trabalha aqui — e era daqui que a pessoa tinha que sair toda vez.
+      { label: 'Colaboradores',       path: '/employees',     icon: Briefcase,  module: 'employees' },
       { label: 'Estrutura da Empresa', path: '/hr/estrutura', icon: Building2,      module: 'hr' },
       { label: 'Bater Ponto',         path: '/marcacao',      icon: Fingerprint },
       { label: 'Jornada / Ponto',     path: '/hr/ponto',      icon: Clock,      module: 'hr' },
