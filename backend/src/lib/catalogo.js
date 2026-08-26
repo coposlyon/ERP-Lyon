@@ -430,7 +430,7 @@ async function configDoModelo(tenantId, chave) {
   // Prefere o transparente, que é a base física de tudo que é pintado.
   const referencia = membros.find(p => /TRANSPARENTE/i.test(p.partes.cor || '')) || membros[0];
 
-  const [acabRes, coresRes, procRes, compatRes, gabRes, embRes] = await Promise.all([
+  const [acabRes, coresRes, procRes, compatRes, gabRes, embRes, famRes] = await Promise.all([
     supabase.from('CONFIG_ACABAMENTOS')
       .select('id, name, seq, label_comercial, preco_adicional, preco_metodo, no_catalogo, campos, requer_pintura, requer_borda, requer_jateamento')
       .eq('tenant_id', tenantId).eq('is_active', true).order('seq'),
@@ -447,6 +447,16 @@ async function configDoModelo(tenantId, chave) {
     supabase.from('CATALOGO_EMBALAGEM')
       .select('category_id, product_id, caixa_qtd, max_cores_caixa, min_caixas')
       .eq('tenant_id', tenantId),
+    // A FAMÍLIA DO MODELO — e é ela que diz qual o FORMATO do copo.
+    //
+    // A prévia desenhava um copo só, tapered, para tudo: quem escolhia
+    // caneca via um long drink com a cor certa, e a primeira reação é
+    // achar que o site pegou o produto errado. O formato não é palpite
+    // pelo nome da categoria: é a família declarada no catálogo, a mesma
+    // que monta a vitrine.
+    supabase.from('CATALOGO_FAMILIA_ITENS')
+      .select('familia_id, CATALOGO_FAMILIAS(slug)')
+      .eq('tenant_id', tenantId).eq('category_id', categoryId),
   ]);
   const falha = [acabRes, coresRes, procRes, compatRes].find(r => r.error);
   if (falha) { if (tabelaAusente(falha.error)) return { config_ausente: true }; throw falha.error; }
@@ -550,6 +560,7 @@ async function configDoModelo(tenantId, chave) {
       qtd_minima: Math.max(...membros.map(m => m.min_order_qty || 1)),
       preco_base: precoDe(referencia),
       imagem: membros.map(primeiraFoto).find(Boolean) || null,
+      familia: famRes?.data?.[0]?.CATALOGO_FAMILIAS?.slug || null,
       nome: nomeComercial(base, null, capacidade),
     },
     acabamentos,
