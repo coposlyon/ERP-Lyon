@@ -21,6 +21,9 @@ export default function Products() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  // Qual aba do formulário está aberta — a janela muda de largura por
+  // causa dela (ver o Modal lá embaixo).
+  const [abaProduto, setAbaProduto] = useState('cadastro');
   const [bulkOpen, setBulkOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -312,7 +315,7 @@ export default function Products() {
 
   function openNew() { setEditing(null); setModalOpen(true); }
   function openEdit(product) { setEditing(product); setModalOpen(true); }
-  function closeModal() { setModalOpen(false); setEditing(null); }
+  function closeModal() { setModalOpen(false); setEditing(null); setAbaProduto('cadastro'); }
   function onSaved() { closeModal(); qc.invalidateQueries(['products']); }
 
   const columns = [
@@ -490,8 +493,9 @@ export default function Products() {
         <Pagination page={page} total={data?.total || 0} limit={50} onPageChange={setPage} />
       </div>
 
-      <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Editar Produto' : 'Novo Produto'} size="lg">
-        <ProductForm product={editing} onSaved={onSaved} onCancel={closeModal} />
+      <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Editar Produto' : 'Novo Produto'}
+        size={abaProduto === 'catalogo' ? 'full' : 'lg'}>
+        <ProductForm product={editing} onSaved={onSaved} onCancel={closeModal} onAba={setAbaProduto} />
       </Modal>
 
       {/* input escondido para anexar foto ao clicar no card vazio */}

@@ -148,13 +148,17 @@ export default function CatalogoDoProduto({ productId }) {
             </p>
           </div>
 
-          <div className="text-right shrink-0">
+          {/* O selo e a nota da chave ficam à direita quando há largura e
+              descem para baixo do nome quando não há. Antes eram sempre
+              `text-right`, e na janela estreita a nota se espremia em
+              três linhas encavaladas por cima do nome do produto. */}
+          <div className="shrink-0 sm:text-right">
             <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${
               p.show_in_catalogo ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
             }`}>
               {p.show_in_catalogo ? <><Eye size={13} /> Publicado</> : <><EyeOff size={13} /> Rascunho</>}
             </span>
-            <p className="text-[11px] text-gray-500 mt-1.5 max-w-[220px]">
+            <p className="text-[11px] text-gray-500 mt-1.5 sm:max-w-[220px]">
               A chave de publicação fica na aba <b>Cadastro</b>.
             </p>
           </div>
@@ -198,7 +202,7 @@ export default function CatalogoDoProduto({ productId }) {
       {/* ── Acabamentos ──────────────────────────────────── */}
       <Bloco titulo="Acabamentos permitidos" icone={Layers}
         ajuda="Cada acabamento vira um card na vitrine. O nome ao lado é exatamente o que o cliente vai ler.">
-        <div className="grid gap-1.5 sm:grid-cols-2">
+        <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
           {ficha.acabamentos.map(a => (
             <LinhaTri key={a.id}
               titulo={a.nome}
@@ -228,7 +232,7 @@ export default function CatalogoDoProduto({ productId }) {
               {GRUPOS[grupo]?.ajuda && (
                 <p className="text-[11px] text-gray-500 mt-0.5 mb-1.5">{GRUPOS[grupo].ajuda}</p>
               )}
-              <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 max-h-64 overflow-y-auto pr-1">
+              <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 max-h-64 overflow-y-auto pr-1">
                 {lista.map(c => (
                   <LinhaTri key={c.id} compacto
                     titulo={c.name}
@@ -333,7 +337,14 @@ export default function CatalogoDoProduto({ productId }) {
       </Bloco>
 
       {/* ── Salvar ───────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 pt-3 border-t border-gray-100 sticky bottom-0 bg-white py-3">
+      {/* BARRA, e não um pedaço de conteúdo grudado embaixo. Ela é
+          `sticky`, então o conteúdo passa POR TRÁS dela: sem sangrar até
+          as bordas da janela e sem sombra, a lista de cores aparecia
+          cortada ao lado dela e o resultado parecia tela quebrada.
+          As margens negativas devolvem o respiro que o Modal aplica. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 sticky bottom-0 z-10
+                      -mx-4 sm:-mx-6 -mb-4 px-4 sm:px-6 py-3 bg-white
+                      border-t border-gray-200 shadow-[0_-8px_16px_-8px_rgba(0,0,0,0.25)]">
         <p className="text-xs text-gray-500">
           {mudou
             ? 'Há alterações não salvas nesta aba.'

@@ -33,7 +33,7 @@ function fileToDataUrl(file) {
 // Preço (venda, faixas por quantidade e por impressão) NÃO fica mais aqui:
 // é responsabilidade do módulo de Precificação. O cadastro guarda só o custo.
 
-export default function ProductForm({ product, onSaved, onCancel }) {
+export default function ProductForm({ product, onSaved, onCancel, onAba }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     name: '', code: '', ean: '', category_id: '',
@@ -49,6 +49,10 @@ export default function ProductForm({ product, onSaved, onCancel }) {
   const [mainImage, setMainImage] = useState(null);   // url ou dataURL
   const [loading, setLoading] = useState(false);
   const [aba, setAba] = useState('cadastro');
+  // A ficha de catálogo é larga — dezenas de acabamentos e cores em
+  // colunas. Ela não cabe na largura de um formulário de cadastro, e é a
+  // JANELA que precisa saber disso, não ela. Por isso a aba sobe.
+  useEffect(() => { onAba?.(aba); }, [aba]); // eslint-disable-line
 
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],

@@ -467,9 +467,11 @@ export default function CopoPreview({
     .map(([chave, rotulo]) => (campos[chave] ? { rotulo, opcao: campos[chave] } : null))
     .filter(Boolean);
 
+  // A prévia mora num palco BRANCO (ver Configurador): letra clara aqui
+  // seria letra invisível.
   const rodape = (
     <figcaption className="text-[10.5px] tracking-[0.18em] uppercase mt-1.5"
-      style={{ color: 'rgba(255,255,255,0.55)' }}>
+      style={{ color: '#64748b' }}>
       {face === 'verso' ? 'Verso' : 'Frente'}
     </figcaption>
   );
@@ -489,11 +491,12 @@ export default function CopoPreview({
 
   return (
     <figure className="flex flex-col items-center m-0">
-      {/* SEM CARTÃO ATRÁS. O retângulo creme que ficava aqui existia para
-          esconder o papel branco do estúdio; agora quem tira o papel é o
-          recorte, e a peça fica sobre o azul-noite do catálogo se lendo
-          pelo brilho e pelo contorno — até a caneca preta. Emoldurar a
-          peça era o preço que se pagava por não ter recortado. */}
+      {/* SEM CARTÃO POR FOTO. O branco agora é o palco inteiro da prévia,
+          desenhado uma vez lá no Configurador e cobrindo frente e verso.
+          Um retângulo por foto emoldurava cada copo e os separava, quando
+          são as duas faces da MESMA peça.
+          O recorte continua valendo: foto com papel amarelado ou cinza
+          entra no palco sem uma mancha em volta. */}
       <div className="relative" style={{ height: altura, width: altura * 0.78 }}>
         <FotoDaPeca src={foto} espelhar={espelhar} />
 
@@ -527,10 +530,10 @@ function Aplicados({ itens }) {
     <div className="flex flex-wrap justify-center gap-1.5 mt-2 max-w-[220px]">
       {itens.map(({ rotulo, opcao }) => (
         <span key={rotulo} className="inline-flex items-center gap-1 rounded-full pl-1 pr-2 py-0.5 text-[10px]"
-          style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.78)' }}
+          style={{ background: 'rgba(15,23,42,0.06)', color: '#334155' }}
           title={`${rotulo}: ${opcao.name}`}>
           <span className="w-3 h-3 rounded-full shrink-0"
-            style={{ background: corDe(opcao), border: '1px solid rgba(255,255,255,0.35)' }} />
+            style={{ background: corDe(opcao), border: '1px solid rgba(15,23,42,0.25)' }} />
           {rotulo}: {opcao.name}
         </span>
       ))}

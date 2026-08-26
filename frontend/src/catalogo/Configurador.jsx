@@ -524,22 +524,32 @@ export default function Configurador() {
         {/* ═══ COLUNA 2 — prévia e ações ═══ */}
         <div className="space-y-3 xl:sticky xl:top-4">
           <Painel titulo="A. Pré-visualização" cor={NEON.azul} icone={Box}>
-            <div className="flex items-end justify-center gap-4">
-              <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteFrente} face="frente"
-                gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 190 : 216} />
-              {personalizado && estado.posicao === 'frente_verso' && (
-                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteVerso} face="verso"
-                  gabarito={gabarito} altura={190} />
+            {/* O PALCO BRANCO.
+                Fundo branco atrás de peça é o estúdio, e é o que o
+                cliente já espera de foto de produto: sobre o azul-noite
+                do catálogo a caneca preta some e a branca vira um borrão.
+                O branco é UM SÓ, cobrindo a prévia inteira — frente,
+                verso e as legendas. Um cartãozinho por foto emoldurava
+                cada copo e os separava; o palco inteiro mostra as duas
+                faces da MESMA peça. */}
+            <div className="rounded-xl px-3 py-4" style={{ background: '#ffffff' }}>
+              <div className="flex items-end justify-center gap-4">
+                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteFrente} face="frente"
+                  gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 190 : 216} />
+                {personalizado && estado.posicao === 'frente_verso' && (
+                  <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteVerso} face="verso"
+                    gabarito={gabarito} altura={190} />
+                )}
+              </div>
+
+              {/* O copo cinza sem cor escolhida parece defeito. Uma linha
+                  explicando transforma "quebrou" em "falta escolher". */}
+              {!escolhaVisual.campos?.cor_base && !escolhaVisual.campos?.cor_produto && (
+                <p className="text-[11px] text-center mt-2" style={{ color: '#64748b' }}>
+                  Escolha as cores ao lado para ver o copo como ele vai ficar.
+                </p>
               )}
             </div>
-
-            {/* O copo cinza sem cor escolhida parece defeito. Uma linha
-                explicando transforma "quebrou" em "falta escolher". */}
-            {!escolhaVisual.campos?.cor_base && !escolhaVisual.campos?.cor_produto && (
-              <p className="text-[11px] text-center mt-1" style={{ color: NEON.fraco }}>
-                Escolha as cores ao lado para ver o copo como ele vai ficar.
-              </p>
-            )}
 
             <div className="mt-3">
               <Botao icone={Maximize2} cor={NEON.ciano} onClick={() => setTelaCheia(true)}>
@@ -716,14 +726,19 @@ export default function Configurador() {
               <X size={18} />
             </button>
           </div>
-          <div className="flex-1 flex items-end justify-center gap-8 pb-10 px-4"
+          <div className="flex-1 flex items-center justify-center pb-8 px-4 overflow-auto"
             onClick={e => e.stopPropagation()}>
-            <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteFrente} face="frente"
-              gabarito={gabarito} altura={Math.min(560, window.innerHeight * 0.68)} />
-            {personalizado && estado.posicao === 'frente_verso' && (
-              <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteVerso} face="verso"
-                gabarito={gabarito} altura={Math.min(560, window.innerHeight * 0.68)} />
-            )}
+            {/* O mesmo palco branco da prévia pequena: ver maior não pode
+                significar ver diferente. */}
+            <div className="rounded-2xl px-6 py-6 flex items-end justify-center gap-8"
+              style={{ background: '#ffffff' }}>
+              <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteFrente} face="frente"
+                gabarito={gabarito} altura={Math.min(520, window.innerHeight * 0.62)} />
+              {personalizado && estado.posicao === 'frente_verso' && (
+                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteVerso} face="verso"
+                  gabarito={gabarito} altura={Math.min(520, window.innerHeight * 0.62)} />
+              )}
+            </div>
           </div>
         </div>
       )}

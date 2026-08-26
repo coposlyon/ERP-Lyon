@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Eye, CheckCircle2, Siren, RotateCcw, Wrench, Maximize2, Minimize2 } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Eye, CheckCircle2, Siren, RotateCcw, Wrench, Maximize2, Minimize2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,10 +13,6 @@ import { useTelaCheia } from '@/contexts/TelaCheiaContext';
 
 const fmt = fmtBRL;
 const dataHora = iso => { if (!iso) return '—'; try { return format(parseISO(iso), 'dd/MM/yyyy HH:mm'); } catch { return iso; } };
-// Data sem hora, para as colunas de prazo. Um traço quando não há data:
-// prazo em branco e prazo inexistente são a mesma coluna e respostas
-// diferentes, e o traço é o que diz "ninguém definiu ainda".
-const dia = iso => { if (!iso) return '—'; try { return format(parseISO(String(iso).slice(0, 10)), 'dd/MM/yyyy'); } catch { return iso; } };
 
 const POR_PAGINA = [10, 25, 50, 100];
 
@@ -49,7 +45,6 @@ export default function Sales() {
   // procurando um de agosto.
   const [showTools, setShowTools] = useState(false);
   const [delTarget, setDelTarget] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
   const { isAdmin, isManager } = useAuth();
   // Gestor apaga direto por aqui, confirmando com a propria senha.
   const podeExcluir = isAdmin || isManager;
@@ -88,7 +83,6 @@ export default function Sales() {
   // que está acontecendo. O botão Finalizados traz o histórico de volta,
   // que é o caminho da recompra.
   const rows = finalizados ? todas : todas.filter(r => !ehFinal(r.status));
-  const selected = rows.find(r => r.id === selectedId) || null;
   const pageTotal  = rows.reduce((s, r) => s + (r.total || 0), 0);
   const pageFreight = rows.reduce((s, r) => s + (r.freight || 0), 0);
   const totalPaginas = Math.max(1, Math.ceil((data?.total || 0) / porPagina));
@@ -101,41 +95,48 @@ export default function Sales() {
   }
   const hasFilters = search || status || startDate || endDate || finalizados;
 
-  function openDelete() { if (selected && podeExcluir) setDelTarget(selected); }
-  function alterar() { if (selectedId) navigate(`/sales/${selectedId}`); }
 
-  // Atalhos estilo Delphi (F2 incluir, F3 alterar, F4 excluir, F5 atualizar, F6 importar, Ctrl+F pesquisar, ESC fechar)
+  /** Abrir o pedido. É o que o clique na linha faz, e o que F3 repete. */
+  function abrirPedido(id) { navigate(`/sales/${id}/detalhe`); }
+
+  // Atalhos estilo Delphi (F2 incluir, F5 atualizar, F6 importar, Ctrl+F pesquisar, ESC fechar).
+  //
+  // F3 (alterar) e F4 (excluir) SAÍRAM. Eles agiam sobre "a linha
+  // selecionada", e não existe mais linha selecionada: clicar na linha
+  // abre o pedido. Alterar é o próprio clique; excluir é a lixeira da
+  // linha, que já pede a senha. Atalho que age sobre um alvo invisível
+  // é atalho que uma hora apaga o pedido errado.
   useEffect(() => {
     const onKey = (e) => {
       if (delTarget) return; // deixa o modal tratar
       if (e.key === 'F2') { e.preventDefault(); navigate('/sales/new'); }
-      else if (e.key === 'F3') { if (selectedId) { e.preventDefault(); alterar(); } }
-      else if (e.key === 'F4') { if (selectedId && podeExcluir) { e.preventDefault(); openDelete(); } }
       else if (e.key === 'F5') { e.preventDefault(); qc.invalidateQueries(['sales']); }
       else if (e.key === 'F6') { e.preventDefault(); navigate('/quotes'); }
       else if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); searchRef.current?.focus(); }
       else if (e.key === 'Escape') {
         const a = document.activeElement;
         if (a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
-        // Esc desfaz UMA camada por vez, da mais recente para a mais
-        // antiga: tela cheia, painel lateral, e só então a tela. Sair da
-        // tela cheia jogando a pessoa para fora do módulo seria a mesma
-        // armadilha que fechar o painel a jogava.
+        // Esc devolve a moldura antes de sair da tela: quem está em tela
+        // cheia apertando ESC quer o menu de volta, não ser jogado para
+        // fora do módulo.
         e.preventDefault();
         if (telaCheia.ativo) telaCheia.sair();
-        else if (selectedId) setSelectedId(null);
         else navigate('/');
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedId, isAdmin, delTarget, telaCheia.ativo]); // eslint-disable-line
+  }, [isAdmin, delTarget, telaCheia.ativo]); // eslint-disable-line
 
   const th = 'text-[11px] font-semibold uppercase tracking-wider';
 
   return (
     <div className="space-y-4">
       <style>{CSS_ATENCAO}</style>
+      {/* A linha inteira abre o pedido, e nada na tela dizia isso. O
+          realce ao passar o mouse é o aviso: aqui se clica. */}
+      <style>{`.linha-pedido:hover{background:rgba(37,99,235,0.14)}
+               .linha-pedido:focus-visible{background:rgba(37,99,235,0.2);outline:none}`}</style>
 
       {/* ── Cabeçalho ─────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -216,7 +217,7 @@ export default function Sales() {
 
         <button onClick={() => setShowTools(x => !x)}
           className="flex items-center gap-2 px-3 py-2.5 rounded-[0.6rem] text-sm"
-          title="Ferramentas do pedido (F2 incluir, F3 alterar, F4 excluir, F5 atualizar, F6 importar)"
+          title="Ferramentas do pedido (F2 incluir, F5 atualizar, F6 importar)"
           style={{ background: v.control.background, color: v.textMuted, border: v.control.border }}>
           <Wrench size={15} />
           <ChevronRight size={13} style={{ transform: showTools ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
@@ -230,8 +231,6 @@ export default function Sales() {
         <div style={{ ...v.card, padding: '0.75rem 1rem' }}>
           <div className="flex items-center gap-1 flex-wrap">
             <TBtn icon={Plus}      label="Incluir"   sub="F2" onClick={() => navigate('/sales/new')} />
-            <TBtn icon={Pencil}    label="Alterar"   sub="F3" onClick={alterar} disabled={!selectedId} />
-            <TBtn icon={Trash2}    label="Excluir"   sub="F4" onClick={openDelete} disabled={!selectedId || !isAdmin} danger />
             <TBtn icon={RefreshCw} label="Atualizar" sub="F5" onClick={() => qc.invalidateQueries(['sales'])} />
             <span className="w-px h-5 mx-1" style={{ background: v.divider }} />
             <TBtn icon={FileInput} label="Importar Orçamento" sub="F6" onClick={() => navigate('/quotes')} />
@@ -250,8 +249,8 @@ export default function Sales() {
             justamente o que o sistema antigo não obrigava a fazer.
 
             Então a grade fica com o que serve para ACHAR o pedido, e o
-            resto — prazos, transportadora, cotação, itens — abre no
-            painel lateral ao clicar na linha. Nada saiu do sistema:
+            resto — prazos, transportadora, cotação, itens — está na tela
+            do pedido, que o clique na linha abre. Nada saiu do sistema:
             mudou de lugar, para um lugar que cabe. */}
         <div>
             {/* CABECALHO CONGELADO.
@@ -292,15 +291,14 @@ export default function Sales() {
               </p>
             ) : rows.map(row => {
               const info = statusInfo[row.status];
-              const sel = row.id === selectedId;
               const atencao = calcularAtencao(row, info);
               return (
                 <div key={row.id}
-                  onClick={() => setSelectedId(row.id)}
-                  onDoubleClick={() => navigate(`/sales/${row.id}`)}
-                  className="flex items-center gap-3 px-4 py-3 text-sm cursor-pointer"
-                  style={{ borderBottom: `1px solid ${v.divider}`,
-                           background: sel ? 'rgba(37,99,235,0.14)' : 'transparent' }}>
+                  onClick={() => abrirPedido(row.id)}
+                  role="button" tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirPedido(row.id); } }}
+                  className="flex items-center gap-3 px-4 py-3 text-sm cursor-pointer linha-pedido"
+                  style={{ borderBottom: `1px solid ${v.divider}` }}>
                   <span className="w-20 shrink-0 font-semibold" style={{ color: '#60a5fa' }}>
                     {codigoPedido(row.number)}
                   </span>
@@ -335,11 +333,11 @@ export default function Sales() {
                       ficam ver e — para gestor — excluir. */}
                   <span className="w-20 shrink-0 flex justify-center gap-1.5"
                     onClick={e => e.stopPropagation()}>
-                    {/* Abre a tela do pedido — a mesma que o vendedor vê.
-                        Selecionar a linha também, para F3/F4 continuarem
-                        valendo em quem volta. */}
+                    {/* O mesmo destino do clique na linha. Fica porque a
+                        linha inteira ser clicável não é visível, e o olho
+                        é o que conta que dá para abrir. */}
                     <Acao titulo="Abrir o pedido" cor="#3b82f6" Icon={Eye}
-                      onClick={() => { setSelectedId(row.id); navigate(`/sales/${row.id}/detalhe`); }} />
+                      onClick={() => abrirPedido(row.id)} />
                     {podeExcluir && (
                       <Acao titulo="Excluir pedido (pede sua senha)" cor="#ef4444" Icon={Trash2}
                         onClick={() => setDelTarget(row)} />
@@ -369,12 +367,12 @@ export default function Sales() {
             {isFetching && <span className="ml-2 text-xs opacity-60">atualizando…</span>}
           </span>
           <div className="flex items-center gap-1.5">
-            <button onClick={() => { setPage(p => Math.max(1, p - 1)); setSelectedId(null); }} disabled={page === 1}
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
               className="p-1.5 rounded-lg disabled:opacity-30" style={{ border: v.control.border }}>
               <ChevronLeft size={15} />
             </button>
             <span className="px-3 py-1 rounded-lg text-sm font-semibold" style={{ background: '#2563eb', color: 'white' }}>{page}</span>
-            <button onClick={() => { setPage(p => Math.min(totalPaginas, p + 1)); setSelectedId(null); }} disabled={page >= totalPaginas}
+            <button onClick={() => setPage(p => Math.min(totalPaginas, p + 1))} disabled={page >= totalPaginas}
               className="p-1.5 rounded-lg disabled:opacity-30" style={{ border: v.control.border }}>
               <ChevronRight size={15} />
             </button>
@@ -396,29 +394,21 @@ export default function Sales() {
         <Legenda Icon={Eye} cor="#3b82f6" texto="Abrir o pedido" />
       </div>
 
-      {/* O PAINEL DE ABAS SAIU DAQUI e foi para a tela do pedido
-          (/sales/:id). Ele ocupava meia tela abaixo da lista para
-          mostrar o que já é o assunto da tela seguinte — e a lista
-          existe para achar o pedido, não para trabalhá-lo.
-          Nada se perdeu: transportadora, rastreio, modalidade de
-          entrega, forma de pagamento, status e anexos continuam lá,
-          nas mesmas abas. */}
-
-      {/* O lateral do pedido selecionado. */}
-      <PainelPedido
-        row={selected}
-        podeExcluir={podeExcluir}
-        onClose={() => setSelectedId(null)}
-        onAbrir={() => navigate(`/sales/${selected.id}/detalhe`)}
-        onExcluir={() => setDelTarget(selected)}
-      />
+      {/* O PAINEL LATERAL SAIU DAQUI.
+          Ele abria ao clicar na linha e mostrava um resumo — cliente,
+          prazos, transporte, itens, valores — com um botão "Abrir o
+          pedido" no pé. Ou seja: cobrava um clique e meia tela para
+          mostrar de longe o que a tela do pedido mostra de perto, e no
+          fim mandava para a tela do pedido do mesmo jeito.
+          Agora o clique na linha abre o pedido completo direto. Nada se
+          perdeu: tudo o que o resumo mostrava está lá, e mais. */}
 
       {/* Excluir pedido (admin + senha) */}
       {/* Exclusao com senha — mesma peca usada na tela do vendedor,
           la no modo que pede o acesso do gerente. */}
       <ExcluirPedidoModal pedido={delTarget} modo="proprio"
         onClose={() => setDelTarget(null)}
-        onExcluido={() => { setSelectedId(null); qc.invalidateQueries(['sales']); }} />
+        onExcluido={() => qc.invalidateQueries(['sales'])} />
     </div>
   );
 }
@@ -499,151 +489,5 @@ function Legenda({ Icon, cor, texto }) {
       </span>
       <span style={{ color: v.textPrimary }}>{texto}</span>
     </span>
-  );
-}
-
-// ── PAINEL LATERAL ───────────────────────────────────────────
-//
-// O QUE NÃO CABE NA GRADE ABRE AQUI.
-//
-// Catorze colunas não cabem em tela nenhuma, e arrastar a tabela para o
-// lado só para ler o prazo de um pedido é trabalho que o sistema antigo
-// não pedia. A grade ficou com o que serve para ACHAR o pedido; prazos,
-// transporte, valores e itens abrem neste painel ao clicar na linha.
-//
-// Ele lê o que a LISTA JÁ TROUXE — cliente, valores, prazos,
-// transportadora — e busca no servidor só o que falta: os itens. Assim
-// o painel abre cheio no mesmo instante do clique, e a única espera é
-// pela parte que ninguém tinha ainda.
-function PainelPedido({ row, onClose, onAbrir, podeExcluir, onExcluir }) {
-  const v = useVend();
-
-  const { data: detalhe, isLoading } = useQuery({
-    queryKey: ['sale', row?.id],
-    queryFn: () => api.get(`/sales/${row.id}`),
-    enabled: !!row?.id,
-  });
-
-  if (!row) return null;
-
-  const itens = detalhe?.items || [];
-  const retirada = (detalhe?.delivery_mode || row.delivery_mode) === 'retirada'
-    || /retirada no local/i.test(String(detalhe?.notes || row.notes || ''));
-
-  return (
-    <>
-      {/* Fundo só no celular: no computador a lista continua clicável
-          ao lado, para pular de um pedido para outro sem fechar nada. */}
-      <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={onClose} />
-
-      <aside className="fixed top-0 right-0 bottom-0 z-40 w-full sm:w-[420px] flex flex-col shadow-2xl"
-        style={{ background: '#080d24', borderLeft: '1px solid rgba(96,165,250,0.28)' }}>
-
-        <div className="flex items-start justify-between gap-3 px-4 py-3 shrink-0"
-          style={{ borderBottom: '1px solid rgba(96,165,250,0.22)' }}>
-          <div className="min-w-0">
-            <p className="text-lg font-bold" style={{ color: '#60a5fa' }}>{codigoPedido(row.number)}</p>
-            <p className="text-sm truncate" style={{ color: v.textPrimary }}>
-              {row.CLIENTES?.name || 'Consumidor Final'}
-            </p>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-lg shrink-0"
-            style={{ color: v.textMuted }} aria-label="Fechar"><X size={18} /></button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-
-          <Secao titulo="Cliente" v={v}>
-            <Dado v={v} r="Código" d={codigoCliente(row.CLIENTES?.display_id) || '—'} />
-            <Dado v={v} r="CPF / CNPJ" d={row.CLIENTES?.cpf_cnpj || '—'} />
-            <Dado v={v} r="Vendedor" d={row.USUARIOS?.name || '—'} />
-          </Secao>
-
-          <Secao titulo="Prazos" v={v}>
-            <Dado v={v} r="Data do evento" d={dia(row.event_date)} />
-            <Dado v={v} r="Data de saída" d={dia(row.ship_date)} />
-            <Dado v={v} r="Previsão de entrega" d={dia(row.delivery_date || row.max_delivery_date)} />
-            <Dado v={v} r="Transporte" d={row.transport_days ? `${row.transport_days} dias úteis` : '—'} />
-          </Secao>
-
-          <Secao titulo={retirada ? 'Retirada no local' : 'Transporte'} v={v}>
-            {retirada ? (
-              <p className="text-[12px]" style={{ color: v.textMuted }}>
-                O cliente vem buscar — este pedido não passa por coleta, trânsito nem entrega.
-              </p>
-            ) : (
-              <>
-                <Dado v={v} r="Transportadora" d={row.transportadora || '—'} />
-                <Dado v={v} r="Cotação" d={row.freight_quote || '—'} />
-                <Dado v={v} r="Rastreio" d={row.tracking_code || '—'} />
-              </>
-            )}
-          </Secao>
-
-          <Secao titulo="Itens" v={v}>
-            {isLoading ? (
-              <div className="py-3 flex justify-center"><Loader2 size={16} className="animate-spin" style={{ color: v.textMuted }} /></div>
-            ) : itens.length === 0 ? (
-              <p className="text-[12px]" style={{ color: v.textSubtle }}>Sem itens neste pedido.</p>
-            ) : itens.map(it => (
-              <div key={it.id} className="py-1.5 text-[12px]"
-                style={{ borderBottom: `1px solid ${v.divider}` }}>
-                <p className="truncate" style={{ color: v.textPrimary }} title={it.product_name || it.PRODUTOS?.name}>
-                  {it.product_name || it.PRODUTOS?.name || '—'}
-                </p>
-                <p style={{ color: v.textMuted }}>
-                  {Number(it.quantity) || 0} × {fmt(it.unit_price)} = <b style={{ color: v.textPrimary }}>{fmt(it.total)}</b>
-                </p>
-              </div>
-            ))}
-          </Secao>
-
-          <Secao titulo="Valores" v={v}>
-            <Dado v={v} r="Produtos" d={fmt(row.subtotal)} />
-            <Dado v={v} r="Frete" d={row.freight > 0 ? fmt(row.freight) : '—'} />
-            {Number(row.discount) > 0 && <Dado v={v} r="Desconto" d={`− ${fmt(row.discount)}`} />}
-            <div className="flex items-baseline justify-between gap-3 pt-2 mt-1"
-              style={{ borderTop: '1px solid rgba(96,165,250,0.25)' }}>
-              <span className="text-sm font-semibold" style={{ color: v.textPrimary }}>Total</span>
-              <span className="text-xl font-bold" style={{ color: '#22d3ee' }}>{fmt(row.total)}</span>
-            </div>
-          </Secao>
-        </div>
-
-        <div className="px-4 py-3 flex gap-2 shrink-0"
-          style={{ borderTop: '1px solid rgba(96,165,250,0.22)' }}>
-          <button onClick={onAbrir} className="btn-primary btn-sm flex-1 justify-center">
-            <Eye size={14} /> Abrir o pedido
-          </button>
-          {podeExcluir && (
-            <button onClick={onExcluir} className="btn-secondary btn-sm"
-              style={{ color: '#f87171' }} title="Excluir pedido">
-              <Trash2 size={14} />
-            </button>
-          )}
-        </div>
-      </aside>
-    </>
-  );
-}
-
-function Secao({ titulo, children, v }) {
-  return (
-    <section>
-      <p className="text-[11px] uppercase tracking-wider mb-1.5" style={{ color: '#60a5fa' }}>{titulo}</p>
-      <div className="rounded-xl px-3 py-2"
-        style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${v.divider}` }}>
-        {children}
-      </div>
-    </section>
-  );
-}
-
-function Dado({ r, d, v }) {
-  return (
-    <div className="flex items-start justify-between gap-3 py-0.5 text-[12px]">
-      <span className="shrink-0" style={{ color: v.textMuted }}>{r}</span>
-      <span className="text-right truncate" style={{ color: v.textPrimary }} title={String(d)}>{d}</span>
-    </div>
   );
 }

@@ -22,7 +22,13 @@ function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 }
 
-export default function Quotes() {
+/**
+ * @param embutido  true quando esta lista é uma ABA de outra tela
+ *   (Pagamentos da Loja). Aí o título da página não vem junto: a tela
+ *   que hospeda já disse onde a pessoa está, e dois títulos empilhados
+ *   é o que faz uma aba parecer uma página que abriu por engano.
+ */
+export default function Quotes({ embutido = false }) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -142,7 +148,7 @@ export default function Quotes() {
     <div className="space-y-4">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Orçamentos</h1>
+          {!embutido && <h1 className="page-title">Orçamentos</h1>}
           <p className="text-sm text-gray-500 mt-1">{data?.total || 0} orçamentos</p>
         </div>
         <Link to="/quotes/new" className="btn-primary">

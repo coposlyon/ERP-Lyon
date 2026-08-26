@@ -47,15 +47,18 @@ export const menuItems = [
     children: [
       { label: 'Painel do Vendedor', path: '/vendedor', icon: Target, module: 'vendedor' },
       { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart, module: 'sales' },
+      // ORÇAMENTOS SAIU DAQUI e virou uma aba de Pagamentos da Loja, ao
+      // lado de Cancelados. As duas telas respondem a mesma pergunta —
+      // "o que ainda não virou pedido?" — e como itens vizinhos no menu
+      // obrigavam a escolher entre elas antes de saber qual das duas
+      // tinha a resposta. A rota /quotes continua de pé para quem tem o
+      // link salvo e para o F6 do Pedido de Venda.
       { label: 'Pagamentos da Loja', path: '/store-payments', icon: Wallet, module: 'sales' },
-      { label: 'Orçamentos', path: '/quotes', icon: ClipboardList, module: 'quotes' },
-      { label: 'Estúdio 3D', path: '/studio', icon: Box, module: 'customizations' },
-      { label: 'Cupons de Desconto', path: '/coupons', icon: Tag, module: 'sales' },
-      // Lyon Prime e Marketing viviam soltos no primeiro nível. Os dois
-      // falam com CLIENTE — fidelidade e campanha — e é isso que a
-      // pessoa do comercial está fazendo quando abre qualquer um deles.
+      // ESTÚDIO 3D e CUPONS DE DESCONTO saíram do menu. Nenhum dos dois
+      // entrou na rotina da loja: o estúdio nunca passou de protótipo e
+      // desconto quem dá é o vendedor, no pedido. As rotas seguem
+      // existindo — o que saiu foi o convite a abri-las todo dia.
       { label: 'Lyon Prime', path: '/lyon-prime', icon: Star, module: 'customers' },
-      { label: 'Marketing', path: '/marketing', icon: Megaphone, module: 'marketing' },
       // A tela onde as METAS sao definidas. Ela existia so como
       // endereco: nenhum item de menu e nenhum botao levavam ate ela, e
       // quem precisasse subir a meta de 15 para 20 mil tinha que saber
@@ -67,6 +70,19 @@ export const menuItems = [
       // toda vez que alguem procurava o que realmente usa.
       { label: 'Plano de Metas', path: '/vendedor/config', icon: Trophy, adminOnly: true },
     ],
+  },
+  // MARKETING É MÓDULO PRÓPRIO.
+  //
+  // Ele morava dentro de Comercial, ao lado de Pedidos e Pagamentos,
+  // porque fala com cliente. Só que quem abre Marketing não está
+  // vendendo: está montando campanha, arte e disparo — outro trabalho,
+  // outra hora do dia, outra pessoa muitas vezes. Dentro do Comercial
+  // ele era a última linha de uma lista que ninguém lê até o fim.
+  {
+    label: 'Marketing',
+    icon: Megaphone,
+    path: '/marketing',
+    module: 'marketing',
   },
   {
     label: 'Cadastros',

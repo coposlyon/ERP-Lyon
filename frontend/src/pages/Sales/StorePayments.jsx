@@ -7,18 +7,38 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
+import Quotes from '@/pages/Quotes/Quotes';
+import { useAuth } from '@/contexts/AuthContext';
 
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 const dt = iso => iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
+// ORÇAMENTOS ENTROU AQUI, depois de Cancelados.
+//
+// As quatro abas respondem a mesma pergunta em quatro tempos: o que
+// esperamos receber, o que recebemos, o que não vai vir, e o que ainda
+// nem virou pedido. Orçamento era um item de menu à parte, e como item
+// à parte obrigava a escolher entre duas telas antes de saber qual das
+// duas tinha a resposta.
+//
+// A aba não pede status ao servidor de pagamentos: ela é a própria tela
+// de Orçamentos morando aqui dentro.
 const ABAS = [
   { key: 'aguardando_pagamento', label: 'Aguardando pagamento' },
   { key: 'pago',                 label: 'Confirmados' },
   { key: 'cancelado',            label: 'Cancelados' },
+  { key: 'orcamentos',           label: 'Orçamentos' },
 ];
+
+const ehOrcamentos = a => a === 'orcamentos';
 
 export default function StorePayments() {
   const qc = useQueryClient();
+  const { hasModule, isAdmin } = useAuth();
+  // Quem não tem o módulo de orçamentos não ganha a aba: ela abriria uma
+  // lista que o servidor recusa, e recusa em silêncio parece defeito.
+  const podeOrcamentos = isAdmin || hasModule('quotes');
+  const abas = ABAS.filter(a => !ehOrcamentos(a.key) || podeOrcamentos);
   const [aba, setAba] = useState('aguardando_pagamento');
   const [aberto, setAberto] = useState(null);     // pedido no modal de detalhe
   const [cancelando, setCancelando] = useState(null);
@@ -28,6 +48,9 @@ export default function StorePayments() {
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['store-payments', aba],
     queryFn: () => api.get(`/store-payments?status=${aba}`),
+    // Orçamento não é status de pagamento: naquela aba não há o que
+    // perguntar a esta rota.
+    enabled: !ehOrcamentos(aba),
     refetchInterval: aba === 'aguardando_pagamento' ? 60000 : false,
   });
   const pedidos = data?.data || [];
@@ -75,17 +98,21 @@ export default function StorePayments() {
           <div>
             <h1 className="page-title">Pagamentos da Loja</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              O PIX cai direto na conta. Confirme aqui e o pedido entra em Pedidos de Venda.
+              {ehOrcamentos(aba)
+                ? 'Os orçamentos abertos — o que ainda nem virou pedido.'
+                : 'O PIX cai direto na conta. Confirme aqui e o pedido entra em Pedidos de Venda.'}
             </p>
           </div>
         </div>
-        <button onClick={() => refetch()} className="btn-secondary">
-          <RefreshCw size={15} className={isFetching ? 'animate-spin' : ''} /> Atualizar
-        </button>
+        {!ehOrcamentos(aba) && (
+          <button onClick={() => refetch()} className="btn-secondary">
+            <RefreshCw size={15} className={isFetching ? 'animate-spin' : ''} /> Atualizar
+          </button>
+        )}
       </div>
 
       <div className="flex gap-1.5 flex-wrap">
-        {ABAS.map(a => (
+        {abas.map(a => (
           <button key={a.key} onClick={() => setAba(a.key)}
             className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${aba === a.key ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}>
             {a.label}
@@ -93,7 +120,9 @@ export default function StorePayments() {
         ))}
       </div>
 
-      {isLoading ? (
+      {ehOrcamentos(aba) ? (
+        <Quotes embutido />
+      ) : isLoading ? (
         <div className="card p-10 text-center text-gray-400">Carregando...</div>
       ) : pedidos.length === 0 ? (
         <div className="card p-10 text-center">
