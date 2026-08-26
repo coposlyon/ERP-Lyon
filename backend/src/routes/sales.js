@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
 const supabase = require('../config/supabase');
+// Quem sabe se o pedido é entrega ou retirada — a mesma resposta que a
+// linha do tempo usa, para as duas nunca discordarem.
+const A = require('../lib/atencao');
 const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { validate } = require('../middleware/validate');
@@ -339,14 +342,31 @@ router.patch('/:id/status', async (req, res) => {
 
   try {
     // registra a mudança de status no histórico do pedido (se a coluna existir)
-    const { data: cur } = await supabase.from('VENDAS')
-      .select('status, production_log').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    let { data: cur } = await supabase.from('VENDAS')
+      .select('status, production_log, delivery_mode, notes')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!cur) {
+      // Base sem a migração 090: sem a coluna, o pedido ainda tem que abrir.
+      ({ data: cur } = await supabase.from('VENDAS')
+        .select('status, production_log, notes')
+        .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle());
+    }
+
+    // A SEQUÊNCIA DEPENDE DA MODALIDADE.
+    //
+    // Em retirada não existe trânsito — o cliente vem buscar. Com a
+    // régua fixa, a trava de "não pular etapas" exigia passar por
+    // "em trânsito" para chegar em "entregue": ou seja, para fechar um
+    // pedido retirado no balcão alguém teria que mentir que ele viajou.
+    const sequencia = A.ehRetirada(cur)
+      ? SALE_STATUS_ORDER.filter(s => s !== 'em_transito')
+      : SALE_STATUS_ORDER;
 
     // Não deixa pular etapas: só avança 1 passo (pode voltar para corrigir)
-    const curIdx = SALE_STATUS_ORDER.indexOf(cur?.status);
-    const newIdx = SALE_STATUS_ORDER.indexOf(status);
+    const curIdx = sequencia.indexOf(cur?.status);
+    const newIdx = sequencia.indexOf(status);
     if (curIdx >= 0 && newIdx > curIdx + 1) {
-      return res.status(400).json({ error: `Não é possível pular etapas. O próximo status permitido é "${SALE_STATUS_ORDER[curIdx + 1]}".` });
+      return res.status(400).json({ error: `Não é possível pular etapas. O próximo status permitido é "${sequencia[curIdx + 1]}".` });
     }
 
     const log = Array.isArray(cur?.production_log) ? cur.production_log : [];
@@ -389,16 +409,25 @@ router.post('/:id/start', async (req, res) => {
 
 // Define a transportadora + código de rastreio do pedido (aba Transportadores)
 router.patch('/:id/shipping', async (req, res) => {
-  const { carrier_id, tracking_code } = req.body || {};
+  const { carrier_id, tracking_code, delivery_mode } = req.body || {};
   try {
     const patch = {
       carrier_id: carrier_id || null,
       tracking_code: (tracking_code || '').trim() || null,
     };
+    // Entrega ou retirada (migração 090). Só entra no patch quando vem
+    // na requisição: tela antiga que não manda o campo não pode
+    // transformar todo pedido em entrega sem querer.
+    if (delivery_mode !== undefined) {
+      patch.delivery_mode = delivery_mode === 'retirada' ? 'retirada' : 'entrega';
+    }
     const { data, error } = await supabase.from('VENDAS').update(patch)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     if (error) throw error;
-    audit(req, 'update', 'sale', req.params.id, { action: 'shipping', tracking_code: patch.tracking_code });
+    audit(req, 'update', 'sale', req.params.id, {
+      action: 'shipping', tracking_code: patch.tracking_code,
+      delivery_mode: patch.delivery_mode ?? null,
+    });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -131,7 +131,7 @@ router.get('/pedidos/:id', async (req, res) => {
     const CAMPOS = `
       id, number, status, origin, source, subtotal, discount, freight, total,
       created_at, operation_date, event_date, ship_date, delivery_date, max_delivery_date,
-      payment_method, notes, artwork_url, artwork_notes, receipt_url, user_id, carrier_id,
+      payment_method, notes, delivery_mode, artwork_url, artwork_notes, receipt_url, user_id, carrier_id,
       tracking_code, freight_quote, avisos, production_log, collect_date, transport_days,
       CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating, created_at ),
       USUARIOS ( id, name ),
@@ -144,6 +144,7 @@ router.get('/pedidos/:id', async (req, res) => {
     if (error && /column|does not exist|schema cache/i.test(error.message || '')) {
       const basico = CAMPOS
         .replace(/freight_quote, avisos, production_log, collect_date, transport_days,/, 'production_log,')
+        .replace(/, delivery_mode/, '')
         .replace(/, event_date/, '');
       ({ data, error } = await supabase.from('VENDAS').select(basico)
         .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle());

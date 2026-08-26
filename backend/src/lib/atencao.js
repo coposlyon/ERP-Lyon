@@ -123,6 +123,34 @@ const listaStatus = () =>
 const finalizado = s => !!infoStatus(s).final;
 
 /** As etapas que desenham balão na linha do tempo, na ordem do fluxo. */
+/**
+ * O pedido é para RETIRAR, e não para entregar?
+ *
+ * A coluna `delivery_mode` (migração 090) é a resposta declarada. O
+ * texto em `notes` é a resposta de todos os pedidos gravados antes de
+ * a coluna existir — o catálogo escrevia "Retirada no local" ali desde
+ * sempre. Ler os dois evita reescrever o passado para ganhar o futuro.
+ */
+function ehRetirada(venda) {
+  const modo = String(venda?.delivery_mode || '').toLowerCase();
+  if (modo) return modo === 'retirada';
+  return /retirada no local/i.test(String(venda?.notes || ''));
+}
+
+// O QUE NÃO ACONTECE QUANDO O CLIENTE VEM BUSCAR.
+//
+// Não há coleta, não há caminhão e não há entrega no endereço: o
+// pedido fica pronto, o cliente vem, e acabou. Deixar as três na tela
+// faz o cliente esperar um caminhão que não vai sair.
+const SO_NA_ENTREGA = ['mercadoria_coletada', 'em_transito', 'aguardando_entrega'];
+
+// Na retirada, duas etapas mudam de nome — a mesma etapa, dita do jeito
+// que aconteceu com ELE.
+const ROTULO_RETIRADA = {
+  aguardando_coleta: 'Aguardando retirada',
+  entregue: 'Pedido entregue',
+};
+
 const PASSOS = Object.entries(STATUS)
   .filter(([, v]) => v.passo)
   .map(([key, v]) => ({ key, ...v }))
@@ -176,16 +204,27 @@ function linhaDoTempo(venda, aplicaveis = {}) {
     aguardando_pintura: 'pintura', pintura_finalizada: 'pintura',
     aguardando_borda:   'borda',   borda_finalizada:   'borda',
   };
+  const retirada = ehRetirada(venda);
+
   const visiveis = PASSOS.filter(p => {
+    // Retirada: coleta, trânsito e entrega no endereço não existem —
+    // a não ser que o pedido tenha passado por elas mesmo assim, e aí
+    // o histórico manda mais que a regra.
+    if (retirada && SO_NA_ENTREGA.includes(p.key) && !quando.has(p.key) && p.key !== venda?.status) return false;
     const grupo = OPCIONAIS[p.key];
     if (!grupo) return true;
     return aplicaveis[grupo] || quando.has(p.key) || p.key === venda?.status;
   });
 
   return visiveis.map((p, i) => {
-    const visita = quando.get(p.key) || null;
+    // Na retirada, "produto retirado" é o fim da linha: o pedido chegou
+    // às mãos do cliente, que é exatamente o que "entregue" quer dizer.
+    const visita = quando.get(p.key)
+      || (retirada && p.key === 'entregue' ? quando.get('produto_retirado') : null)
+      || null;
     let estado;
     if (p.key === venda?.status) estado = 'atual';
+    else if (retirada && p.key === 'entregue' && venda?.status === 'produto_retirado') estado = 'atual';
     else if (visita) estado = 'concluido';
     // Passou do ponto sem registro no log: a etapa ficou para trás
     // (pulada ou registrada antes de o log existir).
@@ -198,7 +237,9 @@ function linhaDoTempo(venda, aplicaveis = {}) {
       // 11 para 16 na tela do cliente — e buraco na contagem se lê como
       // etapa perdida, não como etapa que não existe neste pedido.
       ordem: i + 1,
-      passo: p.passo, key: p.key, label: p.label, icone: p.icone, cor: p.cor,
+      passo: p.passo, key: p.key,
+      label: (retirada && ROTULO_RETIRADA[p.key]) || p.label,
+      icone: p.icone, cor: p.cor,
       area: p.area, estado,
       at: visita?.at || null,
       user: visita?.user || null,
@@ -301,7 +342,12 @@ function fasesDoPedido(venda, aplicaveis = {}) {
   const status = venda?.status || null;
   const passoAtual = infoStatus(status).passo || 0;
 
+  const retirada = ehRetirada(venda);
+
   const visiveis = FASES.filter(f => {
+    // Quem vem buscar não tem trânsito: não sai caminhão nenhum.
+    if (retirada && f.key === 'transito'
+        && !f.entrando.some(k => quando.has(k) || k === status)) return false;
     if (!f.opcional) return true;
     // A fase opcional aparece quando os itens pedem OU quando o pedido
     // de fato passou por ela — histórico antigo manda mais que regra.
@@ -332,7 +378,9 @@ function fasesDoPedido(venda, aplicaveis = {}) {
     return {
       ordem: i + 1,
       key: f.key,
-      label: f.label,
+      // Na retirada a fase existe, mas com outro nome: o cliente vem
+      // buscar, ninguém coleta.
+      label: retirada && f.key === 'coleta' ? 'Retirada' : f.label,
       icone: f.icone,
       estado,
       at: visita?.at || null,
@@ -416,5 +464,5 @@ function calcularAtencao(venda, agora = new Date(), alertaAberto = null) {
 module.exports = {
   STATUS, AREAS, PASSOS, FASES,
   infoStatus, listaStatus, finalizado, prazoSaida, calcularAtencao,
-  linhaDoTempo, fasesDoPedido, historicoPedido,
+  linhaDoTempo, fasesDoPedido, historicoPedido, ehRetirada,
 };

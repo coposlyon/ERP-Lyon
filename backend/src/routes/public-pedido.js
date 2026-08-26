@@ -66,6 +66,9 @@ const CAMPOS_PEDIDO = `
   created_at, operation_date, event_date, ship_date, delivery_date,
   collect_date, transport_days, freight_quote, tracking_code,
   carrier_id, user_id, tenant_id, production_log,
+  -- Entrega ou retirada (migração 090) + o texto antigo do catálogo, que
+  -- é o que responde pelos pedidos gravados antes de a coluna existir.
+  delivery_mode, notes,
   CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating ),
   VENDA_ITENS ( id, product_name, quantity, unit_price, total, customization,
                 PRODUTOS ( id, code, name, ink_type ) )

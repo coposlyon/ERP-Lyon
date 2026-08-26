@@ -611,13 +611,18 @@ function TransportTab({ sale, onChanged }) {
   const qc = useQueryClient();
   const [carrierId, setCarrierId] = useState(sale.carrier_id || '');
   const [tracking, setTracking] = useState(sale.tracking_code || '');
+  // Entrega ou retirada. Nulo é "ninguém informou", e vale entrega —
+  // que é o que praticamente todo pedido é.
+  const [modo, setModo] = useState(sale.delivery_mode === 'retirada' ? 'retirada' : 'entrega');
   const [events, setEvents] = useState(null);
   const [nfBp, setNfBp] = useState('');
 
   const { data: carriers } = useQuery({ queryKey: ['carriers'], queryFn: () => api.get('/shipping/carriers') });
 
   const saveMut = useMutation({
-    mutationFn: () => api.patch(`/sales/${sale.id}/shipping`, { carrier_id: carrierId || null, tracking_code: tracking }),
+    mutationFn: () => api.patch(`/sales/${sale.id}/shipping`, {
+      carrier_id: carrierId || null, tracking_code: tracking, delivery_mode: modo,
+    }),
     onSuccess: () => { qc.invalidateQueries(['sale', sale.id]); onChanged?.(); toast.success('Transportadora salva'); },
     onError: (e) => toast.error(e.error || 'Erro ao salvar'),
   });
@@ -636,6 +641,31 @@ function TransportTab({ sale, onChanged }) {
         <div><span className="text-gray-400 text-xs block">Data da Saída</span><b>{d(sale.ship_date) || '—'}</b></div>
         <div><span className="text-gray-400 text-xs block">Previsão de Entrega</span><b>{d(sale.delivery_date || sale.max_delivery_date) || '—'}</b></div>
         <div><span className="text-gray-400 text-xs block">Data do Evento</span><b>{d(sale.event_date) || '—'}</b></div>
+      </div>
+
+      {/* A MODALIDADE MUDA A LINHA DO TEMPO DO CLIENTE.
+          Em retirada não há coleta, trânsito nem entrega no endereço:
+          as três etapas somem do acompanhamento e o pedido vai de
+          "Aguardando retirada" direto para "Pedido entregue". Deixá-las
+          na tela faria o cliente esperar um caminhão que não vai sair. */}
+      <div className="border-t border-gray-100 pt-3">
+        <label className="label">Modalidade</label>
+        <div className="flex flex-wrap gap-2">
+          {[['entrega', 'Entrega pela transportadora'], ['retirada', 'Retirada no local']].map(([v, rotulo]) => (
+            <button key={v} type="button" onClick={() => setModo(v)}
+              className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                modo === v
+                  ? 'bg-primary-600 text-white border-primary-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+              {rotulo}
+            </button>
+          ))}
+        </div>
+        {modo === 'retirada' && (
+          <p className="text-[11px] text-gray-500 mt-1.5">
+            O cliente vem buscar: o acompanhamento dele pula coleta, trânsito e entrega.
+          </p>
+        )}
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3 items-end border-t border-gray-100 pt-3">
