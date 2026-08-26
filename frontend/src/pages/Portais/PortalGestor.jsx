@@ -129,8 +129,11 @@ export default function PortalGestor() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900">
                       {a.colaborador}
-                      <span className={`badge ml-2 ${a.tipo === 'ferias' ? 'badge-blue' : 'badge-yellow'}`}>
-                        {a.tipo === 'ferias' ? 'férias' : 'justificativa'}
+                      <span className={`badge ml-2 ${
+                        a.tipo === 'ferias' ? 'badge-blue'
+                          : a.tipo === 'solicitacao' ? 'badge-purple' : 'badge-yellow'}`}>
+                        {a.tipo === 'ferias' ? 'férias'
+                          : a.tipo === 'solicitacao' ? 'solicitação' : 'justificativa'}
                       </span>
                     </p>
                     <p className="text-[11px] text-gray-500">{a.resumo}</p>
@@ -146,6 +149,8 @@ export default function PortalGestor() {
                       </p>
                     )}
                     {a.prazo && <p className="text-[11px] text-gray-400 mt-0.5">prazo {dBR(a.prazo)}</p>}
+                    {/* Aprovar não é aplicar: quem move o cadastro mestre é o RH. */}
+                    {a.aviso && <p className="text-[11px] text-amber-700 mt-0.5">{a.aviso}</p>}
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <button className="btn-secondary btn-sm"

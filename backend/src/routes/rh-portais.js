@@ -15,50 +15,45 @@
 // ============================================================
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { saldoDeFerias } = require('../lib/ferias');
 const { justificar } = require('../lib/ocorrencias');
+const { euSou, semVinculo } = require('../lib/euSou');
+const { getEscala, jornadaDoDia, recomputeDay, agoraSP } = require('../lib/ponto');
 const { criarFerias } = require('./rh-ferias');
 const { montarPrevia } = require('./rh-folha');
 const { calcularRescisao, exigencias } = require('../lib/rescisao');
 
-const hojeISO = () => new Date().toISOString().slice(0, 10);
+// Documento que o colaborador envia pelo portal. O limite é o mesmo do
+// cadastro (15 MB) — foto de RG tirada por celular passa dos 5.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+
+// HOJE É O DIA DA EMPRESA, e não o do servidor. A Discloud não roda em
+// São Paulo: com `new Date()` do servidor, depois das 21h o portal já
+// virava o dia e mostrava "falta" para quem ainda estava trabalhando.
+const hojeISO = () => agoraSP().date;
 const compAtual = () => hojeISO().slice(0, 7);
 
-/**
- * Quem é o colaborador por trás do usuário logado.
- *
- * A ligação é o e-mail de acesso gravado na admissão — o mesmo campo
- * que a tela de cadastro usa para criar o login. Não há segundo
- * cadastro de "usuário do portal": seria uma segunda verdade sobre a
- * mesma pessoa.
- */
-async function euSou(req) {
-  const email = String(req.userProfile?.email || '').toLowerCase();
-  if (!email) return null;
-  const { data } = await supabase.from('CLIENTES')
-    .select('id, name, cpf_cnpj, birth_date, phone, email, address, created_at, admission_data, is_active')
-    .eq('tenant_id', req.tenantId).eq('type', 'CO');
-  return (data || []).find(p =>
-    String(p.admission_data?.access_email || '').toLowerCase() === email ||
-    String(p.email || '').toLowerCase() === email) || null;
-}
-
-function semVinculo(res) {
-  return res.status(404).json({
-    error: 'Seu usuário não está ligado a um cadastro de colaborador.',
-    dica: 'O RH precisa preencher o e-mail de acesso na admissão para o portal reconhecer você.',
-  });
-}
-
 // ── PORTAL DO COLABORADOR ───────────────────────────────────
+//
+// A TELA RESPONDE "O QUE ESPERAM DE MIM, E O QUE É MEU POR DIREITO".
+//
+// Quem é o colaborador por trás do usuário logado passou a ter UMA
+// resposta só, em lib/euSou.js — a mesma que o app de marcação de
+// ponto usa. Enquanto cada tela casava e-mail do seu jeito, dava para
+// bater o ponto e não conseguir abrir o portal, com o mesmo login.
+
+/** As chaves do departamento (código e nome) para casar com o setor da admissão. */
+const chavesDep = dep => [dep?.code, dep?.name].filter(Boolean);
 
 /**
  * GET /api/portal/eu
- * Tudo que é meu, em uma tela: ponto do mês, férias, pendências e
- * holerites. Nenhum número é digitado — todos saem do mesmo lugar de
- * onde o RH lê.
+ *
+ * Tudo que é meu numa leitura só: o dia de hoje, o mês, férias,
+ * pendências, documentos, políticas e a fila de solicitações. Nenhum
+ * número nasce aqui — todos saem de onde o RH lê.
  */
 router.get('/eu', async (req, res) => {
   try {
@@ -68,21 +63,43 @@ router.get('/eu', async (req, res) => {
     const comp = /^\d{4}-\d{2}$/.test(String(req.query.competencia || '')) ? req.query.competencia : compAtual();
     const inicio = `${comp}-01`;
     const fim = new Date(Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), 0).toISOString().slice(0, 10);
+    const agora = agoraSP();
 
-    const [{ data: ponto }, { data: marc }, { data: fer }, { data: oco }, { data: docs }, { data: hol }, { data: deps }] =
-      await Promise.all([
-        supabase.from('RH_PONTO').select('*').eq('tenant_id', t).eq('employee_id', eu.id)
-          .gte('work_date', inicio).lte('work_date', fim).order('work_date'),
-        supabase.from('RH_MARCACOES').select('*').eq('tenant_id', t).eq('employee_id', eu.id)
-          .gte('marked_at', `${inicio}T00:00:00`).order('marked_at', { ascending: false }).limit(20),
-        supabase.from('RH_FERIAS').select('*').eq('tenant_id', t).eq('employee_id', eu.id),
-        supabase.from('RH_OCORRENCIAS').select('*').eq('tenant_id', t).eq('employee_id', eu.id)
-          .order('occurred_on', { ascending: false }).limit(30),
-        supabase.from('RH_DOCUMENTOS').select('*').eq('tenant_id', t).eq('employee_id', eu.id),
-        supabase.from('RH_SALARIOS').select('reference_month, net_salary, gross_salary')
-          .eq('tenant_id', t).eq('employee_id', eu.id).order('reference_month', { ascending: false }).limit(13),
-        supabase.from('RH_DEPARTAMENTOS').select('id, code, name, manager_id').eq('tenant_id', t),
-      ]);
+    const [
+      { data: ponto }, { data: marc }, { data: marcHoje }, { data: fer }, { data: oco },
+      { data: docs }, { data: hol }, { data: deps }, { data: politicas }, { data: aceites },
+      { data: solic }, { data: desl }, { data: feriados },
+    ] = await Promise.all([
+      supabase.from('RH_PONTO').select('*').eq('tenant_id', t).eq('employee_id', eu.id)
+        .gte('work_date', inicio).lte('work_date', fim).order('work_date'),
+      // MARCAÇÃO É (work_date, punch_time) — NÃO um timestamp.
+      // Esta consulta pedia `marked_at`, coluna que nunca existiu: o
+      // supabase-js devolve erro em vez de lançar, `data` vinha nulo e
+      // "Meu ponto" aparecia vazio para todo mundo, todo mês, sem uma
+      // linha de erro em lugar nenhum.
+      supabase.from('RH_MARCACOES').select('id, work_date, punch_time, source')
+        .eq('tenant_id', t).eq('employee_id', eu.id)
+        .gte('work_date', inicio).lte('work_date', fim)
+        .order('work_date', { ascending: false }).order('punch_time', { ascending: false }).limit(200),
+      // Hoje vem à parte: o mês escolhido pode ser passado, e o cartão
+      // "Hoje" continua sendo sobre hoje.
+      supabase.from('RH_MARCACOES').select('id, punch_time, source')
+        .eq('tenant_id', t).eq('employee_id', eu.id).eq('work_date', agora.date).order('punch_time'),
+      supabase.from('RH_FERIAS').select('*').eq('tenant_id', t).eq('employee_id', eu.id),
+      supabase.from('RH_OCORRENCIAS').select('*').eq('tenant_id', t).eq('employee_id', eu.id)
+        .order('occurred_on', { ascending: false }).limit(30),
+      supabase.from('RH_DOCUMENTOS').select('*').eq('tenant_id', t).eq('employee_id', eu.id),
+      supabase.from('RH_SALARIOS').select('reference_month, net_salary, gross_salary')
+        .eq('tenant_id', t).eq('employee_id', eu.id).order('reference_month', { ascending: false }).limit(13),
+      supabase.from('RH_DEPARTAMENTOS').select('id, code, name, manager_id').eq('tenant_id', t),
+      supabase.from('RH_POLITICAS').select('*').eq('tenant_id', t).eq('is_active', true),
+      supabase.from('RH_POLITICAS_ACEITES').select('*').eq('tenant_id', t).eq('employee_id', eu.id),
+      supabase.from('RH_SOLICITACOES').select('*').eq('tenant_id', t).eq('employee_id', eu.id)
+        .order('created_at', { ascending: false }).limit(50),
+      supabase.from('RH_DESLIGAMENTOS').select('*').eq('tenant_id', t).eq('employee_id', eu.id)
+        .order('created_at', { ascending: false }).limit(5),
+      supabase.from('FERIADOS').select('date, name').eq('tenant_id', t).eq('date', agora.date),
+    ]);
 
     const adm = eu.admission_data || {};
     const admissao = adm.start_date || (eu.created_at || '').slice(0, 10);
@@ -101,7 +118,27 @@ router.get('/eu', async (req, res) => {
     const dias = ponto || [];
     const minutos = c => dias.reduce((s, d) => s + (d[c] || 0), 0);
 
-    // O que ESTÁ ESPERANDO DE MIM — a razão de o portal existir.
+    // ── HOJE ─────────────────────────────────────────────────
+    // Férias e afastamento em curso são o que transforma o dia em
+    // folga. Sem esta checagem, quem está de férias veria "falta" no
+    // próprio portal — no meio das férias que o RH aprovou.
+    const afastadoHoje = (fer || []).find(f =>
+      f.status !== 'cancelled' && f.start_date <= agora.date && f.end_date >= agora.date) || null;
+    const escala = await getEscala(t, eu.id, adm.scale_id);
+    const jornada = jornadaDoDia({
+      escala,
+      marcacoes: (marcHoje || []).map(m => String(m.punch_time).slice(0, 5)),
+      agora: agora.hhmm,
+      diaSemana: agora.weekday,
+      folga: !!afastadoHoje || !!(feriados || []).length,
+    });
+
+    const meuDep = (deps || []).find(d => chavesDep(d).includes(adm.sector)) || null;
+    const { data: gestor } = meuDep?.manager_id
+      ? await supabase.from('CLIENTES').select('name').eq('tenant_id', t).eq('id', meuDep.manager_id).maybeSingle()
+      : { data: null };
+
+    // ── O QUE ESTÁ ESPERANDO DE MIM ──────────────────────────
     const pendencias = (oco || [])
       .filter(o => o.status === 'aberta' && ['atraso', 'falta'].includes(o.kind))
       .map(o => ({
@@ -110,13 +147,77 @@ router.get('/eu', async (req, res) => {
         vencida: o.sla_due_at ? new Date(o.sla_due_at) < new Date() : false,
       }));
 
-    const meuDep = (deps || []).find(d => d.code === adm.sector || d.name === adm.sector) || null;
+    const documentos = (docs || []).map(d => ({
+      id: d.id, doc_key: d.doc_key || d.type, nome: d.description || d.doc_key || d.type,
+      categoria: d.category, data: d.document_date, validade: d.expires_at,
+      sem_validade: d.sem_validade, url: d.file_url, status: d.status,
+      obrigatorio: d.required, origem: d.origin, assinado_em: d.signed_at,
+      // O botão de enviar só existe quando ALGUÉM PEDIU. Portal que
+      // aceita anexo a qualquer hora vira depósito de arquivo solto —
+      // e sobra para o RH classificar na mão o que chegou.
+      pode_enviar: d.status === 'pendente' && !d.file_url,
+      vencido: !d.sem_validade && d.expires_at ? d.expires_at < agora.date : false,
+    }));
+
+    const aceitePorVersao = new Map((aceites || []).map(a => [`${a.politica_id}|${a.versao}`, a]));
+    const politicasVigentes = (politicas || []).map(p => {
+      const a = aceitePorVersao.get(`${p.id}|${p.versao}`) || null;
+      return {
+        id: p.id, chave: p.chave, titulo: p.titulo, versao: p.versao,
+        vigente_desde: p.vigente_desde, arquivo_url: p.arquivo_url, conteudo: p.conteudo,
+        obrigatoria: p.obrigatoria, aceito_em: a?.aceito_em || null,
+        // Versão nova de uma política já aceita antes volta a ser
+        // pendente: a ciência é sobre O TEXTO, não sobre o título.
+        pendente: !a,
+      };
+    }).sort((a, b) => Number(b.pendente) - Number(a.pendente) || String(a.titulo).localeCompare(String(b.titulo)));
+
+    // ── A FILA DE SOLICITAÇÕES ───────────────────────────────
+    // Uma lista, quatro origens. As férias continuam morando em
+    // RH_FERIAS, a justificativa em RH_OCORRENCIAS e o desligamento em
+    // RH_DESLIGAMENTOS — o portal só junta para MOSTRAR, porque para
+    // quem pediu tudo isso é "uma coisa que eu pedi e está esperando".
+    const solicitacoes = [
+      ...(solic || []).map(s => ({
+        id: s.id, fonte: 'solicitacao', tipo: s.kind, titulo: s.titulo || s.kind,
+        resumo: s.descricao, status: s.status, criado_em: s.created_at,
+        decidido_em: s.decided_at, nota: s.decision_note, cancelavel: s.status === 'aberta',
+      })),
+      ...(fer || []).filter(f => f.status !== 'cancelled').map(f => ({
+        id: f.id, fonte: 'ferias', tipo: f.kind && f.kind !== 'ferias' ? 'afastamento' : 'ferias',
+        titulo: f.kind && f.kind !== 'ferias' ? 'Afastamento' : 'Férias',
+        resumo: `${f.days || 0} dia(s): ${f.start_date} a ${f.end_date}`,
+        status: f.status === 'pending' ? 'aberta' : f.status === 'scheduled' ? 'aprovada' : f.status,
+        criado_em: f.created_at, decidido_em: f.approved_at, cancelavel: false,
+      })),
+      ...(oco || []).filter(o => ['justificada', 'em_analise', 'aprovada', 'recusada'].includes(o.status)).map(o => ({
+        id: o.id, fonte: 'ocorrencia', tipo: 'justificativa',
+        titulo: `Justificativa de ${o.kind}`,
+        resumo: `${o.kind} em ${o.occurred_on}`,
+        status: ['justificada', 'em_analise'].includes(o.status) ? 'aberta' : o.status,
+        criado_em: o.created_at, decidido_em: o.decided_at, cancelavel: false,
+      })),
+      ...(desl || []).map(d => ({
+        id: d.id, fonte: 'desligamento', tipo: 'demissao', titulo: 'Pedido de demissão',
+        resumo: `Último dia pretendido: ${d.exit_date}`,
+        status: d.status === 'solicitado' ? 'aberta' : d.status,
+        criado_em: d.created_at, decidido_em: null, cancelavel: false,
+      })),
+    ].sort((a, b) => String(b.criado_em || '').localeCompare(String(a.criado_em || '')));
 
     res.json({
       colaborador: {
         id: eu.id, nome: eu.name, cargo: adm.role || null, departamento: meuDep?.name || adm.sector || null,
-        admissao, contrato: adm.contract_type || null, jornada: adm.scale_name || null,
+        admissao, contrato: adm.contract_type || null, jornada: escala.name || adm.scale || null,
         foto: adm.photo_url || null, matricula: adm.registration || null,
+        gestor: gestor?.name || null,
+      },
+      hoje: {
+        data: agora.date,
+        agora: agora.hhmm,
+        feriado: (feriados || [])[0]?.name || null,
+        afastamento: afastadoHoje ? { tipo: afastadoHoje.kind || 'ferias', ate: afastadoHoje.end_date } : null,
+        ...jornada,
       },
       mes: {
         competencia: comp,
@@ -126,24 +227,89 @@ router.get('/eu', async (req, res) => {
         extras_min: minutos('extra_minutes'),
         // Banco de horas é extras menos atrasos — não uma coluna que alguém edita.
         saldo_min: minutos('extra_minutes') - minutos('late_minutes'),
+        dias: dias.map(d => ({
+          data: d.work_date, entrada: d.entry1, saida: d.exit1,
+          entrada2: d.entry2, saida2: d.exit2,
+          trabalhado_min: d.total_minutes, previsto_min: d.expected_minutes,
+          extras_min: d.extra_minutes, atraso_min: d.late_minutes,
+          falta: d.absence, situacao: d.status, nota: d.notes,
+        })),
       },
       marcacoes: (marc || []).map(m => ({
-        id: m.id, quando: m.marked_at, tipo: m.kind || null, origem: m.source || null,
+        id: m.id, data: m.work_date, hora: String(m.punch_time || '').slice(0, 5), origem: m.source || null,
       })),
       ferias: {
         saldo: ferias.saldo_total,
         periodos: ferias.periodos,
-        proximas: (fer || []).filter(f => (f.start_date || '') >= hojeISO() && f.status !== 'cancelled'),
-        historico: gozadas.filter(f => (f.end_date || '') < hojeISO()),
+        proximas: (fer || []).filter(f => (f.start_date || '') >= agora.date && f.status !== 'cancelled'),
+        historico: gozadas.filter(f => (f.end_date || '') < agora.date),
       },
       afastamentos: (fer || []).filter(f => f.kind && f.kind !== 'ferias'),
       pendencias,
       ocorrencias: oco || [],
-      documentos: (docs || []).map(d => ({
-        id: d.id, doc_key: d.doc_key, nome: d.name || d.doc_key,
-        data: d.document_date, validade: d.expires_at, url: d.file_url, status: d.status,
-      })),
+      documentos,
+      politicas: politicasVigentes,
+      solicitacoes,
+      remuneracao: {
+        salario: adm.salary ?? null,
+        comissao_pct: adm.commission_pct ?? null,
+        beneficios: {
+          vt: adm.benefit_vt ?? null, vr: adm.benefit_vr ?? null,
+          saude: adm.benefit_health ?? null, outros: adm.benefit_other ?? null,
+        },
+      },
+      perfil: {
+        nome: eu.name, cpf: eu.cpf_cnpj, nascimento: eu.birth_date,
+        telefone: eu.phone, email: eu.email, email_acesso: adm.access_email || null,
+        endereco: eu.address || null,
+        banco: adm.bank || null,
+        pix: adm.pix_key || null,
+      },
       holerites: (hol || []).map(h => ({ competencia: h.reference_month, liquido: h.net_salary, bruto: h.gross_salary })),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * POST /api/portal/eu/ponto
+ *
+ * A batida do próprio colaborador. É a MESMA gravação do app de
+ * marcação (/api/me/ponto/punch) e o MESMO recálculo do dia — se o
+ * portal guardasse a marcação por conta própria, o espelho de ponto e
+ * o portal discordariam sobre a mesma pessoa no mesmo dia.
+ */
+router.post('/eu/ponto', async (req, res) => {
+  try {
+    const eu = await euSou(req);
+    if (!eu) return semVinculo(res);
+    const { latitude, longitude } = req.body || {};
+    const agora = agoraSP();
+
+    const { error } = await supabase.from('RH_MARCACOES').insert({
+      tenant_id: req.tenantId, employee_id: eu.id,
+      work_date: agora.date, punch_time: agora.time, source: 'portal',
+      latitude: latitude ?? null, longitude: longitude ?? null,
+      registered_by: req.user?.id || null,
+    });
+    if (error) throw error;
+
+    await recomputeDay(req.tenantId, eu.id, agora.date);
+
+    const { data: marcHoje } = await supabase.from('RH_MARCACOES')
+      .select('id, punch_time, source')
+      .eq('tenant_id', req.tenantId).eq('employee_id', eu.id).eq('work_date', agora.date)
+      .order('punch_time');
+
+    const escala = await getEscala(req.tenantId, eu.id, eu.admission_data?.scale_id);
+    audit(req, 'marcar', 'ponto', null, { dia: agora.date, hora: agora.hhmm, origem: 'portal' });
+
+    res.status(201).json({
+      hora: agora.hhmm,
+      hoje: jornadaDoDia({
+        escala,
+        marcacoes: (marcHoje || []).map(m => String(m.punch_time).slice(0, 5)),
+        agora: agora.hhmm, diaSemana: agora.weekday,
+      }),
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -208,6 +374,162 @@ router.post('/eu/ferias', async (req, res) => {
     if (!eu) return semVinculo(res);
     req.body = { ...(req.body || {}), employee_id: eu.id, kind: 'ferias', origin: 'portal' };
     return criarFerias(req, res);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Os pedidos que ainda não têm casa própria no ERP. Férias,
+// justificativa e demissão NÃO entram aqui: cada um já tem a sua
+// tabela, e gravar o pedido em dois lugares é criar duas verdades
+// sobre a mesma vontade.
+const TIPOS_SOLICITACAO = {
+  cadastral: 'Alteração cadastral',
+  documento: 'Documento',
+  beneficio: 'Benefício',
+  ponto: 'Correção de ponto',
+  outro: 'Outra solicitação',
+};
+
+/**
+ * POST /api/portal/eu/solicitacao
+ *
+ * O pedido entra como PEDIDO. Trocar o banco no cadastro mestre a
+ * partir daqui seria deixar a folha pagar numa conta que ninguém
+ * conferiu — e conferir é justamente o que o RH faz.
+ */
+router.post('/eu/solicitacao', async (req, res) => {
+  try {
+    const eu = await euSou(req);
+    if (!eu) return semVinculo(res);
+    const { kind, titulo, descricao, payload, anexo_url } = req.body || {};
+    if (!TIPOS_SOLICITACAO[kind]) {
+      return res.status(400).json({ error: 'Tipo de solicitação inválido.', tipos: Object.keys(TIPOS_SOLICITACAO) });
+    }
+    if (!String(descricao || '').trim()) {
+      return res.status(400).json({ error: 'Descreva o que você precisa.' });
+    }
+
+    const { data, error } = await supabase.from('RH_SOLICITACOES').insert({
+      tenant_id: req.tenantId, employee_id: eu.id, kind,
+      titulo: String(titulo || TIPOS_SOLICITACAO[kind]).slice(0, 120),
+      descricao: String(descricao).slice(0, 2000),
+      payload: payload && typeof payload === 'object' ? payload : {},
+      anexo_url: anexo_url || null,
+      status: 'aberta', origin: 'portal',
+    }).select().single();
+    if (error) throw error;
+
+    audit(req, 'create', 'solicitacao', data.id, { kind, colaborador: eu.name });
+    res.status(201).json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * POST /api/portal/eu/solicitacao/:id/cancelar
+ * Desistir é do colaborador — mas só enquanto ninguém decidiu. Depois
+ * da decisão, apagar o pedido apagaria também o motivo dela.
+ */
+router.post('/eu/solicitacao/:id/cancelar', async (req, res) => {
+  try {
+    const eu = await euSou(req);
+    if (!eu) return semVinculo(res);
+    const { data: alvo } = await supabase.from('RH_SOLICITACOES')
+      .select('*').eq('tenant_id', req.tenantId).eq('id', req.params.id).maybeSingle();
+    if (!alvo || alvo.employee_id !== eu.id) return res.status(404).json({ error: 'Solicitação não encontrada.' });
+    if (alvo.status !== 'aberta') {
+      return res.status(409).json({ error: 'Esta solicitação já foi analisada e não pode mais ser cancelada.' });
+    }
+
+    const { data, error } = await supabase.from('RH_SOLICITACOES')
+      .update({
+        status: 'cancelada', decided_at: new Date().toISOString(),
+        decision_note: 'Cancelada pelo próprio colaborador',
+      })
+      .eq('tenant_id', req.tenantId).eq('id', alvo.id).select().single();
+    if (error) throw error;
+
+    audit(req, 'cancelar', 'solicitacao', alvo.id, { kind: alvo.kind });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * POST /api/portal/eu/politicas/:id/aceite
+ *
+ * A ciência é sobre A VERSÃO. Guardar "aceitou o código de conduta"
+ * sem versão faria a empresa achar que tem aceite de um texto que
+ * mudou depois — que é exatamente o que não vale em fiscalização.
+ */
+router.post('/eu/politicas/:id/aceite', async (req, res) => {
+  try {
+    const eu = await euSou(req);
+    if (!eu) return semVinculo(res);
+    const { data: pol } = await supabase.from('RH_POLITICAS')
+      .select('*').eq('tenant_id', req.tenantId).eq('id', req.params.id).maybeSingle();
+    if (!pol) return res.status(404).json({ error: 'Política não encontrada.' });
+
+    const { data, error } = await supabase.from('RH_POLITICAS_ACEITES').upsert({
+      tenant_id: req.tenantId, politica_id: pol.id, employee_id: eu.id,
+      versao: pol.versao, aceito_em: new Date().toISOString(),
+      ip: String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || null,
+      origem: 'portal',
+    }, { onConflict: 'tenant_id,politica_id,employee_id,versao' }).select().single();
+    if (error) throw error;
+
+    audit(req, 'aceitar', 'politica', pol.id, { politica: pol.chave, versao: pol.versao });
+    res.status(201).json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * POST /api/portal/eu/documento
+ *
+ * Envio de documento — SOMENTE do que foi pedido. O portal não abre
+ * uma porta para anexar arquivo qualquer: ele preenche a lacuna que o
+ * RH marcou como pendente, e o arquivo entra na central única de
+ * documentos, no mesmo bucket privado do cadastro.
+ */
+router.post('/eu/documento', upload.single('file'), async (req, res) => {
+  try {
+    const eu = await euSou(req);
+    if (!eu) return semVinculo(res);
+    const file = req.file;
+    const docId = req.body?.documento_id;
+    if (!file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+    if (!docId) return res.status(400).json({ error: 'Informe qual documento você está enviando.' });
+
+    const { data: alvo } = await supabase.from('RH_DOCUMENTOS')
+      .select('*').eq('tenant_id', req.tenantId).eq('id', docId).maybeSingle();
+    if (!alvo || alvo.employee_id !== eu.id) {
+      return res.status(404).json({ error: 'Documento não encontrado no seu prontuário.' });
+    }
+    if (alvo.status !== 'pendente') {
+      return res.status(409).json({
+        error: 'Este documento não está sendo solicitado.',
+        dica: 'O envio pelo portal só abre para o que o RH marcou como pendente.',
+      });
+    }
+
+    const nomeSeguro = String(file.originalname || 'documento').replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const caminho = `${req.tenantId}/${eu.id}/${Date.now()}_${nomeSeguro}`;
+    const { error: erroUpload } = await supabase.storage
+      .from('DOCUMENTOS').upload(caminho, file.buffer, { contentType: file.mimetype, upsert: false });
+    if (erroUpload) throw erroUpload;
+    const { data: { publicUrl } } = supabase.storage.from('DOCUMENTOS').getPublicUrl(caminho);
+
+    const { data, error } = await supabase.from('RH_DOCUMENTOS').update({
+      file_url: publicUrl,
+      // 'anexado', e não 'validado': quem confere é o RH. O portal
+      // entrega o papel — não dá o papel por bom.
+      status: 'anexado',
+      origin: 'colaborador',
+      document_date: alvo.document_date || agoraSP().date,
+      mime: file.mimetype, size_bytes: file.size,
+      updated_at: new Date().toISOString(),
+    }).eq('tenant_id', req.tenantId).eq('id', alvo.id).select().single();
+    if (error) throw error;
+
+    audit(req, 'enviar', 'documento', alvo.id, { doc_key: alvo.doc_key, origem: 'portal' });
+    res.status(201).json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -339,7 +661,7 @@ router.get('/gestor', async (req, res) => {
     }
 
     const ids = time.map(p => p.id);
-    const [{ data: oco }, { data: fer }, { data: ponto }] = await Promise.all([
+    const [{ data: oco }, { data: fer }, { data: ponto }, { data: pedidos }] = await Promise.all([
       ids.length ? supabase.from('RH_OCORRENCIAS').select('*').eq('tenant_id', t).in('employee_id', ids)
         .in('status', ['aberta', 'justificada', 'em_analise']).order('occurred_on', { ascending: false })
         : Promise.resolve({ data: [] }),
@@ -347,6 +669,11 @@ router.get('/gestor', async (req, res) => {
         : Promise.resolve({ data: [] }),
       ids.length ? supabase.from('RH_PONTO').select('*').eq('tenant_id', t).in('employee_id', ids)
         .gte('work_date', `${compAtual()}-01`) : Promise.resolve({ data: [] }),
+      // As solicitações do portal (migração 089). Sem esta leitura, o
+      // colaborador pediria correção de banco para uma fila que ninguém
+      // abre — e o pedido morreria calado dentro do sistema.
+      ids.length ? supabase.from('RH_SOLICITACOES').select('*').eq('tenant_id', t).in('employee_id', ids)
+        .eq('status', 'aberta').order('created_at') : Promise.resolve({ data: [] }),
     ]);
     const nome = id => time.find(p => p.id === id)?.name || '—';
 
@@ -360,6 +687,15 @@ router.get('/gestor', async (req, res) => {
         tipo: 'ferias', id: f.id, colaborador: nome(f.employee_id),
         resumo: `${f.days} dia(s): ${f.start_date} a ${f.end_date}`,
         detalhe: f.abono_pecuniario ? `com abono de ${f.abono_dias} dia(s)` : null,
+      })),
+      ...(pedidos || []).map(sol => ({
+        tipo: 'solicitacao', id: sol.id, colaborador: nome(sol.employee_id),
+        resumo: sol.titulo || sol.kind, detalhe: sol.descricao, documento: sol.anexo_url,
+        // APROVAR NÃO É APLICAR. Trocar o banco no cadastro mestre
+        // continua sendo um ato do RH, feito na tela do colaborador —
+        // e é por isso que a solicitação guarda `applied_at` separado
+        // de `decided_at`.
+        aviso: sol.kind === 'cadastral' ? 'Aprovar libera o RH a alterar o cadastro — não altera sozinho.' : null,
       })),
     ];
 
@@ -398,14 +734,15 @@ router.get('/gestor', async (req, res) => {
  */
 router.post('/gestor/decidir', async (req, res) => {
   const { tipo, id, decisao, motivo } = req.body || {};
-  if (!['justificativa', 'ferias'].includes(tipo)) return res.status(400).json({ error: 'Tipo inválido.' });
+  if (!['justificativa', 'ferias', 'solicitacao'].includes(tipo)) return res.status(400).json({ error: 'Tipo inválido.' });
   if (!['aprovar', 'recusar'].includes(decisao)) return res.status(400).json({ error: 'Decisão inválida.' });
 
   try {
     const eu = await euSou(req);
     const { time } = await minhaEquipe(req, eu);
     const ids = new Set(time.map(p => p.id));
-    const tabela = tipo === 'ferias' ? 'RH_FERIAS' : 'RH_OCORRENCIAS';
+    const tabela = tipo === 'ferias' ? 'RH_FERIAS'
+      : tipo === 'solicitacao' ? 'RH_SOLICITACOES' : 'RH_OCORRENCIAS';
 
     const { data: alvo } = await supabase.from(tabela)
       .select('*').eq('tenant_id', req.tenantId).eq('id', id).maybeSingle();
@@ -416,6 +753,16 @@ router.post('/gestor/decidir', async (req, res) => {
 
     const patch = tipo === 'ferias'
       ? { status: decisao === 'aprovar' ? 'scheduled' : 'cancelled', approved_at: new Date().toISOString() }
+      : tipo === 'solicitacao'
+      // A solicitação aprovada NÃO se aplica sozinha: `applied_at`
+      // continua nulo até o RH mover o cadastro mestre. "Aprovada" e
+      // "aplicada" são dois estados, e tratá-los como um só faria a
+      // folha pagar num banco que ninguém trocou.
+      ? {
+          status: decisao === 'aprovar' ? 'aprovada' : 'recusada',
+          decided_by: req.userProfile?.id || null, decided_at: new Date().toISOString(),
+          decision_note: motivo || null,
+        }
       : {
           status: decisao === 'aprovar' ? 'aprovada' : 'recusada',
           decided_by: req.userProfile?.id || null, decided_at: new Date().toISOString(),

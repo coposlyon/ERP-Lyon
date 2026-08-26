@@ -1,44 +1,26 @@
 const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
-const { recomputeDay } = require('../lib/ponto');
+const { recomputeDay, agoraSP } = require('../lib/ponto');
+const { euSou, semVinculo } = require('../lib/euSou');
 
 // App de marcação (self-service): qualquer colaborador logado bate o
 // próprio ponto. NÃO é gated por módulo — todo funcionário usa.
-
-// Data/hora no fuso de São Paulo
-function nowSP() {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }).formatToParts(new Date());
-  const get = t => parts.find(p => p.type === t)?.value;
-  return {
-    date: `${get('year')}-${get('month')}-${get('day')}`,
-    time: `${get('hour')}:${get('minute')}:${get('second')}`,
-  };
-}
-
-// Resolve o colaborador (CLIENTES type CO) do usuário logado pelo e-mail
-async function getMyEmployee(req) {
-  const { data } = await supabase
-    .from('CLIENTES').select('id, name, admission_data, address')
-    .eq('tenant_id', req.tenantId).eq('type', 'CO')
-    .eq('email', req.user.email).maybeSingle();
-  return data;
-}
+//
+// QUEM É O COLABORADOR e QUE HORAS SÃO AGORA são as duas perguntas
+// desta tela, e as duas eram respondidas aqui dentro, do jeito daqui.
+// Agora as duas vêm de lib/euSou.js e lib/ponto.js — as mesmas fontes
+// que o Portal do Colaborador consulta. Enquanto cada tela casava
+// e-mail do seu jeito, dava para abrir o portal e não conseguir bater
+// o ponto com o mesmo login.
 
 // Estado do dia: colaborador + marcações de hoje
 router.get('/ponto', async (req, res) => {
   try {
-    const emp = await getMyEmployee(req);
-    if (!emp) {
-      return res.status(404).json({
-        error: 'Seu acesso não está vinculado a um cadastro de colaborador com o mesmo e-mail.',
-        code: 'NO_EMPLOYEE',
-      });
-    }
-    const { date } = nowSP();
+    const emp = await euSou(req);
+    if (!emp) return semVinculo(res);
+
+    const { date } = agoraSP();
     const { data: marks } = await supabase
       .from('RH_MARCACOES').select('id, punch_time, source')
       .eq('tenant_id', req.tenantId).eq('employee_id', emp.id).eq('work_date', date)
@@ -56,10 +38,10 @@ router.get('/ponto', async (req, res) => {
 router.post('/ponto/punch', async (req, res) => {
   const { latitude, longitude } = req.body;
   try {
-    const emp = await getMyEmployee(req);
-    if (!emp) return res.status(404).json({ error: 'Colaborador não encontrado', code: 'NO_EMPLOYEE' });
+    const emp = await euSou(req);
+    if (!emp) return semVinculo(res);
 
-    const { date, time } = nowSP();
+    const { date, time } = agoraSP();
     const { error } = await supabase.from('RH_MARCACOES').insert({
       tenant_id: req.tenantId, employee_id: emp.id,
       work_date: date, punch_time: time, source: 'app',
