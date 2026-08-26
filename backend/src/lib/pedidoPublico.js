@@ -85,6 +85,19 @@ function montarPedidoDoCliente(venda, extra = {}) {
     quantidade: i.quantidade,
     valor_unitario: i.valor_unitario,
     valor_total: i.valor_total,
+    // A ETAPA É DO PRODUTO, NÃO DO PEDIDO.
+    //
+    // Um pedido com três copos diferentes tem UM andamento, mas cada
+    // item percorre um caminho: o long drink com borda metalizada passa
+    // pela aplicação de borda, o degradê passa pela pintura, a caneca
+    // preto fosco não passa por nenhuma das duas. Mostrar a mesma régua
+    // para os três faz o cliente esperar por uma etapa que o copo dele
+    // nunca vai ter.
+    //
+    // Vem CALCULADA daqui, e não como `tem_borda`/`tem_pintura` soltos:
+    // esses dois são processo interno, e a regra desta função é campo a
+    // campo — o que sai é o que a tela do cliente precisa, nada além.
+    linha_do_tempo: A.linhaDoTempo(venda, { borda: i.tem_borda, pintura: i.tem_pintura }),
   }));
 
   return {

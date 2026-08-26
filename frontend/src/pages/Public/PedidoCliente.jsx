@@ -18,7 +18,7 @@ import {
   CircleCheck, Star, MapPin, Circle, Wallet, Hourglass, PenTool, FileImage,
   FileCheck, FlaskConical, Brush, CircleDashed, GlassWater, Settings,
   PackageOpen, ShieldQuestion, ShieldCheck, Camera, ImageUp, PackageSearch,
-  PackageCheck, ShoppingCart,
+  PackageCheck, ShoppingCart, Eye,
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -56,6 +56,22 @@ export default function PedidoCliente() {
   const { id } = useParams();
   const [contato, setContato] = useState(false);
   const [verTudo, setVerTudo] = useState(false);
+  // Qual item está com a linha do tempo aberta (índice na lista).
+  const [itemAberto, setItemAberto] = useState(null);
+  // O olho pisca até a primeira vez que alguém clica nele — e nunca mais.
+  // Depois disso o cliente já sabe para que serve; continuar piscando
+  // vira barulho.
+  const [jaViu, setJaViu] = useState(() => {
+    try { return localStorage.getItem('lyon-olho-etapas') === '1'; } catch { return false; }
+  });
+
+  function abrirEtapas(idx) {
+    setItemAberto(idx);
+    if (!jaViu) {
+      setJaViu(true);
+      try { localStorage.setItem('lyon-olho-etapas', '1'); } catch { /* navegador anônimo: pisca de novo amanhã */ }
+    }
+  }
   const token = sessionStorage.getItem('acompanhar_token');
 
   useEffect(() => { if (!token) navigate('/acompanhar', { replace: true }); }, [token, navigate]);
@@ -220,6 +236,7 @@ export default function PedidoCliente() {
             <table className="w-full text-sm" style={{ minWidth: 700 + colunasItem.length * 130 }}>
               <thead>
                 <tr style={{ color: 'rgba(147,197,253,0.8)' }}>
+                  <th className="px-2 py-2.5" style={{ borderBottom: '1px solid rgba(96,165,250,0.22)' }} />
                   {['Cód. Produto', 'Produto', 'Capacidade', 'Linha', 'Categoria', ...colunasItem, 'Qtd', 'Valor Unit.', 'Valor Total']
                     .map((h, i, todas) => (
                       <th key={h} className={`px-3 py-2.5 text-[11px] font-semibold whitespace-nowrap ${i >= todas.length - 3 ? 'text-right' : 'text-left'}`}
@@ -230,6 +247,9 @@ export default function PedidoCliente() {
               <tbody>
                 {p.itens.map((i, idx) => (
                   <tr key={idx} style={{ borderBottom: '1px solid rgba(96,165,250,0.12)' }}>
+                    <td className="px-2 py-2.5">
+                      <OlhoEtapas piscando={!jaViu} onClick={() => abrirEtapas(idx)} />
+                    </td>
                     <td className="px-3 py-2.5 font-mono text-white">{i.codigo || '—'}</td>
                     <td className="px-3 py-2.5 text-white">{i.produto}</td>
                     <td className="px-3 py-2.5" style={{ color: 'rgba(255,255,255,0.7)' }}>{i.capacidade || '—'}</td>
@@ -265,8 +285,14 @@ export default function PedidoCliente() {
           </div>
           <p className="text-[11px] mt-4" style={{ color: 'rgba(255,255,255,0.4)' }}>
             Nem todo pedido passa por todas as etapas — depende do produto e dos processos contratados.
+            {p.itens.length > 1 && ' Clique no olho ao lado de cada produto para ver as etapas dele.'}
           </p>
         </Card>
+
+        {/* A linha do tempo DESTE produto. */}
+        {itemAberto != null && p.itens[itemAberto] && (
+          <EtapasDoItem item={p.itens[itemAberto]} onClose={() => setItemAberto(null)} />
+        )}
 
         {/* ── Histórico / Documentos / Entrega / Avisos ────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -528,5 +554,121 @@ function Opcao({ Icon, titulo, texto, cor, onClick }) {
         <span className="block text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>{texto}</span>
       </span>
     </button>
+  );
+}
+
+// ── O OLHO ───────────────────────────────────────────────────
+
+/**
+ * O CONVITE QUE SE APAGA SOZINHO.
+ *
+ * Um ícone parado ao lado do produto não é descoberto: ninguém clica no
+ * que não pediu para ser clicado. Então ele pisca — e a cada três
+ * piscadas diz, em uma frase, para que serve.
+ *
+ * E para de piscar no primeiro clique, para sempre. Aviso que continua
+ * piscando depois de entendido deixa de ser convite e vira barulho: o
+ * cliente aprende a ignorar, e da próxima vez que algo realmente piscar
+ * ele também não vai olhar.
+ */
+function OlhoEtapas({ piscando, onClick }) {
+  const [dica, setDica] = useState(false);
+
+  useEffect(() => {
+    if (!piscando) { setDica(false); return; }
+    let n = 0;
+    let sumir = null;
+    const t = setInterval(() => {
+      n += 1;
+      if (n % 3 === 0) {
+        setDica(true);
+        sumir = setTimeout(() => setDica(false), 2400);
+      }
+    }, 1000);
+    return () => { clearInterval(t); clearTimeout(sumir); };
+  }, [piscando]);
+
+  return (
+    <div className="relative flex items-center justify-center">
+      <style>{`
+        @keyframes lyonPiscaOlho {
+          0%, 45%, 100% { opacity: 1; transform: scale(1); }
+          55%, 70%      { opacity: .25; transform: scale(.86); }
+        }
+      `}</style>
+
+      {dica && (
+        <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 whitespace-nowrap px-2.5 py-1.5 rounded-lg text-[11px] font-medium z-20"
+          style={{
+            background: 'rgba(34,211,238,0.15)', color: '#67e8f9',
+            border: '1px solid rgba(34,211,238,0.45)', boxShadow: '0 0 18px rgba(34,211,238,0.25)',
+          }}>
+          Clique aqui para ver o status deste produto
+        </span>
+      )}
+
+      <button onClick={onClick} title="Ver as etapas deste produto"
+        aria-label="Ver as etapas deste produto"
+        className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+        style={{
+          background: piscando ? 'rgba(34,211,238,0.15)' : 'rgba(255,255,255,0.05)',
+          border: `1px solid ${piscando ? 'rgba(34,211,238,0.5)' : 'rgba(255,255,255,0.12)'}`,
+          color: piscando ? '#22d3ee' : 'rgba(255,255,255,0.65)',
+          animation: piscando ? 'lyonPiscaOlho 1s ease-in-out infinite' : 'none',
+        }}>
+        <Eye size={15} />
+      </button>
+    </div>
+  );
+}
+
+/** As etapas de UM produto — mesmo andamento do pedido, só o caminho dele. */
+function EtapasDoItem({ item, onClose }) {
+  const linha = item.linha_do_tempo || [];
+  const atual = linha.find(e => e.estado === 'atual');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(3,6,18,0.8)' }} onClick={onClose}>
+      <div className="w-full max-w-4xl max-h-[86vh] overflow-y-auto rounded-2xl p-5 sm:p-6"
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'linear-gradient(180deg, #0b1024 0%, #080d1e 100%)',
+          border: '1px solid rgba(34,211,238,0.35)',
+          boxShadow: '0 0 30px rgba(34,211,238,0.15)',
+        }}>
+
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <div className="min-w-0">
+            <p className="text-[11px] uppercase tracking-wider" style={{ color: '#60a5fa' }}>
+              Etapas deste produto
+            </p>
+            <h2 className="text-lg font-bold text-white leading-tight">{item.produto}</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              {[item.capacidade, item.categoria, `${item.quantidade} un.`].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg shrink-0"
+            style={{ color: 'rgba(255,255,255,0.6)' }} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        {atual && (
+          <p className="text-sm mt-3 mb-4" style={{ color: '#fbbf24' }}>
+            Este produto está em: <b>{atual.label}</b>
+          </p>
+        )}
+
+        <div className="flex flex-wrap gap-x-2 gap-y-5">
+          {linha.map(passo => <Balao key={passo.key} passo={passo} />)}
+        </div>
+
+        <p className="text-[11px] mt-5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          As etapas mudam de produto para produto: pintura só aparece em degradê, bicolor ou jateado,
+          e a aplicação de borda só em quem tem borda contratada.
+        </p>
+      </div>
+    </div>
   );
 }
