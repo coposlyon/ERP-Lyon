@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
@@ -10,58 +10,108 @@ import { menuItems, menuVendedor } from '@/lib/menu';
 // Dashboard primeiro (separado por um divisor), depois todos os módulos que
 // têm submenu agrupados, em seguida os módulos diretos, e Configurações por último.
 function SidebarVendedor({ onMobileClose }) {
-  const { user, logout, sectorName } = useAuth();
-  const [menuAberto, setMenuAberto] = useState(false);
-
   return (
-    <>
-      <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
-        {menuVendedor.map(item => (
-          <NavLink key={item.path} to={item.path} end={item.exact} onClick={onMobileClose}
-            className={({ isActive }) => `sidebar-item items-start ${isActive ? 'active' : ''}`}>
-            <item.icon size={18} className="mt-0.5 shrink-0" />
-            <span className="min-w-0">
-              <span className="block truncate">{item.label}</span>
-              <span className="block text-[10px] font-normal opacity-60 truncate">{item.sub}</span>
-            </span>
-          </NavLink>
-        ))}
-      </nav>
+    <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
+      {menuVendedor.map(item => (
+        <NavLink key={item.path} to={item.path} end={item.exact} onClick={onMobileClose}
+          className={({ isActive }) => `sidebar-item items-start ${isActive ? 'active' : ''}`}>
+          <item.icon size={18} className="mt-0.5 shrink-0" />
+          <span className="min-w-0">
+            <span className="block truncate">{item.label}</span>
+            <span className="block text-[10px] font-normal opacity-60 truncate">{item.sub}</span>
+          </span>
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
 
-      {/* Usuário logado. Clicar abre só Dados do vendedor e Sair — não
-          existe "Perfil" no menu para não duplicar a mesma informação. */}
-      <div className="px-2 pb-3 space-y-1">
-        {menuAberto && (
+// ============================================================
+// O PERFIL NO PÉ DO MENU.
+//
+// Ele morava no canto superior direito, longe de tudo o que a pessoa
+// usa, e o cabeçalho ficava com três coisas que não conversam entre si.
+// No pé do menu ele fica onde todo sistema o coloca — e o cabeçalho
+// sobra para o que é do momento: buscar e ser avisado.
+//
+// A área do vendedor já tinha um bloco assim, escrito à parte. Eram dois
+// blocos para a mesma informação; agora é este, com os itens extras
+// entrando por parâmetro.
+// ============================================================
+function PerfilRodape({ collapsed, onMobileClose, extras = [] }) {
+  const { user, logout, sectorName } = useAuth();
+  const [aberto, setAberto] = useState(false);
+  const navigate = useNavigate();
+
+  async function sair() {
+    setAberto(false);
+    await logout();
+    navigate('/login');
+  }
+
+  const inicial = (user?.name || '?').charAt(0).toUpperCase();
+  const papel = sectorName || user?.role || 'Usuário';
+
+  const itens = (
+    <>
+      {extras.map(e => (
+        <NavLink key={e.path} to={e.path} onClick={() => { setAberto(false); onMobileClose?.(); }}
+          className={({ isActive }) => `sidebar-item text-xs ${isActive ? 'active' : ''}`}>
+          <e.icon size={15} /> <span>{e.label}</span>
+        </NavLink>
+      ))}
+      <button onClick={sair} className="sidebar-item text-xs w-full text-red-300 hover:text-red-200">
+        <LogOut size={15} /> <span>Sair</span>
+      </button>
+    </>
+  );
+
+  // Menu colapsado: o painel abre FLUTUANDO ao lado, porque numa
+  // coluna de 64px não cabe nem o nome — e esconder o botão de sair
+  // seria trancar a pessoa dentro do sistema.
+  if (collapsed) {
+    return (
+      <div className="relative px-2 pb-3">
+        {aberto && (
           <>
-            <NavLink to="/vendedor/perfil" onClick={() => { setMenuAberto(false); onMobileClose?.(); }}
-              className={({ isActive }) => `sidebar-item text-xs ${isActive ? 'active' : ''}`}>
-              <UserCog size={15} /> <span>Dados do vendedor</span>
-            </NavLink>
-            <button onClick={logout} className="sidebar-item text-xs w-full">
-              <LogOut size={15} /> <span>Sair</span>
-            </button>
+            <div className="fixed inset-0 z-30" onClick={() => setAberto(false)} />
+            <div className="absolute left-full bottom-0 ml-2 z-40 w-52 rounded-xl bg-sidebar shadow-xl p-2 space-y-1"
+              style={{ border: '1px solid rgba(255,255,255,0.12)' }}>
+              <p className="px-2 pt-1 text-xs font-medium text-white truncate">{user?.name}</p>
+              <p className="px-2 pb-1 text-[10px] capitalize text-primary-300 truncate">{papel}</p>
+              {itens}
+            </div>
           </>
         )}
-
-        <button onClick={() => setMenuAberto(v => !v)}
-          className="sidebar-item w-full items-center rounded-xl"
+        <button onClick={() => setAberto(v => !v)} title={user?.name}
+          className="w-full flex justify-center py-1.5 rounded-xl"
           style={{ background: 'rgba(255,255,255,0.05)' }}>
-          <span className="w-9 h-9 rounded-full bg-primary-600 text-white flex items-center justify-center font-bold shrink-0">
-            {(user?.name || '?').charAt(0).toUpperCase()}
+          <span className="w-9 h-9 rounded-full text-white flex items-center justify-center font-bold"
+            style={{ background: 'linear-gradient(135deg, #E8187A 0%, #B80F5E 100%)' }}>
+            {inicial}
           </span>
-          <span className="min-w-0 flex-1 text-left">
-            <span className="block truncate">{user?.name}</span>
-            <span className="block text-[10px] font-normal text-primary-300 truncate">
-              {sectorName || 'Vendedor'}
-            </span>
-            <span className="block text-[10px] font-normal opacity-60 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" /> Online
-            </span>
-          </span>
-          {menuAberto ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
       </div>
-    </>
+    );
+  }
+
+  return (
+    <div className="px-2 pb-3 space-y-1">
+      {aberto && itens}
+      <button onClick={() => setAberto(v => !v)}
+        className="sidebar-item w-full items-center rounded-xl"
+        style={{ background: 'rgba(255,255,255,0.05)' }}>
+        <span className="w-9 h-9 rounded-full text-white flex items-center justify-center font-bold shrink-0"
+          style={{ background: 'linear-gradient(135deg, #E8187A 0%, #B80F5E 100%)' }}>
+          {inicial}
+        </span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block truncate">{user?.name}</span>
+          <span className="block text-[10px] font-normal text-primary-300 capitalize truncate">{papel}</span>
+        </span>
+        {aberto ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </button>
+    </div>
   );
 }
 
@@ -234,6 +284,12 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         </nav>
       )}
 
+      {/* O perfil fica no pé, em qualquer um dos dois layouts. */}
+      <PerfilRodape
+        collapsed={collapsed}
+        onMobileClose={onMobileClose}
+        extras={ehVendedor ? [{ path: '/vendedor/perfil', label: 'Dados do vendedor', icon: UserCog }] : []}
+      />
     </aside>
   );
 }

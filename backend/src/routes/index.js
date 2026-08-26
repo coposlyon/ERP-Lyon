@@ -59,6 +59,9 @@ router.use(tenantMiddleware);
 // usuário logado, sem restrição de módulo.
 router.use('/dashboard', dashboardRoutes);
 router.use('/me', pontoAppRoutes);
+// O sininho. Sem módulo próprio: cada fonte de aviso confere o módulo
+// dela lá dentro, e quem não tem estoque não recebe aviso de estoque.
+router.use('/avisos', require('./avisos'));
 router.use('/search', require('./search'));
 router.use('/ai', require('./ai'));
 

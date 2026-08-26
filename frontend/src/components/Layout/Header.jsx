@@ -1,24 +1,25 @@
-import {
-  Menu, Bell, Search, X, LogOut, ChevronDown,
-} from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+// ============================================================
+// O CABEÇALHO.
+//
+// O avatar e o menu de sair moravam aqui, no canto de cima. Foram para
+// o pé do menu lateral (Sidebar → PerfilRodape), que é onde todo
+// sistema os coloca e onde eles ficam perto do resto da navegação.
+//
+// O que sobra aqui é o do MOMENTO: abrir o menu, buscar, e ser avisado.
+// ============================================================
+import { Menu, Search } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Notificacoes from './Notificacoes';
 
 export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
-  const { user, tenant, logout } = useAuth();
+  const { tenant } = useAuth();
   const { isDark } = useTheme();
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
-
-  async function handleLogout() {
-    setMenuOpen(false);
-    await logout();
-    navigate('/login');
-  }
 
   function handleSearch(e) {
     e.preventDefault();
@@ -95,61 +96,8 @@ export default function Header({ onToggleSidebar, onToggleMobileSidebar }) {
         {/* O botão de tema saiu: o ERP tem um visual só. Enquanto ele
             existia, um clique acidental devolvia o sistema ao branco. */}
 
-        {/* Notificações */}
-        <button className={`${iconCls} relative`} aria-label="Notificações">
-          <Bell size={18} />
-        </button>
-
-        {/* Avatar + nome + menu (logout) */}
-        <div className="relative ml-1">
-          <button
-            onClick={() => setMenuOpen(v => !v)}
-            className={`flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors ${isDark ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-            aria-label="Menu do usuário"
-          >
-            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #E8187A 0%, #B80F5E 100%)' }}>
-              <span className="text-white text-xs font-semibold">
-                {user?.name?.charAt(0).toUpperCase() || 'U'}
-              </span>
-            </div>
-            <div className="hidden sm:block text-left">
-              <p className={`text-sm font-medium leading-none ${isDark ? 'text-gray-100' : 'text-gray-800'}`}>
-                {user?.name}
-              </p>
-              <p className={`text-xs capitalize mt-0.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                {user?.role}
-              </p>
-            </div>
-            <ChevronDown size={15} className={`hidden sm:block transition-transform ${menuOpen ? 'rotate-180' : ''} ${isDark ? 'text-gray-500' : 'text-gray-400'}`} />
-          </button>
-
-          {menuOpen && (
-            <>
-              {/* backdrop para fechar ao clicar fora */}
-              <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
-              <div
-                className="absolute right-0 mt-2 w-52 rounded-xl shadow-lg z-40 overflow-hidden"
-                style={{
-                  background: isDark ? '#080d24' : '#ffffff',
-                  border: `1px solid ${isDark ? '#1d2b6b' : '#e5e7eb'}`,
-                }}
-              >
-                <div className="px-4 py-3 sm:hidden" style={{ borderBottom: `1px solid ${isDark ? '#1d2b6b' : '#e5e7eb'}` }}>
-                  <p className={`text-sm font-medium ${isDark ? 'text-gray-100' : 'text-gray-800'}`}>{user?.name}</p>
-                  <p className={`text-xs capitalize ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{user?.role}</p>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-500 hover:bg-red-500/10 transition-colors"
-                >
-                  <LogOut size={16} />
-                  Sair
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+        {/* Notificações — o que mudou desde que você olhou. */}
+        <Notificacoes />
       </div>
 
       {/* Busca expandida mobile */}
