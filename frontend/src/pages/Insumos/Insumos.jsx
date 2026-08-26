@@ -249,7 +249,7 @@ function HistoricoModal({ insumo, onClose }) {
   );
 }
 
-function InsumoModal({ open, initial, suppliers, products, onClose, onSaved }) {
+function InsumoModal({ open, initial, suppliers, onClose, onSaved }) {
   const isEdit = !!initial?.id;
   const qc = useQueryClient();
   const [form, setForm] = useState(null);
@@ -389,19 +389,22 @@ function InsumoModal({ open, initial, suppliers, products, onClose, onSaved }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="label">Fornecedor</label>
-            <select className="input" value={f.supplier_id} onChange={e => set({ supplier_id: e.target.value })}>
-              <option value="">— (digitar abaixo) —</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">{f.supplier_id ? 'Fornecedor selecionado' : 'Fornecedor (texto livre)'}</label>
-            <input className="input" value={f.supplier_name} disabled={!!f.supplier_id} placeholder="Ex.: Bruni"
-              onChange={e => set({ supplier_name: e.target.value })} />
-          </div>
+        {/* UM CAMPO DE FORNECEDOR, não dois.
+            Ao lado da lista havia uma caixa de texto livre que só
+            despertava quando a lista estava vazia — e quando a lista
+            tinha alguém escolhido, ela ficava ali cinza repetindo o nome
+            que a lista já mostrava. Dois campos para um dado, um deles
+            desligado metade do tempo.
+            Fornecedor que ainda não existe se cadastra em Cadastros →
+            Fornecedores, que é onde ele precisa estar para o resto do
+            sistema enxergá-lo. O nome digitado à mão de insumos antigos
+            continua gravado: o que saiu foi a caixa, não o dado. */}
+        <div>
+          <label className="label">Fornecedor</label>
+          <select className="input" value={f.supplier_id} onChange={e => set({ supplier_id: e.target.value })}>
+            <option value="">{f.supplier_name ? f.supplier_name : '— sem fornecedor —'}</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -450,24 +453,20 @@ function InsumoModal({ open, initial, suppliers, products, onClose, onSaved }) {
           </div>
         )}
 
-        {/* Estoque e integração com Compras/Estoque */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="label">Estoque mínimo ({f.base_unit})</label>
-            <input className="input" inputMode="decimal" value={f.min_stock} placeholder="0"
-              onChange={e => set({ min_stock: e.target.value.replace(/[^\d,.]/g, '') })} />
-            <p className="text-[11px] text-gray-400 mt-1">Abaixo disso, o insumo entra no alerta de reposição.</p>
-          </div>
-          <div>
-            <label className="label">Produto vinculado (Compras/Estoque)</label>
-            <select className="input" value={f.product_id} onChange={e => set({ product_id: e.target.value })}>
-              <option value="">— sem vínculo —</option>
-              {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <p className="text-[11px] text-gray-400 mt-1">
-              Vincule para o insumo herdar saldo em estoque e o preço da última compra.
-            </p>
-          </div>
+        {/* O PRODUTO VINCULADO (Compras/Estoque) SAIU DAQUI.
+            Era um seletor com o cadastro de produtos inteiro dentro,
+            oferecido a quem está lançando um pote de tinta — e tinta não
+            é produto de venda. Quem cadastra insumo escolhia "sem
+            vínculo" todas as vezes.
+            O vínculo em si NÃO foi apagado: `product_id` continua sendo
+            gravado a partir do que já existe, então insumo que hoje
+            herda saldo e preço da última compra segue herdando. O que
+            saiu foi a pergunta. */}
+        <div>
+          <label className="label">Estoque mínimo ({f.base_unit})</label>
+          <input className="input" inputMode="decimal" value={f.min_stock} placeholder="0"
+            onChange={e => set({ min_stock: e.target.value.replace(/[^\d,.]/g, '') })} />
+          <p className="text-[11px] text-gray-400 mt-1">Abaixo disso, o insumo entra no alerta de reposição.</p>
         </div>
 
         <div>
@@ -528,11 +527,10 @@ export default function Insumos() {
     queryKey: ['suppliers-min'],
     queryFn: () => api.get('/suppliers?limit=500').then(d => (Array.isArray(d) ? d : d.data || [])),
   });
-  const { data: productsRes } = useQuery({
-    queryKey: ['pricing-products'],
-    queryFn: () => api.get('/products?limit=1000'),
-  });
-  const products = productsRes?.data || [];
+  // O cadastro de produtos era carregado inteiro (mil linhas) só para
+  // encher o seletor de "produto vinculado", que saiu do formulário.
+  // Requisição pesada a cada abertura da tela, para uma lista que
+  // ninguém abria.
 
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase();
@@ -674,7 +672,7 @@ export default function Insumos() {
         O <b>custo por peça</b> alimenta o Processo de Produção e a Formação de Preço — atualiza o preço de um material aqui e o custo real de todos os produtos que o usam se ajusta.
       </p>
 
-      <InsumoModal open={!!modal} initial={modal || {}} suppliers={suppliers} products={products}
+      <InsumoModal open={!!modal} initial={modal || {}} suppliers={suppliers}
         onClose={() => setModal(null)}
         onSaved={() => { setModal(null); qc.invalidateQueries({ queryKey: ['insumos'] }); }} />
 
