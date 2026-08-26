@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { ArrowLeft, Printer, CheckCircle2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { SaleDetail } from './Sales';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import { SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
@@ -201,6 +202,14 @@ export default function SaleForm() {
             <p className="text-sm">{sale.notes}</p>
           </div>
         )}
+
+        {/* AS ABAS DO PEDIDO — vieram da lista de Pedidos de Venda.
+            Lá elas ocupavam meia tela abaixo da tabela para mostrar o
+            que já é o assunto DESTA tela. A lista existe para achar o
+            pedido; aqui é onde ele se trabalha — e é aqui que se define
+            transportadora, rastreio, modalidade de entrega, forma de
+            pagamento, status e anexos. */}
+        <SaleDetail saleId={id} onChanged={() => qc.invalidateQueries(['sale', id])} />
       </div>
     </>
   );

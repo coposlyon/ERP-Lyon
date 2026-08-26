@@ -94,7 +94,25 @@ router.get('/', async (req, res) => {
 
     const { data, error, count } = await query;
     if (error) throw error;
-    res.json({ data, total: count, page: Number(page), limit: Number(limit) });
+
+    // O NOME DA TRANSPORTADORA, e não o uuid dela.
+    //
+    // A lista mostra a coluna Transportadora; sem esta resolução ela
+    // mostraria um identificador que não diz nada a ninguém. Vem numa
+    // consulta só para a página inteira — uma por linha seria cinquenta
+    // idas ao banco para desenhar uma tela.
+    const linhas = data || [];
+    const idsTransp = [...new Set(linhas.map(v => v.carrier_id).filter(Boolean))];
+    if (idsTransp.length) {
+      try {
+        const { data: transp } = await supabase.from('TRANSPORTADORAS')
+          .select('id, name, trade_name').eq('tenant_id', req.tenantId).in('id', idsTransp);
+        const porId = Object.fromEntries((transp || []).map(t => [t.id, t.trade_name || t.name]));
+        for (const v of linhas) v.transportadora = porId[v.carrier_id] || null;
+      } catch { /* sem transportadora a coluna fica vazia, e a lista abre */ }
+    }
+
+    res.json({ data: linhas, total: count, page: Number(page), limit: Number(limit) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -7,7 +7,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import ExcluirPedidoModal from '@/components/UI/ExcluirPedidoModal';
 import { useVend, fmtBRL } from '@/components/UI/theme';
 import { corStatus, NIVEL_ATENCAO, CSS_ATENCAO, codigoPedido, codigoCliente } from '@/lib/pedidoUi';
-import LogoOrigem from '@/components/UI/LogoOrigem';
 import { SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -16,6 +15,10 @@ const fmt = fmtBRL;
 const d  = iso => { if (!iso) return ''; try { return format(parseISO(iso), 'dd/MM/yyyy'); } catch { return iso; } };
 const dt = iso => { if (!iso) return ''; try { return format(parseISO(iso), 'dd/MM/yyyy HH:mm:ss'); } catch { return iso; } };
 const dataHora = iso => { if (!iso) return '—'; try { return format(parseISO(iso), 'dd/MM/yyyy HH:mm'); } catch { return iso; } };
+// Data sem hora, para as colunas de prazo. Um traço quando não há data:
+// prazo em branco e prazo inexistente são a mesma coluna e respostas
+// diferentes, e o traço é o que diz "ninguém definiu ainda".
+const dia = iso => { if (!iso) return '—'; try { return format(parseISO(String(iso).slice(0, 10)), 'dd/MM/yyyy'); } catch { return iso; } };
 
 const POR_PAGINA = [10, 25, 50, 100];
 
@@ -212,16 +215,20 @@ export default function Sales() {
               exatamente com o menu lateral aberto, que e quando sobra
               menos tela. 1500 = as fixas + 208 de Cliente; abaixo disso
               a tabela rola na horizontal, que ja e o comportamento. */}
-          <div style={{ minWidth: 1500 }}>
+          <div style={{ minWidth: 2010 }}>
             <div className="flex items-center gap-3 px-4 py-3"
               style={{ borderBottom: `1px solid ${v.divider}`, color: v.textMuted }}>
               <span className={`${th} w-24 shrink-0`}>Pedido</span>
               <span className={`${th} w-36 shrink-0`}>Data / Hora</span>
-              <span className={`${th} w-36 shrink-0`}>Origem</span>
               <span className={`${th} w-28 shrink-0`}>Cód. Cliente</span>
               <span className={`${th} flex-1`} style={{ minWidth: 200 }}>Cliente</span>
-              <span className={`${th} w-28 shrink-0 text-right`}>Valor Total</span>
-              <span className={`${th} w-24 shrink-0 text-right`}>Frete</span>
+              <span className={`${th} w-28 shrink-0 text-right`}>Vr. Total</span>
+              <span className={`${th} w-24 shrink-0 text-right`}>Vr. Frete</span>
+              <span className={`${th} w-28 shrink-0 text-center`}>Data do Evento</span>
+              <span className={`${th} w-28 shrink-0 text-center`}>Data de Saída</span>
+              <span className={`${th} w-32 shrink-0 text-center`}>Previsão de Entrega</span>
+              <span className={`${th} w-36 shrink-0`}>Transportadora</span>
+              <span className={`${th} w-28 shrink-0`}>Cotação</span>
               {/* w-64: cabe "Em processo de coleta / retirada", que é o
                   rótulo mais longo do fluxo. Com w-52 o status quebrava
                   em duas linhas e a linha do pedido crescia junto. */}
@@ -257,14 +264,6 @@ export default function Sales() {
                   <span className="w-36 shrink-0" style={{ color: v.textMuted }}>
                     {dataHora(row.operation_date ? `${row.operation_date}T12:00:00` : row.created_at)}
                   </span>
-                  <span className="w-36 shrink-0 flex items-center gap-1.5 truncate"
-                    style={{ color: row.origin ? v.textPrimary : v.textSubtle }}
-                    title={row.origin
-                      ? `${row.origin}${row.source === 'site' ? ' — pedido feito pelo próprio cliente' : ' — lançado no ERP'}`
-                      : 'Origem não informada neste pedido'}>
-                    <LogoOrigem origem={row.origin} size={20} />
-                    <span className="truncate">{row.origin || 'não informado'}</span>
-                  </span>
                   <span className="w-28 shrink-0 font-mono" style={{ color: v.textMuted }}>
                     {codigoCliente(row.CLIENTES?.display_id) || '—'}
                   </span>
@@ -276,6 +275,23 @@ export default function Sales() {
                   </span>
                   <span className="w-24 shrink-0 text-right" style={{ color: v.textMuted }}>
                     {row.freight > 0 ? fmt(row.freight) : '—'}
+                  </span>
+                  <span className="w-28 shrink-0 text-center" style={{ color: v.textMuted }}>
+                    {dia(row.event_date)}
+                  </span>
+                  <span className="w-28 shrink-0 text-center" style={{ color: v.textMuted }}>
+                    {dia(row.ship_date)}
+                  </span>
+                  <span className="w-32 shrink-0 text-center" style={{ color: v.textMuted }}>
+                    {dia(row.delivery_date || row.max_delivery_date)}
+                  </span>
+                  <span className="w-36 shrink-0 truncate" style={{ color: v.textMuted }}
+                    title={row.transportadora || 'Transportadora não definida'}>
+                    {row.transportadora || '—'}
+                  </span>
+                  <span className="w-28 shrink-0 truncate font-mono text-[12px]" style={{ color: v.textMuted }}
+                    title={row.freight_quote || 'Sem cotação'}>
+                    {row.freight_quote || '—'}
                   </span>
                   <span className="w-64 shrink-0 flex justify-center">
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] whitespace-nowrap"
@@ -313,6 +329,8 @@ export default function Sales() {
                 <span className="flex-1">{rows.length} pedido{rows.length !== 1 ? 's' : ''} nesta página</span>
                 <span className="w-28 text-right" style={{ color: '#22d3ee' }}>{fmt(pageTotal)}</span>
                 <span className="w-24 text-right">{pageFreight > 0 ? fmt(pageFreight) : ''}</span>
+                <span className="w-28" /><span className="w-28" /><span className="w-32" />
+                <span className="w-36" /><span className="w-28" />
                 <span className="w-64" /><span className="w-20" /><span className="w-28" />
               </div>
             )}
@@ -354,8 +372,13 @@ export default function Sales() {
         <Legenda Icon={Eye} cor="#3b82f6" texto="Abrir o pedido" />
       </div>
 
-      {/* Painel master-detail (abas) */}
-      <SaleDetail saleId={selectedId} onChanged={() => qc.invalidateQueries(['sales'])} />
+      {/* O PAINEL DE ABAS SAIU DAQUI e foi para a tela do pedido
+          (/sales/:id). Ele ocupava meia tela abaixo da lista para
+          mostrar o que já é o assunto da tela seguinte — e a lista
+          existe para achar o pedido, não para trabalhá-lo.
+          Nada se perdeu: transportadora, rastreio, modalidade de
+          entrega, forma de pagamento, status e anexos continuam lá,
+          nas mesmas abas. */}
 
       {/* Excluir pedido (admin + senha) */}
       {/* Exclusao com senha — mesma peca usada na tela do vendedor,
@@ -454,7 +477,7 @@ const DETAIL_TABS = [
   ['transportadores', '3 - Transportadores'], ['status', '4 - Status'], ['anexos', '5 - Anexos'],
 ];
 
-function SaleDetail({ saleId, onChanged }) {
+export function SaleDetail({ saleId, onChanged }) {
   const [tab, setTab] = useState('produtos');
   const qc = useQueryClient();
   const { data: sale, isLoading } = useQuery({
