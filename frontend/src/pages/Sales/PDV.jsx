@@ -275,11 +275,20 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     queryFn: () => api.get('/customers?limit=50&sort=recent&is_active=true&type=cliente'),
   });
 
-  // Transportadoras cadastradas — escolhida após selecionar o cliente
+  // Transportadoras cadastradas.
+  //
+  // A busca era travada até haver cliente escolhido (`enabled: isQuote ||
+  // !!selectedCustomer`). A economia era de uma requisição; o preço era
+  // um seletor que ABRIA VAZIO, com "— selecione —" e "Retirar em mãos"
+  // e mais nada — parecendo que não havia transportadora cadastrada,
+  // quando havia duas.
+  //
+  // A lista não depende do cliente: é a mesma para todos, tem duas
+  // linhas e o react-query guarda em cache. Carregar sempre é mais
+  // barato que explicar por que o campo está vazio.
   const { data: carriers } = useQuery({
     queryKey: ['carriers'],
     queryFn: () => api.get('/shipping/carriers'),
-    enabled: isQuote || !!selectedCustomer,
   });
   const carrierSel = (carriers?.data || []).find(c => c.id === carrierId) || null;
   // "Retirar em mãos" é uma opção fixa da lista, não uma transportadora
