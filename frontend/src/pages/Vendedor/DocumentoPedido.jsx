@@ -33,7 +33,7 @@ import { useParams, useNavigate, useLocation, useSearchParams } from 'react-rout
 import {
   ArrowLeft, Printer, Loader2, Download, Eye, Image as ImageIcon, Frame,
   Building2, FileText, MapPin, Phone, Globe, User, CalendarDays, ShoppingCart,
-  DollarSign, Truck, ShieldCheck, CircleCheck, Paperclip,
+  DollarSign, Truck, ShieldCheck, CircleCheck, Paperclip, Palette, X,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { fmtBRL, fmtUn, fmtDate } from './ui';
@@ -70,6 +70,9 @@ export default function DocumentoPedido() {
   const { pathname } = useLocation();
   const [params] = useSearchParams();
   const [comArte, setComArte] = useState(true);
+  // 'pb' = preto e branco (papel) · 'cor' = como está na tela
+  const [modo, setModo] = useState('pb');
+  const [perguntando, setPerguntando] = useState(false);
 
   const { data: p, isLoading, error } = useQuery({
     queryKey: ['pedido-vendedor', id],
@@ -86,6 +89,19 @@ export default function DocumentoPedido() {
   }, [p]);
 
   /**
+   * Imprimir num modo escolhido.
+   *
+   * O `setTimeout` não é superstição: a classe do modo precisa estar
+   * pintada no DOM antes de o navegador tirar a foto da página. Chamar
+   * print() no mesmo quadro imprime o modo anterior.
+   */
+  function imprimir(qual) {
+    setModo(qual);
+    setPerguntando(false);
+    setTimeout(() => window.print(), 120);
+  }
+
+  /**
    * "Imprimir em preto e branco" chega aqui com ?imprimir=1.
    *
    * O diálogo só abre DEPOIS de a folha existir — chamar print() com o
@@ -95,7 +111,7 @@ export default function DocumentoPedido() {
    */
   useEffect(() => {
     if (!p || params.get('imprimir') !== '1') return;
-    const t = setTimeout(() => window.print(), 400);
+    const t = setTimeout(() => imprimir('pb'), 400);
     return () => clearTimeout(t);
   }, [p, params]);
 
@@ -160,28 +176,66 @@ export default function DocumentoPedido() {
   return (
     <>
       <style>{`
-        /* O PAPEL É BRANCO. Na tela o documento acompanha o sistema; ao
-           imprimir, tudo vira preto no branco — inclusive o fundo escuro
-           do ERP em volta, que sairia como uma mancha de tinta. */
+        /* ═══ O QUE VAI PARA O PAPEL ═══════════════════════════
+           O ERP INTEIRO SAI DO CAMINHO.
+
+           A impressão saía com o menu lateral, o cabeçalho e o sininho
+           dentro da folha, e o documento espremido numa coluna estreita
+           no meio — porque o navegador imprime a PÁGINA, e a página é o
+           ERP com o documento dentro dele.
+
+           Três coisas fazem isso acontecer, e as três precisam cair:
+             · o menu e o cabeçalho, que não são o documento;
+             · o "overflow: hidden"/"auto" do shell, que corta tudo o que
+               passa da altura da tela — era isso que deixava a folha com
+               uma página só;
+             · a altura fixa de 100vh, que não existe no papel.
+        */
         @media print {
-          html, body, .erp-shell, main { background: #ffffff !important; }
+          html, body { background: #ffffff !important; }
+
+          .erp-shell { display: block !important; height: auto !important; overflow: visible !important; }
+          .erp-shell > aside,
+          .erp-shell header,
+          .erp-shell footer,
+          .erp-shell button.fixed { display: none !important; }
+          .erp-shell > div { display: block !important; height: auto !important; overflow: visible !important; }
+          .erp-shell main { height: auto !important; overflow: visible !important; padding: 0 !important; }
+
+          /* A barra de ações e a lateral são da tela, não do documento. */
           .doc-chrome, .doc-aside { display: none !important; }
-          .doc-folha, .doc-folha * {
+          .doc-sem-arte .doc-arte { display: none !important; }
+
+          /* Linha de item não pode ser partida ao meio pela quebra de
+             página: metade da quantidade numa folha e metade na outra é
+             como nasce divergência de conferência. */
+          tr, .doc-bloco { break-inside: avoid; }
+          thead { display: table-header-group; }
+          @page { size: A4; margin: 10mm; }
+
+          /* ── PRETO E BRANCO ──────────────────────────────────
+             O ERP é escuro, papel não é: imprimir a tela escura gasta
+             meio cartucho para sair ilegível no fax do contador. */
+          .doc-modo-pb .doc-folha,
+          .doc-modo-pb .doc-folha * {
             background: #ffffff !important;
             color: #000000 !important;
             border-color: #9ca3af !important;
             box-shadow: none !important;
             text-shadow: none !important;
           }
-          .doc-folha { border: 1px solid #374151 !important; border-radius: 0 !important; }
-          .doc-folha .doc-forte { font-weight: 700 !important; }
-          .doc-sem-arte .doc-arte { display: none !important; }
-          /* Linha de item não pode ser partida ao meio pela quebra de
-             página: metade da quantidade numa folha e metade na outra é
-             como nasce divergência de conferência. */
-          tr, .doc-bloco { break-inside: avoid; }
-          thead { display: table-header-group; }
-          @page { size: A4; margin: 12mm; }
+          .doc-modo-pb .doc-folha { border: 1px solid #374151 !important; border-radius: 0 !important; }
+          .doc-modo-pb .doc-forte { font-weight: 700 !important; }
+
+          /* ── COLORIDO ────────────────────────────────────────
+             Sai igual à tela. "print-color-adjust: exact" é o que manda
+             o navegador imprimir os fundos: sem ele, ele "economiza
+             tinta" e devolve o texto claro sobre papel branco — ou
+             seja, ilegível. */
+          .doc-modo-cor .doc-folha {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
         }
       `}</style>
 
@@ -201,8 +255,8 @@ export default function DocumentoPedido() {
 
         <div className="flex flex-col items-end gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <BotaoNeon cor={CIANO} onClick={() => window.print()} Icon={Download}>Baixar PDF</BotaoNeon>
-            <BotaoNeon cor="#60a5fa" onClick={() => window.print()} Icon={Printer}>Imprimir em preto e branco</BotaoNeon>
+            <BotaoNeon cor={CIANO} onClick={() => setPerguntando(true)} Icon={Download}>Baixar PDF</BotaoNeon>
+            <BotaoNeon cor="#60a5fa" onClick={() => imprimir('pb')} Icon={Printer}>Imprimir em preto e branco</BotaoNeon>
             <BotaoNeon cor={ROSA} Icon={Eye} desabilitado={!temArte}
               onClick={() => temArte && window.open(p.artwork_url, '_blank', 'noopener')}>
               Visualizar arte
@@ -218,7 +272,7 @@ export default function DocumentoPedido() {
         </div>
       </div>
 
-      <div className={`flex flex-col xl:flex-row gap-4 items-start ${comArte ? '' : 'doc-sem-arte'}`}>
+      <div className={`doc-modo-${modo} flex flex-col xl:flex-row gap-4 items-start ${comArte ? '' : 'doc-sem-arte'}`}>
 
         {/* ══ A FOLHA ══════════════════════════════════════════ */}
         <div className="doc-folha flex-1 min-w-0 rounded-2xl p-5 sm:p-7"
@@ -448,7 +502,50 @@ export default function DocumentoPedido() {
         </aside>
         )}
       </div>
+
+      {/* ── Como você quer o PDF? ──────────────────────────── */}
+      {perguntando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(3,6,18,0.78)' }} onClick={() => setPerguntando(false)}>
+          <div className="w-full max-w-lg rounded-2xl p-5 sm:p-6" onClick={e => e.stopPropagation()}
+            style={{
+              background: 'linear-gradient(180deg, #0b1024 0%, #080d1e 100%)',
+              border: `1px solid ${CIANO}55`,
+              boxShadow: `0 0 30px ${CIANO}22, 0 0 80px ${ROSA}14`,
+            }}>
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <p className="text-base font-semibold text-white">Como você quer o PDF?</p>
+              <button onClick={() => setPerguntando(false)} className="p-1 rounded-lg"
+                style={{ color: 'rgba(255,255,255,0.6)' }} aria-label="Fechar">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-xs mb-4" style={{ color: 'rgba(255,255,255,0.5)' }}>
+              Em “Destino”, escolha <b>Salvar como PDF</b>.
+            </p>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <EscolhaPdf Icon={Printer} cor="#60a5fa" onClick={() => imprimir('pb')}
+                titulo="Preto e branco" nota="Para imprimir em papel — economiza tinta e sai legível." />
+              <EscolhaPdf Icon={Palette} cor={ROSA} onClick={() => imprimir('cor')}
+                titulo="Colorido" nota="Igual a esta tela — para mandar ao cliente." />
+            </div>
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+function EscolhaPdf({ Icon, cor, titulo, nota, onClick }) {
+  return (
+    <button onClick={onClick}
+      className="flex flex-col items-center gap-2 rounded-xl px-4 py-5 text-center transition-transform hover:-translate-y-0.5"
+      style={{ border: `1px solid ${cor}66`, background: `${cor}0f`, color: cor }}>
+      <Icon size={24} />
+      <span className="text-sm font-semibold">{titulo}</span>
+      <span className="text-[11px] font-normal leading-snug" style={{ color: 'rgba(255,255,255,0.5)' }}>{nota}</span>
+    </button>
   );
 }
 
