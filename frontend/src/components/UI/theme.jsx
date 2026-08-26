@@ -61,12 +61,12 @@ export function Hint({ text }) {
 }
 
 /** Caixa base dos blocos. */
-export function Panel({ title, hint, right, children, className = '', bodyClass = 'p-4' }) {
+export function Panel({ title, hint, right, children, className = '', bodyClass = 'p-3.5' }) {
   const { card, divider, textPrimary } = useVend();
   return (
     <div style={card} className={`flex flex-col ${className}`}>
       {(title || right) && (
-        <div className="flex items-start justify-between gap-2 px-4 py-3"
+        <div className="flex items-start justify-between gap-2 px-3.5 py-2.5"
           style={{ borderBottom: `1px solid ${divider}` }}>
           <h2 className="text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1.5"
             style={{ color: textPrimary }}>
@@ -83,27 +83,39 @@ export function Panel({ title, hint, right, children, className = '', bodyClass 
 /**
  * Cartão de indicador. O valor é o herói: vem grande e colorido, com o
  * rótulo pequeno em cima e o ícone à direita.
+ *
+ * POR QUE ELE ENCOLHEU. O cartão foi desenhado numa tela de 1920 sem
+ * ampliação do Windows. Em máquina com ampliação de 125% ou 150% — que
+ * é o padrão de fábrica de todo notebook novo — a mesma tela vira 1536
+ * ou 1280 pontos de largura, e o cartão continua pedindo o mesmo espaço
+ * em pontos: o rótulo "META DO MÊS (UNIDADES)" quebra em duas linhas, a
+ * altura cresce junto e o painel inteiro fica com cara de zoom.
+ *
+ * O que apertou foi a folga, não a informação: menos respiro nas bordas,
+ * o rótulo com entrelinha justa e menos espaçamento entre letras, e o
+ * ícone um número menor. O valor — que é o que se lê de longe — perdeu
+ * pouco. O cartão cabe numa linha só a partir de 1280 pontos.
  */
 export function Kpi({ title, hint, value, unit, color, Icon, iconBg }) {
   const { card, textSubtle } = useVend();
   return (
-    <div style={{ ...card, padding: '1rem 1.15rem' }}>
-      <div className="flex items-start justify-between gap-3">
+    <div style={{ ...card, padding: '0.8rem 0.95rem' }}>
+      <div className="flex items-start justify-between gap-2.5">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-widest leading-relaxed flex items-start gap-1.5"
+          <p className="text-[10px] font-semibold uppercase tracking-wider leading-tight flex items-start gap-1.5"
             style={{ color: textSubtle }}>
             <span>{title}</span>
             {hint && <Hint text={hint} />}
           </p>
-          <p className="text-2xl font-bold mt-1.5 truncate" style={{ color }}>
+          <p className="text-[1.35rem] font-bold mt-1 truncate leading-tight" style={{ color }}>
             {value}
-            {unit && <span className="text-sm font-semibold ml-1" style={{ opacity: 0.75 }}>{unit}</span>}
+            {unit && <span className="text-[0.8rem] font-semibold ml-1" style={{ opacity: 0.75 }}>{unit}</span>}
           </p>
         </div>
         {Icon && (
-          <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0"
+          <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
             style={{ background: iconBg || 'rgba(99,102,241,0.15)' }}>
-            <Icon size={19} style={{ color }} />
+            <Icon size={17} style={{ color }} />
           </div>
         )}
       </div>

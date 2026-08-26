@@ -86,6 +86,10 @@ router.get('/dashboard', async (req, res) => {
       .from('USUARIOS').select('id, name, email')
       .eq('id', userId).maybeSingle();
 
+    // Quem responde por cada UF do território — o painel troca a sigla
+    // do estado pelo rosto de quem atende ali.
+    const responsaveis = await V.responsaveisPorUf(tenantId, config.territory);
+
     res.json({
       // As tabelas de configuração nascem na migração 065, aplicada à mão
       // no Supabase. Sem elas o painel mostra as vendas e avisa o que falta.
@@ -96,6 +100,7 @@ router.get('/dashboard', async (req, res) => {
         region_label: config.region_label,
         territory: config.territory,
         top_clients: config.top_clients,
+        responsaveis,
       },
       period: { year, month, month_key: referenceMonth },
       kpis: {
@@ -654,7 +659,26 @@ router.get('/vendedores', requireManager, async (req, res) => {
     ]);
 
     const byUser = new Map((configs || []).map(c => [c.user_id, c]));
-    res.json((users || []).map(u => ({
+
+    // SÓ QUEM É VENDEDOR ENTRA NA LISTA.
+    //
+    // Antes vinha todo usuário ativo, e o seletor do painel oferecia o
+    // financeiro, o produção e o administrativo como se cada um tivesse
+    // meta e comissão. Abrir o painel de quem não vende não quebra nada
+    // — mostra zero em tudo — mas enche a lista de nomes que nunca são a
+    // resposta, e piora a cada colaborador novo.
+    //
+    // Vendedor é quem tem território/meta configurados (a linha em
+    // VENDEDORES) ou o módulo liberado. Quem tem `allowed_modules` nulo
+    // é admin: vê todos os módulos, este inclusive.
+    const ehVendedor = u => {
+      const cfg = byUser.get(u.id);
+      if (cfg && cfg.is_active !== false) return true;
+      if (u.allowed_modules == null) return true;
+      return Array.isArray(u.allowed_modules) && u.allowed_modules.includes('vendedor');
+    };
+
+    res.json((users || []).filter(ehVendedor).map(u => ({
       user_id: u.id,
       name: u.name,
       email: u.email,

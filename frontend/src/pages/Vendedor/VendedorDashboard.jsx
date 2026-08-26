@@ -215,7 +215,7 @@ export default function VendedorDashboard() {
         <Kpi title="Vendido no mês" Icon={ShoppingCart} color="#22c55e" iconBg="rgba(34,197,94,0.15)"
           value={fmtUn(k.units)} unit="un"
           hint="Soma das unidades dos pedidos válidos do vendedor no mês. Orçamento que ainda não virou venda não entra." />
-        <Kpi title="Preço médio por unidade" Icon={DollarSign} color="#22d3ee" iconBg="rgba(34,211,238,0.15)"
+        <Kpi title="Preço médio (un.)" Icon={DollarSign} color="#22d3ee" iconBg="rgba(34,211,238,0.15)"
           value={fmtBRL(k.avg_price)}
           hint="Faturamento dos produtos ÷ unidades vendidas. O frete fica de fora para não distorcer o preço do produto." />
         <Kpi title="Faturamento do mês" Icon={TrendingUp} color="#22d3ee" iconBg="rgba(34,211,238,0.15)"
@@ -347,25 +347,13 @@ export default function VendedorDashboard() {
                 <p className="text-xs" style={{ color: v.empty }}>
                   Nenhuma UF definida. O território é configurado no cadastro do colaborador.
                 </p>
-              ) : territorio.map(uf => {
-                const comprou = (compradores[uf] || 0) > 0;
-                const cor = corUf(uf, comprou);
-                return (
-                  <div key={uf} className="flex items-center gap-2"
-                    title={`${UF_NOME[uf] || uf} — ${comprou ? `${compradores[uf]} comprador(es)` : 'sem compras no período'}`}>
-                    <span className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-                      style={{ background: cor.chip, color: cor.text, border: `1px solid ${cor.stroke}` }}>{uf}</span>
-                    <span className="text-sm truncate flex-1" style={{ color: comprou ? v.textPrimary : v.textMuted }}>
-                      {UF_NOME[uf] || uf}
-                    </span>
-                    <button onClick={() => setCidadesUf(uf)}
-                      title={`Ver as cidades de ${UF_NOME[uf] || uf}`}
-                      className="p-1 rounded hover:opacity-70 shrink-0" style={{ color: cor.text }}>
-                      <Eye size={14} />
-                    </button>
-                  </div>
-                );
-              })}
+              ) : territorio.map(uf => (
+                <LinhaDoEstado key={uf} uf={uf} v={v}
+                  comprou={(compradores[uf] || 0) > 0}
+                  compradores={compradores[uf] || 0}
+                  responsaveis={data?.seller?.responsaveis?.[uf] || []}
+                  onVerCidades={() => setCidadesUf(uf)} />
+              ))}
             </div>
           </div>
         </Panel>
@@ -502,6 +490,86 @@ export default function VendedorDashboard() {
 }
 
 // Linha "rótulo ................ valor" do quadro do plano
+// ── UMA LINHA DO TERRITÓRIO ──────────────────────────────────
+//
+// A bolinha era a sigla do estado. Quem abre o próprio painel já sabe
+// que PR é Paraná — a sigla ali não contava nada. A pergunta que o
+// gestor faz ao abrir o território é OUTRA: quem atende aqui. Agora é o
+// rosto de quem atende que ocupa o círculo, e a sigla desce para um
+// selo pequeno no canto, na cor do estado, para o mapa ao lado
+// continuar tendo par na lista.
+//
+// Enquanto a foto não existe — e hoje nenhum colaborador tirou a dele —
+// o círculo mostra as iniciais na cor do estado. Não é um vazio à
+// espera: já é a identificação, e ela vira retrato sozinha no dia em que
+// a facial for capturada na admissão.
+//
+// Estado sem ninguém configurado volta ao selo antigo com a sigla, e diz
+// "sem responsável" em vez de fingir um rosto.
+function LinhaDoEstado({ uf, v, comprou, compradores, responsaveis, onVerCidades }) {
+  const cor = corUf(uf, comprou);
+  const nome = UF_NOME[uf] || uf;
+  const dono = responsaveis[0] || null;
+  const outros = responsaveis.length - 1;
+
+  const legenda = comprou ? `${compradores} comprador(es) no período` : 'sem compras no período';
+  const quem = responsaveis.length
+    ? responsaveis.map(r => r.name).join(' · ')
+    : 'sem responsável definido';
+
+  return (
+    <div className="flex items-center gap-2.5" title={`${nome} — ${legenda}
+Atende: ${quem}`}>
+      <div className="relative shrink-0">
+        {dono ? (
+          dono.avatar_url ? (
+            <img src={dono.avatar_url} alt={dono.name}
+              className="w-8 h-8 rounded-full object-cover"
+              style={{ border: `2px solid ${cor.stroke}` }} />
+          ) : (
+            <span className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold"
+              style={{ background: cor.chip, color: cor.text, border: `2px solid ${cor.stroke}` }}>
+              {dono.iniciais}
+            </span>
+          )
+        ) : (
+          <span className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold"
+            style={{ background: cor.chip, color: cor.text, border: `1px dashed ${cor.stroke}` }}>
+            {uf}
+          </span>
+        )}
+
+        {/* A sigla só aparece quando o círculo virou rosto — senão ela
+            estaria escrita duas vezes no mesmo lugar. */}
+        {dono && (
+          <span className="absolute -bottom-0.5 -right-1 px-1 rounded text-[8px] font-bold leading-[13px]"
+            style={{ background: cor.base, color: '#04102e' }}>{uf}</span>
+        )}
+
+        {/* Território dividido: o segundo rosto não cabe, o número cabe. */}
+        {outros > 0 && (
+          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold"
+            style={{ background: v.isDark ? '#101a3d' : '#ffffff', color: v.textMuted, border: `1px solid ${v.divider}` }}>
+            +{outros}
+          </span>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1 leading-tight">
+        <p className="text-sm truncate" style={{ color: comprou ? v.textPrimary : v.textMuted }}>{nome}</p>
+        <p className="text-[11px] truncate" style={{ color: dono ? v.textSubtle : v.empty }}>
+          {dono ? dono.name : 'sem responsável'}
+        </p>
+      </div>
+
+      <button onClick={onVerCidades} title={`Ver as cidades de ${nome}`}
+        className="p-1 rounded hover:opacity-70 shrink-0" style={{ color: cor.text }}>
+        <Eye size={14} />
+      </button>
+    </div>
+  );
+}
+
 function Linha({ label, valor, cor }) {
   const { textMuted } = useVend();
   return (

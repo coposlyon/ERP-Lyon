@@ -702,6 +702,91 @@ function customerRanking(sales) {
     .sort((a, b) => b.units - a.units || (a.name || '').localeCompare(b.name || ''));
 }
 
+// ── Quem responde por cada estado ────────────────────────────
+
+/**
+ * O ROSTO DO ESTADO.
+ *
+ * O painel mostrava as UFs como uma bolinha com a sigla dentro. A sigla
+ * responde "que estado é este" — que quem abre o próprio território já
+ * sabe. A pergunta que sobra, e que o gestor faz quando abre o painel de
+ * outra pessoa, é "quem atende aqui". Isso já está no banco: é o
+ * território de cada vendedor, ao contrário. Basta virar o mapa.
+ *
+ * A FOTO VEM DO CADASTRO DE COLABORADOR, não do usuário. O login guarda
+ * nome e e-mail; a foto (a facial da admissão) mora em CLIENTES type
+ * 'CO'. O casamento entre os dois segue a MESMA ordem de lib/euSou.js —
+ * `access_email` primeiro, `email` como resgate dos cadastros antigos —
+ * porque duas regras de identidade diferentes no mesmo sistema é como
+ * alguém acaba vendo o rosto errado no lugar do seu.
+ *
+ * Quem ainda não tirou foto sai com `avatar_url: null` e as iniciais
+ * calculadas aqui: a tela desenha o círculo com as letras e troca pela
+ * foto no dia em que ela for tirada, sem mexer em mais nada.
+ *
+ * @param ufs  restringe o resultado ao território pedido; vazio = todas
+ * @returns    { 'PR': [{ user_id, name, avatar_url, iniciais }], ... }
+ */
+async function responsaveisPorUf(tenantId, ufs = []) {
+  const filtro = new Set((ufs || []).map(u => String(u).toUpperCase()));
+
+  const { data: configs } = await supabase.from('VENDEDORES')
+    .select('user_id, territory, is_active').eq('tenant_id', tenantId);
+
+  const ativos = (configs || []).filter(c => c.is_active !== false && Array.isArray(c.territory) && c.territory.length);
+  if (!ativos.length) return {};
+
+  const ids = [...new Set(ativos.map(c => c.user_id))];
+  const [{ data: users }, { data: pessoas }] = await Promise.all([
+    supabase.from('USUARIOS').select('id, name, email').in('id', ids),
+    supabase.from('CLIENTES').select('name, email, avatar_url, admission_data')
+      .eq('tenant_id', tenantId).eq('type', 'CO'),
+  ]);
+
+  const perfis = new Map((users || []).map(u => [u.id, u]));
+  const fichas = pessoas || [];
+
+  const foto = email => {
+    const alvo = minusculo(email);
+    if (!alvo) return null;
+    const porAcesso = fichas.find(p => minusculo(p.admission_data?.access_email) === alvo);
+    return (porAcesso || fichas.find(p => minusculo(p.email) === alvo) || null)?.avatar_url || null;
+  };
+
+  const mapa = {};
+  for (const c of ativos) {
+    const perfil = perfis.get(c.user_id);
+    if (!perfil) continue;
+    const nome = perfil.name || perfil.email || 'Vendedor';
+    const pessoa = {
+      user_id: c.user_id,
+      name: nome,
+      avatar_url: foto(perfil.email),
+      iniciais: iniciaisDe(nome),
+    };
+    for (const bruto of c.territory) {
+      const uf = String(bruto).toUpperCase();
+      if (filtro.size && !filtro.has(uf)) continue;
+      (mapa[uf] ||= []).push(pessoa);
+    }
+  }
+  return mapa;
+}
+
+const minusculo = v => String(v || '').trim().toLowerCase();
+
+/**
+ * Duas letras para o círculo enquanto não há foto. Primeiro e último
+ * nome — "LAION CESAR FARINHA" vira LF, não LC, porque é assim que a
+ * pessoa é chamada.
+ */
+function iniciaisDe(nome) {
+  const partes = String(nome || '').trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) return '?';
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+}
+
 // ── Utilitários ──────────────────────────────────────────────
 
 const pad2 = n => String(n).padStart(2, '0');
@@ -716,6 +801,7 @@ module.exports = {
   loadSellerConfig, DEFAULT_CONFIG,
   computeCommission, persistCommission,
   cycleProgress, unitsByMonthBack,
+  responsaveisPorUf, iniciaisDe,
   statesRanking, weeklySales, linhaDoItem, productTotals, productRanking, colorRanking, customerRanking,
   round2,
 };
