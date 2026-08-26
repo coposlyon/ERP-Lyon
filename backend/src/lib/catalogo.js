@@ -526,6 +526,11 @@ async function configDoModelo(tenantId, chave) {
       hex: cfg?.hex || null,
       produto_id: m.id,
       codigo: m.code,
+      // A FOTO DAQUELA COR. Cada cor do modelo é um produto de verdade
+      // no cadastro, com foto de verdade — e é ela que a prévia mostra
+      // quando o cliente escolhe a cor. O `hex` continua servindo para a
+      // bolinha da paleta; a foto é a peça.
+      imagem: primeiraFoto(m),
     });
   }
   cores.produto.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));

@@ -1,28 +1,31 @@
 // ============================================================
-// O COPO DESENHADO, COM O QUE O CLIENTE ESCOLHEU.
+// A PEÇA QUE O CLIENTE ESCOLHEU — A FOTO DELA.
 //
-// Não é foto: é a peça montada na hora com a cor base, a cor da boca, a
-// borda e a arte que a pessoa acabou de escolher. Foto de catálogo não
-// resolve — seriam 24 cores × 13 acabamentos × 2 lados por modelo, e
-// nenhuma delas mostraria o nome do casal escrito.
+// Esta tela já teve duas respostas erradas antes desta.
 //
-// CADA FAMÍLIA TEM O SEU FORMATO. Por muito tempo havia um desenho só,
-// um copo cônico, para tudo: quem escolhia CANECA via um long drink com
-// a cor certa e a alça em lugar nenhum. A cor estava certa e a peça
-// estava errada — e a primeira reação de quem vê é achar que o site
-// pegou o produto errado, que é o pior lugar para se perder a confiança
-// (a tela seguinte é a de pagamento).
+// A primeira foi um desenho só, um copo cônico, para o catálogo
+// inteiro: quem escolhia caneca via um long drink. A segunda foi um
+// desenho por família — a caneca ganhou alça, a taça ganhou haste — e
+// ainda estava errada, porque desenho continua sendo desenho. O cliente
+// olha a prévia para decidir se compra, e o que ele precisa ver é O
+// PRODUTO, não uma representação dele.
 //
-// AS PROPORÇÕES NÃO FORAM ESTIMADAS NO OLHO. Saíram da medição das
-// fotos reais do cadastro, silhueta por silhueta — largura sobre altura
-// em onze alturas de cada peça. Por isso o long drink é magro (0,36 de
-// largura por altura) e o twister é atarracado (0,54): é o que a peça é.
+// Agora a prévia é A FOTO DO CADASTRO. Cada cor do modelo é um produto
+// de verdade, com foto de verdade — 94 das 97 peças do catálogo têm a
+// sua. Escolheu Preto, aparece a foto da peça preta. É a mesma imagem
+// que a vitrine e a loja mostram: uma peça, uma foto, em todo lugar.
 //
-// A COR VEM DO CADASTRO. `hex` de CONFIG_CORES manda. A tabela de nomes
-// aqui embaixo é só o socorro para as cores que ainda estão sem hex
-// cadastrado — sem ela o copo apareceria cinza e o cliente acharia que o
-// site quebrou. É desenho, não regra: nada aqui muda preço, produção ou
-// o que vai no pedido.
+// O DESENHO NÃO FOI JOGADO FORA, virou o plano B: modelo sem foto
+// cadastrada cai nele em vez de cair num quadrado vazio. As silhuetas
+// por família continuam valendo lá, com as proporções medidas das fotos
+// reais.
+//
+// O QUE A FOTO NÃO MOSTRA. Pintura, jateado e borda metalizada são
+// serviço aplicado sobre a peça, e não existe foto de cada combinação —
+// seriam 24 cores × 13 acabamentos por modelo. Nesses casos a foto
+// mostra a peça certa e as cores escolhidas aparecem como selos ao lado,
+// nomeadas. Mostrar a peça certa com o acabamento escrito é honesto;
+// desenhar um copo que não é aquele não era.
 // ============================================================
 
 /** Socorro para cor sem hex no cadastro. Some sozinho conforme o Administrativo preenche. */
@@ -55,6 +58,30 @@ export function corDe(opcao, padrao = '#cbd5e1') {
 /** Quase transparente? Então o copo é vidro, e vidro deixa o fundo passar. */
 const ehVidro = opcao =>
   /transparente|cristal/i.test(String(opcao?.name || ''));
+
+// ── A JANELA DA ARTE SOBRE A FOTO ────────────────────────────
+//
+// Em fração da foto, porque as fotos do cadastro são todas do mesmo
+// jeito: a peça inteira, centralizada, ocupando a altura toda.
+//
+// `cx` não é 0,5 em todas. Na caneca a alça entra no enquadramento e
+// empurra o corpo para o lado — o centro da FOTO não é o centro do
+// CORPO, e a arte impressa vai no corpo. Os números saíram da mesma
+// medição de silhueta que gerou os desenhos.
+const JANELA_ARTE = {
+  'long-drink': { cx: 0.50,  largura: 0.62, topo: 0.30, altura: 0.44 },
+  twister:      { cx: 0.50,  largura: 0.56, topo: 0.30, altura: 0.42 },
+  canecas:      { cx: 0.615, largura: 0.40, topo: 0.32, altura: 0.38 },
+  tacas:        { cx: 0.50,  largura: 0.34, topo: 0.10, altura: 0.22 },
+};
+const JANELA_PADRAO = JANELA_ARTE['long-drink'];
+
+// Os campos cuja cor a foto NÃO consegue mostrar: são serviço aplicado
+// sobre a peça, não a peça. Viram selo nomeado ao lado da foto.
+const ROTULO_ACABAMENTO = {
+  cor_base: 'Base', cor_meio: 'Meio', cor_topo: 'Topo', cor_boca: 'Boca',
+  cor_interna: 'Interna', cor_borda: 'Borda', cor_jateado: 'Jateado',
+};
 
 // ── OS FORMATOS ──────────────────────────────────────────────
 //
@@ -155,13 +182,16 @@ const FORMATOS = {
 const PADRAO = FORMATOS['long-drink'];
 
 /**
- * @param escolha  { acabamento, campos: { chave -> opção de cor } }
- * @param familia  o slug da família do catálogo — decide o formato
- * @param arte     SVG da arte já com os textos do cliente, ou null
- * @param face     'frente' | 'verso' — só muda o rótulo e a arte usada
+ * O PLANO B: a peça desenhada.
+ *
+ * Só entra quando o modelo não tem foto no cadastro. As silhuetas por
+ * família continuam valendo aqui — long drink magro, twister canelado,
+ * caneca com alça, taça com haste — com as proporções medidas das fotos
+ * reais. É melhor que um quadrado vazio e pior que a foto, e é por isso
+ * que é o plano B.
  */
-export default function CopoPreview({
-  escolha = {}, familia = null, arte = null, face = 'frente', altura = 300, gabarito = null,
+function Desenho({
+  escolha = {}, familia = null, arte = null, altura = 300, gabarito = null,
 }) {
   const { acabamento, campos = {} } = escolha;
   const requer = acabamento?.requer || {};
@@ -175,7 +205,7 @@ export default function CopoPreview({
   const corTopo = corDe(topo, corBase);
   const corBorda = corDe(borda, '#d4af37');
 
-  const id = `copo-${familia || 'padrao'}-${face}`;
+  const id = `copo-${familia || 'padrao'}`;
   const vidro = ehVidro(base) && !topo;
 
   const F = FORMATOS[familia] || PADRAO;
@@ -190,9 +220,9 @@ export default function CopoPreview({
     : Math.min(F.arte.alturaMax, larguraArte * 1.9);
 
   return (
-    <figure className="flex flex-col items-center gap-1.5 m-0">
+    <figure className="flex flex-col items-center m-0">
       <svg viewBox={`0 0 ${F.vb} 268`} height={altura} width={altura * F.vb / 268} role="img"
-        aria-label={`Prévia da peça — ${face}`}>
+        aria-label="Prévia da peça">
         <defs>
           <linearGradient id={`${id}-corpo`} x1="0" y1="1" x2="0" y2="0">
             <stop offset="0%" stopColor={corBase} stopOpacity={vidro ? 0.34 : 0.98} />
@@ -258,11 +288,105 @@ export default function CopoPreview({
           </g>
         )}
       </svg>
-
-      <figcaption className="text-[10.5px] tracking-[0.18em] uppercase"
-        style={{ color: 'rgba(255,255,255,0.55)' }}>
-        {face === 'verso' ? 'Verso' : 'Frente'}
-      </figcaption>
     </figure>
+  );
+}
+
+
+/**
+ * A PRÉVIA.
+ *
+ * Foto do cadastro quando existe — é o que o cliente precisa ver para
+ * decidir. Desenho só quando não existe foto.
+ *
+ * @param escolha     { acabamento, campos: { chave -> opção de cor } }
+ * @param familia     slug da família — posiciona a arte e escolhe a silhueta
+ * @param fotoModelo  a foto de referência do modelo, quando nenhuma cor foi escolhida
+ * @param arte        SVG da arte já com os textos do cliente, ou null
+ * @param face        'frente' | 'verso' — só muda o rótulo e a arte usada
+ */
+export default function CopoPreview({
+  escolha = {}, familia = null, fotoModelo = null,
+  arte = null, face = 'frente', altura = 300, gabarito = null,
+}) {
+  const { campos = {} } = escolha;
+
+  // A foto DA COR ESCOLHIDA vence a do modelo. Escolheu Preto, aparece a
+  // peça preta — e não a foto genérica que o catálogo usa na vitrine.
+  const foto = campos.cor_produto?.imagem || fotoModelo || null;
+
+  // As cores que a foto não consegue mostrar, nomeadas. Pintura, borda e
+  // jateado são serviço sobre a peça: a foto é da peça, e o acabamento
+  // vira selo. Some sozinho no acabamento liso, que não tem nenhum.
+  const aplicados = Object.entries(ROTULO_ACABAMENTO)
+    .map(([chave, rotulo]) => (campos[chave] ? { rotulo, opcao: campos[chave] } : null))
+    .filter(Boolean);
+
+  const rodape = (
+    <figcaption className="text-[10.5px] tracking-[0.18em] uppercase mt-1.5"
+      style={{ color: 'rgba(255,255,255,0.55)' }}>
+      {face === 'verso' ? 'Verso' : 'Frente'}
+    </figcaption>
+  );
+
+  if (!foto) {
+    return (
+      <figure className="flex flex-col items-center m-0">
+        <Desenho escolha={escolha} familia={familia} arte={arte}
+          altura={altura} gabarito={gabarito} />
+        {rodape}
+        <Aplicados itens={aplicados} />
+      </figure>
+    );
+  }
+
+  const janela = JANELA_ARTE[familia] || JANELA_PADRAO;
+
+  return (
+    <figure className="flex flex-col items-center m-0">
+      {/* Fundo CLARO atrás da foto, o mesmo creme da vitrine e da /loja.
+          Os PNGs dos copos são recortados, sem fundo: sobre o azul-noite
+          do catálogo a peça preta sumia e a branca virava um borrão. */}
+      <div className="relative rounded-xl overflow-hidden"
+        style={{ height: altura, width: altura * 0.78, background: '#FFF7F1' }}>
+        <img src={foto} alt="Foto da peça escolhida" draggable={false}
+          className="absolute inset-0 w-full h-full object-contain p-2" />
+
+        {/* A ARTE, na janela onde a impressão realmente sai. Vem como SVG
+            e é embutida por dangerouslySetInnerHTML — o vetor é da Lyon,
+            cadastrado pelo Administrativo, e os textos que o cliente
+            digita entram escapados na hora de montar (ver aplicarValores
+            em CriarArte). */}
+        {arte && (
+          <div className="absolute" style={{
+            left: `${(janela.cx - janela.largura / 2) * 100}%`,
+            top: `${janela.topo * 100}%`,
+            width: `${janela.largura * 100}%`,
+            height: `${janela.altura * 100}%`,
+            color: '#111318',
+          }} dangerouslySetInnerHTML={{ __html: arte }} />
+        )}
+      </div>
+      {rodape}
+      <Aplicados itens={aplicados} />
+    </figure>
+  );
+}
+
+/** Os acabamentos escolhidos, nomeados — o que a foto não mostra. */
+function Aplicados({ itens }) {
+  if (!itens.length) return null;
+  return (
+    <div className="flex flex-wrap justify-center gap-1.5 mt-2 max-w-[220px]">
+      {itens.map(({ rotulo, opcao }) => (
+        <span key={rotulo} className="inline-flex items-center gap-1 rounded-full pl-1 pr-2 py-0.5 text-[10px]"
+          style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.78)' }}
+          title={`${rotulo}: ${opcao.name}`}>
+          <span className="w-3 h-3 rounded-full shrink-0"
+            style={{ background: corDe(opcao), border: '1px solid rgba(255,255,255,0.35)' }} />
+          {rotulo}: {opcao.name}
+        </span>
+      ))}
+    </div>
   );
 }

@@ -525,10 +525,10 @@ export default function Configurador() {
         <div className="space-y-3 xl:sticky xl:top-4">
           <Painel titulo="A. Pré-visualização" cor={NEON.azul} icone={Box}>
             <div className="flex items-end justify-center gap-4">
-              <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} arte={arteFrente} face="frente"
+              <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteFrente} face="frente"
                 gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 190 : 216} />
               {personalizado && estado.posicao === 'frente_verso' && (
-                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} arte={arteVerso} face="verso"
+                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteVerso} face="verso"
                   gabarito={gabarito} altura={190} />
               )}
             </div>
@@ -718,10 +718,10 @@ export default function Configurador() {
           </div>
           <div className="flex-1 flex items-end justify-center gap-8 pb-10 px-4"
             onClick={e => e.stopPropagation()}>
-            <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} arte={arteFrente} face="frente"
+            <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteFrente} face="frente"
               gabarito={gabarito} altura={Math.min(560, window.innerHeight * 0.68)} />
             {personalizado && estado.posicao === 'frente_verso' && (
-              <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} arte={arteVerso} face="verso"
+              <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteVerso} face="verso"
                 gabarito={gabarito} altura={Math.min(560, window.innerHeight * 0.68)} />
             )}
           </div>
