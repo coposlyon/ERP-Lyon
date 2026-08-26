@@ -215,7 +215,10 @@ export default function Sales() {
               <span className={`${th} flex-1 min-w-0`}>Cliente</span>
               <span className={`${th} w-28 shrink-0 text-right`}>Valor Total</span>
               <span className={`${th} w-24 shrink-0 text-right`}>Frete</span>
-              <span className={`${th} w-52 shrink-0 text-center`}>Status</span>
+              {/* w-64: cabe "Em processo de coleta / retirada", que é o
+                  rótulo mais longo do fluxo. Com w-52 o status quebrava
+                  em duas linhas e a linha do pedido crescia junto. */}
+              <span className={`${th} w-64 shrink-0 text-center`}>Status</span>
               <span className={`${th} w-20 shrink-0 text-center`}>Atenção</span>
               <span className={`${th} w-28 shrink-0 text-center`}>Ações</span>
             </div>
@@ -267,8 +270,8 @@ export default function Sales() {
                   <span className="w-24 shrink-0 text-right" style={{ color: v.textMuted }}>
                     {row.freight > 0 ? fmt(row.freight) : '—'}
                   </span>
-                  <span className="w-52 shrink-0 flex justify-center">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] text-center leading-tight"
+                  <span className="w-64 shrink-0 flex justify-center">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] whitespace-nowrap"
                       style={{ border: `1px solid ${corStatus(info?.cor)}55`, color: corStatus(info?.cor) }}>
                       <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: corStatus(info?.cor) }} />
                       {info?.label || saleStatusLabel(row.status)}
@@ -303,7 +306,7 @@ export default function Sales() {
                 <span className="flex-1">{rows.length} pedido{rows.length !== 1 ? 's' : ''} nesta página</span>
                 <span className="w-28 text-right" style={{ color: '#22d3ee' }}>{fmt(pageTotal)}</span>
                 <span className="w-24 text-right">{pageFreight > 0 ? fmt(pageFreight) : ''}</span>
-                <span className="w-52" /><span className="w-20" /><span className="w-28" />
+                <span className="w-64" /><span className="w-20" /><span className="w-28" />
               </div>
             )}
           </div>
