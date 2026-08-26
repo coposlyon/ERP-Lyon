@@ -323,11 +323,38 @@ router.post('/pedidos/:id/anexar', async (req, res) => {
     }
 
     const { data: venda } = await supabase.from('VENDAS')
-      .select('id, number, user_id, artwork_url, receipt_url, production_log')
+      .select('id, number, user_id, status, artwork_url, receipt_url, production_log')
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
     if (!venda) return res.status(404).json({ error: 'Pedido não encontrado' });
     if (!isManager(req) && venda.user_id !== req.user.id) {
       return res.status(403).json({ error: 'Este pedido não é da sua carteira' });
+    }
+
+    // ── TROCAR UMA ARTE JÁ ANEXADA PEDE GERENTE ──────────────
+    //
+    // Anexar a primeira arte é trabalho normal: o pedido está parado
+    // esperando exatamente isso. SUBSTITUIR é outra coisa — a arte
+    // antiga pode já ter virado vegetal, tela e copo impresso, e a
+    // troca silenciosa é o caminho para mil peças saírem com o desenho
+    // errado sem ninguém saber quem mandou trocar.
+    //
+    // Por isso a senha é conferida NA HORA, e é a de um gerente: não
+    // basta a tela estar destravada com a sessão de alguém.
+    let autorizacao = null;
+    if (tipo === 'arte' && venda.artwork_url) {
+      const r = await autorizar(
+        String(req.body?.autorizador_email || '').trim().toLowerCase(),
+        String(req.body?.autorizador_senha || ''),
+        req.tenantId,
+      );
+      if (!r.ok) {
+        return res.status(r.status).json({
+          error: r.motivo,
+          code: 'AUTORIZACAO_NECESSARIA',
+          dica: 'Trocar uma arte já anexada precisa da autorização de um gerente ou administrador.',
+        });
+      }
+      autorizacao = r.usuario;
     }
 
     // A arte vai para o bucket público porque produção, designer e o
@@ -342,24 +369,56 @@ router.post('/pedidos/:id/anexar', async (req, res) => {
     const campo = tipo === 'arte' ? 'artwork_url' : 'receipt_url';
     const substituindo = !!venda[campo];
 
-    // O log recebe uma linha própria, e não um status: o fluxo do pedido
-    // não anda porque um arquivo chegou.
+    const agora = new Date().toISOString();
+    const quem = req.userProfile?.name || req.user?.email || null;
     const log = Array.isArray(venda.production_log) ? venda.production_log : [];
     log.push({
       action: tipo === 'arte' ? 'arte_anexada' : 'comprovante_anexado',
-      at: new Date().toISOString(),
-      user: req.userProfile?.name || req.user?.email || null,
+      at: agora,
+      user: quem,
       stage: 'documentos',
-      nota: substituindo ? 'substituiu o anterior' : null,
+      nota: substituindo
+        ? `substituiu o anterior — autorizado por ${autorizacao?.name || autorizacao?.email || 'gerente'}`
+        : null,
     });
 
+    // ── A ARTE QUE CHEGA MOVE O PEDIDO ───────────────────────
+    //
+    // Antes não movia, e a consequência estava na tela: pedido com a
+    // arte anexada continuava escrito "Aguardando Anexo da Arte",
+    // porque o card lia o status e o status não sabia do arquivo.
+    // Alguém tinha que lembrar de avançar à mão, e ninguém lembrava.
+    //
+    // Só a PRIMEIRA arte avança, e só quando o pedido está parado
+    // esperando por ela. Substituição não mexe no status: o pedido já
+    // pode estar na pintura, e puxá-lo de volta para o vegetal seria
+    // reescrever uma etapa que aconteceu.
+    const avanca = tipo === 'arte' && !substituindo && venda.status === 'aguardando_arte';
+    if (avanca) {
+      // Duas linhas, não uma: 'arte_aprovada' é o que dá a data de
+      // conclusão da fase Arte na linha do tempo, e 'aguardando_vegetal'
+      // é onde o pedido passa a estar.
+      log.push({ action: 'arte_aprovada', at: agora, user: quem, stage: 'status' });
+      log.push({ action: 'aguardando_vegetal', at: agora, user: quem, stage: 'status' });
+    }
+
+    const patch = {
+      [campo]: url,
+      production_log: log,
+      ...(req.body?.notas && tipo === 'arte' ? { artwork_notes: req.body.notas } : {}),
+      ...(avanca ? { status: 'aguardando_vegetal' } : {}),
+    };
+
     const { error } = await supabase.from('VENDAS')
-      .update({ [campo]: url, production_log: log, ...(req.body?.notas && tipo === 'arte' ? { artwork_notes: req.body.notas } : {}) })
-      .eq('id', venda.id).eq('tenant_id', req.tenantId);
+      .update(patch).eq('id', venda.id).eq('tenant_id', req.tenantId);
     if (error) throw error;
 
-    audit(req, 'update', 'venda', venda.id, { anexo: tipo, substituiu: substituindo });
-    res.json({ url, substituiu: substituindo });
+    audit(req, 'update', 'venda', venda.id, {
+      anexo: tipo, substituiu: substituindo,
+      autorizado_por: autorizacao?.email || null,
+      status_novo: avanca ? 'aguardando_vegetal' : null,
+    });
+    res.json({ url, substituiu: substituindo, status: avanca ? 'aguardando_vegetal' : venda.status, avancou: avanca });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

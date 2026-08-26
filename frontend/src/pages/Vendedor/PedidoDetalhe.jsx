@@ -32,6 +32,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useVend, fmtBRL, fmtUn, fmtDate } from './ui';
 import { corStatus } from '@/lib/pedidoUi';
 import LogoOrigem from '@/components/UI/LogoOrigem';
+import SubstituirArteModal from '@/components/UI/SubstituirArteModal';
 
 /**
  * Os ícones da linha do tempo, um a um.
@@ -87,6 +88,7 @@ export default function PedidoDetalhe() {
   const documentoEm = noErp ? `/sales/${id}/documento` : `/vendedor/pedidos/${id}/documento`;
   const [verHistorico, setVerHistorico] = useState(false);
   const [enviando, setEnviando] = useState(null);   // 'arte' | 'comprovante'
+  const [trocarArte, setTrocarArte] = useState(null); // pedido cuja arte se quer substituir
   const qc = useQueryClient();
   const inputArte = useRef(null);
   const inputComprovante = useRef(null);
@@ -118,7 +120,7 @@ export default function PedidoDetalhe() {
     }
   }
 
-  async function anexar(tipo, arquivo) {
+  async function anexar(tipo, arquivo, autorizacao = null) {
     if (!arquivo) return;
     // 8 MB é o limite do que faz sentido trafegar em base64. Acima disso
     // o navegador trava montando a string, e o erro sairia como "falhou"
@@ -134,10 +136,18 @@ export default function PedidoDetalhe() {
         r.onerror = () => erro(new Error('Não consegui ler o arquivo'));
         r.readAsDataURL(arquivo);
       });
-      const r = await api.post(`/area-vendedor/pedidos/${id}/anexar`, { tipo, arquivo: dados });
+      const r = await api.post(`/area-vendedor/pedidos/${id}/anexar`, {
+        tipo, arquivo: dados,
+        // Só viajam quando é substituição; o servidor é que decide se
+        // vai exigi-las — a tela não é a dona da regra.
+        ...(autorizacao ? { autorizador_email: autorizacao.email, autorizador_senha: autorizacao.senha } : {}),
+      });
       toast.success(r.substituiu
-        ? `${tipo === 'arte' ? 'Arte' : 'Comprovante'} substituído — fica no histórico`
-        : `${tipo === 'arte' ? 'Arte anexada' : 'Comprovante anexado'}`);
+        ? 'Arte substituída — a troca ficou no histórico com quem autorizou'
+        : r.avancou
+          ? 'Arte anexada — o pedido seguiu para Aguardando impressão de vegetal'
+          : `${tipo === 'arte' ? 'Arte anexada' : 'Comprovante anexado'}`);
+      setTrocarArte(null);
       qc.invalidateQueries({ queryKey: ['pedido-vendedor', id] });
     } catch (err) {
       toast.error(err.error || 'Não foi possível anexar');
@@ -465,14 +475,21 @@ export default function PedidoDetalhe() {
           </Bloco>
 
           {/* Arte */}
+          {/* O QUE MANDA AQUI É O ARQUIVO, NÃO O STATUS.
+              Este card perguntava ao status se havia arte — e um pedido
+              com a arte anexada continuava escrito "Aguardando Anexo da
+              Arte" enquanto ninguém lembrasse de avançar a etapa à mão.
+              O arquivo existir é fato; o status é onde o pedido está. */}
           <Bloco v={v} Icon={PenLine} titulo="Arte">
             <div className="text-center py-1 px-2 rounded-lg text-sm font-medium mb-2"
-              style={aguardandoArte
-                ? { border: '1px solid rgba(250,204,21,0.5)', color: '#facc15' }
-                : { border: `1px solid ${v.divider}`, color: p.artwork_url ? '#4ade80' : v.textMuted }}>
-              {aguardandoArte ? 'Aguardando Anexo da Arte' : p.artwork_url ? 'Arte anexada' : 'Sem arte neste pedido'}
+              style={p.artwork_url
+                ? { border: '1px solid rgba(74,222,128,0.5)', color: '#4ade80' }
+                : aguardandoArte
+                  ? { border: '1px solid rgba(250,204,21,0.5)', color: '#facc15' }
+                  : { border: `1px solid ${v.divider}`, color: v.textMuted }}>
+              {p.artwork_url ? 'Arte anexada' : aguardandoArte ? 'Aguardando Anexo da Arte' : 'Sem arte neste pedido'}
             </div>
-            {aguardandoArte && (
+            {aguardandoArte && !p.artwork_url && (
               <p className="text-[11px] text-center mb-3" style={{ color: v.textSubtle }}>
                 Anexe o arquivo da arte para darmos continuidade.
               </p>
@@ -480,7 +497,9 @@ export default function PedidoDetalhe() {
             <input ref={inputArte} type="file" className="hidden"
               accept="image/*,application/pdf,.ai,.cdr,.eps,.psd"
               onChange={e => { anexar('arte', e.target.files?.[0]); e.target.value = ''; }} />
-            <button onClick={() => inputArte.current?.click()} disabled={enviando === 'arte'}
+            <button
+              onClick={() => (p.artwork_url ? setTrocarArte(p) : inputArte.current?.click())}
+              disabled={enviando === 'arte'}
               className="btn-secondary w-full mb-2 disabled:opacity-50">
               {enviando === 'arte'
                 ? <><Loader2 size={15} className="animate-spin" /> Enviando…</>
@@ -608,6 +627,14 @@ export default function PedidoDetalhe() {
           </p>
         </div>
       </div>
+
+      {/* Trocar arte já anexada: passa pelo gerente. */}
+      <SubstituirArteModal
+        pedido={trocarArte}
+        enviando={enviando === 'arte'}
+        onClose={() => setTrocarArte(null)}
+        onConfirmar={({ arquivo, email, senha }) => anexar('arte', arquivo, { email, senha })}
+      />
     </div>
   );
 }
