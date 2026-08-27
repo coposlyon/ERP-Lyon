@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   Plus, Loader2, Pencil, Trash2, X, Save, Search, FlaskConical, Package,
   Users, LineChart, AlertTriangle, Clock, TrendingUp, TrendingDown, Star,
+  Boxes, ArrowDownCircle, ArrowUpCircle, Scale,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -249,6 +250,196 @@ function HistoricoModal({ insumo, onClose }) {
   );
 }
 
+// ── MOVIMENTAR O ESTOQUE ─────────────────────────────
+//
+// Três verbos, e o terceiro é o que faz o estoque parar de mentir:
+//
+//   ENTRADA  — comprei. Soma. Aceita o número em EMBALAGENS, porque
+//              ninguém compra "4500 ml de tinta": compra cinco potes de
+//              900. Digitar 5 e ver virar 4500 é o que evita o zero a
+//              mais que estoura o custo do mês.
+//   SAÍDA    — usei. Subtrai, e nunca abaixo de zero.
+//   AJUSTE   — contei e era outro. DEFINE o saldo, não soma nem
+//              subtrai, porque contagem não é diferença: é o número.
+//
+// Cada um deixa uma linha no extrato, com quem fez e o saldo que ficou.
+// Saldo que muda sem extrato é saldo que ninguém consegue explicar no
+// dia em que faltarem quatro litros de tinta.
+const TIPOS = [
+  { key: 'entrada', label: 'Entrada', Icone: ArrowDownCircle, cls: 'border-green-500 bg-green-50 text-green-700', dica: 'Comprei / recebi' },
+  { key: 'saida',   label: 'Saída',   Icone: ArrowUpCircle,   cls: 'border-red-500 bg-red-50 text-red-700',       dica: 'Usei / perdi' },
+  { key: 'ajuste',  label: 'Ajuste',  Icone: Scale,           cls: 'border-blue-500 bg-blue-50 text-blue-700',    dica: 'Contei a prateleira' },
+];
+
+const ROTULO_MOV = { entrada: 'Entrada', saida: 'Saída', ajuste: 'Ajuste' };
+
+function EstoqueModal({ insumo, onClose, onSaved }) {
+  const [tipo, setTipo] = useState('entrada');
+  const [qtd, setQtd] = useState('');
+  const [emEmbalagens, setEmEmbalagens] = useState(true);
+  const [notas, setNotas] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  // O saldo do modal é próprio, e não o do objeto que a linha entregou:
+  // depois do primeiro lançamento aquele número está velho, e "Saldo
+  // atual" parado é o que faz alguém lançar a mesma entrada duas vezes.
+  const [saldoAtual, setSaldoAtual] = useState(Number(insumo.current_stock ?? insumo.stock) || 0);
+
+  const { data: extrato = [], isLoading, refetch } = useQuery({
+    queryKey: ['insumo-movimentos', insumo.id],
+    queryFn: () => api.get(`/insumos/${insumo.id}/movimentos`),
+  });
+
+  const emb = Number(insumo.package_qty) || 0;
+  // Embalagem só faz sentido na entrada: ninguém "usa 2 potes", usa ml.
+  const porEmbalagem = tipo === 'entrada' && emEmbalagens && emb > 0;
+  const bruto = numOf(qtd) || 0;
+  const quantidade = porEmbalagem ? bruto * emb : bruto;
+
+  const saldoDepois = tipo === 'entrada' ? saldoAtual + quantidade
+                    : tipo === 'saida'   ? saldoAtual - quantidade
+                    : quantidade;
+
+  async function salvar() {
+    if (tipo !== 'ajuste' && !(quantidade > 0)) { toast.error('Informe a quantidade'); return; }
+    if (saldoDepois < 0) { toast.error(`Saldo insuficiente: há ${fmt6(saldoAtual)} ${insumo.base_unit}.`); return; }
+    setSalvando(true);
+    try {
+      const r = await api.post(`/insumos/${insumo.id}/movimentos`, {
+        tipo, quantity: quantidade,
+        notes: notas.trim() || null,
+        // O custo do movimento é o custo unitário vigente do insumo —
+        // serve para saber quanto valia o que entrou ou saiu.
+        unit_cost: Number(insumo.unit_cost) || null,
+        total: Number(insumo.unit_cost) ? Number(insumo.unit_cost) * quantidade : null,
+      });
+      toast.success('Estoque atualizado!');
+      setSaldoAtual(Number(r?.saldo) || 0);
+      setQtd(''); setNotas('');
+      refetch(); onSaved();
+    } catch (e) { toast.error(e.error || 'Erro ao movimentar o estoque'); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <Modal isOpen onClose={onClose} title={`Estoque · ${insumo.name}`} size="lg">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-4 rounded-xl bg-gray-50 px-4 py-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-gray-500">Saldo atual</p>
+            <p className="text-xl font-bold text-gray-900">{fmt6(saldoAtual)} <span className="text-sm font-normal text-gray-500">{insumo.base_unit}</span></p>
+          </div>
+          {Number(insumo.min_stock) > 0 && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-gray-500">Mínimo</p>
+              <p className="text-sm font-semibold text-gray-600">{fmt6(insumo.min_stock)} {insumo.base_unit}</p>
+            </div>
+          )}
+          {emb > 0 && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-gray-500">Embalagem</p>
+              <p className="text-sm font-semibold text-gray-600">{fmt6(emb)} {insumo.base_unit}</p>
+            </div>
+          )}
+          <div className="ml-auto text-right">
+            <p className="text-[11px] uppercase tracking-wide text-gray-500">Fica com</p>
+            <p className={`text-xl font-bold ${saldoDepois < 0 ? 'text-red-600' : 'text-green-700'}`}>
+              {fmt6(saldoDepois)} <span className="text-sm font-normal text-gray-500">{insumo.base_unit}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          {TIPOS.map(t => (
+            <button key={t.key} type="button" onClick={() => setTipo(t.key)}
+              className={`px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
+                tipo === t.key ? t.cls : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+              <t.Icone size={16} className="mx-auto mb-1" />
+              {t.label}
+              <span className="block text-[10px] font-normal opacity-70">{t.dica}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label">
+              {tipo === 'ajuste' ? `Saldo contado (${insumo.base_unit})` : `Quantidade (${porEmbalagem ? 'embalagens' : insumo.base_unit})`}
+            </label>
+            <input className="input" inputMode="decimal" value={qtd} autoFocus placeholder="0"
+              onChange={e => setQtd(e.target.value.replace(/[^\d,.]/g, ''))} />
+            {tipo === 'entrada' && emb > 0 && (
+              <label className="flex items-center gap-2 text-[12px] text-gray-600 mt-1.5">
+                <input type="checkbox" checked={emEmbalagens} onChange={e => setEmEmbalagens(e.target.checked)} />
+                Contar em embalagens de {fmt6(emb)} {insumo.base_unit}
+                {porEmbalagem && bruto > 0 && (
+                  <span className="font-semibold text-gray-800">= {fmt6(quantidade)} {insumo.base_unit}</span>
+                )}
+              </label>
+            )}
+          </div>
+          <div>
+            <label className="label">Observação</label>
+            <input className="input" value={notas} placeholder="Ex.: NF 1234 / usado no pedido PV-0007"
+              onChange={e => setNotas(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose}><X size={14} /> Fechar</button>
+          <button className="btn-primary" onClick={salvar} disabled={salvando}>
+            {salvando ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Lançar
+          </button>
+        </div>
+
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5">Extrato</p>
+          <div className="rounded-xl border border-gray-200 overflow-hidden max-h-64 overflow-y-auto">
+            {isLoading ? (
+              <p className="text-center py-8 text-sm text-gray-400"><Loader2 size={16} className="animate-spin inline" /></p>
+            ) : extrato.length === 0 ? (
+              <p className="text-center py-8 text-sm text-gray-400">Nenhum movimento ainda.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr className="text-left text-[11px] uppercase text-gray-500">
+                    <th className="px-3 py-2">Data</th>
+                    <th className="px-3 py-2">Tipo</th>
+                    <th className="px-3 py-2 text-right">Qtd</th>
+                    <th className="px-3 py-2 text-right">Saldo</th>
+                    <th className="px-3 py-2">Quem / observação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {extrato.map(m => (
+                    <tr key={m.id} className="border-t border-gray-100">
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{dtBR(m.created_at)}</td>
+                      <td className="px-3 py-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                          m.tipo === 'entrada' ? 'bg-green-50 text-green-700'
+                          : m.tipo === 'saida' ? 'bg-red-50 text-red-700'
+                          : 'bg-blue-50 text-blue-700'}`}>
+                          {ROTULO_MOV[m.tipo] || m.tipo}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {m.tipo === 'saida' ? '−' : m.tipo === 'entrada' ? '+' : ''}{fmt6(m.quantity)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{fmt6(m.saldo_apos)}</td>
+                      <td className="px-3 py-2 text-gray-500 text-xs">
+                        {m.user_name || '—'}{m.notes ? ` · ${m.notes}` : ''}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function InsumoModal({ open, initial, suppliers, onClose, onSaved }) {
   const isEdit = !!initial?.id;
   const qc = useQueryClient();
@@ -297,6 +488,7 @@ function InsumoModal({ open, initial, suppliers, onClose, onSaved }) {
     consumption: initial?.consumption != null && initial.consumption !== 0 ? String(initial.consumption).replace('.', ',') : '',
     lifespan: initial?.lifespan != null && initial.lifespan !== 0 ? String(initial.lifespan).replace('.', ',') : '',
     min_stock: initial?.min_stock != null && initial.min_stock !== 0 ? String(initial.min_stock).replace('.', ',') : '',
+    current_stock: initial?.current_stock != null && initial.current_stock !== 0 ? String(initial.current_stock).replace('.', ',') : '',
     product_id: initial?.product_id || '',
     cost_source: initial?.cost_source || 'manual',
     notes: initial?.notes || '',
@@ -327,6 +519,7 @@ function InsumoModal({ open, initial, suppliers, onClose, onSaved }) {
         consumption: numOf(f.consumption) || 0,
         lifespan: numOf(f.lifespan) || 0,
         min_stock: numOf(f.min_stock) || 0,
+        current_stock: numOf(f.current_stock) || 0,
         product_id: f.product_id || null,
         cost_source: f.cost_source,
         notes: f.notes,
@@ -462,11 +655,23 @@ function InsumoModal({ open, initial, suppliers, onClose, onSaved }) {
             gravado a partir do que já existe, então insumo que hoje
             herda saldo e preço da última compra segue herdando. O que
             saiu foi a pergunta. */}
-        <div>
-          <label className="label">Estoque mínimo ({f.base_unit})</label>
-          <input className="input" inputMode="decimal" value={f.min_stock} placeholder="0"
-            onChange={e => set({ min_stock: e.target.value.replace(/[^\d,.]/g, '') })} />
-          <p className="text-[11px] text-gray-400 mt-1">Abaixo disso, o insumo entra no alerta de reposição.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label">Quantidade em estoque ({f.base_unit})</label>
+            <input className="input" inputMode="decimal" value={f.current_stock} placeholder="0"
+              onChange={e => set({ current_stock: e.target.value.replace(/[^\d,.]/g, '') })} />
+            <p className="text-[11px] text-gray-400 mt-1">
+              {isEdit
+                ? 'Mudar aqui grava um ajuste no extrato — como quem contou a prateleira.'
+                : 'O que já existe hoje na prateleira. Depois, use Entrada e Saída.'}
+            </p>
+          </div>
+          <div>
+            <label className="label">Estoque mínimo ({f.base_unit})</label>
+            <input className="input" inputMode="decimal" value={f.min_stock} placeholder="0"
+              onChange={e => set({ min_stock: e.target.value.replace(/[^\d,.]/g, '') })} />
+            <p className="text-[11px] text-gray-400 mt-1">Abaixo disso, o insumo entra no alerta de reposição.</p>
+          </div>
         </div>
 
         <div>
@@ -517,6 +722,7 @@ export default function Insumos() {
   const [fCat, setFCat] = useState('');
   const [soRepor, setSoRepor] = useState(false);
   const [fornModal, setFornModal] = useState(null);
+  const [estoqueModal, setEstoqueModal] = useState(null);
   const [histModal, setHistModal] = useState(null);
 
   const { data: insumos = [], isLoading } = useQuery({
@@ -630,13 +836,17 @@ export default function Insumos() {
                   </td>
                   <td className="px-3 py-2.5 text-right font-semibold text-green-700 whitespace-nowrap">{fmtBRL(i.cost_per_piece)}</td>
                   <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                    {i.stock == null ? <span className="text-gray-300" title="Sem produto vinculado">—</span> : (
-                      <span className={i.precisa_repor ? 'text-amber-600 font-semibold' : 'text-gray-600'}>
-                        {i.precisa_repor && <AlertTriangle size={11} className="inline mr-0.5" />}
-                        {fmt6(i.stock)} {i.base_unit}
-                        {Number(i.min_stock) > 0 && <span className="block text-[10px] text-gray-400">mín. {fmt6(i.min_stock)}</span>}
-                      </span>
-                    )}
+                    {/* O saldo é do insumo, e por isso sempre existe —
+                        antes vinha do produto vinculado e o traço era a
+                        resposta para quase todo mundo. Clicar no número
+                        abre o extrato. */}
+                    <button type="button" onClick={() => setEstoqueModal(i)}
+                      className={`hover:underline ${i.precisa_repor ? 'text-amber-600 font-semibold' : Number(i.stock) > 0 ? 'text-gray-700' : 'text-gray-300'}`}
+                      title="Movimentar o estoque deste insumo">
+                      {i.precisa_repor && <AlertTriangle size={11} className="inline mr-0.5" />}
+                      {fmt6(i.stock)} {i.base_unit}
+                      {Number(i.min_stock) > 0 && <span className="block text-[10px] text-gray-400">mín. {fmt6(i.min_stock)}</span>}
+                    </button>
                   </td>
                   <td className="px-3 py-2.5">
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${(COST_SOURCE[i.cost_source] || COST_SOURCE.manual).cls}`}>
@@ -649,6 +859,7 @@ export default function Insumos() {
                   <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">{dtBR(i.updated_at)}</td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-center gap-1">
+                      <button className="btn-ghost p-1.5 text-green-600" title="Estoque: entrada, saída e ajuste" onClick={() => setEstoqueModal(i)}><Boxes size={14} /></button>
                       <button className="btn-ghost p-1.5 text-gray-600" title="Fornecedores" onClick={() => setFornModal(i)}><Users size={14} /></button>
                       <button className="btn-ghost p-1.5 text-gray-600" title="Histórico de preço" onClick={() => setHistModal(i)}><LineChart size={14} /></button>
                       <button className="btn-ghost p-1.5 text-blue-600" title="Editar" onClick={() => setModal(i)}><Pencil size={14} /></button>
@@ -675,6 +886,12 @@ export default function Insumos() {
       <InsumoModal open={!!modal} initial={modal || {}} suppliers={suppliers}
         onClose={() => setModal(null)}
         onSaved={() => { setModal(null); qc.invalidateQueries({ queryKey: ['insumos'] }); }} />
+
+      {estoqueModal && (
+        <EstoqueModal insumo={estoqueModal}
+          onClose={() => setEstoqueModal(null)}
+          onSaved={() => qc.invalidateQueries({ queryKey: ['insumos'] })} />
+      )}
 
       {fornModal && <FornecedoresModal insumo={fornModal} suppliers={suppliers} onClose={() => setFornModal(null)} />}
       {histModal && <HistoricoModal insumo={histModal} onClose={() => setHistModal(null)} />}

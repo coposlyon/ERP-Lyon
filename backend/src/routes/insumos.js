@@ -80,9 +80,19 @@ function withCost(i) {
 }
 
 function missing(err) {
-  return /INSUMOS|does not exist|42P01|relation .* does not exist/i.test(err?.message || '');
+  const m = err?.message || '';
+  // PostgREST devolve "Could not find the 'x' column ... schema cache" quando
+  // a COLUNA não existe, e 42P01 quando a TABELA não existe.
+  return /INSUMOS|does not exist|42P01|relation .* does not exist|schema cache|PGRST204/i.test(m);
 }
-function migErr(res) {
+/** Mandar rodar a 050 quando o que falta é a 092 manda a pessoa ao lugar errado. */
+function migErr(res, err) {
+  if (/current_stock|INSUMO_MOVIMENTOS/i.test(err?.message || '')) {
+    return res.status(400).json({
+      error: 'Estoque de insumos não habilitado: rode a migração 092_insumo_estoque_proprio.sql no Supabase.',
+      code: 'MIGRATION_092',
+    });
+  }
   return res.status(400).json({ error: 'Recurso não habilitado: rode a migração 050_insumos.sql no Supabase.', code: 'MIGRATION_050' });
 }
 
@@ -124,18 +134,21 @@ async function logPreco(tenantId, insumo, extra = {}) {
   } catch { /* migração 053 pendente */ }
 }
 
-// Estoque e última compra vêm do PRODUTO vinculado — compras e estoque
-// já rodam sobre PRODUTOS, então não criamos uma segunda fonte de verdade.
+// O SALDO É DO INSUMO.
+//
+// Ele vinha do `current_stock` do PRODUTO vinculado, para não existirem
+// duas fontes de verdade. A razão era boa e a conclusão era errada:
+// tinta, verniz e lâmina não são produto de venda, quase nenhum insumo
+// tinha vínculo, e quase todos mostravam um traço na coluna Estoque —
+// sem lugar nenhum onde digitar a quantidade. A fonte de verdade do
+// insumo é o insumo (ver migração 092, que copiou os saldos herdados).
+//
+// A ÚLTIMA COMPRA continua vindo do produto vinculado quando ele existe:
+// aquilo é PREÇO, e preço de compra realmente mora em COMPRAS.
 async function enrichEstoque(tenantId, rows) {
+  const comEstoque = rows.map(i => ({ ...i, stock: Number(i.current_stock) || 0 }));
   const ids = [...new Set(rows.map(i => i.product_id).filter(Boolean))];
-  if (!ids.length) return rows.map(i => ({ ...i, stock: null, last_purchase: null }));
-
-  let stockMap = {};
-  try {
-    const { data } = await supabase.from('PRODUTOS')
-      .select('id, current_stock, unit').eq('tenant_id', tenantId).in('id', ids);
-    stockMap = Object.fromEntries((data || []).map(p => [p.id, p]));
-  } catch { /* sem coluna de estoque */ }
+  if (!ids.length) return comEstoque.map(i => ({ ...i, last_purchase: null }));
 
   // Última compra de cada produto (preço real pago)
   let lastBuy = {};
@@ -155,17 +168,69 @@ async function enrichEstoque(tenantId, rows) {
     }
   } catch { /* sem compras */ }
 
-  return rows.map(i => ({
+  return comEstoque.map(i => ({
     ...i,
-    stock: i.product_id ? (Number(stockMap[i.product_id]?.current_stock) || 0) : null,
     last_purchase: i.product_id ? (lastBuy[i.product_id] || null) : null,
   }));
+}
+
+// ── O MOTOR DO ESTOQUE ────────────────────────────────────
+//
+// Todo movimento passa por aqui, e é aqui que o saldo muda. Não existe
+// caminho que escreva `current_stock` direto: saldo que muda sem deixar
+// movimento é saldo que ninguém consegue explicar depois.
+//
+// `quantity` chega SEMPRE positiva, na unidade base do insumo. O tipo é
+// quem soma ou subtrai — e 'ajuste' não soma nem subtrai: ele DEFINE o
+// saldo, porque ajuste é o resultado de alguém ter contado.
+const TIPOS_MOV = ['entrada', 'saida', 'ajuste'];
+
+async function movimentar(tenantId, insumoId, mov, user) {
+  const { data: insumo, error: e1 } = await supabase.from('INSUMOS')
+    .select('id, current_stock, base_unit')
+    .eq('id', insumoId).eq('tenant_id', tenantId).single();
+  if (e1) throw e1;
+
+  const atual = Number(insumo.current_stock) || 0;
+  const qtd = Math.max(Number(mov.quantity) || 0, 0);
+  const saldo = mov.tipo === 'entrada' ? atual + qtd
+              : mov.tipo === 'saida'   ? atual - qtd
+              : qtd;
+
+  // Saldo negativo é sempre erro de digitação de quem deu baixa, e
+  // gravá-lo faz o alerta de reposição mentir para sempre.
+  if (saldo < 0) {
+    const err = new Error(`Saldo insuficiente: há ${atual} ${insumo.base_unit} em estoque.`);
+    err.semSaldo = true;
+    throw err;
+  }
+
+  const { error: e2 } = await supabase.from('INSUMOS')
+    .update({ current_stock: saldo, updated_at: new Date().toISOString() })
+    .eq('id', insumoId).eq('tenant_id', tenantId);
+  if (e2) throw e2;
+
+  const { data, error: e3 } = await supabase.from('INSUMO_MOVIMENTOS').insert({
+    tenant_id: tenantId,
+    insumo_id: insumoId,
+    tipo: mov.tipo,
+    quantity: qtd,
+    saldo_apos: saldo,
+    unit_cost: mov.unit_cost != null ? Number(mov.unit_cost) : null,
+    total: mov.total != null ? Number(mov.total) : null,
+    reference: mov.reference ? String(mov.reference).slice(0, 80) : null,
+    notes: mov.notes ? String(mov.notes).slice(0, 4000) : null,
+    user_name: user || null,
+  }).select().single();
+  if (e3) throw e3;
+
+  return { movimento: data, saldo };
 }
 
 // Marca reposição quando o saldo bate no mínimo
 const withAlert = i => ({
   ...i,
-  precisa_repor: i.stock != null && Number(i.min_stock) > 0 && Number(i.stock) <= Number(i.min_stock),
+  precisa_repor: Number(i.min_stock) > 0 && Number(i.stock) <= Number(i.min_stock),
 });
 
 // GET /insumos?category=&search=&all=1
@@ -199,7 +264,7 @@ router.get('/', async (req, res) => {
     if (req.query.repor) rows = rows.filter(i => i.precisa_repor);
     res.json(rows);
   } catch (err) {
-    if (missing(err)) return migErr(res);
+    if (missing(err)) return migErr(res, err);
     console.error('[insumos/list]', err.message);
     res.status(500).json({ error: 'Erro ao listar insumos' });
   }
@@ -219,7 +284,7 @@ router.get('/:id/fornecedores', async (req, res) => {
       unit_cost: Number(f.package_qty) > 0 ? r6(Number(f.package_price) / Number(f.package_qty)) : 0,
     })));
   } catch (err) {
-    if (missing(err)) return migErr(res);
+    if (missing(err)) return migErr(res, err);
     res.status(500).json({ error: 'Erro ao listar fornecedores do insumo' });
   }
 });
@@ -258,7 +323,7 @@ router.post('/:id/fornecedores', async (req, res) => {
     audit(req, 'create', 'insumo_fornecedor', data.id, { insumo: req.params.id });
     res.status(201).json(data);
   } catch (err) {
-    if (missing(err)) return migErr(res);
+    if (missing(err)) return migErr(res, err);
     console.error('[insumos/fornecedor]', err.message);
     res.status(500).json({ error: 'Erro ao salvar fornecedor' });
   }
@@ -270,7 +335,7 @@ router.delete('/:id/fornecedores/:fid', async (req, res) => {
       .eq('id', req.params.fid).eq('tenant_id', req.tenantId);
     res.json({ success: true });
   } catch (err) {
-    if (missing(err)) return migErr(res);
+    if (missing(err)) return migErr(res, err);
     res.status(500).json({ error: 'Erro ao remover fornecedor' });
   }
 });
@@ -292,8 +357,49 @@ router.get('/:id/precos', async (req, res) => {
     });
     res.json(out);
   } catch (err) {
-    if (missing(err)) return migErr(res);
+    if (missing(err)) return migErr(res, err);
     res.status(500).json({ error: 'Erro ao carregar o histórico de preço' });
+  }
+});
+
+// ── Estoque: extrato e movimentos ─────────────────────────
+router.get('/:id/movimentos', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('INSUMO_MOVIMENTOS')
+      .select('*').eq('tenant_id', req.tenantId).eq('insumo_id', req.params.id)
+      .order('created_at', { ascending: false }).limit(100);
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    if (missing(err)) return migErr(res, err);
+    console.error('[insumos/movimentos]', err.message);
+    res.status(500).json({ error: 'Erro ao carregar o extrato do insumo' });
+  }
+});
+
+router.post('/:id/movimentos', async (req, res) => {
+  const b = req.body || {};
+  const tipo = TIPOS_MOV.includes(b.tipo) ? b.tipo : null;
+  if (!tipo) return res.status(400).json({ error: 'Tipo de movimento inválido' });
+
+  const qtd = Number(b.quantity);
+  if (!Number.isFinite(qtd) || qtd < 0) return res.status(400).json({ error: 'Informe a quantidade' });
+  // Entrada e saída de zero não são movimento nenhum; ajuste para zero é.
+  if (qtd === 0 && tipo !== 'ajuste') return res.status(400).json({ error: 'A quantidade tem que ser maior que zero' });
+
+  try {
+    const r = await movimentar(req.tenantId, req.params.id, {
+      tipo, quantity: qtd,
+      unit_cost: b.unit_cost, total: b.total,
+      reference: b.reference, notes: b.notes,
+    }, req.user?.name || req.user?.email || null);
+    audit(req, 'update', 'insumo_estoque', req.params.id, { tipo, quantity: qtd, saldo: r.saldo });
+    res.status(201).json(r);
+  } catch (err) {
+    if (err.semSaldo) return res.status(400).json({ error: err.message });
+    if (missing(err)) return migErr(res, err);
+    console.error('[insumos/movimentar]', err.message);
+    res.status(500).json({ error: 'Erro ao movimentar o estoque' });
   }
 });
 
@@ -305,7 +411,7 @@ router.get('/alertas/reposicao', async (req, res) => {
     const rows = (await enrichEstoque(req.tenantId, (data || []).map(withCost))).map(withAlert);
     res.json(rows.filter(i => i.precisa_repor));
   } catch (err) {
-    if (missing(err)) return migErr(res);
+    if (missing(err)) return migErr(res, err);
     res.status(500).json({ error: 'Erro ao carregar alertas' });
   }
 });
@@ -317,14 +423,32 @@ router.post('/', async (req, res) => {
   if (!c.name) return res.status(400).json({ error: 'Informe o nome do insumo' });
   if (!(c.package_qty > 0)) return res.status(400).json({ error: 'O volume/quantidade da embalagem deve ser maior que zero' });
   try {
+    // O SALDO INICIAL entra pelo motor de movimento, e não como coluna
+    // no insert: o primeiro número do estoque merece a mesma linha de
+    // extrato que todos os outros. Insumo nasce zerado e recebe um
+    // ajuste — que é exatamente o que ele é, alguém contando o que já
+    // tem na prateleira.
+    const saldoInicial = Math.max(Number(req.body?.current_stock) || 0, 0);
     const { data, error } = await supabase.from('INSUMOS')
-      .insert({ tenant_id: req.tenantId, ...c }).select('*, FORNECEDORES(name)').single();
+      .insert({ tenant_id: req.tenantId, ...c, current_stock: 0 }).select('*, FORNECEDORES(name)').single();
     if (error) throw error;
+    if (saldoInicial > 0) {
+      try {
+        await movimentar(req.tenantId, data.id, {
+          tipo: 'ajuste', quantity: saldoInicial, notes: 'Saldo inicial do cadastro',
+        }, req.user?.name || req.user?.email || null);
+        data.current_stock = saldoInicial;
+      } catch (e) {
+        // Estoque é acessório ao cadastro: o insumo já existe e não pode
+        // ser perdido porque a 092 ainda não rodou.
+        console.error('[insumos/saldo-inicial]', e.message);
+      }
+    }
     await logPreco(req.tenantId, data, { user_name: req.user?.name || req.user?.email || null });
     audit(req, 'create', 'insumo', data.id, { name: c.name, category: c.category });
     res.status(201).json(withCost({ ...data, supplier: data.FORNECEDORES?.name || data.supplier_name || null }));
   } catch (err) {
-    if (missing(err)) return migErr(res);
+    if (missing(err)) return migErr(res, err);
     console.error('[insumos/create]', err.message);
     res.status(500).json({ error: 'Erro ao salvar insumo' });
   }
@@ -337,7 +461,21 @@ router.put('/:id', async (req, res) => {
   try {
     // preço anterior, para só registrar histórico quando muda de fato
     const { data: antes } = await supabase.from('INSUMOS')
-      .select('package_qty, package_price').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+      .select('package_qty, package_price, current_stock').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+
+    // MEXER NO SALDO PELO CADASTRO É UM AJUSTE, e vai para o extrato
+    // como tal. Sem isto, editar o insumo seria o buraco por onde o
+    // estoque muda sem deixar rastro — e o extrato deixaria de fechar.
+    if (req.body?.current_stock !== undefined && antes) {
+      const novo = Math.max(Number(req.body.current_stock) || 0, 0);
+      if (novo !== (Number(antes.current_stock) || 0)) {
+        try {
+          await movimentar(req.tenantId, req.params.id, {
+            tipo: 'ajuste', quantity: novo, notes: 'Ajuste pelo cadastro do insumo',
+          }, req.user?.name || req.user?.email || null);
+        } catch (e) { console.error('[insumos/ajuste]', e.message); }
+      }
+    }
 
     const { data, error } = await supabase.from('INSUMOS')
       .update(c).eq('id', req.params.id).eq('tenant_id', req.tenantId)
@@ -353,7 +491,7 @@ router.put('/:id', async (req, res) => {
     audit(req, 'update', 'insumo', data.id, c);
     res.json(withCost({ ...data, supplier: data.FORNECEDORES?.name || data.supplier_name || null }));
   } catch (err) {
-    if (missing(err)) return migErr(res);
+    if (missing(err)) return migErr(res, err);
     console.error('[insumos/update]', err.message);
     res.status(500).json({ error: 'Erro ao atualizar insumo' });
   }
@@ -369,7 +507,7 @@ router.delete('/:id', async (req, res) => {
     audit(req, 'delete', 'insumo', data.id, { name: data.name });
     res.json({ success: true });
   } catch (err) {
-    if (missing(err)) return migErr(res);
+    if (missing(err)) return migErr(res, err);
     console.error('[insumos/delete]', err.message);
     res.status(500).json({ error: 'Erro ao remover insumo' });
   }
