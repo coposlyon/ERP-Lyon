@@ -59,19 +59,37 @@ export default function PedidoCliente() {
   // Qual item está com a linha do tempo aberta (índice na lista).
   const [itemAberto, setItemAberto] = useState(null);
   const [formRetirada, setFormRetirada] = useState(false);
-  // O olho pisca até a primeira vez que alguém clica nele — e nunca mais.
-  // Depois disso o cliente já sabe para que serve; continuar piscando
-  // vira barulho.
-  const [jaViu, setJaViu] = useState(() => {
-    try { return localStorage.getItem('lyon-olho-etapas') === '1'; } catch { return false; }
-  });
+  // O QUE O OLHO ANUNCIA É NOVIDADE, NÃO A PRÓPRIA EXISTÊNCIA.
+  //
+  // Antes ele piscava até o primeiro clique e nunca mais: era uma aula
+  // sobre onde clicar, dada uma vez. Só que o cliente não volta nesta
+  // tela para aprender a usá-la — ele volta para saber se o copo dele
+  // andou. Então o que pisca agora é ITEM QUE MUDOU DE ETAPA desde a
+  // última vez que ele abriu aquele item. Andou de novo, pisca de novo.
+  //
+  // O que fica guardado é o MARCO de cada item — a etapa em que ele
+  // estava quando o cliente olhou. Comparar marco guardado com marco
+  // atual é toda a lógica: diferente = novidade.
+  const [vistos, setVistos] = useState({});
+  useEffect(() => {
+    try { setVistos(JSON.parse(localStorage.getItem(CHAVE_VISTOS(id)) || '{}')); } catch { setVistos({}); }
+  }, [id]);
 
   function abrirEtapas(idx) {
     setItemAberto(idx);
-    if (!jaViu) {
-      setJaViu(true);
-      try { localStorage.setItem('lyon-olho-etapas', '1'); } catch { /* navegador anônimo: pisca de novo amanhã */ }
-    }
+    const item = p?.itens?.[idx];
+    if (!item) return;
+    const proximos = { ...vistos, [chaveDoItem(item, idx)]: marcoDoItem(item) };
+    setVistos(proximos);
+    // Navegador anônimo ou storage cheio: pisca de novo na próxima
+    // visita. Chato, e melhor que a tela deixar de abrir.
+    try { localStorage.setItem(CHAVE_VISTOS(id), JSON.stringify(proximos)); } catch { /* segue */ }
+  }
+
+  /** Este item andou desde a última vez que o cliente o abriu? */
+  function temNovidade(item, idx) {
+    const marco = marcoDoItem(item);
+    return !!marco && vistos[chaveDoItem(item, idx)] !== marco;
   }
   const token = sessionStorage.getItem('acompanhar_token');
 
@@ -249,7 +267,7 @@ export default function PedidoCliente() {
                 {p.itens.map((i, idx) => (
                   <tr key={idx} style={{ borderBottom: '1px solid rgba(96,165,250,0.12)' }}>
                     <td className="px-2 py-2.5">
-                      <OlhoEtapas piscando={!jaViu} onClick={() => abrirEtapas(idx)} />
+                      <OlhoEtapas novidade={temNovidade(i, idx)} onClick={() => abrirEtapas(idx)} />
                     </td>
                     <td className="px-3 py-2.5 font-mono text-white">{i.codigo || '—'}</td>
                     <td className="px-3 py-2.5 text-white">{i.produto}</td>
@@ -572,23 +590,48 @@ function Opcao({ Icon, titulo, texto, cor, onClick }) {
 
 // ── O OLHO ───────────────────────────────────────────────────
 
+// ── O AVISO DE NOVIDADE, POR PRODUTO ─────────────────────────
+//
+// Cada item guarda o MARCO em que o cliente o viu pela última vez. Marco
+// é a etapa onde aquele copo está — e "onde ele está" não é o status do
+// pedido: um pedido em "aguardando borda" não move a caneca preto fosco,
+// que não tem borda. Por isso o marco do item sem borda continua sendo a
+// última etapa que ELE concluiu, e o olho dele não pisca à toa.
+//
+// Sem etapa marcada como atual (o pedido está numa fase que este produto
+// não percorre), vale a última concluída. Sem nenhuma concluída, vale a
+// primeira da régua — pedido recém-criado também é novidade.
+const CHAVE_VISTOS = pedidoId => `lyon-etapas-vistas:${pedidoId}`;
+
+/** Identidade do item dentro do pedido. O código é estável; o índice é o socorro. */
+const chaveDoItem = (item, idx) => `${item?.codigo || 'item'}#${idx}`;
+
+function marcoDoItem(item) {
+  const linha = item?.linha_do_tempo || [];
+  const atual = linha.find(e => e.estado === 'atual');
+  if (atual) return atual.key;
+  const feitos = linha.filter(e => e.estado === 'concluido');
+  if (feitos.length) return feitos[feitos.length - 1].key;
+  return linha[0]?.key || null;
+}
+
 /**
- * O CONVITE QUE SE APAGA SOZINHO.
+ * O OLHO QUE AVISA QUE ALGO ANDOU.
  *
- * Um ícone parado ao lado do produto não é descoberto: ninguém clica no
- * que não pediu para ser clicado. Então ele pisca — e a cada três
- * piscadas diz, em uma frase, para que serve.
+ * Ele fica quieto enquanto não há nada novo — ícone parado é o estado
+ * normal de quem não tem recado. Quando o produto muda de etapa, ele
+ * pulsa, ganha um ponto de "nova atualização" e, a cada três pulsos,
+ * diz em uma frase o que fazer.
  *
- * E para de piscar no primeiro clique, para sempre. Aviso que continua
- * piscando depois de entendido deixa de ser convite e vira barulho: o
- * cliente aprende a ignorar, e da próxima vez que algo realmente piscar
- * ele também não vai olhar.
+ * Para no clique porque o recado foi dado. E volta na próxima mudança:
+ * é isso que o separa de um enfeite que pisca para sempre até o cliente
+ * aprender a não olhar.
  */
-function OlhoEtapas({ piscando, onClick }) {
+function OlhoEtapas({ novidade, onClick }) {
   const [dica, setDica] = useState(false);
 
   useEffect(() => {
-    if (!piscando) { setDica(false); return; }
+    if (!novidade) { setDica(false); return; }
     let n = 0;
     let sumir = null;
     const t = setInterval(() => {
@@ -599,7 +642,7 @@ function OlhoEtapas({ piscando, onClick }) {
       }
     }, 1000);
     return () => { clearInterval(t); clearTimeout(sumir); };
-  }, [piscando]);
+  }, [novidade]);
 
   return (
     <div className="relative flex items-center justify-center">
@@ -616,20 +659,27 @@ function OlhoEtapas({ piscando, onClick }) {
             background: 'rgba(34,211,238,0.15)', color: '#67e8f9',
             border: '1px solid rgba(34,211,238,0.45)', boxShadow: '0 0 18px rgba(34,211,238,0.25)',
           }}>
-          Clique aqui para ver o status deste produto
+          Clique aqui para acompanhar o status deste produto
         </span>
       )}
 
-      <button onClick={onClick} title="Ver as etapas deste produto"
-        aria-label="Ver as etapas deste produto"
-        className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+      <button onClick={onClick}
+        title={novidade ? 'Nova atualização — clique para acompanhar este produto' : 'Ver as etapas deste produto'}
+        aria-label={novidade ? 'Nova atualização neste produto' : 'Ver as etapas deste produto'}
+        className="relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
         style={{
-          background: piscando ? 'rgba(34,211,238,0.15)' : 'rgba(255,255,255,0.05)',
-          border: `1px solid ${piscando ? 'rgba(34,211,238,0.5)' : 'rgba(255,255,255,0.12)'}`,
-          color: piscando ? '#22d3ee' : 'rgba(255,255,255,0.65)',
-          animation: piscando ? 'lyonPiscaOlho 1s ease-in-out infinite' : 'none',
+          background: novidade ? 'rgba(34,211,238,0.15)' : 'rgba(255,255,255,0.05)',
+          border: `1px solid ${novidade ? 'rgba(34,211,238,0.5)' : 'rgba(255,255,255,0.12)'}`,
+          color: novidade ? '#22d3ee' : 'rgba(255,255,255,0.65)',
+          animation: novidade ? 'lyonPiscaOlho 1s ease-in-out infinite' : 'none',
         }}>
         <Eye size={15} />
+        {/* O ponto é o recado que sobrevive ao pulso: quem chega na tela
+            no intervalo entre duas pulsações ainda vê que há algo novo. */}
+        {novidade && (
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full"
+            style={{ background: '#22d3ee', boxShadow: '0 0 8px rgba(34,211,238,0.9)' }} />
+        )}
       </button>
     </div>
   );
