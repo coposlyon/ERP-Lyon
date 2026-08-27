@@ -40,6 +40,56 @@ router.get('/origens', (req, res) => res.json(ORIGENS));
 
 const isISODate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
 
+// ── O QUE ESTE USUÁRIO PODE VER ──────────────────────────
+//
+// A lista de pedidos mostrava TUDO para todo mundo que tivesse o módulo
+// 'sales'. Um vendedor abria a tela e via a carteira dos colegas — nome
+// de cliente, valor, margem de negociação. Não era permissão frouxa: era
+// a ausência de qualquer pergunta sobre de quem é o pedido.
+//
+// A resposta tem DUAS pernas, e a segunda é a que costuma faltar:
+//
+//   1. OS MEUS       — pedidos em que eu sou o vendedor (user_id).
+//   2. O MEU TERRITÓRIO — pedidos de clientes das UFs que o meu cadastro
+//      de vendedor lista em `territory`. É por aqui que entra o pedido
+//      que caiu pela loja ou que outro digitou para um cliente do RS
+//      quando o RS é meu. Sem esta perna, o vendedor da região Sul não
+//      enxergaria a compra da própria região só porque não foi ele quem
+//      apertou o botão.
+//
+// Admin e gerente veem tudo — é o trabalho deles ver tudo.
+//
+// Devolve `null` quando não há restrição, ou um filtro para aplicar.
+const VE_TUDO = ['admin', 'manager'];
+const UF_OK = /^[A-Z]{2}$/;
+
+async function escopoDoVendedor(req) {
+  if (VE_TUDO.includes(req.userProfile?.role)) return null;
+
+  let ufs = [];
+  try {
+    const { data } = await supabase.from('VENDEDORES')
+      .select('territory').eq('tenant_id', req.tenantId).eq('user_id', req.user.id).maybeSingle();
+    ufs = (data?.territory || []).map(u => String(u).toUpperCase().trim()).filter(u => UF_OK.test(u));
+  } catch { /* sem cadastro de vendedor: fica só com os pedidos dele */ }
+
+  if (!ufs.length) return { userId: req.user.id, customerIds: [] };
+
+  // A UF do cliente mora dentro de address (jsonb), e não numa coluna.
+  const { data: clientes } = await supabase.from('CLIENTES')
+    .select('id').eq('tenant_id', req.tenantId).in('address->>state', ufs).limit(5000);
+
+  return { userId: req.user.id, customerIds: (clientes || []).map(c => c.id) };
+}
+
+/** Aplica o escopo numa query de VENDAS já montada. */
+function aplicarEscopo(query, escopo) {
+  if (!escopo) return query;
+  if (!escopo.customerIds.length) return query.eq('user_id', escopo.userId);
+  const lista = escopo.customerIds.map(id => `"${id}"`).join(',');
+  return query.or(`user_id.eq.${escopo.userId},customer_id.in.(${lista})`);
+}
+
 router.get('/', async (req, res) => {
   const { status, type, search } = req.query;
   const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 200);
@@ -90,6 +140,7 @@ router.get('/', async (req, res) => {
       query = query.or(`and(${op.join(',')}),and(${ca.join(',')})`);
     }
     if (customerIds) query = query.in('customer_id', customerIds);
+    query = aplicarEscopo(query, await escopoDoVendedor(req));
     query = query.range(offset, offset + limit - 1);
 
     const { data, error, count } = await query;
@@ -128,6 +179,18 @@ router.get('/:id', async (req, res) => {
       .single();
 
     if (saleError || !sale) return res.status(404).json({ error: 'Venda não encontrada' });
+
+    // Esconder na lista e deixar abrir pelo endereço não é esconder: o
+    // id vaza num print, num link colado no grupo, no histórico do
+    // navegador. A mesma pergunta da lista vale aqui.
+    const escopo = await escopoDoVendedor(req);
+    if (escopo) {
+      const meu = sale.user_id === escopo.userId;
+      const doTerritorio = sale.customer_id && escopo.customerIds.includes(sale.customer_id);
+      if (!meu && !doTerritorio) {
+        return res.status(404).json({ error: 'Venda não encontrada' });
+      }
+    }
 
     const { data: items } = await supabase
       .from('VENDA_ITENS')

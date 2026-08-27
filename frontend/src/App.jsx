@@ -152,9 +152,16 @@ function ManagerOnly({ children }) {
 // A raiz "/" não é a mesma tela para todo mundo. Quem está na área do
 // vendedor cai no painel dele — deixar o Dashboard geral abrir aqui
 // mostraria contas a receber e contas vencidas a quem não deve ver.
+// O Dashboard some do menu de quem não tem a tela '/' liberada — mas a
+// rota continuava desenhando ele para qualquer um que digitasse o
+// endereço, e era nele que a pessoa caía ao entrar. Esconder no menu e
+// servir na rota não é esconder: é só não avisar onde está.
 function HomeRoute() {
-  const { layout, homePath } = useAuth();
-  if (layout === 'vendedor' && homePath !== '/') return <Navigate to={homePath} replace />;
+  const { layout, homePath, hasScreen } = useAuth();
+  const podeDashboard = hasScreen('/');
+  if ((!podeDashboard || layout === 'vendedor') && homePath !== '/') {
+    return <Navigate to={homePath} replace />;
+  }
   return <Dashboard />;
 }
 

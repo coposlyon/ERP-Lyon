@@ -150,11 +150,22 @@ function resolverAcesso(userProfile, setor) {
   const doSetor = Array.isArray(setor.modules) ? setor.modules : [];
   const modules = [...new Set([...doSetor, ...(extras || [])])].filter(m => MODULO_KEYS.has(m));
 
+  // A CASA DE QUEM NÃO PODE VER O DASHBOARD NÃO PODE SER O DASHBOARD.
+  //
+  // `home` caía em '/' para todo setor sem home_path — inclusive para os
+  // que não têm '/' na lista de telas. O item sumia do menu e a pessoa
+  // era jogada nele mesmo assim, todo login, porque ninguém tinha
+  // perguntado se ela podia. A primeira tela liberada é a resposta certa
+  // quando o Dashboard não é uma delas.
+  const podeDashboard = !Array.isArray(telas) || telas.includes('/');
+  const home = setor.home_path
+    || (podeDashboard ? '/' : (telas.find(Boolean) || '/'));
+
   return {
     modules,
     screens: telas,
     layout: LAYOUTS.includes(setor.layout) ? setor.layout : 'erp',
-    home: setor.home_path || '/',
+    home,
     setor: setor.key,
     setorName: setor.name,
     herda: herdaDoSetor(userProfile),
