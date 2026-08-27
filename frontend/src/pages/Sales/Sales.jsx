@@ -12,7 +12,11 @@ import { format, parseISO } from 'date-fns';
 import { useTelaCheia } from '@/contexts/TelaCheiaContext';
 
 const fmt = fmtBRL;
-const dataHora = iso => { if (!iso) return '—'; try { return format(parseISO(iso), 'dd/MM/yyyy HH:mm'); } catch { return iso; } };
+const dataHora = iso => { if (!iso) return '\u2014'; try { return format(parseISO(iso), 'dd/MM/yyyy HH:mm'); } catch { return iso; } };
+// Data sem hora, para as colunas de prazo. Um traco quando nao ha data:
+// prazo em branco e prazo inexistente sao a mesma coluna e respostas
+// diferentes, e o traco e o que diz "ninguem definiu ainda".
+const dia = iso => { if (!iso) return '\u2014'; try { return format(parseISO(String(iso).slice(0, 10)), 'dd/MM/yyyy'); } catch { return iso; } };
 
 const POR_PAGINA = [10, 25, 50, 100];
 
@@ -242,17 +246,19 @@ export default function Sales() {
 
       {/* ── Tabela ────────────────────────────────────────────── */}
       <div style={v.card}>
-        {/* SEM ROLAGEM HORIZONTAL.
-            Catorze colunas não cabem em tela nenhuma: com o menu aberto
-            sobram ~1250px, e catorze colunas legíveis pedem o dobro.
-            Arrastar a tabela para o lado para ler o prazo de um pedido é
-            justamente o que o sistema antigo não obrigava a fazer.
-
-            Então a grade fica com o que serve para ACHAR o pedido, e o
-            resto — prazos, transportadora, cotação, itens — está na tela
-            do pedido, que o clique na linha abre. Nada saiu do sistema:
-            mudou de lugar, para um lugar que cabe. */}
-        <div>
+        {/* A GRADE INTEIRA, E A ROLAGEM QUE VEM COM ELA.
+            Catorze colunas não cabem nos ~1250px que sobram com o menu
+            aberto — e a resposta anterior a isso foi cortar a grade pela
+            metade e mandar prazos, transportadora e cotação para a tela
+            do pedido. Custava um clique por pedido para responder "qual
+            está atrasado?", que é uma pergunta sobre a LISTA, não sobre
+            um pedido.
+            Então as colunas voltam e a rolagem lateral volta com elas.
+            Duas coisas tiram o peso disso: o botão Tela cheia, que apaga
+            o menu e devolve 260px, e o cabeçalho congelado, que mantém o
+            nome da coluna à vista enquanto se rola. */}
+        <div className="overflow-x-auto">
+          <div className="min-w-[1640px]">
             {/* CABECALHO CONGELADO.
                 Rolando a lista, os titulos das colunas saiam da tela e a
                 pessoa perdia de vista o que era cada numero — justamente
@@ -268,10 +274,15 @@ export default function Sales() {
               }}>
               <span className={`${th} w-20 shrink-0`}>Pedido</span>
               <span className={`${th} w-32 shrink-0`}>Data / Hora</span>
-              <span className={`${th} w-20 shrink-0`}>Cód.</span>
-              <span className={`${th} flex-1 min-w-0`}>Cliente</span>
+              <span className={`${th} w-20 shrink-0`}>Cód. Cliente</span>
+              <span className={`${th} flex-1 min-w-[150px]`}>Cliente</span>
               <span className={`${th} w-28 shrink-0 text-right`}>Vr. Total</span>
               <span className={`${th} w-20 shrink-0 text-right`}>Vr. Frete</span>
+              <span className={`${th} w-24 shrink-0`}>Data do evento</span>
+              <span className={`${th} w-24 shrink-0`}>Data de saída</span>
+              <span className={`${th} w-28 shrink-0`}>Previsão de entrega</span>
+              <span className={`${th} w-32 shrink-0`}>Transportadora</span>
+              <span className={`${th} w-24 shrink-0 text-right`}>Cotação</span>
               {/* w-56: cabe "Em processo de coleta / retirada", o rótulo
                   mais longo do fluxo, sem quebrar linha. */}
               <span className={`${th} w-56 shrink-0 text-center`}>Status</span>
@@ -308,7 +319,7 @@ export default function Sales() {
                   <span className="w-20 shrink-0 font-mono text-[13px]" style={{ color: v.textMuted }}>
                     {codigoCliente(row.CLIENTES?.display_id) || '—'}
                   </span>
-                  <span className="flex-1 min-w-0 truncate" style={{ color: v.textPrimary }}
+                  <span className="flex-1 min-w-[150px] truncate" style={{ color: v.textPrimary }}
                     title={row.CLIENTES?.name || 'Consumidor Final'}>
                     {row.CLIENTES?.name || 'Consumidor Final'}
                   </span>
@@ -316,7 +327,27 @@ export default function Sales() {
                     {fmt(row.total)}
                   </span>
                   <span className="w-20 shrink-0 text-right text-[13px]" style={{ color: v.textMuted }}>
-                    {row.freight > 0 ? fmt(row.freight) : '—'}
+                    {row.freight > 0 ? fmt(row.freight) : '\u2014'}
+                  </span>
+                  {/* OS PRAZOS. Data do evento é a do cliente (o casamento,
+                      a formatura); data de saída e previsão de entrega são
+                      as nossas. Traço quando ninguém definiu. */}
+                  <span className="w-24 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
+                    {dia(row.event_date)}
+                  </span>
+                  <span className="w-24 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
+                    {dia(row.ship_date)}
+                  </span>
+                  <span className="w-28 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
+                    {dia(row.delivery_date || row.max_delivery_date)}
+                  </span>
+                  <span className="w-32 shrink-0 truncate text-[13px]" style={{ color: v.textMuted }}
+                    title={row.transportadora || ''}>
+                    {row.transportadora || '\u2014'}
+                  </span>
+                  <span className="w-24 shrink-0 text-right text-[13px] truncate" style={{ color: v.textMuted }}
+                    title={row.freight_quote || ''}>
+                    {row.freight_quote || '\u2014'}
                   </span>
                   <span className="w-56 shrink-0 flex justify-center">
                     <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] whitespace-nowrap"
@@ -354,9 +385,15 @@ export default function Sales() {
                 <span className="flex-1 min-w-0">{rows.length} pedido{rows.length !== 1 ? 's' : ''} nesta página</span>
                 <span className="w-28 text-right" style={{ color: '#22d3ee' }}>{fmt(pageTotal)}</span>
                 <span className="w-20 text-right">{pageFreight > 0 ? fmt(pageFreight) : ''}</span>
+                {/* Os vazios existem para a soma cair debaixo da coluna
+                    que ela soma. Coluna nova sem espaçador aqui empurra
+                    o total para o lado errado. */}
+                <span className="w-24" /><span className="w-24" /><span className="w-28" />
+                <span className="w-32" /><span className="w-24" />
                 <span className="w-56" /><span className="w-16" /><span className="w-20" />
               </div>
             )}
+          </div>
         </div>
 
         {/* Paginação */}
