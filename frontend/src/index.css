@@ -678,19 +678,11 @@ html.dark .erp-shell { background-color: transparent !important; }
 html.dark .erp-shell > div > main { background-color: transparent !important; }
 
 /* ── Sidebar ────────────────────────────────────────────────────
-   No escuro ela deixa de ser um bloco roxo sólido e vira um painel
-   escuro, separado por uma linha acesa — é o que faz o menu parecer
-   parte da tela em vez de colado nela.
-
-   O PRETO É O DO LOGO, e não uma escolha de gosto. lyon-logo.png é um
-   PNG de fundo transparente, mas o índice transparente dele é #000000:
-   a arte foi fechada sobre preto, e as bordas suavizadas das letras
-   ficaram compostas contra essa cor. Sobre o marinho #080d24 que ficava
-   aqui, cada curva do desenho carregava uma auréola escura — de longe,
-   um retângulo fantasma em volta do logo. Igualando a sidebar ao fundo
-   de origem, a franja desaparece sem tocar na imagem. */
+   No escuro ela deixa de ser um bloco roxo sólido e vira um painel do
+   mesmo marinho do resto, separado por uma linha acesa — é o que faz o
+   menu parecer parte da tela em vez de colado nela. */
 html.dark .bg-sidebar {
-  background-color: #000000 !important;
+  background-color: #080d24 !important;
   border-right: 1px solid #1d2b6b;
 }
 
