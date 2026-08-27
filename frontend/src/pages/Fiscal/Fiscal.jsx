@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Receipt, FileText, Settings2, RefreshCw, XCircle, Plus,
   AlertCircle, CheckCircle2, Loader2, FlaskConical, Rocket,
+  Download, ShoppingCart, Eye, ThumbsUp, HelpCircle, Ban, Search,
 } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
@@ -82,6 +83,27 @@ function TabNotas() {
         <button onClick={() => setEmitModal(true)} className="btn-primary btn-sm">
           <Plus size={14}/> Emitir NF-e
         </button>
+      </div>
+
+      {/* O QUE ENTROU, EM DINHEIRO. A lista dizia quantas notas
+          existiam e nao quanto elas somavam — e a pergunta que se faz a
+          um modulo fiscal e a segunda. So nota AUTORIZADA conta:
+          cancelada, rejeitada ou em processamento nao e faturamento. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="card p-4">
+          <p className="text-xs text-gray-500">Faturado (notas autorizadas)</p>
+          <p className="text-xl font-bold text-green-700 mt-1">{fmt(data?.resumo?.faturado)}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-gray-500">Notas autorizadas</p>
+          <p className="text-xl font-bold text-gray-900 mt-1">{data?.resumo?.autorizadas ?? 0}</p>
+        </div>
+        <div className={`card p-4 ${data?.resumo?.pendentes > 0 ? 'border-amber-300 bg-amber-50' : ''}`}>
+          <p className="text-xs text-gray-500">Em processamento / rejeitadas</p>
+          <p className={`text-xl font-bold mt-1 ${data?.resumo?.pendentes > 0 ? 'text-amber-700' : 'text-gray-900'}`}>
+            {data?.resumo?.pendentes ?? 0}
+          </p>
+        </div>
       </div>
 
       <div className="card overflow-hidden">
@@ -338,6 +360,289 @@ function TabConfig() {
 }
 
 // ══ Página ════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// COMPRAS — TODA NF-e EMITIDA CONTRA O CNPJ DA EMPRESA.
+//
+// Nao e uma lista de notas que alguem digitou: e o que a SEFAZ tem. Toda
+// nota emitida contra o CNPJ passa por la, e a Distribuicao de DF-e
+// devolve o conjunto inteiro. Se o fornecedor emitiu, aparece aqui —
+// mesmo que ele nunca mande o XML, mesmo que ninguem digite nada.
+//
+// A MANIFESTACAO NAO E ENFEITE. A SEFAZ da 10 dias para a empresa dar
+// ciencia de cada nota emitida contra ela, e o "desconhecimento" e o
+// unico jeito formal de recusar nota que nao e sua — que e como se
+// defende de nota fria emitida no seu CNPJ. Por isso a tela abre
+// cobrando o que esta pendente.
+// ═══════════════════════════════════════════════════════════
+
+const MANIFESTOS = [
+  { tipo: 'ciencia',        rotulo: 'Dar ciencia',    Icone: Eye,        cls: 'text-blue-600',    dica: 'Sei que a nota existe, ainda sem confirmar a operacao. E o minimo que a SEFAZ cobra, em 10 dias.' },
+  { tipo: 'confirmacao',    rotulo: 'Confirmar',      Icone: ThumbsUp,   cls: 'text-green-600',   dica: 'A compra e nossa e a mercadoria chegou.' },
+  { tipo: 'desconhecimento',rotulo: 'Desconhecer',    Icone: HelpCircle, cls: 'text-amber-600',   dica: 'Nao reconheco esta nota. E o que se usa contra nota fria emitida no nosso CNPJ.' },
+  { tipo: 'nao_realizada',  rotulo: 'Nao realizada',  Icone: Ban,        cls: 'text-red-600',     dica: 'A nota e nossa, mas a operacao nao aconteceu (devolucao, recusa na entrega). Exige justificativa.' },
+];
+
+const ROTULO_MANIFESTO = {
+  ciencia: 'Ciencia', confirmacao: 'Confirmada',
+  desconhecimento: 'Desconhecida', nao_realizada: 'Nao realizada',
+};
+
+const CLS_MANIFESTO = {
+  ciencia: 'bg-blue-50 text-blue-700', confirmacao: 'bg-green-50 text-green-700',
+  desconhecimento: 'bg-amber-50 text-amber-700', nao_realizada: 'bg-red-50 text-red-700',
+};
+
+function TabCompras() {
+  const qc = useQueryClient();
+  const [page, setPage] = useState(1);
+  const [pendentes, setPendentes] = useState(false);
+  const [busca, setBusca] = useState('');
+  const [buscaAtiva, setBuscaAtiva] = useState('');
+  const [manifestando, setManifestando] = useState(null);   // { nota, tipo }
+  const [justificativa, setJustificativa] = useState('');
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['nfe-recebidas', page, pendentes, buscaAtiva],
+    queryFn: () => api.get(`/fiscal/recebidas?page=${page}&limit=30${pendentes ? '&pendentes=1' : ''}${buscaAtiva ? `&search=${encodeURIComponent(buscaAtiva)}` : ''}`),
+    retry: false,
+  });
+
+  const sync = useMutation({
+    mutationFn: () => api.post('/fiscal/recebidas/sync'),
+    onSuccess: r => {
+      toast.success(r.importadas
+        ? `${r.importadas} nota(s) nova(s) da SEFAZ`
+        : 'Nenhuma nota nova — ja estava tudo aqui.');
+      qc.invalidateQueries({ queryKey: ['nfe-recebidas'] });
+    },
+    onError: e => toast.error(e.error || 'Nao foi possivel consultar a SEFAZ'),
+  });
+
+  const manifestar = useMutation({
+    mutationFn: ({ chave, tipo, justificativa }) =>
+      api.post(`/fiscal/recebidas/${chave}/manifestar`, { tipo, justificativa }),
+    onSuccess: () => {
+      toast.success('Manifestacao registrada na SEFAZ');
+      setManifestando(null); setJustificativa('');
+      qc.invalidateQueries({ queryKey: ['nfe-recebidas'] });
+    },
+    onError: e => toast.error(e.error || 'Erro ao manifestar'),
+  });
+
+  // O XML vem pela API PORQUE A ROTA PEDE TOKEN. Abrir a URL numa aba
+  // nova mandaria o navegador buscar sem o Authorization, e o download
+  // voltaria 401. Entao busca-se aqui e entrega-se como arquivo.
+  async function baixarXml(nota) {
+    try {
+      const xml = await api.get(`/fiscal/recebidas/${nota.chave}/xml`);
+      const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nfe-${nota.chave}.xml`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { toast.error(e.error || 'Nao foi possivel baixar o XML'); }
+  }
+
+  if (error) {
+    return (
+      <div className="card p-4 bg-amber-50 border-amber-200 flex items-start gap-3">
+        <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+        <div className="text-sm">
+          <p className="font-medium text-amber-900">Compras nao habilitadas</p>
+          <p className="text-amber-700">{error.error || 'Erro ao carregar.'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const notas = data?.data || [];
+  const resumo = data?.resumo || {};
+
+  return (
+    <div className="space-y-4">
+      {data?.aviso && (
+        <div className="card p-4 bg-amber-50 border-amber-200 flex items-start gap-3">
+          <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+          <p className="text-sm text-amber-800">{data.aviso}</p>
+        </div>
+      )}
+
+      {/* O RESUMO E DO FILTRO INTEIRO, nao da pagina: "quanto a Lyon
+          comprou" nao e a soma das trinta linhas visiveis. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="card p-4">
+          <p className="text-xs text-gray-500">Total comprado</p>
+          <p className="text-xl font-bold text-gray-900 mt-1">{fmt(resumo.valor_total)}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">notas canceladas fora da conta</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-gray-500">Notas no CNPJ</p>
+          <p className="text-xl font-bold text-gray-900 mt-1">{data?.total ?? 0}</p>
+        </div>
+        <div className={`card p-4 ${resumo.pendentes_manifestacao > 0 ? 'border-amber-300 bg-amber-50' : ''}`}>
+          <p className="text-xs text-gray-500">Pendentes de manifestacao</p>
+          <p className={`text-xl font-bold mt-1 ${resumo.pendentes_manifestacao > 0 ? 'text-amber-700' : 'text-gray-900'}`}>
+            {resumo.pendentes_manifestacao ?? 0}
+          </p>
+          <p className="text-[11px] text-gray-400 mt-0.5">a SEFAZ da 10 dias para a ciencia</p>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header flex flex-wrap items-center gap-2">
+          <form onSubmit={e => { e.preventDefault(); setBuscaAtiva(busca); setPage(1); }}
+            className="relative flex-1 min-w-[200px]">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input pl-9" value={busca} onChange={e => setBusca(e.target.value)}
+              placeholder="Fornecedor, CNPJ ou chave da nota..." />
+          </form>
+          <button type="button" onClick={() => { setPendentes(p => !p); setPage(1); }}
+            className={pendentes ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'}>
+            Pendentes de manifestacao
+          </button>
+          <button type="button" className="btn-secondary btn-sm"
+            onClick={() => sync.mutate()} disabled={sync.isPending}>
+            {sync.isPending
+              ? <><Loader2 size={14} className="animate-spin" /> Consultando SEFAZ...</>
+              : <><RefreshCw size={14} /> Buscar na SEFAZ</>}
+          </button>
+        </div>
+
+        {data?.sync_at && (
+          <p className="px-4 pt-2 text-[11px] text-gray-400">
+            Ultima consulta a SEFAZ: {fmtDate(data.sync_at)}
+          </p>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr className="text-left text-[11px] uppercase text-gray-500">
+                <th className="px-4 py-2.5">Emissao</th>
+                <th className="px-3 py-2.5">Fornecedor</th>
+                <th className="px-3 py-2.5 text-right">Valor</th>
+                <th className="px-3 py-2.5">Situacao</th>
+                <th className="px-3 py-2.5">Manifestacao</th>
+                <th className="px-3 py-2.5 text-center">Acoes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={6} className="text-center py-12 text-gray-400">
+                  <Loader2 size={18} className="animate-spin inline" />
+                </td></tr>
+              ) : notas.length === 0 ? (
+                <tr><td colSpan={6} className="text-center py-12 text-sm text-gray-400">
+                  <ShoppingCart size={28} className="mx-auto mb-2 opacity-30" />
+                  Nenhuma nota ainda. Clique em <b>Buscar na SEFAZ</b> para trazer as compras do CNPJ.
+                </td></tr>
+              ) : notas.map(n => (
+                <tr key={n.id} className="border-t border-gray-100">
+                  <td className="px-4 py-2.5 whitespace-nowrap text-gray-600">{fmtDate(n.data_emissao)}</td>
+                  <td className="px-3 py-2.5">
+                    <span className="block text-gray-900">{n.nome_emitente || '\u2014'}</span>
+                    <span className="block text-[11px] text-gray-400 font-mono">{n.documento_emitente || ''}</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">{fmt(n.valor_total)}</td>
+                  <td className="px-3 py-2.5">
+                    <span className={`badge ${n.situacao === 'cancelada' ? 'badge-red' : 'badge-green'}`}>
+                      {n.situacao || '\u2014'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {n.manifestacao ? (
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${CLS_MANIFESTO[n.manifestacao] || 'bg-gray-100 text-gray-600'}`}>
+                        {ROTULO_MANIFESTO[n.manifestacao] || n.manifestacao}
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700">
+                        pendente
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-center gap-1">
+                      {MANIFESTOS.map(m => (
+                        <button key={m.tipo} type="button" title={`${m.rotulo} \u2014 ${m.dica}`}
+                          className={`btn-ghost p-1.5 ${m.cls} disabled:opacity-25`}
+                          disabled={n.manifestacao === m.tipo}
+                          onClick={() => { setManifestando({ nota: n, tipo: m.tipo }); setJustificativa(''); }}>
+                          <m.Icone size={14} />
+                        </button>
+                      ))}
+                      <button type="button" title="Baixar o XML da nota"
+                        className="btn-ghost p-1.5 text-gray-500"
+                        onClick={() => baixarXml(n)}>
+                        <Download size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {data?.total > 30 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 text-sm">
+            <span className="text-gray-500">
+              {(page - 1) * 30 + 1} a {(page - 1) * 30 + notas.length} de {data.total}
+            </span>
+            <div className="flex gap-2">
+              <button className="btn-secondary btn-sm" disabled={page === 1}
+                onClick={() => setPage(p => p - 1)}>Anterior</button>
+              <button className="btn-secondary btn-sm" disabled={page * 30 >= data.total}
+                onClick={() => setPage(p => p + 1)}>Proxima</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* A confirmacao da manifestacao. Ela vai para a SEFAZ e nao volta
+          atras — por isso pergunta antes, e por isso mostra o que cada
+          tipo significa em vez de so o nome dele. */}
+      {manifestando && (
+        <Modal isOpen onClose={() => setManifestando(null)} title="Manifestar nota" size="md">
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              <b>{MANIFESTOS.find(m => m.tipo === manifestando.tipo)?.rotulo}</b> a nota de{' '}
+              <b>{manifestando.nota.nome_emitente || 'fornecedor'}</b>, no valor de{' '}
+              <b>{fmt(manifestando.nota.valor_total)}</b>.
+            </p>
+            <p className="text-[12.5px] text-gray-500 rounded-lg bg-gray-50 p-3">
+              {MANIFESTOS.find(m => m.tipo === manifestando.tipo)?.dica}
+            </p>
+            {manifestando.tipo === 'nao_realizada' && (
+              <div>
+                <label className="label">Justificativa (15 a 255 caracteres) *</label>
+                <textarea className="input" rows={3} value={justificativa}
+                  onChange={e => setJustificativa(e.target.value)}
+                  placeholder="Ex.: mercadoria recusada na entrega por avaria na embalagem" />
+                <p className="text-[11px] text-gray-400 mt-1">{justificativa.length} caracteres</p>
+              </div>
+            )}
+            <p className="text-[12px] text-amber-700 bg-amber-50 rounded-lg p-2.5">
+              A manifestacao e enviada a SEFAZ e fica registrada no CNPJ da empresa.
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button className="btn-secondary" onClick={() => setManifestando(null)}>Cancelar</button>
+              <button className="btn-primary" disabled={manifestar.isPending}
+                onClick={() => manifestar.mutate({
+                  chave: manifestando.nota.chave,
+                  tipo: manifestando.tipo,
+                  justificativa: justificativa.trim() || null,
+                })}>
+                {manifestar.isPending ? <Loader2 size={14} className="animate-spin" /> : null} Enviar a SEFAZ
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 export default function Fiscal() {
   const { isAdmin } = useAuth();
   const [tab, setTab] = useState('notas');
@@ -354,7 +659,9 @@ export default function Fiscal() {
           </div>
           <div>
             <h1 className="page-title">Fiscal / NF-e</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Emissão integrada via Focus NFe</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Emissão e compras do CNPJ, integradas via Focus NFe / SEFAZ
+            </p>
           </div>
         </div>
       </div>
@@ -377,9 +684,16 @@ export default function Fiscal() {
       )}
 
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        {/* AS DUAS PONTAS DO CNPJ, uma ao lado da outra. Emitidas e o
+            que entrou de dinheiro; Compras e tudo o que foi comprado no
+            CNPJ, direto da SEFAZ. Antes so a primeira existia. */}
         <button onClick={() => setTab('notas')}
           className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === 'notas' ? 'bg-white shadow text-violet-700' : 'text-gray-500'}`}>
           Notas Emitidas
+        </button>
+        <button onClick={() => setTab('compras')}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${tab === 'compras' ? 'bg-white shadow text-violet-700' : 'text-gray-500'}`}>
+          <ShoppingCart size={13} /> Compras (SEFAZ)
         </button>
         {isAdmin && (
           <button onClick={() => setTab('config')}
@@ -389,7 +703,7 @@ export default function Fiscal() {
         )}
       </div>
 
-      {tab === 'notas' ? <TabNotas /> : <TabConfig />}
+      {tab === 'notas' ? <TabNotas /> : tab === 'compras' ? <TabCompras /> : <TabConfig />}
     </div>
   );
 }

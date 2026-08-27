@@ -105,7 +105,28 @@ router.get('/invoices', async (req, res) => {
 
     const { data, error, count } = await query;
     if (error) throw error;
-    res.json({ data, total: count, page: Number(page), limit: Number(limit) });
+
+    // O QUE ENTROU, EM DINHEIRO. So conta nota AUTORIZADA: nota
+    // cancelada, rejeitada ou em processamento nao e faturamento, e
+    // somar as tres daria um numero que nao bate com lugar nenhum.
+    // O resumo e do FILTRO INTEIRO, nao da pagina.
+    let faturado = 0, autorizadas = 0, pendentes = 0;
+    try {
+      let qt = supabase.from('NOTAS_FISCAIS')
+        .select('total, status').eq('tenant_id', req.tenantId).limit(20000);
+      if (start_date) qt = qt.gte('created_at', start_date);
+      if (end_date)   qt = qt.lte('created_at', end_date + 'T23:59:59');
+      const { data: todas } = await qt;
+      for (const n of todas || []) {
+        if (n.status === 'autorizado') { faturado += Number(n.total) || 0; autorizadas += 1; }
+        else if (n.status !== 'cancelado') pendentes += 1;
+      }
+    } catch { /* o resumo e acessorio: a lista abre sem ele */ }
+
+    res.json({
+      data, total: count, page: Number(page), limit: Number(limit),
+      resumo: { faturado, autorizadas, pendentes },
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -323,6 +344,242 @@ router.post('/invoices/:id/cancel', async (req, res) => {
 
     audit(req, 'delete', 'fiscal', nota.id, { ref: nota.ref, justificativa: justificativa.trim() });
     res.json(updated);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// NOTAS RECEBIDAS — TODAS AS COMPRAS DO CNPJ.
+//
+// O modulo so sabia SAIR: emitir a nota da venda, consultar, cancelar.
+// A entrada nao existia, e compra que a Lyon faz so chegava ao sistema
+// se alguem digitasse. "Alguem digitar" e uma promessa que nenhuma
+// empresa cumpre com todas as notas, e o que falta fica fora do
+// estoque, do custo e da apuracao sem ninguem saber que faltou.
+//
+// A SEFAZ sabe. Toda NF-e emitida CONTRA o CNPJ passa por ela, e a
+// Distribuicao de DF-e devolve a lista para quem tem o certificado da
+// empresa. Nao depende do fornecedor mandar o XML nem de e-mail: se a
+// nota existe, ela aparece aqui.
+// ═══════════════════════════════════════════════════════════
+
+/** A empresa esta configurada para consultar notas recebidas? */
+function prontoParaRecebidas(cfg) {
+  if (!cfg) return 'Configure o Fiscal antes: falta CNPJ e token da Focus.';
+  if (!String(cfg.cnpj || '').replace(/\D/g, '')) return 'Informe o CNPJ da empresa na configuracao fiscal.';
+  if (!activeToken(cfg)) return `Falta o token da Focus para o ambiente de ${cfg.ambiente || 'homologacao'}.`;
+  return null;
+}
+
+/** Uma linha da Focus vira uma linha nossa. Campo a campo, de proposito. */
+function daFocus(tenantId, n) {
+  return {
+    tenant_id: tenantId,
+    chave: String(n.chave_nfe || '').trim(),
+    nome_emitente: n.nome_emitente || null,
+    documento_emitente: n.documento_emitente || null,
+    valor_total: Number(n.valor_total) || 0,
+    data_emissao: n.data_emissao || null,
+    situacao: n.situacao || null,
+    tipo_nfe: n.tipo_nfe != null ? String(n.tipo_nfe) : null,
+    nfe_completa: !!n.nfe_completa,
+    manifestacao: n.manifestacao_destinatario || null,
+    versao: Number(n.versao) || 0,
+    raw: n,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * PUXA O QUE FALTA.
+ *
+ * `versao` e um marcador, nao uma data: pede-se o que veio depois da
+ * ultima versao conhecida e guarda-se a nova marca. Rodar de novo em
+ * seguida nao traz nada — e e por isso que isto pode rodar de hora em
+ * hora sem pesar.
+ *
+ * A gravacao e um upsert pela chave: a mesma nota pode voltar na lista
+ * (mudou de situacao, foi cancelada, ganhou carta de correcao) e tem
+ * que ATUALIZAR a linha, nunca criar uma segunda.
+ */
+async function sincronizarRecebidas(tenantId, cfg) {
+  const token = activeToken(cfg);
+  const desde = Number(cfg.recebidas_versao) || 0;
+
+  const r = await focus.listarRecebidas(cfg.ambiente, token, cfg.cnpj, desde);
+  if (!r.ok) {
+    const msg = r.data?.mensagem || r.data?.erro || `Focus respondeu ${r.status}`;
+    const err = new Error(msg);
+    err.status = r.status;
+    throw err;
+  }
+
+  const lista = Array.isArray(r.data) ? r.data : [];
+  const linhas = lista.map(n => daFocus(tenantId, n)).filter(l => l.chave.length === 44);
+
+  if (linhas.length) {
+    const { error } = await supabase.from('NFE_RECEBIDAS')
+      .upsert(linhas, { onConflict: 'tenant_id,chave' });
+    if (error) throw error;
+  }
+
+  // O X-Max-Version da resposta manda; sem ele, a maior versao que veio
+  // na lista serve. Nunca ANDA PARA TRAS: um cabecalho ausente nao pode
+  // fazer a proxima sincronizacao rebaixar o CNPJ inteiro de novo.
+  const doHeader = Number(r.headers?.get?.('x-max-version')) || 0;
+  const daLista = linhas.reduce((m, l) => Math.max(m, l.versao), 0);
+  const novaVersao = Math.max(desde, doHeader, daLista);
+
+  await supabase.from('CONFIG_FISCAL')
+    .update({ recebidas_versao: novaVersao, recebidas_sync_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId);
+
+  return { importadas: linhas.length, versao: novaVersao };
+}
+
+// GET /fiscal/recebidas — o que ja esta no banco
+router.get('/recebidas', async (req, res) => {
+  const { page = 1, limit = 30, pendentes, start_date, end_date, search } = req.query;
+  const lim = Math.min(Math.max(parseInt(limit) || 30, 1), 200);
+  const offset = (Math.max(parseInt(page) || 1, 1) - 1) * lim;
+
+  try {
+    let q = supabase.from('NFE_RECEBIDAS')
+      // O XML fica DE FORA da lista: e um documento inteiro por linha, e
+      // trinta deles fazem a tela demorar para mostrar o que cabe numa
+      // coluna. Quem quiser o arquivo pede pela rota do XML.
+      .select('id, chave, nome_emitente, documento_emitente, valor_total, data_emissao, situacao, tipo_nfe, manifestacao, manifestacao_at, purchase_id', { count: 'exact' })
+      .eq('tenant_id', req.tenantId)
+      .order('data_emissao', { ascending: false, nullsFirst: false });
+
+    if (pendentes) q = q.is('manifestacao', null);
+    if (start_date) q = q.gte('data_emissao', start_date);
+    if (end_date)   q = q.lte('data_emissao', `${end_date}T23:59:59`);
+    if (search) {
+      const t = String(search).trim();
+      q = q.or(`nome_emitente.ilike.%${t}%,documento_emitente.ilike.%${t}%,chave.ilike.%${t}%`);
+    }
+
+    const { data, error, count } = await q.range(offset, offset + lim - 1);
+    if (error) throw error;
+
+    // Os totais sao do FILTRO INTEIRO, nao da pagina. "Quanto a Lyon
+    // comprou em agosto" nao e a soma das trinta linhas visiveis.
+    let totalValor = 0, pendentesCount = 0;
+    try {
+      let qt = supabase.from('NFE_RECEBIDAS')
+        .select('valor_total, manifestacao, situacao')
+        .eq('tenant_id', req.tenantId).limit(20000);
+      if (start_date) qt = qt.gte('data_emissao', start_date);
+      if (end_date)   qt = qt.lte('data_emissao', `${end_date}T23:59:59`);
+      const { data: todas } = await qt;
+      for (const n of todas || []) {
+        if (n.situacao !== 'cancelada') totalValor += Number(n.valor_total) || 0;
+        if (!n.manifestacao) pendentesCount += 1;
+      }
+    } catch { /* o total e resumo: a lista abre sem ele */ }
+
+    const cfg = await getConfig(req.tenantId);
+    res.json({
+      data: data || [],
+      total: count,
+      page: Number(page),
+      limit: lim,
+      resumo: { valor_total: totalValor, pendentes_manifestacao: pendentesCount },
+      sync_at: cfg?.recebidas_sync_at || null,
+      pronto: !prontoParaRecebidas(cfg),
+      aviso: prontoParaRecebidas(cfg),
+    });
+  } catch (err) {
+    if (/NFE_RECEBIDAS|schema cache|42P01/i.test(err.message || '')) {
+      return res.status(400).json({ error: 'Notas recebidas nao habilitadas: rode a migracao 093_nfe_recebidas.sql no Supabase.', code: 'MIGRATION_093' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /fiscal/recebidas/sync — busca na SEFAZ o que ainda nao veio
+router.post('/recebidas/sync', async (req, res) => {
+  try {
+    const cfg = await getConfig(req.tenantId);
+    const impedimento = prontoParaRecebidas(cfg);
+    if (impedimento) return res.status(400).json({ error: impedimento });
+
+    const r = await sincronizarRecebidas(req.tenantId, cfg);
+    audit(req, 'update', 'fiscal', 'recebidas-sync', r);
+    res.json(r);
+  } catch (err) {
+    if (/NFE_RECEBIDAS|schema cache|42P01/i.test(err.message || '')) {
+      return res.status(400).json({ error: 'Notas recebidas nao habilitadas: rode a migracao 093_nfe_recebidas.sql no Supabase.', code: 'MIGRATION_093' });
+    }
+    res.status(err.status && err.status < 500 ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// POST /fiscal/recebidas/:chave/manifestar
+router.post('/recebidas/:chave/manifestar', async (req, res) => {
+  const tipo = String(req.body?.tipo || '').trim();
+  const justificativa = String(req.body?.justificativa || '').trim();
+
+  if (!focus.MANIFESTOS.includes(tipo)) {
+    return res.status(400).json({ error: `Tipo invalido. Use: ${focus.MANIFESTOS.join(', ')}.` });
+  }
+  // A regra e da SEFAZ, e checar aqui evita uma ida a Focus so para
+  // receber a mesma recusa de volta.
+  if (tipo === 'nao_realizada' && (justificativa.length < 15 || justificativa.length > 255)) {
+    return res.status(400).json({ error: 'Operacao nao realizada exige justificativa de 15 a 255 caracteres.' });
+  }
+
+  try {
+    const cfg = await getConfig(req.tenantId);
+    const impedimento = prontoParaRecebidas(cfg);
+    if (impedimento) return res.status(400).json({ error: impedimento });
+
+    const r = await focus.manifestarRecebida(cfg.ambiente, activeToken(cfg), req.params.chave, tipo, justificativa || null);
+    if (!r.ok) {
+      return res.status(400).json({ error: r.data?.mensagem || r.data?.erro || `Focus respondeu ${r.status}` });
+    }
+
+    const { data, error } = await supabase.from('NFE_RECEBIDAS')
+      .update({
+        manifestacao: tipo,
+        manifestacao_at: new Date().toISOString(),
+        manifestacao_proto: r.data?.protocolo || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('tenant_id', req.tenantId).eq('chave', req.params.chave)
+      .select().single();
+    if (error) throw error;
+
+    audit(req, 'update', 'fiscal', 'manifestacao', { chave: req.params.chave, tipo });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /fiscal/recebidas/:chave/xml — baixa uma vez e guarda
+router.get('/recebidas/:chave/xml', async (req, res) => {
+  try {
+    const { data: nota } = await supabase.from('NFE_RECEBIDAS')
+      .select('id, xml').eq('tenant_id', req.tenantId).eq('chave', req.params.chave).maybeSingle();
+    if (!nota) return res.status(404).json({ error: 'Nota nao encontrada' });
+
+    if (nota.xml) {
+      res.type('application/xml');
+      return res.send(nota.xml);
+    }
+
+    const cfg = await getConfig(req.tenantId);
+    const impedimento = prontoParaRecebidas(cfg);
+    if (impedimento) return res.status(400).json({ error: impedimento });
+
+    const r = await focus.xmlRecebida(cfg.ambiente, activeToken(cfg), req.params.chave);
+    if (!r.ok || !r.text) return res.status(400).json({ error: `Nao foi possivel baixar o XML (Focus respondeu ${r.status}).` });
+
+    // Guarda para nao pagar a mesma ida na proxima vez que alguem abrir.
+    await supabase.from('NFE_RECEBIDAS')
+      .update({ xml: r.text, updated_at: new Date().toISOString() }).eq('id', nota.id);
+
+    res.type('application/xml');
+    res.send(r.text);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
