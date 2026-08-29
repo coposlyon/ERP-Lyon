@@ -23,9 +23,13 @@
 //   1. as ruas conhecidas da cidade cabem todas em UM prefixo
 //   2. o código do IBGE bate (nome de cidade se repete entre estados)
 //   3. o candidato prefixo-000 NÃO É UMA RUA na ViaCEP
+//   4. a amostra tem ruas suficientes para a concordância significar algo
 //
-// A terceira é a que separa Adrianópolis de Almirante Tamandaré, e é a
-// que faz este script recusar sozinho o caso perigoso.
+// A terceira separa Adrianópolis de Almirante Tamandaré. A quarta nasceu
+// depois: com cinco termos de busca, Planaltina (GO) e Santo Antônio do
+// Descoberto (GO) passaram com 9 e 3 ruas, e uma reconferência com vinte
+// termos achou dois prefixos nas duas. Poucas ruas concordando não é
+// concordância.
 //
 // COMO FICA GRAVADO. `cep_start` = o CEP geral, `cep_end` = prefixo-999.
 // Os dois DIFERENTES de propósito: é assim que a tela sabe que aquilo é
@@ -43,10 +47,25 @@ const UF_ARG = (args.find(a => /^[A-Za-z]{2}$/.test(a)) || '').toUpperCase() || 
 const DRY    = args.includes('--dry');
 
 // Termos que pegam fatias diferentes do cadastro. A ViaCEP devolve no
-// máximo 50 por busca, e um termo só poderia mostrar um pedaço da cidade
-// que por acaso é todo do mesmo prefixo. Cinco recortes diferentes
-// concordando é outra conversa.
-const TERMOS = ['Rua', 'Avenida', 'Travessa', 'Praca', 'Estrada'];
+// máximo 50 por busca, e um termo só mostraria um pedaço da cidade que
+// por acaso pode ser todo do mesmo prefixo.
+//
+// A LISTA COMEÇOU COM CINCO E ERROU DUAS VEZES. Planaltina (GO, 105 mil
+// habitantes) e Santo Antônio do Descoberto (GO, 72 mil) passaram: os
+// cinco termos acharam 9 e 3 ruas, todas do mesmo prefixo, e o
+// prefixo-000 não era rua nenhuma. Com vinte termos apareceram DOIS
+// prefixos nas duas, e o CEP teve que ser apagado. Poucas ruas
+// concordando não é concordância — é amostra pequena.
+const TERMOS = [
+  'Rua', 'Avenida', 'Travessa', 'Praca', 'Estrada',
+  'Sao', 'Jos', 'Ant', 'Sil', 'Dom', 'Cent', 'Ver',
+  'Mar', 'Par', 'Bra', 'Nov', 'Alt', 'Pre', 'Ind', 'Jar',
+];
+
+// Abaixo disto não se conclui nada. Uma cidade em que a ViaCEP conhece
+// três ruas pode ter trinta que ela não conhece, e as outras vinte e sete
+// podem estar noutro prefixo. Em branco é a resposta honesta.
+const MIN_RUAS = 8;
 const SIMULTANEAS = 4;
 const TENTATIVAS = 3;
 
@@ -96,6 +115,7 @@ async function cepGeral(uf, nome, ibge) {
 
   if (!viu) return { motivo: 'sem_dados' };
   if (prefixos.size !== 1) return { motivo: 'faixa', prefixos: prefixos.size };
+  if (viu < MIN_RUAS) return { motivo: 'amostra_curta', viu };
 
   const prefixo = [...prefixos][0];
   const candidato = `${prefixo}-000`;
@@ -130,7 +150,7 @@ async function cepGeral(uf, nome, ibge) {
   console.log('');
   if (!cidades.length) { await pg.end(); return; }
 
-  const contas = { gravados: 0, faixa: 0, e_rua: 0, sem_dados: 0, xara: 0 };
+  const contas = { gravados: 0, faixa: 0, e_rua: 0, sem_dados: 0, xara: 0, amostra_curta: 0 };
   const exemplos = [];
   let feitos = 0;
 
@@ -165,6 +185,7 @@ async function cepGeral(uf, nome, ibge) {
   console.log('\nCEP geral gravado:            ' + contas.gravados);
   console.log('Faixa de verdade (em branco): ' + contas.faixa);
   console.log('Recusados por serem rua:      ' + contas.e_rua);
+  console.log('Amostra curta (em branco):    ' + contas.amostra_curta);
   console.log('ViaCEP nao conhece a cidade:  ' + contas.sem_dados);
   if (contas.xara) console.log('Xara em outro estado:         ' + contas.xara);
 
