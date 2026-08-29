@@ -24,7 +24,7 @@ import {
   Truck, Info, Plus, Eye, Download, UploadCloud, PenLine, CircleCheck, Star,
   Circle, Wallet, PenTool, FileImage, FlaskConical, Brush, CircleDashed,
   Settings, PackageOpen, ShieldCheck, Camera, PackageCheck, History, ExternalLink,
-  Loader2,
+  Loader2, Hourglass,
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -490,42 +490,18 @@ export default function PedidoDetalhe() {
               Arte" enquanto ninguém lembrasse de avançar a etapa à mão.
               O arquivo existir é fato; o status é onde o pedido está. */}
           <Bloco v={v} Icon={PenLine} titulo="Arte">
-            <div className="text-center py-1 px-2 rounded-lg text-sm font-medium mb-2"
-              style={p.artwork_url
-                ? { border: '1px solid rgba(74,222,128,0.5)', color: '#4ade80' }
-                : aguardandoArte
-                  ? { border: '1px solid rgba(250,204,21,0.5)', color: '#facc15' }
-                  : { border: `1px solid ${v.divider}`, color: v.textMuted }}>
-              {p.artwork_url ? 'Arte anexada' : aguardandoArte ? 'Aguardando Anexo da Arte' : 'Sem arte neste pedido'}
-            </div>
-            {aguardandoArte && !p.artwork_url && (
-              <p className="text-[11px] text-center mb-3" style={{ color: v.textSubtle }}>
-                Anexe o arquivo da arte para darmos continuidade.
-              </p>
-            )}
             <input ref={inputArte} type="file" className="hidden"
               accept="image/*,application/pdf,.ai,.cdr,.eps,.psd"
               onChange={e => { anexar('arte', e.target.files?.[0]); e.target.value = ''; }} />
-            <button
-              onClick={() => (p.artwork_url ? setTrocarArte(p) : inputArte.current?.click())}
-              disabled={enviando === 'arte'}
-              className="btn-secondary w-full mb-2 disabled:opacity-50">
-              {enviando === 'arte'
-                ? <><Loader2 size={15} className="animate-spin" /> Enviando…</>
-                : <><UploadCloud size={15} /> {p.artwork_url ? 'Substituir Arte' : 'Anexar Arte'}</>}
-            </button>
-            {p.artwork_url ? (
-              <a href={p.artwork_url} target="_blank" rel="noreferrer" className="btn-secondary w-full">
-                <Eye size={15} /> Visualizar Arte
-              </a>
-            ) : (
-              <button disabled className="btn-secondary w-full opacity-40 cursor-not-allowed">
-                <Eye size={15} /> Visualizar Arte
-              </button>
-            )}
-            {p.artwork_notes && (
-              <p className="text-[11px] mt-2" style={{ color: v.textMuted }}>{p.artwork_notes}</p>
-            )}
+            <CartaoDaArte
+              v={v}
+              temArte={!!p.artwork_url}
+              aguardando={aguardandoArte}
+              enviando={enviando === 'arte'}
+              notas={p.artwork_notes}
+              urlArte={p.artwork_url}
+              onAnexar={() => (p.artwork_url ? setTrocarArte(p) : inputArte.current?.click())}
+            />
           </Bloco>
 
           {/* Resumo do Cliente — quem é este cliente, em seis números.
@@ -704,7 +680,129 @@ function Balao({ v, fase, atrasado }) {
   );
 }
 
-// ── Peças pequenas ───────────────────────────────────────────
+/**
+ * O CARTAO DA ARTE.
+ *
+ * A COR DIZ QUAL E O CAMINHO AGORA, e nao o que o botao faz. E a regra
+ * inteira desta tela:
+ *
+ *   sem arte    Anexar fica VERDE (e o que se espera de voce)
+ *               Visualizar fica VERMELHO (nao ha o que ver)
+ *   com arte    Visualizar fica VERDE (ja da para conferir)
+ *               Anexar fica VERMELHO (anexar de novo SUBSTITUI a que
+ *               esta la, passa por autorizacao de gerente e fica no
+ *               historico - nao e mais um passo neutro)
+ *
+ * Um botao verde em cima e outro vermelho embaixo respondem "e agora?"
+ * antes de a pessoa ler qualquer palavra. Pintar os dois iguais devolve
+ * a pergunta para quem abriu a tela.
+ *
+ * O SELO NO TOPO diz em que pe esta, e o brilho e o mesmo do resto do
+ * painel escuro. No tema claro o brilho sai (fica ilegivel sobre branco)
+ * e sobra a cor da borda, que ja carrega o recado.
+ */
+function CartaoDaArte({ v, temArte, aguardando, enviando, notas, urlArte, onAnexar }) {
+  const VERDE = '#4ade80', VERMELHO = '#f87171', AMARELO = '#facc15';
+
+  const selo = temArte
+    ? { cor: VERDE, Icon: CircleCheck, texto: 'Arte anexada' }
+    : aguardando
+      ? { cor: AMARELO, Icon: Hourglass, texto: 'Aguardando anexo da arte' }
+      : { cor: v.textMuted, Icon: PenLine, texto: 'Sem arte neste pedido' };
+
+  const frase = temArte
+    ? 'Arte anexada com sucesso!'
+    : aguardando
+      ? 'Anexe o arquivo da arte para darmos continuidade.'
+      : 'Este pedido nao tem arte para anexar.';
+
+  // O brilho e do tema escuro. No claro ele vira uma mancha cinza.
+  const aceso = (cor, forte = false) => (v.isDark
+    ? { boxShadow: `0 0 ${forte ? 16 : 10}px ${cor}55, inset 0 0 ${forte ? 14 : 8}px ${cor}14` }
+    : {});
+
+  return (
+    <div className="space-y-3">
+      {/* Selo da situacao */}
+      <div className="relative rounded-xl px-3 py-2 flex items-center justify-center gap-2"
+        style={{ border: `1.5px solid ${selo.cor}`, color: selo.cor, ...aceso(selo.cor) }}>
+        {v.isDark && (
+          <span aria-hidden="true" className="absolute -top-px left-1/2 -translate-x-1/2"
+            style={{ width: 70, height: 3, borderRadius: 999, background: selo.cor, filter: 'blur(3px)' }} />
+        )}
+        <selo.Icon size={16} />
+        <span className="text-[13px] font-semibold">{selo.texto}</span>
+      </div>
+
+      <p className="text-[12px] text-center leading-snug" style={{ color: v.textMuted }}>{frase}</p>
+
+      {/* A caixa tracejada agrupa as duas acoes da arte: o que esta
+          dentro dela e sobre o arquivo, e nada mais. */}
+      <div className="rounded-xl p-2.5 space-y-2.5"
+        style={{ border: `1px dashed ${v.isDark ? 'rgba(59,130,246,0.40)' : '#c7d2fe'}` }}>
+
+        <BotaoNeon
+          v={v} cor={temArte ? VERMELHO : VERDE} aceso={aceso}
+          Icon={enviando ? Loader2 : UploadCloud}
+          girando={enviando}
+          desabilitado={enviando || (!temArte && !aguardando)}
+          titulo={temArte
+            ? 'Substituir a arte anexada (passa por autorizacao e fica no historico)'
+            : 'Anexar o arquivo da arte'}
+          onClick={onAnexar}>
+          {enviando ? 'Enviando…' : 'Anexar arte'}
+        </BotaoNeon>
+
+        {temArte ? (
+          <BotaoNeon v={v} cor={VERDE} aceso={aceso} Icon={Eye}
+            titulo="Abrir o arquivo da arte" href={urlArte}>
+            Visualizar arte
+          </BotaoNeon>
+        ) : (
+          <BotaoNeon v={v} cor={VERMELHO} aceso={aceso} Icon={Eye} desabilitado
+            titulo="Ainda nao ha arte anexada neste pedido">
+            Visualizar arte
+          </BotaoNeon>
+        )}
+      </div>
+
+      {notas && <p className="text-[11px]" style={{ color: v.textMuted }}>{notas}</p>}
+    </div>
+  );
+}
+
+/** Um botao (ou link) com a borda acesa na cor que o momento pede. */
+function BotaoNeon({ v, cor, aceso, Icon, girando, desabilitado, titulo, href, onClick, children }) {
+  const estilo = {
+    border: `1.5px solid ${desabilitado ? `${cor}66` : cor}`,
+    color: desabilitado ? `${cor}aa` : cor,
+    background: v.isDark ? `${cor}0f` : `${cor}12`,
+    ...(desabilitado ? {} : aceso(cor, true)),
+  };
+  const miolo = (
+    <>
+      <Icon size={17} className={girando ? 'animate-spin' : ''} />
+      <span className="text-[13px] font-semibold">{children}</span>
+    </>
+  );
+
+  // Link de verdade quando ha arquivo: abre em aba nova, e o botao do
+  // meio do mouse funciona como a pessoa espera.
+  if (href && !desabilitado) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" title={titulo}
+        className="w-full rounded-xl px-3 py-2.5 flex items-center justify-center gap-2 transition-opacity hover:opacity-80"
+        style={estilo}>{miolo}</a>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} disabled={desabilitado} title={titulo}
+      className="w-full rounded-xl px-3 py-2.5 flex items-center justify-center gap-2 transition-opacity hover:opacity-80 disabled:cursor-not-allowed"
+      style={estilo}>{miolo}</button>
+  );
+}
+
+// ── Pecas pequenas ───────────────────────────────────────────
 function Bloco({ v, Icon, titulo, direita, children }) {
   return (
     <div style={v.card}>
