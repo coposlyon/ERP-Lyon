@@ -248,15 +248,37 @@ function linhaDoTempo(venda, aplicaveis = {}) {
 }
 
 /** O histórico em ordem cronológica, para a lista embaixo da tela. */
+// EVENTOS QUE NAO SAO STATUS DO FLUXO.
+//
+// O production_log guarda mais do que a caminhada do pedido: guarda
+// tambem atos administrativos, como a liberacao do pagamento. Esses nao
+// existem no catalogo STATUS - e `infoStatus` devolve a propria CHAVE
+// como label para o que nao conhece.
+//
+// O resultado aparecia na tela do cliente: no meio de "Pagamento
+// confirmado" e "Aguardando estoque", uma linha escrita
+// "pagamento_liberado". Nome de variavel vazando para quem comprou um
+// copo.
+const EVENTOS_DO_LOG = {
+  pagamento_liberado:  { label: 'Pagamento liberado',  cor: 'verde' },
+  pagamento_cancelado: { label: 'Liberacao cancelada', cor: 'vermelho' },
+  arte_aprovada:       { label: 'Arte anexada e aprovada', cor: 'roxo' },
+};
+
 function historicoPedido(venda) {
   const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
   const linhas = log
     .filter(e => e.action || e.status)
     .map(e => {
       const k = e.action || e.status;
-      const info = infoStatus(k);
+      // O catalogo do fluxo primeiro; os atos administrativos depois. Se
+      // nem um nem outro souber, some da lista em vez de virar chave
+      // crua na tela do cliente.
+      const info = STATUS[k] || EVENTOS_DO_LOG[k] || null;
+      if (!info) return null;
       return { key: k, label: info.label, cor: info.cor, at: e.at || null, user: e.user || null, stage: e.stage || null };
-    });
+    })
+    .filter(Boolean);
 
   if (venda?.created_at && !linhas.some(l => l.key === 'iniciando_pedido')) {
     const info = infoStatus('iniciando_pedido');

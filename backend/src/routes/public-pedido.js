@@ -25,6 +25,8 @@ const supabase = require('../config/supabase');
 const P        = require('../lib/pedidoPublico');
 const A        = require('../lib/atencao');
 const { askClaude } = require('../lib/ai');
+// O comprovante mora em bucket privado: o portal entrega um link que expira.
+const { linkAssinado } = require('../lib/storage');
 
 const SEGREDO = process.env.PEDIDO_TOKEN_SECRET
   || process.env.JWT_SECRET
@@ -79,7 +81,7 @@ const CAMPOS_PEDIDO = `
   created_at, operation_date, event_date, ship_date, delivery_date,
   collect_date, transport_days, freight_quote, tracking_code,
   carrier_id, user_id, tenant_id, production_log,
-  delivery_mode, notes, pickup_person,
+  delivery_mode, notes, pickup_person, receipt_url,
   CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating ),
   VENDA_ITENS ( id, product_name, quantity, unit_price, total, customization,
                 PRODUTOS ( id, code, name, ink_type ) )
@@ -91,13 +93,18 @@ async function carregarPedido(saleId) {
     .select(CAMPOS_PEDIDO).eq('id', saleId).maybeSingle();
   if (error || !venda) return null;
 
-  const [transportadora, temNota, avisos] = await Promise.all([
+  const [transportadora, danfe, avisos, comprovante] = await Promise.all([
     nomeTransportadora(venda.carrier_id),
     notaEmitida(venda.tenant_id, venda.id),
     avisosDaEmpresa(venda.tenant_id),
+    comprovanteDoPedido(venda),
   ]);
 
-  return P.montarPedidoDoCliente(venda, { transportadora, temNota, avisos });
+  return P.montarPedidoDoCliente(venda, {
+    transportadora, avisos,
+    temNota: !!danfe,
+    temComprovante: !!comprovante,
+  });
 }
 
 async function nomeTransportadora(carrierId) {
@@ -110,13 +117,41 @@ async function nomeTransportadora(carrierId) {
 }
 
 // Nota autorizada de verdade — 'processando' ainda não é nota na mão.
+//
+// Devolve a URL da DANFE, e não um sim/não: quem pergunta é o botão de
+// baixar, e um booleano só dizia que existe sem dizer onde está.
 async function notaEmitida(tenantId, saleId) {
   try {
     const { data } = await supabase.from('NOTAS_FISCAIS')
       .select('id, status, danfe_url').eq('tenant_id', tenantId).eq('sale_id', saleId)
       .is('cancelled_at', null).limit(5);
-    return (data || []).some(n => /autoriz/i.test(n.status || '') && n.danfe_url);
-  } catch { return false; }
+    const ok = (data || []).find(n => /autoriz/i.test(n.status || '') && n.danfe_url);
+    return ok ? ok.danfe_url : null;
+  } catch { return null; }
+}
+
+/**
+ * O COMPROVANTE DE PAGAMENTO DESTE PEDIDO.
+ *
+ * Dois lugares, nesta ordem: a parcela mais recente que tenha
+ * comprovante (migração 095, que é onde eles passaram a morar) e, se não
+ * houver, o campo antigo do próprio pedido — que é o que responde pelos
+ * pedidos gravados antes de o comprovante virar da parcela.
+ *
+ * Devolve o CAMINHO no bucket privado, nunca uma URL eterna: quem
+ * transforma em link é a rota de download, e o link expira.
+ */
+async function comprovanteDoPedido(venda) {
+  try {
+    const { data } = await supabase.from('LANCAMENTOS')
+      .select('receipt_url, receipt_at')
+      .eq('tenant_id', venda.tenant_id)
+      .eq('reference_type', 'sale').eq('reference_id', venda.id)
+      .not('receipt_url', 'is', null)
+      .order('receipt_at', { ascending: false }).limit(1);
+    if (data && data[0]?.receipt_url) return data[0].receipt_url;
+  } catch { /* base sem a 095: cai no campo antigo */ }
+  return venda.receipt_url || null;
 }
 
 async function avisosDaEmpresa(tenantId) {
@@ -327,6 +362,51 @@ router.post('/pedido/:id/retirada', exigirToken, async (req, res) => {
 // ── TELA 3B — o pedido, sempre atual ─────────────────────────
 // A tela chama isto de tempos em tempos: quando a Produção muda a etapa
 // no ERP, o cliente vê a mudança sem fazer nada.
+/**
+ * GET /acompanhar/pedido/:id/documento/:tipo
+ *
+ * O LINK DE VERDADE. Os três botões de "Baixar" do portal chamavam um
+ * `alert('O download será liberado em breve')` — os três, inclusive o
+ * que aparecia habilitado. O cliente clicava e recebia um aviso de que
+ * nada ia acontecer.
+ *
+ * Agora os que têm arquivo devolvem o endereço dele:
+ *
+ *   comprovante  link ASSINADO, que expira em dez minutos. O arquivo
+ *                vive em bucket privado e o endereço dele não pode
+ *                ficar guardado na aba do navegador.
+ *   nfe          a DANFE, que já é pública por natureza.
+ *
+ * `pedido` não passa por aqui: a folha do pedido é a própria tela, e
+ * quem quiser PDF usa o "salvar como PDF" da impressão do navegador.
+ */
+router.get('/pedido/:id/documento/:tipo', exigirToken, async (req, res) => {
+  try {
+    const saleId = await pedidoDoCliente(req.params.id, req.customerId);
+    if (!saleId) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    const { data: venda } = await supabase.from('VENDAS')
+      .select('id, tenant_id, receipt_url').eq('id', saleId).maybeSingle();
+    if (!venda) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    if (req.params.tipo === 'nfe') {
+      const danfe = await notaEmitida(venda.tenant_id, venda.id);
+      if (!danfe) return res.status(404).json({ error: 'A nota fiscal deste pedido ainda não foi emitida.' });
+      return res.json({ url: danfe });
+    }
+
+    if (req.params.tipo === 'comprovante') {
+      const caminho = await comprovanteDoPedido(venda);
+      if (!caminho) return res.status(404).json({ error: 'Ainda não há comprovante anexado neste pedido.' });
+      const url = await linkAssinado(caminho, 600);
+      if (!url) return res.status(502).json({ error: 'Não foi possível abrir o comprovante agora.' });
+      return res.json({ url });
+    }
+
+    return res.status(400).json({ error: 'Documento desconhecido.' });
+  } catch (err) { res.status(500).json({ error: 'Não foi possível abrir o documento' }); }
+});
+
 router.get('/pedido/:id', exigirToken, async (req, res) => {
   try {
     const saleId = await pedidoDoCliente(req.params.id, req.customerId);

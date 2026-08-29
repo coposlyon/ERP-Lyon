@@ -95,6 +95,30 @@ export default function PedidoCliente() {
 
   useEffect(() => { if (!token) navigate('/acompanhar', { replace: true }); }, [token, navigate]);
 
+  /**
+   * BAIXAR UM DOCUMENTO.
+   *
+   * Os três botões chamavam `alert('O download será liberado em breve')`
+   * — os três, inclusive os que apareciam habilitados. O cliente
+   * clicava e recebia o aviso de que nada ia acontecer.
+   *
+   * O pedido em PDF é a impressão desta tela: o navegador oferece
+   * "salvar como PDF" e o cliente fica com a folha do que está vendo.
+   * Comprovante e nota fiscal vêm do servidor — o comprovante como link
+   * assinado, que expira, porque o arquivo é privado.
+   */
+  async function baixar(doc) {
+    if (doc.key === 'pedido') { window.print(); return; }
+    try {
+      const r = await api.get(`/acompanhar/pedido/${id}/documento/${doc.key}`,
+        { headers: { Authorization: `Bearer ${token}` } });
+      if (r?.url) window.open(r.url, '_blank', 'noopener');
+      else alert('Não foi possível abrir o documento agora.');
+    } catch (err) {
+      alert(err?.error || 'Não foi possível abrir o documento agora.');
+    }
+  }
+
   const { data: p, isLoading, error, refetch } = useQuery({
     queryKey: ['acompanhar-pedido', id],
     queryFn: () => api.get(`/acompanhar/pedido/${id}`, { headers: { Authorization: `Bearer ${token}` } }),
@@ -351,7 +375,7 @@ export default function PedidoCliente() {
             <div className="space-y-2">
               {(p.documentos || []).map(doc => (
                 <button key={doc.key} disabled={!doc.disponivel}
-                  onClick={() => alert('O download será liberado em breve.')}
+                  onClick={() => baixar(doc)}
                   className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm disabled:opacity-45 disabled:cursor-not-allowed"
                   style={{ border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(37,99,235,0.10)' }}>
                   <FileText size={14} style={{ color: '#60a5fa' }} className="shrink-0" />

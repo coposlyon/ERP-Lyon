@@ -45,13 +45,20 @@ const AVISOS_PADRAO = [
  * botão fica desabilitado explicando por quê — botão que não funciona
  * sem dizer o motivo faz o cliente ligar para perguntar.
  */
-function documentos(venda, temNota) {
+function documentos(venda, temNota, temComprovante) {
   return [
     { key: 'pedido', label: 'Baixar Pedido em PDF', disponivel: true },
     {
+      // TER FORMA DE PAGAMENTO NAO E TER COMPROVANTE.
+      //
+      // A condicao era `!!venda.payment_method`: bastava o pedido ser
+      // Pix para o botao acender, mesmo sem arquivo nenhum anexado. O
+      // cliente clicava e nao vinha nada. Agora ele so liga quando
+      // existe comprovante de verdade - no pedido (campo antigo) ou em
+      // alguma parcela (migracao 095).
       key: 'comprovante', label: 'Baixar Comprovante',
-      disponivel: !!venda.payment_method,
-      nota: venda.payment_method ? null : 'Disponível após a confirmação do pagamento.',
+      disponivel: !!temComprovante,
+      nota: temComprovante ? null : 'Disponível depois que o comprovante do pagamento for anexado.',
     },
     {
       key: 'nfe', label: 'Baixar Nota Fiscal',
@@ -165,7 +172,7 @@ function montarPedidoDoCliente(venda, extra = {}) {
       autorizado: paraOCliente(venda.pickup_person),
     } : null,
     historico: A.historicoPedido(venda),
-    documentos: documentos(venda, extra.temNota),
+    documentos: documentos(venda, extra.temNota, extra.temComprovante),
     avisos: (extra.avisos && extra.avisos.length) ? extra.avisos : AVISOS_PADRAO,
 
     entrega: {
