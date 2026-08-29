@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { ArrowLeft, Printer, CheckCircle2, Truck, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Printer, Truck, Save, Loader2, MapPin, GitBranch } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
-import { SALE_STATUS_ORDER, saleStatusIndex, saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
+import { saleStatusLabel, saleStatusClass } from '@/lib/saleStatus';
 
 // Datas curtas do cartao de transporte, no mesmo formato da lista.
 const d  = iso => { if (!iso) return ''; try { return format(parseISO(iso), 'dd/MM/yyyy'); } catch { return iso; } };
@@ -14,12 +14,6 @@ const dt = iso => { if (!iso) return ''; try { return format(parseISO(iso), 'dd/
 
 function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
-}
-
-// próximo status na sequência (não pula etapas)
-function proximoStatus(cur) {
-  const i = saleStatusIndex(cur);
-  return i >= 0 && i < SALE_STATUS_ORDER.length - 1 ? SALE_STATUS_ORDER[i + 1] : null;
 }
 
 const paymentLabels = {
@@ -57,16 +51,6 @@ export default function SaleForm() {
     enabled: !!id && id !== 'new',
   });
 
-  const advanceMutation = useMutation({
-    mutationFn: (status) => api.patch(`/sales/${id}/status`, { status }),
-    onSuccess: (data) => {
-      toast.success(`Status: ${saleStatusLabel(data.status)}`);
-      qc.invalidateQueries(['sale', id]);
-      qc.invalidateQueries(['sales']);
-    },
-    onError: () => toast.error('Erro ao atualizar status'),
-  });
-
   if (isLoading) return <div className="flex items-center justify-center h-48 text-gray-400">Carregando...</div>;
 
   if (!sale) return (
@@ -75,8 +59,6 @@ export default function SaleForm() {
       <button onClick={() => navigate('/sales')} className="btn-secondary mt-4">Voltar</button>
     </div>
   );
-
-  const canAdvance = proximoStatus(sale.status);
 
   return (
     <>
@@ -103,15 +85,13 @@ export default function SaleForm() {
             </div>
           </div>
           <div className="flex gap-2 flex-wrap">
-            {canAdvance && (
-              <button
-                onClick={() => advanceMutation.mutate(canAdvance)}
-                disabled={advanceMutation.isPending}
-                className="btn-primary btn-sm"
-              >
-                <CheckCircle2 size={15} /> Avançar: {saleStatusLabel(canAdvance)}
-              </button>
-            )}
+            {/* MOVER O PEDIDO E OUTRA TELA. Aqui se define transporte;
+                as quinze fases, com o que falta em cada uma e quem pode
+                dar o passo, moram no acompanhamento. Um segundo botao de
+                avancar aqui seria a segunda regra a divergir. */}
+            <button onClick={() => navigate(`/sales/${id}/detalhe`)} className="btn-primary btn-sm">
+              <GitBranch size={15} /> Acompanhar e mover etapa
+            </button>
             <button onClick={() => window.print()} className="btn-secondary">
               <Printer size={16} /> Imprimir
             </button>
@@ -129,7 +109,7 @@ export default function SaleForm() {
           <div className="card p-4">
             <p className="text-xs text-gray-500 mb-2">Status</p>
             <span className={`badge ${saleStatusClass(sale.status)}`}>
-              {saleStatusLabel(sale.status)}
+              {sale.status_label || saleStatusLabel(sale.status)}
             </span>
             {sale.delivery_date && (
               <p className="text-sm text-gray-500 mt-2">

@@ -33,6 +33,7 @@ import { useVend, fmtBRL, fmtUn, fmtDate } from './ui';
 import { corStatus } from '@/lib/pedidoUi';
 import LogoOrigem from '@/components/UI/LogoOrigem';
 import SubstituirArteModal from '@/components/UI/SubstituirArteModal';
+import PainelFluxo from './PainelFluxo';
 
 /**
  * Os ícones da linha do tempo, um a um.
@@ -253,7 +254,7 @@ export default function PedidoDetalhe() {
   const atrasado = p.atencao?.level === 'critico';
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pedido-detalhe">
 
       {/* ── Cabeçalho ─────────────────────────────────────────── */}
       <div className="flex items-center gap-2 text-sm" style={{ color: v.textSubtle }}>
@@ -282,13 +283,13 @@ export default function PedidoDetalhe() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] gap-4 items-start">
+      <div className="pedido-colunas">
 
         {/* ── Coluna principal ────────────────────────────────── */}
-        <div className="space-y-4">
+        <div className="space-y-4 pedido-principal">
 
           {/* Cliente / Dados / Valores */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="pedido-blocos">
             <Bloco v={v} Icon={User} titulo="Cliente">
               <Campo v={v} rotulo="Nome" valor={
                 <span className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -399,7 +400,7 @@ export default function PedidoDetalhe() {
               style={{ color: v.textPrimary, borderBottom: `1px solid ${v.divider}` }}>
               <Clock size={16} style={{ color: '#60a5fa' }} /> Linha do Tempo do Pedido
             </h2>
-            <div className="p-4 flex flex-wrap gap-x-2 gap-y-5">
+            <div className="p-4 pedido-fases">
               {(p.linha_do_tempo || []).map(fase => (
                 <Balao key={fase.key} v={v} fase={fase} atrasado={atrasado} />
               ))}
@@ -408,10 +409,16 @@ export default function PedidoDetalhe() {
               Verde já aconteceu, amarelo está acontecendo agora, roxo ainda vem. Pintura e borda
               só aparecem quando o pedido passa por elas. Etapa sem data ainda não aconteceu.
             </p>
+
+            {/* O OUTRO LADO DA MESMA RÉGUA. As bolinhas dizem onde o
+                pedido está; daqui ele anda. Sem este painel a linha do
+                tempo era um cartaz: quinze fases desenhadas e nenhuma
+                forma de passar de uma para a outra. */}
+            <PainelFluxo v={v} id={id} fluxo={p.fluxo} />
           </div>
 
           {/* Entrega + histórico */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="pedido-duplo">
             <Bloco v={v} Icon={Truck} titulo="Informações da Entrega">
               {/* Este texto existe UMA vez na tela. Repetir a mesma frase
                   no topo e aqui era o que fazia parecer que havia dois
@@ -464,7 +471,7 @@ export default function PedidoDetalhe() {
         </div>
 
         {/* ── Coluna lateral ──────────────────────────────────── */}
-        <div className="space-y-4">
+        <div className="space-y-4 pedido-lateral">
 
           <Bloco v={v} Icon={CalendarDays} titulo="Prazos e Entrega">
             <div className="grid grid-cols-2 gap-2">
@@ -605,7 +612,9 @@ export default function PedidoDetalhe() {
           {/* Informações importantes */}
           <Bloco v={v} Icon={Info} titulo="Informações Importantes"
             direita={podeEditarAvisos && (
-              <button onClick={() => emBreve('A edição dos avisos')} title="Acrescentar aviso"
+              <button
+                onClick={() => toast('Os avisos padrão são cadastrados em Configurações e valem para todos os pedidos.', { icon: 'ℹ️' })}
+                title="Acrescentar aviso"
                 className="w-6 h-6 rounded-lg flex items-center justify-center"
                 style={{ background: 'rgba(59,130,246,0.2)', color: '#60a5fa' }}>
                 <Plus size={13} />
@@ -671,7 +680,7 @@ function Balao({ v, fase, atrasado }) {
   const apagado = fase.estado === 'pendente';
 
   return (
-    <div className="flex flex-col items-center gap-1 text-center" style={{ width: 96 }}
+    <div className="flex flex-col items-center gap-1 text-center" style={{ width: '100%' }}
       title={`${fase.ordem}. ${fase.label}${fase.detalhe ? ` — ${fase.detalhe}` : ''}${fase.at ? ` — ${dataHora(fase.at)}` : ''}`}>
       <div className="relative">
         <div className="w-11 h-11 rounded-full flex items-center justify-center"

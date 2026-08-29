@@ -325,26 +325,41 @@ const FASES = [
  * @param venda      linha de VENDAS (status + production_log)
  * @param aplicaveis { borda, pintura } — de etapasDosItens()
  */
-function fasesDoPedido(venda, aplicaveis = {}) {
+/**
+ * QUANDO cada status deste pedido aconteceu, lido do production_log.
+ *
+ * Primeira ocorrência vence: se o pedido voltou de etapa para corrigir
+ * alguma coisa, a data que interessa é a de quando ele CHEGOU lá, não a
+ * da segunda passada.
+ */
+function visitasDoPedido(venda) {
   const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
-
-  // Quando cada status aconteceu. Primeira ocorrência vence: se o pedido
-  // voltou de etapa, a data que interessa é a de quando chegou lá.
   const quando = new Map();
   for (const e of log) {
     const k = e.action || e.status;
     if (k && !quando.has(k)) quando.set(k, { at: e.at || null, user: e.user || null });
   }
+  // A criação do pedido é a primeira fase e nem sempre está no log.
   if (!quando.has('iniciando_pedido') && venda?.created_at) {
     quando.set('iniciando_pedido', { at: venda.created_at, user: null });
   }
+  return quando;
+}
 
+/**
+ * O TRILHO DESTE PEDIDO — as fases que ele percorre, nesta ordem.
+ *
+ * Nem todo pedido passa por todas: pintura e borda dependem do que foi
+ * contratado nos itens, e quem vem buscar não tem trânsito. Esta função
+ * é a ÚNICA que decide isso. A tela do cliente, a do vendedor e o motor
+ * que move o pedido de etapa (lib/fluxoPedido.js) leem todas daqui — um
+ * segundo lugar decidindo o mesmo seria o dia em que o botão "avançar"
+ * oferece uma etapa que a linha do tempo não mostra.
+ */
+function fasesVisiveis(venda, aplicaveis = {}, quando = visitasDoPedido(venda)) {
   const status = venda?.status || null;
-  const passoAtual = infoStatus(status).passo || 0;
-
   const retirada = ehRetirada(venda);
-
-  const visiveis = FASES.filter(f => {
+  return FASES.filter(f => {
     // Quem vem buscar não tem trânsito: não sai caminhão nenhum.
     if (retirada && f.key === 'transito'
         && !f.entrando.some(k => quando.has(k) || k === status)) return false;
@@ -354,6 +369,16 @@ function fasesDoPedido(venda, aplicaveis = {}) {
     if (aplicaveis[f.opcional]) return true;
     return [...f.entrando, ...f.concluida].some(k => quando.has(k) || k === status);
   });
+}
+
+function fasesDoPedido(venda, aplicaveis = {}) {
+  const quando = visitasDoPedido(venda);
+
+  const status = venda?.status || null;
+  const passoAtual = infoStatus(status).passo || 0;
+
+  const retirada = ehRetirada(venda);
+  const visiveis = fasesVisiveis(venda, aplicaveis, quando);
 
   return visiveis.map((f, i) => {
     const chaves = [...f.entrando, ...f.concluida];
@@ -464,5 +489,6 @@ function calcularAtencao(venda, agora = new Date(), alertaAberto = null) {
 module.exports = {
   STATUS, AREAS, PASSOS, FASES,
   infoStatus, listaStatus, finalizado, prazoSaida, calcularAtencao,
-  linhaDoTempo, fasesDoPedido, historicoPedido, ehRetirada,
+  linhaDoTempo, fasesDoPedido, fasesVisiveis, visitasDoPedido,
+  historicoPedido, ehRetirada,
 };

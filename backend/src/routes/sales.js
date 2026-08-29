@@ -11,6 +11,10 @@ const { validate } = require('../middleware/validate');
 const { recomputeRating } = require('../lib/customerRating');
 const { ORIGENS, normalizarOrigem } = require('../lib/origens');
 const { autorizar, excluirVenda } = require('../lib/excluirVenda');
+// O motor que move o pedido de etapa. A regua, os requisitos e quem pode
+// dar cada passo moram la - aqui so se le o pedido, chama e grava.
+const F = require('../lib/fluxoPedido');
+const { etapasDosItens, caracteristicasDoItem } = require('../lib/itensPedido');
 
 const saleSchema = Joi.object({
   items: Joi.array().min(1).items(
@@ -203,7 +207,19 @@ router.get('/:id', async (req, res) => {
       .eq('reference_type', 'sale')
       .eq('reference_id', req.params.id);
 
-    res.json({ ...sale, items: items || [], payments: payments || [] });
+    // O ROTULO DO STATUS VEM DAQUI, e nao de uma copia no frontend.
+    // A tela tinha uma lista de nove status para traduzir `status` em
+    // texto; com o fluxo inteiro liberado, os outros dezenove chegavam
+    // nela sem tradução e apareciam crus ("aguardando_qualidade"). O
+    // catalogo é um só (lib/atencao.js) e é ele que responde.
+    const infoStatus = A.infoStatus(sale.status);
+    res.json({
+      ...sale,
+      items: items || [],
+      payments: payments || [],
+      status_label: infoStatus.label,
+      status_cor: infoStatus.cor,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -408,83 +424,211 @@ async function legacyCreateSale(req, res) {
   }
 }
 
-// Sequência oficial do Pedido de Venda — não pode pular etapas
-const SALE_STATUS_ORDER = [
-  'iniciando_pedido', 'aguardando_financeiro', 'aguardando_estoque',
-  'aguardando_arte', 'aguardando_vegetal', 'aguardando_revelacao',
-  'aguardando_coleta', 'em_transito', 'entregue',
-];
+// ============================================================
+// O FLUXO DO PEDIDO — as rotas que fazem o pedido ANDAR.
+//
+// Antes existia uma lista de nove status aqui dentro, e ela era a razão
+// de o módulo não funcionar: o pedido percorre quinze fases, e a maior
+// parte delas simplesmente não tinha como ser alcançada. Um copo que
+// precisava de revelação, pintura ou controle de qualidade parava para
+// sempre na etapa anterior.
+//
+// Agora a régua é uma só (lib/atencao.js) e quem decide o passo é uma só
+// (lib/fluxoPedido.js). Estas rotas leem o pedido, perguntam ao motor e
+// gravam o que ele mandar.
+// ============================================================
 
+// Tudo que o motor precisa saber sobre o pedido para decidir. Os itens
+// entram porque são eles que dizem se este pedido passa por pintura e
+// por borda — isso não se pergunta ao status.
+const CAMPOS_FLUXO = `
+  id, number, status, production_log, delivery_mode, notes, created_at,
+  artwork_url, art_file, receipt_url, production_photos, carrier_id, tracking_code,
+  VENDA_ITENS ( id, product_name, quantity, unit_price, discount, total, customization,
+                PRODUTOS ( id, code, name, unit, ink_type ) )
+`;
+
+async function carregarParaFluxo(tenantId, id) {
+  let { data, error } = await supabase.from('VENDAS').select(CAMPOS_FLUXO)
+    .eq('id', id).eq('tenant_id', tenantId).maybeSingle();
+
+  // Base sem as colunas mais novas: o pedido tem que abrir do mesmo
+  // jeito — o fluxo só fica sem os requisitos que dependem delas.
+  if (error && /column|does not exist|schema cache/i.test(error.message || '')) {
+    const basico = CAMPOS_FLUXO.replace(', delivery_mode', '').replace(', tracking_code', '');
+    ({ data, error } = await supabase.from('VENDAS').select(basico)
+      .eq('id', id).eq('tenant_id', tenantId).maybeSingle());
+  }
+  if (error) throw error;
+  if (!data) return null;
+
+  const itens = (data.VENDA_ITENS || []).map(i => caracteristicasDoItem(i));
+  return {
+    venda: { ...data, itens_qtd: itens.length },
+    aplicaveis: etapasDosItens(itens),
+  };
+}
+
+const quemPergunta = req => ({ acesso: req.acesso, perfil: req.userProfile });
+
+/**
+ * Grava o resultado de um passo do motor.
+ *
+ * O `production_log` veio numa migração mais nova que a tabela. Se ele
+ * não existir, o status muda mesmo assim — perder o histórico é ruim,
+ * travar a fábrica é pior.
+ */
+async function gravarPasso(tenantId, id, passo) {
+  let { data, error } = await supabase.from('VENDAS')
+    .update({ status: passo.status, production_log: passo.log })
+    .eq('id', id).eq('tenant_id', tenantId).select('id, number, status').single();
+
+  if (error && /production_log|column|does not exist/i.test(error.message || '')) {
+    ({ data, error } = await supabase.from('VENDAS')
+      .update({ status: passo.status })
+      .eq('id', id).eq('tenant_id', tenantId).select('id, number, status').single());
+  }
+  if (error) throw error;
+  return data;
+}
+
+/** A ficha depois do passo — a tela redesenha sem pedir de novo. */
+async function fichaAtual(req) {
+  const carga = await carregarParaFluxo(req.tenantId, req.params.id);
+  return carga ? F.fichaDeFluxo(carga.venda, carga.aplicaveis, quemPergunta(req)) : null;
+}
+
+// Onde o pedido está, o que falta para ele seguir e qual é o botão.
+router.get('/:id/fluxo', async (req, res) => {
+  try {
+    const ficha = await fichaAtual(req);
+    if (!ficha) return res.status(404).json({ error: 'Pedido não encontrado' });
+    res.json(ficha);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Um passo à frente: conclui a fase atual e entrega o pedido na próxima.
+router.post('/:id/fluxo/avancar', async (req, res) => {
+  try {
+    const carga = await carregarParaFluxo(req.tenantId, req.params.id);
+    if (!carga) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const passo = F.avancar(carga.venda, carga.aplicaveis, quemPergunta(req), req, req.body?.observacao);
+    if (passo.erro) {
+      return res.status(passo.http || 400).json({ error: passo.erro, requisitos: passo.requisitos || null });
+    }
+
+    const salvo = await gravarPasso(req.tenantId, req.params.id, passo);
+    audit(req, 'update', 'sale', req.params.id, { fluxo: 'avancar', fase: passo.fase.key, status: passo.destino });
+    res.json({ ...salvo, fluxo: await fichaAtual(req) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Um passo atrás, com motivo, para corrigir etapa marcada por engano.
+router.post('/:id/fluxo/voltar', async (req, res) => {
+  try {
+    const carga = await carregarParaFluxo(req.tenantId, req.params.id);
+    if (!carga) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const passo = F.voltar(carga.venda, carga.aplicaveis, quemPergunta(req), req, req.body?.motivo);
+    if (passo.erro) return res.status(passo.http || 400).json({ error: passo.erro });
+
+    const salvo = await gravarPasso(req.tenantId, req.params.id, passo);
+    audit(req, 'update', 'sale', req.params.id, {
+      fluxo: 'voltar', status: passo.destino, motivo: req.body?.motivo || null,
+    });
+    res.json({ ...salvo, fluxo: await fichaAtual(req) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * LIBERAR O PAGAMENTO.
+ *
+ * `modo: 'banco'` é o caminho que a integração bancária vai usar quando
+ * ela entrar: ela chama esta mesma rota com a referência da transação e
+ * o pedido anda sozinho. `modo: 'manual'` é o de hoje — alguém do
+ * financeiro viu o dinheiro e assume a liberação, com motivo registrado.
+ *
+ * Uma rota só, de propósito. Duas — uma para o robô, outra para a
+ * pessoa — seriam duas chances de o pedido andar por caminhos que se
+ * comportam diferente.
+ */
+router.post('/:id/pagamento/liberar', async (req, res) => {
+  try {
+    const carga = await carregarParaFluxo(req.tenantId, req.params.id);
+    if (!carga) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const passo = F.liberarPagamento(carga.venda, carga.aplicaveis, quemPergunta(req), req, {
+      modo: req.body?.modo,
+      motivo: req.body?.motivo,
+      referencia: req.body?.referencia,
+    });
+    if (passo.erro) return res.status(passo.http || 400).json({ error: passo.erro });
+
+    const salvo = await gravarPasso(req.tenantId, req.params.id, passo);
+    audit(req, 'update', 'sale', req.params.id, {
+      fluxo: 'pagamento_liberado',
+      modo: req.body?.modo === 'banco' ? 'banco' : 'manual',
+      status: passo.status,
+    });
+    res.json({ ...salvo, avancou: passo.avancou, fluxo: await fichaAtual(req) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * A rota antiga de status, agora falando com o motor.
+ *
+ * Ela recebia um status e o gravava conferindo a sequência contra uma
+ * lista de nove itens que não existe mais. Agora aceita o PRÓXIMO status
+ * do trilho DESTE pedido — o mesmo que /fluxo/avancar faz — e recusa o
+ * resto dizendo qual era.
+ */
 router.patch('/:id/status', async (req, res) => {
   const { status } = req.body;
-  if (!SALE_STATUS_ORDER.includes(status)) {
-    return res.status(400).json({ error: 'Status inválido' });
-  }
-
   try {
-    // registra a mudança de status no histórico do pedido (se a coluna existir)
-    let { data: cur } = await supabase.from('VENDAS')
-      .select('status, production_log, delivery_mode, notes')
-      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
-    if (!cur) {
-      // Base sem a migração 090: sem a coluna, o pedido ainda tem que abrir.
-      ({ data: cur } = await supabase.from('VENDAS')
-        .select('status, production_log, notes')
-        .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle());
+    const carga = await carregarParaFluxo(req.tenantId, req.params.id);
+    if (!carga) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const plano = F.planoDeAvanco(carga.venda, carga.aplicaveis);
+    if (plano.erro) return res.status(400).json({ error: plano.erro });
+    if (status && ![plano.destino, ...plano.marcos].includes(status)) {
+      return res.status(400).json({
+        error: `Não é possível pular etapas. O próximo status deste pedido é "${plano.destino}".`,
+      });
     }
 
-    // A SEQUÊNCIA DEPENDE DA MODALIDADE.
-    //
-    // Em retirada não existe trânsito — o cliente vem buscar. Com a
-    // régua fixa, a trava de "não pular etapas" exigia passar por
-    // "em trânsito" para chegar em "entregue": ou seja, para fechar um
-    // pedido retirado no balcão alguém teria que mentir que ele viajou.
-    const sequencia = A.ehRetirada(cur)
-      ? SALE_STATUS_ORDER.filter(s => s !== 'em_transito')
-      : SALE_STATUS_ORDER;
+    const passo = F.avancar(carga.venda, carga.aplicaveis, quemPergunta(req), req);
+    if (passo.erro) return res.status(passo.http || 400).json({ error: passo.erro });
 
-    // Não deixa pular etapas: só avança 1 passo (pode voltar para corrigir)
-    const curIdx = sequencia.indexOf(cur?.status);
-    const newIdx = sequencia.indexOf(status);
-    if (curIdx >= 0 && newIdx > curIdx + 1) {
-      return res.status(400).json({ error: `Não é possível pular etapas. O próximo status permitido é "${sequencia[curIdx + 1]}".` });
-    }
-
-    const log = Array.isArray(cur?.production_log) ? cur.production_log : [];
-    log.push({ stage: 'status', action: status, at: new Date().toISOString(), user_id: req.user?.id || null, user: req.user?.name || req.user?.email || 'Usuário' });
-
-    let upd = { status, production_log: log };
-    let { data, error } = await supabase.from('VENDAS').update(upd)
-      .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
-    // se a coluna production_log ainda não existir, atualiza só o status
-    if (error && /production_log|column|does not exist/i.test(error.message || '')) {
-      ({ data, error } = await supabase.from('VENDAS').update({ status })
-        .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single());
-    }
-    if (error) throw error;
-    res.json(data);
+    const salvo = await gravarPasso(req.tenantId, req.params.id, passo);
+    audit(req, 'update', 'sale', req.params.id, { fluxo: 'avancar', status: passo.destino });
+    res.json(salvo);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// "Iniciar Pedido": de Iniciando Pedido → Aguardando Anexo da Arte
+/**
+ * "Iniciar Pedido".
+ *
+ * Ela pulava direto de "Iniciando pedido" para "Aguardando anexo da
+ * arte" — passando por cima do financeiro e do estoque. Era o atalho de
+ * quando o fluxo tinha nove status e ninguém conferia nada; hoje seria
+ * uma porta lateral para produzir sem pagamento confirmado.
+ *
+ * Agora ela dá o mesmo passo que /fluxo/avancar daria, e nada mais.
+ */
 router.post('/:id/start', async (req, res) => {
   try {
-    const { data: cur } = await supabase.from('VENDAS')
-      .select('status, production_log').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
-    if (!cur) return res.status(404).json({ error: 'Pedido não encontrado' });
-    const log = Array.isArray(cur.production_log) ? cur.production_log : [];
-    log.push({ stage: 'status', action: 'aguardando_arte', at: new Date().toISOString(), user_id: req.user?.id || null, user: req.user?.name || req.user?.email || 'Usuário' });
-    let { data, error } = await supabase.from('VENDAS').update({ status: 'aguardando_arte', production_log: log })
-      .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
-    if (error && /production_log|column|does not exist/i.test(error.message || '')) {
-      ({ data, error } = await supabase.from('VENDAS').update({ status: 'aguardando_arte' })
-        .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single());
-    }
-    if (error) throw error;
-    audit(req, 'update', 'sale', req.params.id, { action: 'iniciar_pedido' });
-    res.json(data);
+    const carga = await carregarParaFluxo(req.tenantId, req.params.id);
+    if (!carga) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const passo = F.avancar(carga.venda, carga.aplicaveis, quemPergunta(req), req);
+    if (passo.erro) return res.status(passo.http || 400).json({ error: passo.erro });
+
+    const salvo = await gravarPasso(req.tenantId, req.params.id, passo);
+    audit(req, 'update', 'sale', req.params.id, { action: 'iniciar_pedido', status: passo.destino });
+    res.json(salvo);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

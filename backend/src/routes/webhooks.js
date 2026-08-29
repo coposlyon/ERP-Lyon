@@ -2,6 +2,7 @@ const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
 const { getPayment } = require('../lib/pix');
+const { liberarPeloBanco } = require('../lib/fluxoPedido');
 
 // Webhook do Mercado Pago (público, sem auth). Quando um PIX é aprovado,
 // dá baixa automática no lançamento correspondente.
@@ -39,6 +40,22 @@ router.post('/mercadopago', async (req, res) => {
       payment_method: 'pix',
       gateway_payment_id: String(paymentId),
     }).eq('id', lanc.id);
+
+    // ── E O PEDIDO ANDA SOZINHO ──────────────────────────────
+    //
+    // Baixar o lançamento e deixar o pedido parado em "Aguardando
+    // financeiro" é o pior dos dois mundos: o dinheiro entrou, o
+    // sistema sabe, e alguém ainda precisa lembrar de clicar. Quando o
+    // pagamento quita um lançamento de venda, a liberação do pedido é
+    // consequência — o mesmo caminho do botão manual, com o histórico
+    // dizendo que quem liberou foi o banco.
+    //
+    // Só no pagamento INTEIRO: pagamento parcial não libera produção.
+    if (fullyPaid && lanc.reference_type === 'sale' && lanc.reference_id) {
+      const r = await liberarPeloBanco(lanc.tenant_id, lanc.reference_id, `Mercado Pago ${paymentId}`);
+      console.log(`[webhook mercadopago] pedido ${lanc.reference_id}: ${
+        r.ok ? `pagamento liberado (status ${r.status}${r.avancou ? ', avançou' : ''})` : `não liberado — ${r.motivo}`}`);
+    }
   } catch (err) {
     console.error('[webhook mercadopago]', err.message);
   }

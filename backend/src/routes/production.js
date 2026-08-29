@@ -6,6 +6,10 @@ const { uploadDataUrl } = require('../lib/storage');
 
 const { makeClient } = require('../config/supabase');
 
+const A = require('../lib/atencao');
+const F = require('../lib/fluxoPedido');
+const { etapasDosItens, caracteristicasDoItem } = require('../lib/itensPedido');
+
 // Etapas e suas colunas de início/fim
 // Fluxo: Revelação → Pintura → Metalização (opcional) → Produção → Embalagem
 const STAGE_FIELDS = {
@@ -14,6 +18,29 @@ const STAGE_FIELDS = {
   pintura:     { start: 'pintura_inicio',     end: 'pintura_fim',     label: 'Pintura' },
   metalizacao: { start: 'metalizacao_inicio', end: 'metalizacao_fim', label: 'Metalização' },
   embalagem:   { start: 'embalagem_inicio',   end: 'embalagem_fim',   label: 'Embalagem' },
+};
+
+/**
+ * A ETAPA DO CHÃO DE FÁBRICA E A FASE DO PEDIDO SÃO A MESMA COISA.
+ *
+ * Esta tela e a linha do tempo do pedido viviam em mundos separados:
+ * terminar a embalagem aqui gravava `status = 'ready'` e terminar
+ * qualquer outra gravava `'in_production'` — dois rótulos do fluxo
+ * ANTIGO. O efeito era o pior possível: o pedido andava na produção e
+ * ANDAVA PARA TRÁS na linha do tempo, caindo num status que a régua nem
+ * conhece. Quem olhasse a tela do pedido via a revelação sumir.
+ *
+ * Agora quem move é o mesmo motor de sempre (lib/fluxoPedido.js):
+ * iniciar marca "em processo", finalizar CONCLUI a fase e entrega o
+ * pedido na próxima. Metalização não tem fase própria no fluxo — ela
+ * registra hora e não mexe no status, que é o certo para uma etapa que
+ * o pedido pode ou não ter.
+ */
+const FASE_DA_ETAPA = {
+  revelacao: { fase: 'revelacao', processo: 'revelacao_processo' },
+  pintura:   { fase: 'pintura',   processo: 'pintura_processo' },
+  producao:  { fase: 'producao',  processo: 'producao_processo' },
+  embalagem: { fase: 'embalagem', processo: 'embalando_pedido' },
 };
 
 // ── Board de produção ─────────────────────────────────────
@@ -271,7 +298,9 @@ router.post('/:id/stage', async (req, res) => {
     }
 
     const { data: sale, error: e0 } = await supabase.from('VENDAS')
-      .select('production_log, production_stage').eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
+      .select(`production_log, production_stage, status, delivery_mode, notes, created_at,
+               VENDA_ITENS ( id, product_name, quantity, customization, PRODUTOS ( id, code, name, ink_type ) )`)
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
     if (e0 || !sale) return res.status(404).json({ error: 'Pedido não encontrado' });
 
     const now = new Date().toISOString();
@@ -286,9 +315,39 @@ router.post('/:id/stage', async (req, res) => {
     // estado atual
     if (action === 'start') patch.production_stage = stage;
     if (action === 'finish' && stage === 'embalagem') patch.production_stage = 'finalizado';
-    // status da venda
-    if (stage === 'embalagem' && action === 'finish') patch.status = 'ready';
-    else patch.status = 'in_production';
+
+    // ── O status do pedido, pela régua do fluxo ──────────────
+    const mapa = FASE_DA_ETAPA[stage];
+    if (mapa) {
+      const itens = (sale.VENDA_ITENS || []).map(i => caracteristicasDoItem(i));
+      const aplicaveis = etapasDosItens(itens);
+      const trilho = A.fasesVisiveis(sale, aplicaveis);
+      const naFase = trilho[F.indiceAtual(trilho, sale.status)]?.key === mapa.fase;
+
+      if (action === 'start' && naFase) {
+        // "Estou com a mão nele agora". Não é uma fase nova — é a mesma,
+        // dita de outro jeito, e a linha do tempo continua apontando pra cá.
+        patch.status = mapa.processo;
+        log.push({ stage: 'status', action: mapa.processo, at: now, user_id: req.user?.id || null, user: actor });
+      } else if (action === 'finish' && naFase) {
+        // Terminar a etapa É concluir a fase. Quem trabalha na produção
+        // não deveria ter que abrir o pedido depois para avançar de novo.
+        //
+        // Só quando o pedido está NESTA fase: registrar a hora de uma
+        // etapa fora de ordem (acontece) não pode empurrar o pedido para
+        // um lugar onde ele não estava.
+        const passo = F.avancar(
+          { ...sale, production_log: log },
+          aplicaveis,
+          { perfil: req.userProfile, acesso: req.acesso },
+          { user: { id: req.user?.id || null, name: actor } },
+        );
+        if (!passo.erro) {
+          patch.status = passo.status;
+          patch.production_log = passo.log;
+        }
+      }
+    }
 
     const { error } = await supabase.from('VENDAS').update(patch)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId);

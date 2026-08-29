@@ -861,3 +861,95 @@ html.dark select option:hover { background-color: #2f6bff; color: #ffffff; }
    numérico só atrapalha o teclado do celular. */
 .lj-caixa-alta input[type="number"],
 .lj-caixa-alta input[inputmode="decimal"] { text-transform: none; }
+
+/* ============================================================
+   O DETALHE DO PEDIDO MEDE O ESPAÇO QUE TEM, NÃO O TAMANHO DA JANELA.
+
+   A tela usava `xl:` para decidir entre uma e duas colunas, e `xl` é uma
+   pergunta sobre a JANELA: 1280 pontos. Só que o conteúdo não mora na
+   janela inteira — mora no que sobra depois do menu lateral e das
+   margens, uns 300 pontos a menos. Num monitor Full HD com a ampliação
+   de 125% do Windows ligada (que é o padrão de fábrica em quase todo
+   notebook), a janela reporta 1536 pontos, o conteúdo fica com ~1230, e
+   a tela caía para uma coluna só — empilhando prazos, arte e documentos
+   embaixo de tudo.
+
+   Era por isso que só ficava certo reduzindo o zoom para 80%: o zoom não
+   mudava o layout, mudava a CONTA. A 80% a janela passa a reportar 1920
+   e o `xl` finalmente acontece.
+
+   Container queries perguntam a coisa certa: "a área de conteúdo tem
+   espaço para duas colunas?". A resposta passa a ser a mesma em qualquer
+   resolução, com qualquer ampliação do sistema, com o menu aberto ou
+   recolhido — e ninguém precisa mexer no zoom.
+   ============================================================ */
+.pedido-detalhe { container-type: inline-size; container-name: pedido; }
+
+.pedido-colunas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+/* A coluna principal vira container por sua conta: os blocos de dentro
+   têm que medir a largura DELA, e não a da página — senão eles decidem
+   virar três colunas contando com um espaço que a lateral já ocupou. */
+.pedido-principal { container-type: inline-size; container-name: principal; min-width: 0; }
+.pedido-lateral { min-width: 0; }
+
+.pedido-blocos,
+.pedido-duplo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+/* A lateral tem 20rem quando cabe. Fixa, e não fracionária: ela guarda
+   prazos, arte e documentos — conteúdo de largura conhecida, que não
+   fica melhor esticado. O que sobra vai todo para os itens do pedido. */
+/* A lateral cresce em degraus, e comeca estreita de proposito: ela
+   guarda prazos, arte e documentos - conteudo de largura conhecida, que
+   nao fica melhor esticado. Em 780px de conteudo ja cabem as duas
+   colunas (main ~490 + lateral 272), que e o caso de um notebook 1366
+   com a ampliacao de 125% do Windows ligada. */
+@container pedido (min-width: 780px) {
+  .pedido-colunas { grid-template-columns: minmax(0, 1fr) 17rem; }
+}
+@container pedido (min-width: 1100px) {
+  .pedido-colunas { grid-template-columns: minmax(0, 1fr) 20rem; }
+}
+@container pedido (min-width: 1400px) {
+  .pedido-colunas { grid-template-columns: minmax(0, 1fr) 22rem; }
+}
+
+@container principal (min-width: 460px) {
+  .pedido-blocos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pedido-duplo  { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container principal (min-width: 700px) {
+  .pedido-blocos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* A LINHA DO TEMPO SE ACOMODA SOZINHA.
+
+   Eram balões de 96px num `flex-wrap`: a última linha ficava com dois ou
+   três encostados à esquerda e um vão à direita, e em tela estreita a
+   régua parecia quebrada. Em grade eles se distribuem por igual, o
+   número de colunas sai da largura disponível e nenhuma etapa fica
+   espremida abaixo de 78px. */
+.pedido-fases {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+  gap: 1.25rem 0.25rem;
+}
+
+/* Navegador antigo sem container query: cai no comportamento de antes,
+   pelo tamanho da janela. Pior que o novo, igual ao que já existia. */
+@supports not (container-type: inline-size) {
+  @media (min-width: 1060px) {
+    .pedido-colunas { grid-template-columns: minmax(0, 1fr) 20rem; }
+    .pedido-blocos  { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .pedido-duplo   { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+}

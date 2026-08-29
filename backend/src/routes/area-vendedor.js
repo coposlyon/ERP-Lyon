@@ -15,6 +15,9 @@ const { ORIGENS } = require('../lib/origens');
 const { autorizar, excluirVenda } = require('../lib/excluirVenda');
 const { audit } = require('../lib/audit');
 const { caracteristicasDoItem, etapasDosItens } = require('../lib/itensPedido');
+// A ficha de fluxo (onde o pedido esta, o que falta, qual e o botao) sai
+// do mesmo motor que o modulo de Vendas usa para mover o pedido.
+const F = require('../lib/fluxoPedido');
 const { uploadDataUrl, uploadPrivado, linkAssinado } = require('../lib/storage');
 
 const isManager = req => ['admin', 'manager'].includes(req.userProfile?.role);
@@ -133,6 +136,7 @@ router.get('/pedidos/:id', async (req, res) => {
       id, number, status, origin, source, subtotal, discount, freight, total,
       created_at, operation_date, event_date, ship_date, delivery_date, max_delivery_date,
       payment_method, notes, delivery_mode, pickup_person, artwork_url, artwork_notes, receipt_url, user_id, carrier_id,
+      art_file, production_photos,
       tracking_code, freight_quote, avisos, production_log, collect_date, transport_days,
       CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating, created_at ),
       USUARIOS ( id, name ),
@@ -144,6 +148,7 @@ router.get('/pedidos/:id', async (req, res) => {
 
     if (error && /column|does not exist|schema cache/i.test(error.message || '')) {
       const basico = CAMPOS
+        .replace(/\n      art_file, production_photos,/, '')
         .replace(/freight_quote, avisos, production_log, collect_date, transport_days,/, 'production_log,')
         .replace(/, delivery_mode, pickup_person/, '')
         .replace(/, event_date/, '');
@@ -199,6 +204,16 @@ router.get('/pedidos/:id', async (req, res) => {
       // fazia o pedido parecer o dobro de longe do fim do que está.
       // Pintura e borda só entram se os itens passarem por elas.
       linha_do_tempo: A.fasesDoPedido(data, etapasDosItens(itens)),
+      // A MESMA LINHA DO TEMPO, MAS COM O BOTAO. Desenhar as fases sem
+      // dizer como passar delas era o que fazia esta tela um cartaz: o
+      // pedido chegava em "Aguardando financeiro" e morava la. A ficha
+      // diz em que fase ele esta, o que ainda falta, se QUEM ESTA OLHANDO
+      // pode dar o passo e para onde ele vai.
+      fluxo: F.fichaDeFluxo(
+        { ...data, itens_qtd: itens.length },
+        etapasDosItens(itens),
+        { acesso: req.acesso, perfil: req.userProfile },
+      ),
       historico: A.historicoPedido(data),
       itens,
       resumo_cliente: await resumoDoCliente(req.tenantId, data.customer_id, data.CLIENTES),

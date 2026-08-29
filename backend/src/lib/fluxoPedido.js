@@ -1,0 +1,568 @@
+// ============================================================
+// O MOTOR QUE MOVE O PEDIDO DE ETAPA.
+//
+// O QUE FALTAVA. O catálogo de status (lib/atencao.js) descreve o
+// caminho inteiro da fábrica — vinte e oito marcos, quinze fases — e a
+// tela desenhava esse caminho lindamente. Só que NINGUÉM CONSEGUIA
+// ANDAR NELE: o único botão que existia sabia mexer em nove status
+// antigos e travava em "não é possível pular etapas" no primeiro copo
+// que precisava de revelação. Um pedido entrava e morava em
+// "Aguardando financeiro" para sempre.
+//
+// Este arquivo é a resposta: dada a situação de um pedido, ele diz QUAL
+// é a próxima etapa, O QUE precisa estar pronto para ir até ela e QUEM
+// pode dar o passo. E, dada a ordem de avançar, devolve exatamente o
+// que gravar.
+//
+// UMA RÉGUA SÓ. O trilho não é uma lista nova: é `A.fasesVisiveis()`, a
+// mesma que desenha a linha do tempo. Uma segunda lista aqui seria o dia
+// em que o botão oferece "Pintura" num pedido cuja linha do tempo não
+// mostra pintura nenhuma.
+//
+// UMA AÇÃO POR FASE, E NÃO POR STATUS. O catálogo tem dois status por
+// etapa ("aguardando arte" e "arte anexada e aprovada"), porque é assim
+// que o chão de fábrica marca. Obrigar dois cliques por etapa faria vinte
+// e seis cliques para fechar um pedido. Aqui um clique CONCLUI a fase e
+// já entrega o pedido na porta da próxima — os dois marcos vão para o
+// histórico, que é onde eles importam.
+//
+// NÃO SE PULA ETAPA, MAS SE VOLTA. Avançar é sempre de um em um. Voltar
+// existe porque erro de digitação acontece, exige motivo e é privilégio
+// de gerente — e fica no histórico com nome e hora, que é o que separa
+// "corrigiram" de "alguém mexeu".
+// ============================================================
+const A = require('./atencao');
+const { podeModulo } = require('./setores');
+
+// ── Quem responde por cada fase ─────────────────────────────
+//
+// O módulo é o mesmo do menu (lib/setores.js). Gerente e admin passam
+// por cima de tudo: numa fábrica pequena é o gerente que destrava o que
+// ficou parado às seis da tarde, e um sistema que o impede vira um
+// sistema que trabalha por WhatsApp.
+//
+// `acao` é o texto do botão. Ele descreve o que a PESSOA está fazendo
+// ("Aprovar a arte"), e não o que o banco vai gravar: quem clica sabe
+// de arte, não de `arte_aprovada`.
+const REGRAS = {
+  realizado:  { modulos: ['sales', 'pdv'],                acao: 'Confirmar o pedido' },
+  pagamento:  { modulos: ['financial'],                   acao: 'Confirmar o pagamento' },
+  estoque:    { modulos: ['stock'],                       acao: 'Confirmar o estoque' },
+  arte:       { modulos: ['sales', 'production'],         acao: 'Aprovar a arte' },
+  vegetal:    { modulos: ['production'],                  acao: 'Confirmar o vegetal impresso' },
+  revelacao:  { modulos: ['production'],                  acao: 'Concluir a revelação' },
+  pintura:    { modulos: ['production'],                  acao: 'Concluir a pintura' },
+  borda:      { modulos: ['production'],                  acao: 'Concluir a borda' },
+  producao:   { modulos: ['production'],                  acao: 'Concluir a produção' },
+  qualidade:  { modulos: ['production', 'quality'],       acao: 'Aprovar no controle de qualidade' },
+  embalagem:  { modulos: ['production'],                  acao: 'Concluir a embalagem' },
+  foto:       { modulos: ['production', 'sales'],         acao: 'Confirmar o envio da foto' },
+  coleta:     { modulos: ['logistics', 'sales'],          acao: 'Registrar a coleta' },
+  transito:   { modulos: ['logistics'],                   acao: 'Confirmar a saída para entrega' },
+  entrega:    { modulos: ['logistics', 'sales'],          acao: 'Confirmar a entrega' },
+};
+
+// Na retirada o texto muda, porque o que acontece muda: ninguém coleta,
+// o cliente vem buscar.
+const ACAO_RETIRADA = {
+  coleta:  'Registrar a retirada',
+  entrega: 'Confirmar a entrega ao cliente',
+};
+
+/**
+ * AS EXIGÊNCIAS DE CADA FASE.
+ *
+ * Um requisito responde "o que impede este pedido de seguir agora". Ele
+ * tem duas forças:
+ *
+ *   obrigatório  trava o avanço. Existe quando seguir sem aquilo produz
+ *                trabalho errado — produção começando sem arte, dinheiro
+ *                dado como recebido sem ninguém ter conferido.
+ *   aviso        não trava, aparece. Existe quando a falta é ruim mas a
+ *                decisão é de quem está lá — comprovante que ainda não
+ *                chegou, rastreio que a transportadora não passou.
+ *
+ * Fases sem requisito de dado não são fases sem exigência: nelas a
+ * exigência é a PESSOA CERTA confirmar, e isso o `modulos` acima já diz.
+ * Inventar um checkbox "confirmo que revelei" seria pedir para alguém
+ * marcar duas vezes a mesma coisa.
+ *
+ * `como` é a frase que a tela mostra embaixo do requisito não cumprido.
+ * Ela diz ONDE resolver — um "faltou a arte" que não diz onde anexar
+ * manda a pessoa procurar.
+ */
+const REQUISITOS = {
+  realizado: v => [
+    { chave: 'itens', label: 'O pedido tem itens',
+      ok: (v.itens_qtd || 0) > 0,
+      como: 'Um pedido sem item não tem o que produzir. Inclua os produtos antes de seguir.' },
+  ],
+
+  pagamento: v => [
+    { chave: 'liberado', label: 'Pagamento liberado',
+      ok: !!v.pagamento?.liberado,
+      como: 'A baixa automática chega pelo banco. Enquanto a integração não estiver ligada, '
+          + 'use "Liberar pagamento" aqui e registre quem liberou.' },
+    { chave: 'comprovante', label: 'Comprovante anexado', obrigatorio: false,
+      ok: !!v.receipt_url,
+      como: 'Sem comprovante o financeiro fica sem lastro do que entrou.' },
+  ],
+
+  arte: v => [
+    { chave: 'arte', label: 'Arte anexada',
+      ok: !!(v.artwork_url || v.art_file),
+      como: 'Anexe o arquivo no card "Arte". Produção em cima de uma arte que ninguém viu é retrabalho garantido.' },
+  ],
+
+  foto: v => [
+    { chave: 'foto', label: 'Foto do pedido pronto',
+      ok: (Array.isArray(v.production_photos) ? v.production_photos.length : 0) > 0,
+      como: 'A foto é a última conferência antes de a caixa sair. Suba na tela de Produção.' },
+  ],
+
+  coleta: v => (A.ehRetirada(v) ? [] : [
+    { chave: 'transportadora', label: 'Transportadora definida',
+      ok: !!v.carrier_id,
+      como: 'Escolha a transportadora no card "Transporte e entrega". Sem ela ninguém sabe quem vem buscar.' },
+  ]),
+
+  transito: v => (A.ehRetirada(v) ? [] : [
+    { chave: 'rastreio', label: 'Código de rastreio', obrigatorio: false,
+      ok: !!v.tracking_code,
+      como: 'Sem o código o cliente não consegue acompanhar — e liga para o vendedor.' },
+  ]),
+};
+
+/**
+ * A LIBERAÇÃO DO PAGAMENTO, lida do histórico do pedido.
+ *
+ * POR QUE NO LOG E NÃO NUMA COLUNA. Porque a liberação é um EVENTO —
+ * quem liberou, quando, por qual caminho — e o `production_log` já é o
+ * lugar onde os eventos do pedido moram. Uma coluna `pagamento_liberado`
+ * guardaria o "sim" e perderia o resto, que é justamente o que se vai
+ * querer saber no dia em que alguém perguntar por que aquele pedido
+ * entrou em produção sem o dinheiro ter caído.
+ *
+ * QUANDO O BANCO ENTRAR, nada aqui muda: a integração grava o mesmo
+ * evento com `modo: 'banco'` e a referência da transação. O motor não
+ * sabe (nem precisa saber) quem apertou o botão.
+ */
+function liberacaoDePagamento(venda) {
+  const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
+  // A ÚLTIMA vale: se alguém liberou por engano, cancelou e liberou de
+  // novo, o que está valendo é o último ato — não o primeiro.
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (e?.action === 'pagamento_cancelado') return { liberado: false, cancelado_em: e.at || null };
+    if (e?.action === 'pagamento_liberado') {
+      return {
+        liberado: true,
+        modo: e.modo === 'banco' ? 'banco' : 'manual',
+        at: e.at || null,
+        user: e.user || null,
+        motivo: e.motivo || null,
+        referencia: e.referencia || null,
+      };
+    }
+  }
+  // Pedido que já passou da fase de pagamento antes de este motor
+  // existir está pago — foi a mão de alguém que o empurrou até aqui.
+  // Reabrir essa pergunta agora travaria a fábrica inteira no passado.
+  const passo = A.infoStatus(venda?.status).passo || 0;
+  const passoPagamento = A.infoStatus('pagamento_confirmado').passo || 3;
+  if (passo > passoPagamento) return { liberado: true, modo: 'historico', at: null, user: null };
+
+  return { liberado: false };
+}
+
+// ── Onde o pedido está ──────────────────────────────────────
+
+// Status de "estou com a mão nele agora". Eles não desenham fase
+// própria na linha do tempo (não têm `passo`), mas o pedido está sim
+// dentro de uma fase — a tela de Produção grava esses quando alguém
+// inicia uma etapa.
+const EM_PROCESSO = {
+  revelacao_processo:   'revelacao',
+  pintura_processo:     'pintura',
+  borda_processo:       'borda',
+  producao_processo:    'producao',
+  embalando_pedido:     'embalagem',
+  conferencia_processo: 'qualidade',
+  coleta_processo:      'coleta',
+  aguardando_logistica: 'coleta',
+  aguardando_gravacao:  'producao',
+  gravacao_processo:    'producao',
+  gravacao_finalizada:  'producao',
+};
+
+// Pedidos gravados antes do fluxo detalhado. Eles não deixam de existir
+// por serem antigos: entram no trilho na fase equivalente e seguem daí.
+const LEGADO = {
+  open: 'realizado', confirmed: 'realizado', in_production: 'producao',
+  ready: 'embalagem', delivered: 'entrega', completed: 'entrega',
+};
+
+/** Em que posição do trilho este pedido está. -1 = fora do trilho. */
+function indiceAtual(trilho, status) {
+  const direto = trilho.findIndex(f => f.entrando.includes(status) || f.concluida.includes(status));
+  if (direto >= 0) return direto;
+
+  const porFase = EM_PROCESSO[status] || LEGADO[status] || null;
+  if (porFase) {
+    const i = trilho.findIndex(f => f.key === porFase);
+    if (i >= 0) return i;
+  }
+  // Status desconhecido (ou nenhum): o pedido está no começo.
+  return status ? -1 : 0;
+}
+
+/** O status que marca esta fase como cumprida. */
+function statusDeConclusao(fase, venda) {
+  if (!fase.concluida.length) return null;
+  // Na coleta o marco depende de quem levou o copo: a transportadora
+  // coletou, ou o cliente veio buscar.
+  if (fase.key === 'coleta') return A.ehRetirada(venda) ? 'produto_retirado' : 'mercadoria_coletada';
+  return fase.concluida[0];
+}
+
+/** O status de quando o pedido CHEGA nesta fase. */
+const statusDeEntrada = fase => fase.entrando[0] || fase.concluida[0] || null;
+
+/**
+ * O plano de um passo à frente: qual fase se conclui, onde o pedido
+ * fica, e quais marcos entram no histórico.
+ */
+function planoDeAvanco(venda, aplicaveis) {
+  const trilho = A.fasesVisiveis(venda, aplicaveis);
+  const i = indiceAtual(trilho, venda?.status);
+  if (i < 0) {
+    return { erro: `O status "${venda?.status}" não faz parte do fluxo deste pedido.` };
+  }
+
+  const fase = trilho[i];
+  const proxima = trilho[i + 1] || null;
+  const conclusao = statusDeConclusao(fase, venda);
+  const entrada = proxima ? statusDeEntrada(proxima) : null;
+  const destino = entrada || conclusao;
+
+  if (!destino || destino === venda?.status) {
+    return { erro: 'Este pedido já está na última etapa do fluxo.' };
+  }
+
+  // Os dois marcos vão para o histórico; o pedido PARA no último. Marco
+  // igual ao status atual não se repete — o pedido já estava lá.
+  const marcos = [conclusao, entrada].filter(m => m && m !== venda?.status);
+
+  return { trilho, indice: i, fase, proxima, destino, marcos };
+}
+
+/** O plano de um passo atrás — para corrigir etapa marcada por engano. */
+function planoDeVolta(venda, aplicaveis) {
+  const trilho = A.fasesVisiveis(venda, aplicaveis);
+  const i = indiceAtual(trilho, venda?.status);
+  if (i < 0) return { erro: `O status "${venda?.status}" não faz parte do fluxo deste pedido.` };
+  if (i === 0) return { erro: 'O pedido já está na primeira etapa.' };
+
+  const fase = trilho[i];
+  const anterior = trilho[i - 1];
+  return { trilho, indice: i, fase, anterior, destino: statusDeEntrada(anterior) };
+}
+
+// ── O que a tela precisa saber ──────────────────────────────
+
+/** Gerente e admin passam por cima da divisão por área. */
+const mandaEmTudo = perfil => ['admin', 'manager'].includes(perfil?.role);
+
+function podeAtuarNaFase(faseKey, { acesso, perfil } = {}) {
+  if (mandaEmTudo(perfil)) return true;
+  const regra = REGRAS[faseKey];
+  if (!regra) return false;
+  return podeModulo(acesso, ...regra.modulos);
+}
+
+/**
+ * A FICHA DE FLUXO DO PEDIDO — tudo que a tela precisa para desenhar a
+ * linha do tempo E o botão que a move.
+ *
+ * Vai numa resposta só, de propósito. Requisito calculado na tela seria
+ * a tela decidindo se o pedido pode andar — e no dia em que a regra
+ * mudasse, o servidor recusaria um avanço que o botão tinha acabado de
+ * oferecer.
+ *
+ * @param venda       linha de VENDAS (com production_log)
+ * @param aplicaveis  { borda, pintura } — de etapasDosItens()
+ * @param quem        { acesso, perfil } de quem está olhando
+ */
+function fichaDeFluxo(venda, aplicaveis = {}, quem = {}) {
+  const pagamento = liberacaoDePagamento(venda);
+  const ctx = { ...venda, pagamento };
+  const retirada = A.ehRetirada(venda);
+  const infoAtual = A.infoStatus(venda?.status);
+
+  const etapas = A.fasesDoPedido(venda, aplicaveis);
+  const plano = planoDeAvanco(venda, aplicaveis);
+  const volta = planoDeVolta(venda, aplicaveis);
+
+  const base = {
+    status: venda?.status || null,
+    status_label: infoAtual.label,
+    finalizado: A.finalizado(venda?.status),
+    retirada,
+    pagamento,
+    etapas,
+  };
+
+  if (base.finalizado) {
+    return {
+      ...base,
+      fase_atual: null,
+      requisitos: [],
+      acao: null,
+      voltar: podeVoltar(volta, quem),
+    };
+  }
+
+  if (plano.erro) {
+    return {
+      ...base,
+      fase_atual: null,
+      requisitos: [],
+      acao: null,
+      erro: plano.erro,
+      voltar: podeVoltar(volta, quem),
+    };
+  }
+
+  const { fase, proxima, destino } = plano;
+  const regra = REGRAS[fase.key] || { modulos: [], acao: 'Avançar' };
+  const requisitos = (REQUISITOS[fase.key] ? REQUISITOS[fase.key](ctx) : [])
+    .map(r => ({ obrigatorio: true, ...r }));
+
+  const faltando = requisitos.filter(r => r.obrigatorio && !r.ok);
+  const autorizado = podeAtuarNaFase(fase.key, quem);
+  const area = A.infoStatus(statusDeEntrada(fase)).area;
+
+  const motivos = [];
+  if (!autorizado) motivos.push(`Só ${A.AREAS[area] || area} (ou um gerente) pode dar este passo.`);
+  for (const r of faltando) motivos.push(`Falta: ${r.label.toLowerCase()}.`);
+
+  return {
+    ...base,
+    fase_atual: {
+      key: fase.key,
+      label: retirada && fase.key === 'coleta' ? 'Retirada' : fase.label,
+      area, area_label: A.AREAS[area] || area,
+    },
+    requisitos,
+    acao: {
+      label: (retirada && ACAO_RETIRADA[fase.key]) || regra.acao,
+      destino,
+      destino_label: A.infoStatus(destino).label,
+      proxima_fase: proxima ? proxima.label : null,
+      autorizado,
+      pode: autorizado && faltando.length === 0,
+      motivos,
+    },
+    voltar: podeVoltar(volta, quem),
+  };
+}
+
+function podeVoltar(volta, quem) {
+  if (volta.erro) return { pode: false, motivo: volta.erro };
+  if (!mandaEmTudo(quem?.perfil)) {
+    return { pode: false, motivo: 'Voltar etapa é decisão de gerente.', para_label: volta.anterior.label };
+  }
+  return { pode: true, para: volta.destino, para_label: volta.anterior.label };
+}
+
+// ── Gravação ────────────────────────────────────────────────
+
+/** Uma linha do histórico, no formato que o resto do sistema já escreve. */
+function marco(action, req, extra = {}) {
+  return {
+    stage: 'status',
+    action,
+    at: new Date().toISOString(),
+    user_id: req?.user?.id || null,
+    user: req?.user?.name || req?.user?.email || 'Usuário',
+    ...extra,
+  };
+}
+
+/**
+ * O que gravar para avançar uma fase.
+ *
+ * Devolve `{ erro }` quando não dá, e `{ status, log, fase, destino }`
+ * quando dá. Quem chama grava — assim a decisão fica testável sem banco.
+ */
+function avancar(venda, aplicaveis, quem, req, observacao = null) {
+  if (A.finalizado(venda?.status)) {
+    return { erro: 'Este pedido já está encerrado.' };
+  }
+
+  const plano = planoDeAvanco(venda, aplicaveis);
+  if (plano.erro) return { erro: plano.erro };
+
+  const { fase, destino, marcos } = plano;
+
+  if (!podeAtuarNaFase(fase.key, quem)) {
+    const area = A.infoStatus(statusDeEntrada(fase)).area;
+    return { erro: `Esta etapa é de ${A.AREAS[area] || area}. Peça a alguém da área ou a um gerente.`, http: 403 };
+  }
+
+  const ctx = { ...venda, pagamento: liberacaoDePagamento(venda) };
+  const requisitos = (REQUISITOS[fase.key] ? REQUISITOS[fase.key](ctx) : [])
+    .map(r => ({ obrigatorio: true, ...r }));
+  const faltando = requisitos.filter(r => r.obrigatorio && !r.ok);
+  if (faltando.length) {
+    return {
+      erro: `Ainda falta: ${faltando.map(r => r.label.toLowerCase()).join('; ')}.`,
+      requisitos: faltando,
+    };
+  }
+
+  const log = Array.isArray(venda.production_log) ? [...venda.production_log] : [];
+  marcos.forEach((m, i) => {
+    // A observação acompanha o marco que a pessoa de fato registrou —
+    // o primeiro. O segundo é só a porta da fase seguinte.
+    log.push(marco(m, req, i === 0 && observacao ? { observacao: String(observacao).slice(0, 500) } : {}));
+  });
+
+  return { status: destino, log, fase, destino };
+}
+
+/** O que gravar para voltar uma fase. Exige motivo — e gerente. */
+function voltar(venda, aplicaveis, quem, req, motivo) {
+  if (!mandaEmTudo(quem?.perfil)) {
+    return { erro: 'Voltar etapa é decisão de gerente.', http: 403 };
+  }
+  if (!String(motivo || '').trim()) {
+    return { erro: 'Diga o motivo de voltar a etapa — ele fica no histórico do pedido.' };
+  }
+
+  const plano = planoDeVolta(venda, aplicaveis);
+  if (plano.erro) return { erro: plano.erro };
+
+  const log = Array.isArray(venda.production_log) ? [...venda.production_log] : [];
+  log.push(marco(plano.destino, req, {
+    stage: 'correcao',
+    voltou_de: venda.status,
+    motivo: String(motivo).trim().slice(0, 500),
+  }));
+
+  return { status: plano.destino, log, fase: plano.anterior, destino: plano.destino };
+}
+
+/**
+ * A LIBERAÇÃO DO PAGAMENTO.
+ *
+ * Dois caminhos, um registro. `banco` é a integração confirmando a
+ * entrada; `manual` é alguém do financeiro dizendo que viu o dinheiro.
+ * O manual pede motivo porque liberar sem o extrato é uma decisão, e
+ * decisão sem autor é o que ninguém consegue explicar depois.
+ *
+ * LIBERAR JÁ ANDA COM O PEDIDO. Se ele estava parado na fase de
+ * pagamento, a liberação o entrega no estoque na mesma ação — que é o
+ * que "liberar automaticamente quando o banco confirmar" quer dizer.
+ * Se estava em outro lugar, só registra: mexer no status de um pedido
+ * que já está na produção por causa de uma baixa atrasada seria puxá-lo
+ * para trás sem ninguém ter pedido.
+ */
+function liberarPagamento(venda, aplicaveis, quem, req, { modo = 'manual', motivo = null, referencia = null } = {}) {
+  const forma = modo === 'banco' ? 'banco' : 'manual';
+
+  if (forma === 'manual') {
+    if (!podeModulo(quem?.acesso, 'financial') && !mandaEmTudo(quem?.perfil)) {
+      return { erro: 'Liberar pagamento à mão é do Financeiro (ou de um gerente).', http: 403 };
+    }
+    if (!String(motivo || '').trim()) {
+      return { erro: 'Diga como o pagamento foi confirmado — o motivo fica no histórico.' };
+    }
+  }
+
+  const jaLiberado = liberacaoDePagamento(venda);
+  if (jaLiberado.liberado && jaLiberado.modo !== 'historico') {
+    return { erro: 'O pagamento deste pedido já está liberado.' };
+  }
+
+  const log = Array.isArray(venda.production_log) ? [...venda.production_log] : [];
+  log.push(marco('pagamento_liberado', req, {
+    stage: 'pagamento',
+    modo: forma,
+    motivo: motivo ? String(motivo).trim().slice(0, 500) : null,
+    referencia: referencia ? String(referencia).slice(0, 120) : null,
+  }));
+
+  // O pedido está parado esperando o financeiro? Então a liberação é o
+  // próprio passo — e ele sai daqui já na porta do estoque.
+  const trilho = A.fasesVisiveis(venda, aplicaveis);
+  const i = indiceAtual(trilho, venda.status);
+  const naFaseDoPagamento = i >= 0 && trilho[i]?.key === 'pagamento';
+
+  if (!naFaseDoPagamento) {
+    return { status: venda.status, log, liberado: true, avancou: false };
+  }
+
+  const proxima = trilho[i + 1] || null;
+  const conclusao = statusDeConclusao(trilho[i], venda);
+  const entrada = proxima ? statusDeEntrada(proxima) : null;
+  const destino = entrada || conclusao;
+
+  for (const m of [conclusao, entrada].filter(m => m && m !== venda.status)) {
+    log.push(marco(m, req, { modo: forma }));
+  }
+
+  return { status: destino || venda.status, log, liberado: true, avancou: !!destino };
+}
+
+/**
+ * A LIBERACAO QUE VEM DO BANCO, ja gravada.
+ *
+ * E o outro lado da rota /pagamento/liberar: aqui quem chama nao e uma
+ * pessoa, e o webhook do gateway confirmando que o dinheiro caiu. Passa
+ * pelo MESMO caminho de sempre — mesma checagem de "ja estava
+ * liberado?", mesmo registro no historico, mesmo avanco automatico se o
+ * pedido estava parado esperando o financeiro.
+ *
+ * Nao lanca: um erro aqui nao pode derrubar a baixa do lancamento, que
+ * ja aconteceu. Devolve o que fez, para quem chamou registrar no log.
+ */
+async function liberarPeloBanco(tenantId, saleId, referencia = null) {
+  const supabase = require('../config/supabase');
+  try {
+    const { data: venda, error } = await supabase.from('VENDAS')
+      .select(`id, number, status, production_log, delivery_mode, notes, created_at,
+               VENDA_ITENS ( id, product_name, quantity, customization, PRODUTOS ( id, ink_type ) )`)
+      .eq('id', saleId).eq('tenant_id', tenantId).maybeSingle();
+    if (error || !venda) return { ok: false, motivo: 'pedido não encontrado' };
+
+    const { etapasDosItens, caracteristicasDoItem } = require('./itensPedido');
+    const aplicaveis = etapasDosItens((venda.VENDA_ITENS || []).map(caracteristicasDoItem));
+
+    const passo = liberarPagamento(
+      venda, aplicaveis,
+      // O banco confirmando nao precisa de permissao de ninguem: quem
+      // autorizou foi o dinheiro.
+      { perfil: { role: 'admin' }, acesso: { modules: null } },
+      { user: { id: null, name: 'Baixa automática (banco)' } },
+      { modo: 'banco', referencia },
+    );
+    if (passo.erro) return { ok: false, motivo: passo.erro };
+
+    const { error: erroUpd } = await supabase.from('VENDAS')
+      .update({ status: passo.status, production_log: passo.log })
+      .eq('id', saleId).eq('tenant_id', tenantId);
+    if (erroUpd) return { ok: false, motivo: erroUpd.message };
+
+    return { ok: true, status: passo.status, avancou: passo.avancou };
+  } catch (err) {
+    return { ok: false, motivo: err.message };
+  }
+}
+
+module.exports = {
+  REGRAS, REQUISITOS, liberarPeloBanco,
+  fichaDeFluxo, avancar, voltar, liberarPagamento, liberacaoDePagamento,
+  planoDeAvanco, planoDeVolta, indiceAtual, podeAtuarNaFase,
+  statusDeEntrada, statusDeConclusao,
+};
