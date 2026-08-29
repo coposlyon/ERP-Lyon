@@ -62,13 +62,23 @@ function dataISO(entrada) {
   return null;
 }
 
+// NAO PONHA COMENTARIO AQUI DENTRO.
+//
+// Esta string vai inteira para o parametro `select` do PostgREST, que
+// nao e SQL: ele nao conhece `--`. O comentario que morava no meio desta
+// lista virava nome de coluna, o parse falhava, `carregarPedido` devolvia
+// null e o portal do cliente dizia "Pedido nao encontrado" em TODO
+// pedido — enquanto a lista, que tem um select sem comentario, mostrava
+// os mesmos pedidos normalmente.
+//
+// `delivery_mode` (migracao 090) responde entrega ou retirada; `notes`
+// carrega o texto antigo do catalogo, que e o que responde pelos pedidos
+// gravados antes de a coluna existir.
 const CAMPOS_PEDIDO = `
   id, number, status, origin, subtotal, freight, total, payment_method,
   created_at, operation_date, event_date, ship_date, delivery_date,
   collect_date, transport_days, freight_quote, tracking_code,
   carrier_id, user_id, tenant_id, production_log,
-  -- Entrega ou retirada (migração 090) + o texto antigo do catálogo, que
-  -- é o que responde pelos pedidos gravados antes de a coluna existir.
   delivery_mode, notes, pickup_person,
   CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating ),
   VENDA_ITENS ( id, product_name, quantity, unit_price, total, customization,
