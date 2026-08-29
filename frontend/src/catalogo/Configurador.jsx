@@ -303,9 +303,20 @@ export default function Configurador() {
       {/* `items-start` + `sticky` nas colunas 2 e 3: a coluna 1 é MUITO mais
           alta que as outras duas, e sem isso o cliente rola até a quantidade
           com o resumo e os botões já fora da tela — decidindo às cegas. */}
-      <div className="grid gap-4 items-start xl:grid-cols-[minmax(0,1.22fr)_minmax(296px,0.76fr)_minmax(288px,0.7fr)]">
+      {/* UMA NUMERAÇÃO SÓ, DESCENDO.
+          A tela tinha três colunas e DUAS contagens ao mesmo tempo: 1‑2‑3
+          à esquerda e A‑B‑C à direita. Quem chega não sabe por onde
+          começar nem quando acabou, e as três colunas terminavam em
+          alturas diferentes — 1255, 706 e 865 pixels — deixando um buraco
+          embaixo que parecia tela cortada.
 
-        {/* ═══ COLUNA 1 — produto, personalização e entrega ═══ */}
+          Agora são duas. À esquerda as ETAPAS, numeradas 1 a 4 de cima
+          para baixo, na ordem em que se responde. À direita o que está
+          sendo comprado: a peça, o preço e os botões, grudado no topo,
+          sempre visível enquanto se rola as etapas. */}
+      <div className="grid gap-4 items-start xl:grid-cols-[minmax(0,1.35fr)_minmax(330px,0.65fr)]">
+
+        {/* ═══ ESQUERDA — as etapas, na ordem ═══ */}
         <div className="space-y-4">
 
           <Painel titulo="1. Produto e Configuração" cor={NEON.ciano} icone={Box}>
@@ -552,11 +563,25 @@ export default function Configurador() {
               A data do evento ajuda a calcular prazo e entrega.
             </Nota>
           </Painel>
+
+          <Painel titulo={`${personalizado ? 4 : 3}. Forma de pagamento`} cor={NEON.roxo} icone={CreditCard}>
+            <div className="grid grid-cols-3 gap-2">
+              <Opcao titulo="PIX" icone={QrCode} cor={NEON.ciano}
+                ativo={estado.pagamento === 'pix'} onClick={() => mudar({ pagamento: 'pix' })} />
+              <Opcao titulo="Cartão" icone={CreditCard} cor={NEON.azul}
+                ativo={estado.pagamento === 'cartao'} onClick={() => mudar({ pagamento: 'cartao' })} />
+              <Opcao titulo="Boleto" icone={Barcode} cor={NEON.roxo}
+                ativo={estado.pagamento === 'boleto'} onClick={() => mudar({ pagamento: 'boleto' })} />
+            </div>
+            <Nota icone={Info} cor={NEON.roxo}>
+              Ao clicar em "Gerar pagamento", o sistema solicitará seu cadastro para prosseguir.
+            </Nota>
+          </Painel>
         </div>
 
-        {/* ═══ COLUNA 2 — prévia e ações ═══ */}
+        {/* ═══ DIREITA — a peça, o preço e os botões ═══ */}
         <div className="space-y-3 xl:sticky xl:top-4">
-          <Painel titulo="A. Pré-visualização" cor={NEON.azul} icone={Box}>
+          <Painel titulo="Como vai ficar" cor={NEON.azul} icone={Box}>
             {/* O PALCO BRANCO.
                 Fundo branco atrás de peça é o estúdio, e é o que o
                 cliente já espera de foto de produto: sobre o azul-noite
@@ -621,11 +646,8 @@ export default function Configurador() {
               </p>
             )}
           </div>
-        </div>
 
-        {/* ═══ COLUNA 3 — resumo, atendimento e pagamento ═══ */}
-        <div className="space-y-3 xl:sticky xl:top-4">
-          <Painel titulo="B. Resumo do orçamento" cor={NEON.rosa} icone={FileText}>
+          <Painel titulo="Resumo do pedido" cor={NEON.rosa} icone={FileText}>
             <p className="font-semibold text-[14px] leading-snug" style={{ color: NEON.texto }}>
               {preco?.nome || cfg.modelo.nome}
             </p>
@@ -715,19 +737,6 @@ export default function Configurador() {
             <Headphones size={17} /> Falar com atendente
           </a>
 
-          <Painel titulo="C. Forma de pagamento" cor={NEON.roxo} icone={CreditCard}>
-            <div className="grid grid-cols-3 gap-2">
-              <Opcao titulo="PIX" icone={QrCode} cor={NEON.ciano}
-                ativo={estado.pagamento === 'pix'} onClick={() => mudar({ pagamento: 'pix' })} />
-              <Opcao titulo="Cartão" icone={CreditCard} cor={NEON.azul}
-                ativo={estado.pagamento === 'cartao'} onClick={() => mudar({ pagamento: 'cartao' })} />
-              <Opcao titulo="Boleto" icone={Barcode} cor={NEON.roxo}
-                ativo={estado.pagamento === 'boleto'} onClick={() => mudar({ pagamento: 'boleto' })} />
-            </div>
-            <Nota icone={Info} cor={NEON.roxo}>
-              Ao clicar em "Gerar pagamento", o sistema solicitará seu cadastro para prosseguir.
-            </Nota>
-          </Painel>
 
           <Painel titulo="Informações importantes" cor={NEON.azul} icone={Info}>
             <p className="text-[11.5px] leading-relaxed" style={{ color: NEON.suave }}>
