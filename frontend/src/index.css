@@ -863,6 +863,46 @@ html.dark select option:hover { background-color: #2f6bff; color: #ffffff; }
 .lj-caixa-alta input[inputmode="decimal"] { text-transform: none; }
 
 /* ============================================================
+   A ESCALA DO ERP — o "80%" que todo mundo fazia à mão.
+
+   Para caber o que precisa caber, a rotina era a mesma toda manhã:
+   abrir o sistema e apertar Ctrl+− até 80%. Só que isso é uma
+   configuração do NAVEGADOR — vale por domínio, por perfil e por
+   máquina. Quem trocava de computador, entrava por outro navegador,
+   limpava os dados ou abria numa janela anônima recebia o sistema
+   grande de novo e voltava a apertar Ctrl+−. E quem nunca descobriu o
+   truque simplesmente trabalhou esse tempo todo vendo menos.
+
+   Agora a escala é do SISTEMA. `zoom` é exatamente o que o navegador
+   aplica no Ctrl+−: encolhe tudo junto e na mesma proporção — texto,
+   ícones, bordas, espaçamento — sem reescrever medida nenhuma. Sai
+   igual em qualquer resolução, com ou sem a ampliação do Windows, já na
+   primeira vez que a pessoa abre.
+
+   PARA MUDAR O TAMANHO, MEXA SÓ NESTE NÚMERO. 0.8 são os 80% de hoje;
+   0.9 fica um pouco maior, 1 é o tamanho original. É uma linha, e é a
+   única.
+
+   POR QUE DIVIDIR A ALTURA E A LARGURA. `h-screen` é 100vh, e vh mede a
+   tela DE VERDADE — o zoom não muda isso. Encolhendo a moldura a 80%,
+   esses 100vh viravam 80% da tela e sobrava uma faixa vazia embaixo e à
+   direita. Dividir pela escala devolve a moldura ao tamanho da tela.
+   ============================================================ */
+:root { --erp-escala: 0.8; }
+
+.erp-shell {
+  zoom: var(--erp-escala);
+  height: calc(100vh / var(--erp-escala)) !important;
+  width:  calc(100vw / var(--erp-escala));
+}
+
+/* NO PAPEL NÃO SE ENCOLHE NADA. A impressão já tem a própria escala (a
+   folha), e um pedido impresso a 80% sai com letra miúda à toa. */
+@media print {
+  .erp-shell { zoom: 1; height: auto !important; width: auto; }
+}
+
+/* ============================================================
    O DETALHE DO PEDIDO MEDE O ESPAÇO QUE TEM, NÃO O TAMANHO DA JANELA.
 
    A tela usava `xl:` para decidir entre uma e duas colunas, e `xl` é uma
