@@ -29,6 +29,7 @@
 // artes). Este arquivo lê e junta.
 // ============================================================
 const supabase = require('../config/supabase');
+const { aplicarAmbiente } = require('./ambienteProduto');
 const { precoFaixa, precoComImpressao } = require('./calc');
 
 const tabelaAusente = err =>
@@ -59,10 +60,19 @@ async function produtosPublicados(tenantId, colunas, ajustar = q => q) {
   if (error && /show_in_catalogo/i.test(error.message || '')) {
     ({ data, error } = await monta(false));
     if (error) throw error;
-    return (data || []).filter(p => p.show_in_store !== false);
+    return aplicarAmbiente(tenantId, (data || []).filter(p => p.show_in_store !== false), 'catalogo');
   }
   if (error) throw error;
-  return (data || []).filter(p => p.show_in_catalogo === true);
+
+  // O QUE O CATALOGO TEM DE PROPRIO entra por cima do cadastro mestre:
+  // preco que ja embute a personalizacao, minimo de caixa fechada, foto
+  // do copo impresso (migracao 094). Sem ajuste gravado, herda tudo — que
+  // e a situacao de quem nunca configurou nada.
+  //
+  // AQUI, e nao em cada tela do catalogo: esta funcao e por onde TODA
+  // leitura da vitrine passa, e aplicar la fora seria garantir que uma
+  // delas fica de fora mostrando o preco da loja.
+  return aplicarAmbiente(tenantId, (data || []).filter(p => p.show_in_catalogo === true), 'catalogo');
 }
 
 /** "Long Drink Degradê" → "long-drink-degrade". */

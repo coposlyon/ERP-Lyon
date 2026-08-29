@@ -9,6 +9,7 @@ const { uploadDataUrl } = require('../lib/storage');
 const { parseName, extractColorNames, stripAccents } = require('../lib/cupImage');
 const { PRINT_METHODS } = require('../lib/calc');
 const { fichaDoProduto, gravarFicha } = require('../lib/produtoCatalogo');
+const AMB = require('../lib/ambienteProduto');
 const { partesDoNome } = require('../lib/catalogo');
 
 // Sobe data-URLs (fotos) para o Storage; mantém URLs já existentes.
@@ -1289,6 +1290,87 @@ router.patch('/:id/variation', async (req, res) => {
 // impressão, mínimo, caixa do liso e gabarito da arte — é atributo DESTE
 // produto, editado aqui. Não existe um cadastro paralelo de catálogo, e
 // é por isso que não existe o dia em que os dois discordam.
+
+// ============================================================
+// O MESMO COPO, DUAS CONFIGURACOES DE VENDA (migracao 094).
+//
+// Preco, minimo, foto e descricao podem ser proprios de cada vitrine.
+// Campo vazio = herda do cadastro mestre, e e assim que os 97 copos
+// funcionam hoje sem ninguem ter preenchido nada.
+// ============================================================
+
+/**
+ * Os produtos que a acao em lote vai atingir.
+ *
+ * `all` repete o alvo do PATCH /bulk: o filtro da tela, e nao a pagina
+ * visivel. O tamanho e filtrado em memoria porque ele sai do NUMERO
+ * lido do nome — no SQL, "400" casaria com o codigo CT45-2400.
+ */
+async function idsDoAlvo(req, { ids, all, match = {} }) {
+  if (!all) return [...new Set((Array.isArray(ids) ? ids : []).filter(Boolean))];
+
+  let q = supabase.from('PRODUTOS').select('id, name').eq('tenant_id', req.tenantId).limit(5000);
+  if (match.category_id) q = q.eq('category_id', match.category_id);
+  if (match.search) q = applySearchTerms(q, match.search);
+  const { data, error } = await q;
+  if (error) throw error;
+
+  const volume = parseInt(match.volume) || 0;
+  return (data || []).filter(p => !volume || produtoVolume(p) === volume).map(p => p.id);
+}
+
+// O que cada ambiente tem de proprio, com o valor do mestre ao lado.
+router.get('/:id/ambientes', async (req, res) => {
+  try {
+    const ficha = await AMB.ajustesDoProduto(req.tenantId, req.params.id);
+    if (ficha.erro) return res.status(404).json({ error: ficha.erro });
+    res.json(ficha);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Grava os ajustes de UM ambiente. Vazio devolve o campo para o mestre.
+router.put('/:id/ambientes/:ambiente', async (req, res) => {
+  try {
+    const r = await AMB.gravarAjustes(req.tenantId, req.params.id, req.params.ambiente, req.body || {});
+    if (r.erro) return res.status(400).json({ error: r.erro });
+    audit(req, 'update', 'produto_ambiente', req.params.id, {
+      ambiente: req.params.ambiente,
+      herdando: r.herdando,
+      campos: Object.keys(req.body || {}),
+    });
+    res.json({ ...r, ficha: await AMB.ajustesDoProduto(req.tenantId, req.params.id) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * O mesmo ajuste em varios produtos.
+ *
+ * Existe porque a regra costuma ser uma so para a linha inteira ("no
+ * catalogo o minimo e 100"), e aplicar isso produto a produto sao 97
+ * formularios — dos quais o de numero 42 sai errado.
+ */
+router.post('/ambientes/lote', async (req, res) => {
+  const { ids, ambiente, campos, all = false, match = {} } = req.body || {};
+  if (!campos || !Object.keys(campos).length) {
+    return res.status(400).json({ error: 'Nada para aplicar.' });
+  }
+  try {
+    // O alvo e o mesmo do PATCH /bulk: os selecionados, ou TODOS os do
+    // filtro. Uma regra de vitrine costuma valer para a linha inteira
+    // ("no catalogo o minimo e 100"), e obrigar a marcar 97 caixinhas
+    // para dizer isso e o que faz alguem desistir e marcar 40.
+    const alvo = await idsDoAlvo(req, { ids, all, match });
+    if (!alvo.length) {
+      return res.status(400).json({ error: 'Escolha ao menos um produto (ou marque "aplicar a todos do filtro").' });
+    }
+    const r = await AMB.gravarEmLote(req.tenantId, alvo, ambiente, campos);
+    if (r.erro) return res.status(400).json({ error: r.erro, tocados: r.tocados });
+    audit(req, 'update', 'produto_ambiente', null, {
+      ambiente, produtos: r.tocados, campos: Object.keys(campos),
+    });
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 router.get('/:id/catalogo', async (req, res) => {
   try {

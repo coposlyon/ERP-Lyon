@@ -3,6 +3,7 @@ const router   = express.Router();
 const rateLimit = require('express-rate-limit');
 const multer   = require('multer');
 const supabase = require('../config/supabase');
+const { aplicarAmbiente } = require('../lib/ambienteProduto');
 
 // Upload em memória para os documentos do autocadastro de transportadora
 const uploadDocs = multer({
@@ -148,6 +149,29 @@ function corDoProduto(p) {
   return sc ? sc.toUpperCase() : null;
 }
 
+/**
+ * Tudo que um produto precisa antes de ir para a vitrine da loja.
+ *
+ * Duas camadas, nesta ordem:
+ *   1. a ficha de preco da categoria (attachFichaPricing)
+ *   2. o que a LOJA tem de proprio (migracao 094)
+ *
+ * A ordem importa. O ajuste do ambiente e uma decisao explicita de
+ * alguem — "neste site, este copo custa isto" — e por isso vence a ficha,
+ * que e a regra geral da categoria. Se fosse antes, a ficha apagaria a
+ * decisao no proximo carregamento e ninguem entenderia por que o preco
+ * digitado nao pegou.
+ *
+ * Os cinco lugares que carregam produto na loja chamam isto, e nao o
+ * attachFichaPricing direto: era assim que um endpoint ficava para tras
+ * e mostrava um preco diferente dos outros quatro.
+ */
+async function prepararParaLoja(produtos) {
+  await attachFichaPricing(produtos);
+  await aplicarAmbiente(STORE_TENANT, produtos, 'loja');
+  return produtos;
+}
+
 // Carrega os produtos visíveis da loja (com fallback p/ colunas novas ausentes)
 async function loadVisibleProducts() {
   const sel = full => `id, name, code, unit, description, sale_price, price_tiers${full ? ', min_order_qty, print_pricing, pricing_sheet_id, store_group, store_color, variations, image_url, variation_images, show_in_store' : ''}, category_id, CATEGORIAS(name)`;
@@ -157,7 +181,7 @@ async function loadVisibleProducts() {
   if (error) ({ data, error } = await build(false));
   if (error) throw error;
   const visible = (data || []).filter(p => p.show_in_store !== false);
-  await attachFichaPricing(visible);
+  await prepararParaLoja(visible);
   return visible;
 }
 
@@ -405,7 +429,7 @@ router.get('/products', async (req, res) => {
     let { data: products, error } = await build(true);
     if (error) ({ data: products, error } = await build(false));
     if (error) throw error;
-    await attachFichaPricing(products);
+    await prepararParaLoja(products);
 
     // Só mostra na loja produtos marcados como visíveis (show_in_store).
     // Se a coluna ainda não existe (fallback), products vem sem o campo → mostra todos.
@@ -510,7 +534,7 @@ router.get('/products/:id', async (req, res) => {
     if (error) ({ data: p, error } = await build(false));
     if (error) throw error;
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
-    await attachFichaPricing(p);
+    await prepararParaLoja(p);
 
     // Variações + fotos — busca isolada para não depender das outras colunas novas
     let pvars = { colors: [], borders: [], volumes: [] };
@@ -564,7 +588,7 @@ router.get('/products/:id', async (req, res) => {
       // tipo_id/show_in_store podem não existir → cai para um select mais simples
       let { data: sib, error: sibErr } = await sibQuery(sibSel, true);
       if (sibErr) ({ data: sib } = await sibQuery('id, name, store_color, sale_price, price_tiers, pricing_sheet_id, category_id', false));
-      await attachFichaPricing(sib);
+      await prepararParaLoja(sib);
 
       const seen = new Set();
       colorOptions = (sib || [])
@@ -642,7 +666,7 @@ router.post('/quote', async (req, res) => {
       .eq('tenant_id', STORE_TENANT).in('id', ids);
     let { data: prods, error: pErr } = await fetchProds(true);
     if (pErr) ({ data: prods } = await fetchProds(false));
-    await attachFichaPricing(prods);
+    await prepararParaLoja(prods);
     const prodMap = Object.fromEntries((prods || []).map(p => [p.id, p]));
     const printLabel = Object.fromEntries(PRINT_METHODS.map(m => [m.key, m.label]));
 

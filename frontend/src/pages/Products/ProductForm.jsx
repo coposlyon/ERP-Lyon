@@ -20,6 +20,7 @@ import {
   ClipboardList, Sparkles, Eye, EyeOff, Info,
 } from 'lucide-react';
 import CatalogoDoProduto from './CatalogoDoProduto';
+import AjusteDeVitrine from './AjusteDeVitrine';
 
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -376,12 +377,27 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
           titulo="Exibir no catálogo personalizado"
           ajuda="O site de copo com arte, nome e acabamento (/catalogo). Produto novo nasce em rascunho: começar a cadastrar não é publicar." />
 
+        {/* O AJUSTE FICA GRUDADO NA CHAVE. É o mesmo copo nos dois sites,
+            mas ele não se vende igual: aqui é caixa fechada, com mínimo
+            alto e preço que já embute a personalização. Preço de vitrine
+            longe da chave que liga a vitrine é o que faz alguém
+            configurar no site errado. */}
+        {product?.id && (
+          <AjusteDeVitrine productId={product.id} ambiente="catalogo"
+            nomeDaVitrine="Catálogo personalizado" />
+        )}
+
         <Chave
           ligado={form.is_active && form.show_in_store}
           desativado={!form.is_active}
           onMudar={v => set('show_in_store', v)}
           titulo="Exibir no site de produtos lisos"
           ajuda="A loja de copo sem impressão (/loja). É outra pergunta: o mesmo copo pode estar num site e não no outro." />
+
+        {product?.id && (
+          <AjusteDeVitrine productId={product.id} ambiente="loja"
+            nomeDaVitrine="Loja de lisos" />
+        )}
 
         {product?.id && form.show_in_catalogo && (
           <p className="text-[11.5px] text-violet-700 bg-violet-50 rounded-lg p-2.5 flex items-start gap-2">

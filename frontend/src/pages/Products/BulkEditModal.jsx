@@ -26,6 +26,12 @@ export default function BulkEditModal({ isOpen, onClose }) {
   // seriam 24 cliques, e é assim que metade das cores fica esquecida.
   const [noCatalogo, setNoCatalogo] = useState('');
   const [naLoja, setNaLoja] = useState('');
+  // AJUSTE DE VITRINE (migração 094). É outra tabela, e por isso outro
+  // conjunto de campos: aqui não se altera o produto, e sim o que ele
+  // custa e o mínimo que ele pede DENTRO de um dos dois sites.
+  const [ambiente, setAmbiente] = useState('');   // '' = não mexe | 'loja' | 'catalogo'
+  const [ambPreco, setAmbPreco] = useState('');
+  const [ambMinimo, setAmbMinimo] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);        // modal de apagar em massa
   const [delPassword, setDelPassword] = useState('');
@@ -85,6 +91,13 @@ export default function BulkEditModal({ isOpen, onClose }) {
   if (naLoja) fields.show_in_store = naLoja === 'sim';
   const hasFields = Object.keys(fields).length > 0;
 
+  // Vazio não é zero: campo em branco aqui devolve o produto ao preço do
+  // cadastro naquela vitrine. Por isso só entram os preenchidos.
+  const camposAmbiente = {};
+  if (ambPreco !== '') camposAmbiente.sale_price = ambPreco;
+  if (ambMinimo !== '') camposAmbiente.min_order_qty = ambMinimo;
+  const temVitrine = !!ambiente && Object.keys(camposAmbiente).length > 0;
+
   // Apagar em massa (definitivo) — só nos selecionados e com senha da conta.
   const del = useMutation({
     mutationFn: (password) => api.post('/products/bulk-delete', { ids: selectedIds, password }),
@@ -99,11 +112,25 @@ export default function BulkEditModal({ isOpen, onClose }) {
   });
 
   const apply = useMutation({
-    mutationFn: () => api.patch('/products/bulk', applyAll
-      ? { all: true, match: { search: effectiveSearch, category_id: categoryId, volume: volumeParam || undefined }, fields }
-      : { ids: selectedIds, fields }),
+    // Duas gravações porque são duas tabelas: o cadastro do produto e os
+    // ajustes de vitrine. O alvo é o mesmo nas duas, para não existir o
+    // caso de o preço da vitrine pegar num conjunto e o cadastro noutro.
+    mutationFn: async () => {
+      const alvo = applyAll
+        ? { all: true, match: { search: effectiveSearch, category_id: categoryId, volume: volumeParam || undefined } }
+        : { ids: selectedIds };
+      let updated = 0, vitrine = 0;
+      if (hasFields) updated = (await api.patch('/products/bulk', { ...alvo, fields })).updated || 0;
+      if (temVitrine) {
+        vitrine = (await api.post('/products/ambientes/lote', { ...alvo, ambiente, campos: camposAmbiente })).tocados || 0;
+      }
+      return { updated, vitrine };
+    },
     onSuccess: (r) => {
-      toast.success(`${r.updated} produto(s) atualizado(s)!`);
+      toast.success([
+        r.updated ? `${r.updated} produto(s) atualizado(s)` : null,
+        r.vitrine ? `${r.vitrine} ajuste(s) de vitrine` : null,
+      ].filter(Boolean).join(' · ') + '!');
       qc.invalidateQueries(['products']);
       qc.invalidateQueries(['bulk-products']);
       qc.invalidateQueries(['categories']);
@@ -115,7 +142,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
   const hasFilter = !!(effectiveSearch || categoryId || volumeParam);
   const targetCount = applyAll ? totalMatching : selectedIds.length;
-  const canApply = hasFields && (applyAll ? totalMatching > 0 : selectedIds.length > 0);
+  const canApply = (hasFields || temVitrine) && (applyAll ? totalMatching > 0 : selectedIds.length > 0);
 
   // Ao fechar, zera a seleção e os campos para o modal abrir limpo na próxima vez.
   function handleClose() {
@@ -124,6 +151,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
     setSupplierId('');
     setCostPrice('');
     setNcm(''); setCst(''); setCfop(''); setInkType('');
+    setAmbiente(''); setAmbPreco(''); setAmbMinimo('');
     setConfirmOpen(false);
     setDelOpen(false); setDelPassword('');
     onClose();
@@ -294,6 +322,35 @@ export default function BulkEditModal({ isOpen, onClose }) {
           </div>
         </div>
 
+        {/* AJUSTE POR VITRINE.
+            O mesmo copo, dois preços. Na loja ele é unidade avulsa; no
+            catálogo é caixa fechada, com mínimo alto e um preço que já
+            embute a personalização. Em massa porque a regra costuma valer
+            para a linha inteira — "no catálogo o mínimo é 100" são 97
+            formulários se feito um a um. */}
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+            Ajuste por vitrine (não mexe no cadastro)
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <select className="input" value={ambiente} onChange={e => setAmbiente(e.target.value)}>
+              <option value="">— não alterar vitrine —</option>
+              <option value="loja">Loja de copos lisos (/loja)</option>
+              <option value="catalogo">Catálogo personalizado (/catalogo)</option>
+            </select>
+            <input className="input" type="number" step="0.01" min="0" disabled={!ambiente}
+              value={ambPreco} onChange={e => setAmbPreco(e.target.value)}
+              placeholder="Preço nesta vitrine" />
+            <input className="input" type="number" min="1" disabled={!ambiente}
+              value={ambMinimo} onChange={e => setAmbMinimo(e.target.value)}
+              placeholder="Qtd. mínima nesta vitrine" />
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            Vale só no site escolhido — o cadastro do produto não muda, e a outra vitrine
+            continua como está. Campo em branco devolve o produto ao preço do cadastro naquele site.
+          </p>
+        </div>
+
         {/* Fiscal */}
         <div>
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Fiscal (NCM / CST / CFOP)</p>
@@ -353,7 +410,19 @@ export default function BulkEditModal({ isOpen, onClose }) {
             Você vai alterar <b>{targetCount} produto(s)</b>
             {applyAll && summary.analyzed < targetCount ? <span className="text-gray-500"> (resumo baseado em {summary.analyzed} carregados)</span> : ''}.
           </p>
-          {summary.rows.length === 0 ? (
+          {temVitrine && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="font-semibold text-amber-900">
+                Ajuste de vitrine — {ambiente === 'loja' ? 'Loja de copos lisos' : 'Catálogo personalizado'}
+              </p>
+              <p className="text-amber-800 text-[13px] mt-0.5">
+                {[camposAmbiente.sale_price != null && `preço R$ ${Number(camposAmbiente.sale_price).toFixed(2)}`,
+                  camposAmbiente.min_order_qty != null && `mínimo ${camposAmbiente.min_order_qty}`]
+                  .filter(Boolean).join(' · ')} nesta vitrine. O cadastro do produto e o outro site não mudam.
+              </p>
+            </div>
+          )}
+          {summary.rows.length === 0 && !temVitrine ? (
             <p className="text-gray-500">Nenhum campo preenchido para alterar.</p>
           ) : (
             <div className="space-y-3">
