@@ -159,9 +159,22 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [origem, setOrigem] = useState('');
   // As demais datas já nascem com a data da operação — assim o ano (e o dd/mm)
   // vêm preenchidos e o operador só ajusta o dia/mês que precisar.
-  const [eventDate, setEventDate] = useState(todayISO);
-  const [shipDate, setShipDate] = useState(todayISO);
-  const [deliveryDate, setDeliveryDate] = useState(todayISO);
+  // OS TRES PRAZOS NASCEM VAZIOS, e nao com a data de hoje.
+  //
+  // Preenchido com hoje, o campo nao pergunta nada: ele ja respondeu, e
+  // a resposta esta quase sempre errada. Evento, saida e entrega sao
+  // datas FUTURAS por natureza, e o pedido que nasce com as tres em hoje
+  // e salvo assim toda vez que alguem passa direto.
+  //
+  // Vazio pergunta. E os tres continuam obrigatorios na hora de salvar,
+  // entao ninguem passa sem responder.
+  //
+  // De quebra, isto conserta a sugestao da transportadora: o calculo do
+  // frete oferece "previsao = hoje + prazo" so `if (!deliveryDate)`, e
+  // com o campo pre-preenchido essa condicao nunca era verdadeira.
+  const [eventDate, setEventDate] = useState('');
+  const [shipDate, setShipDate] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState('');
 
   // Data retroativa em relação à operação pula para o próximo ano:
   // operação 02/07/2026 + saída 01/07 → 01/07/2027
@@ -366,7 +379,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       setCarrierId(''); setFreightInput(''); setQuoteNumber('');
       setPayTerm(null);
       setReceivedAmount('');
-      setEventDate(todayISO()); setShipDate(todayISO()); setDeliveryDate(todayISO());
+      setEventDate(''); setShipDate(''); setDeliveryDate('');
       setOrderKey(genKey());
       if (inModal) { onDone(); return; } // fecha o card e atualiza a lista
       setTimeout(() => searchRef.current?.focus(), 100);
@@ -1077,6 +1090,36 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           </div>
         </div>
 
+        {/* OS TRES PRAZOS MORAM AQUI, e nao num cartao proprio.
+            O cartao "Pedido" existia para segurar tres datas e um numero
+            gerado sozinho - e separava do resto do cabecalho justamente
+            as perguntas que se responde de uma vez: quem compra, por onde
+            sai e QUANDO cada coisa acontece. Subindo, some um cartao e o
+            comeco do pedido passa a caber numa tela so. */}
+        {!isQuote && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-[repeat(3,minmax(0,1fr))_auto] gap-3 items-end mt-3 pt-3 border-t border-gray-100">
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Data do evento *</label>
+              <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => changeEventDate(e.target.value)}
+                onBlur={() => setEventDate(d => forwardDate(d))} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Data da saída *</label>
+              <input type="date" className="input w-full text-sm" value={shipDate} onChange={e => setShipDate(e.target.value)}
+                onBlur={() => setShipDate(d => forwardDate(d))} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Previsão de entrega *</label>
+              <input type="date" className="input w-full text-sm" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)}
+                onBlur={() => setDeliveryDate(d => forwardDate(d))} />
+            </div>
+            <div className="flex sm:justify-end items-center sm:col-span-3 xl:col-span-1 xl:pb-1.5">
+              <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 rounded px-2 py-0.5 whitespace-nowrap"
+                title="Chave do pedido (gerada automaticamente)">🔑 #{orderKey}</span>
+            </div>
+          </div>
+        )}
+
         {!selectedCustomer && <p className="text-xs text-amber-600 mt-2">O cliente é obrigatório para o pedido.</p>}
 
         {/* Horários de coleta (abrem pelo ⋯ abaixo da transportadora) */}
@@ -1136,33 +1179,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           </div>
         )}
       </div>
-
-        {/* Pedido — chave aleatória + datas (tudo obrigatório) */}
-        {!isQuote && (
-        <div className="card p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-700">🔑 Pedido</span>
-            <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 rounded px-2 py-0.5" title="Chave do pedido (gerada automaticamente)">#{orderKey}</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Data do evento *</label>
-              <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => changeEventDate(e.target.value)}
-                onBlur={() => setEventDate(d => forwardDate(d))} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Data da saída *</label>
-              <input type="date" className="input w-full text-sm" value={shipDate} onChange={e => setShipDate(e.target.value)}
-                onBlur={() => setShipDate(d => forwardDate(d))} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Previsão de entrega *</label>
-              <input type="date" className="input w-full text-sm" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)}
-                onBlur={() => setDeliveryDate(d => forwardDate(d))} />
-            </div>
-          </div>
-        </div>
-        )}
 
         {/* Dados do ORÇAMENTO (prazos e validades que saem na foto) */}
         {isQuote && (
