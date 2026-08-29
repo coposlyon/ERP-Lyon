@@ -15,6 +15,7 @@ const { autorizar, excluirVenda } = require('../lib/excluirVenda');
 // dar cada passo moram la - aqui so se le o pedido, chama e grava.
 const F = require('../lib/fluxoPedido');
 const { etapasDosItens, caracteristicasDoItem } = require('../lib/itensPedido');
+const C = require('../lib/comprovante');
 
 const saleSchema = Joi.object({
   items: Joi.array().min(1).items(
@@ -497,6 +498,90 @@ async function fichaAtual(req) {
   const carga = await carregarParaFluxo(req.tenantId, req.params.id);
   return carga ? F.fichaDeFluxo(carga.venda, carga.aplicaveis, quemPergunta(req)) : null;
 }
+
+// ============================================================
+// O COMPROVANTE DE PAGAMENTO, PARCELA A PARCELA (migracao 095).
+//
+// "Liberar pagamento" dizia "confia em mim". Estas rotas trocam isso por
+// um arquivo: cada parcela recebe o seu comprovante, a maquina le a
+// imagem e o financeiro confere depois. O botao de liberar continua
+// existindo em /pagamento/liberar - mas como excecao, para quando o
+// dinheiro caiu e ninguem tem o papel.
+// ============================================================
+
+async function vendaDoComprovante(req) {
+  const { data } = await supabase.from('VENDAS')
+    .select('id, number, total, customer_id, payment_method, status')
+    .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+  return data || null;
+}
+
+// As parcelas do pedido, com o que ja foi anexado em cada uma.
+router.get('/:id/parcelas', async (req, res) => {
+  try {
+    const venda = await vendaDoComprovante(req);
+    if (!venda) return res.status(404).json({ error: 'Pedido nao encontrado' });
+    const parcelas = await C.parcelasDaVenda(req.tenantId, venda);
+    const aberto = parcelas.reduce((soma, x) => soma + (x.falta || 0), 0);
+    res.json({
+      parcelas,
+      total: Number(venda.total) || 0,
+      em_aberto: Math.round(aberto * 100) / 100,
+      quitado: aberto <= 0.005,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * Anexa o comprovante numa parcela.
+ *
+ * `parcela_id` vazio = o pedido ainda nao tem parcela no contas a
+ * receber (venda a vista); a primeira e criada aqui, no momento em que
+ * alguem diz que pagou.
+ */
+router.post('/:id/parcelas/comprovante', async (req, res) => {
+  const { parcela_id, arquivo, valor } = req.body || {};
+  if (!arquivo) return res.status(400).json({ error: 'Envie o arquivo do comprovante.' });
+  try {
+    const venda = await vendaDoComprovante(req);
+    if (!venda) return res.status(404).json({ error: 'Pedido nao encontrado' });
+
+    const r = await C.anexarComprovante(req.tenantId, venda, parcela_id || null, { arquivo, valor, req });
+    if (r.erro) return res.status(400).json({ error: r.erro });
+
+    audit(req, 'update', 'comprovante', venda.id, {
+      parcela: r.parcela.id, valor: r.parcela.paid_amount,
+      leitura_ok: r.leitura.ok, divergente: r.divergente, gerou_saldo: !!r.saldo,
+    });
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// O link temporario para ver o comprovante (o arquivo e privado).
+router.get('/:id/parcelas/:parcelaId/comprovante', async (req, res) => {
+  try {
+    const { data } = await supabase.from('LANCAMENTOS').select('receipt_url')
+      .eq('tenant_id', req.tenantId).eq('id', req.params.parcelaId).maybeSingle();
+    if (!data || !data.receipt_url) {
+      return res.status(404).json({ error: 'Esta parcela ainda nao tem comprovante.' });
+    }
+    const url = await C.linkDoComprovante(data.receipt_url);
+    if (!url) return res.status(502).json({ error: 'Nao foi possivel abrir o comprovante agora.' });
+    res.json({ url });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// A conferencia do financeiro - o outro lado da leitura automatica.
+router.post('/:id/parcelas/:parcelaId/conferir', async (req, res) => {
+  try {
+    const r = await C.conferir(req.tenantId, req.params.parcelaId, {
+      status: req.body && req.body.status, nota: req.body && req.body.nota, req,
+    });
+    if (r.erro) return res.status(400).json({ error: r.erro });
+    audit(req, 'update', 'comprovante', req.params.parcelaId, { conferencia: req.body && req.body.status });
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // Onde o pedido está, o que falta para ele seguir e qual é o botão.
 router.get('/:id/fluxo', async (req, res) => {

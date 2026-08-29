@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
+import ParcelasDoPedido from './ParcelasDoPedido';
 
 const dataHora = iso => (iso
   ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
@@ -198,16 +199,24 @@ export default function PainelFluxo({ v, id, fluxo }) {
           </p>
         )}
 
+        {/* AS PARCELAS, com o comprovante de cada uma.
+            Só na fase de pagamento: nas outras o dinheiro não é a
+            pergunta, e a lista viraria ruído em treze telas. */}
+        {naFaseDoPagamento && <ParcelasDoPedido id={id} v={v} />}
+
         {/* ── O que fazer ─────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2">
           {mostrarLiberar && (
             <span className="inline-flex items-center gap-1">
               {chamada === 'liberar' && <Seta cor={v.isDark ? '#4ade80' : '#16a34a'} />}
+              {/* A EXCEÇÃO, e não a regra. O caminho normal é anexar o
+                  comprovante da parcela ali em cima; este botão é para
+                  quando o dinheiro caiu e ninguém tem o papel. */}
               <button onClick={() => setCaixa('pagamento')} disabled={ocupado}
                 className="btn btn-sm disabled:opacity-50"
-                style={{ background: '#16a34a', color: 'white' }}
-                title="Enquanto a integração bancária não entra, o Financeiro libera aqui">
-                <Wallet size={14} /> Liberar pagamento
+                style={{ background: 'transparent', color: '#4ade80', border: '1px solid rgba(74,222,128,0.45)' }}
+                title="Sem comprovante em mãos: o Financeiro assume a liberação">
+                <Wallet size={14} /> Liberar sem comprovante
               </button>
             </span>
           )}
