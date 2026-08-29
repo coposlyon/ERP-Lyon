@@ -190,17 +190,39 @@ export default function CidadesUfModal({ uf, onClose }) {
                           <span style={{ color: v.textSubtle }}>Só a sede</span>
                         )}
                       </td>
-                      {/* CEP ÚNICO x FAIXA. Cidade pequena inteira usa um
-                          número só, e aí "de 86460-000 a 86460-000" é ruído:
-                          mostra o número e diz que é único. Cidade grande tem
-                          faixa, que só o DNE dos Correios fornece — fica em
-                          branco de propósito, com o rodapé explicando. */}
+                      {/* TRÊS ESTADOS, E O NÚMERO É O MESMO NOS DOIS PRIMEIROS.
+                          Quem preenche etiqueta quer LER O CEP, e nao decifrar
+                          uma faixa: por isso "83490-000 a 83490-999" virou
+                          "83490-000" com um selo. O selo e que carrega a
+                          diferenca, para quem precisa dela:
+
+                            unico  a cidade inteira usa este numero
+                            geral  o CEP da localidade; as ruas variam depois
+                                   do trace, dentro do mesmo prefixo
+                            em branco  a cidade tem faixa de verdade (o CEP
+                                   muda de bairro para bairro) e nao existe um
+                                   numero que a represente
+
+                          Mostrar so a faixa escondia o CEP no meio dela; e
+                          mostrar so o numero, sem o selo, faria "83490-000"
+                          parecer o endereco exato de todo mundo. */}
                       <td className="px-4 py-2.5 tabular-nums"
                         style={{ color: c.cep_start ? v.textMuted : v.textSubtle }}>
-                        {!c.cep_start ? '—'
-                          : c.cep_end && c.cep_end !== c.cep_start
-                            ? `${c.cep_start} a ${c.cep_end}`
-                            : <span title="A cidade inteira usa este CEP">{c.cep_start}</span>}
+                        {!c.cep_start ? '—' : (() => {
+                          const faixa = c.cep_end && c.cep_end !== c.cep_start;
+                          return (
+                            <span className="inline-flex items-center gap-1.5"
+                              title={faixa
+                                ? `CEP geral de ${c.name}. As ruas usam de ${c.cep_start} a ${c.cep_end}.`
+                                : 'A cidade inteira usa este CEP'}>
+                              {c.cep_start}
+                              {faixa && (
+                                <span className="text-[9px] px-1 py-0.5 rounded"
+                                  style={{ background: 'rgba(96,165,250,0.16)', color: '#93c5fd' }}>geral</span>
+                              )}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-2.5 text-right" style={{ color: c.ddd ? cor.text : v.textSubtle }}>
                         {c.ddd ? `(${c.ddd})` : '—'}
@@ -227,11 +249,13 @@ export default function CidadesUfModal({ uf, onClose }) {
               <div className="flex items-start gap-2 text-[11px]" style={{ color: '#fbbf24' }}>
                 <Info size={13} className="shrink-0 mt-0.5" />
                 <span>
-                  As cidades de CEP único aparecem com o número; são a maioria dos
-                  municípios. As que estão em branco usam FAIXA de CEP — o CEP muda
-                  de rua para rua — e faixa por município só existe no DNE dos
-                  Correios, que é pago. Continua em branco de propósito: melhor
-                  vazio do que um CEP chutado virando etiqueta errada.
+                  Número limpo = a cidade inteira usa aquele CEP. Com o selo
+                  <b> geral</b> = as ruas mudam depois do traço, mas todas dentro do
+                  mesmo prefixo, e aquele é o CEP da localidade. Em branco = a cidade
+                  tem FAIXA de verdade (o CEP muda de bairro para bairro) e não existe
+                  um número que a represente — faixa por município só sai do DNE dos
+                  Correios, que é pago. Continua em branco de propósito: melhor vazio
+                  do que um CEP chutado virando etiqueta errada.
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" style={{ color: v.textSubtle }}>
