@@ -61,6 +61,49 @@ export function corDe(opcao, padrao = '#cbd5e1') {
 const ehVidro = opcao =>
   /transparente|cristal/i.test(String(opcao?.name || ''));
 
+// ── A FOTO QUE COMBINA COM A COR ESCOLHIDA ───────────────────
+//
+// Pintura não tem foto: `cor_base` é tinta aplicada sobre a peça
+// transparente, e não existe foto de cada combinação. Mas existe foto da
+// peça naquela COR — o Tradicional Verde é um produto de verdade, com
+// foto de verdade — e é ela que chega mais perto do que o cliente vai
+// receber. Escolheu Verde no Degradê, aparece a peça verde.
+//
+// Não é a peça exata: o degradê verde não é o verde chapado. É a mesma
+// escolha que a vitrine já faz nos cards (cada acabamento aparece numa
+// cor), e é infinitamente mais perto do que a peça transparente parada
+// enquanto o cliente troca de cor achando que a tela travou.
+//
+// O casamento é por NOME, sem acento e sem caixa, e o quase-igual conta:
+// a tinta "Verde" acha a peça "Verde Neon" quando não existe "Verde"
+// exato. Sem isso, metade das tintas não teria par e a foto ficaria
+// parada — que é justamente o problema.
+const semAcento = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+function fotoDaCor(opcao, produtos) {
+  const alvo = semAcento(opcao?.name);
+  if (!alvo || !Array.isArray(produtos) || !produtos.length) return null;
+
+  const exata = produtos.find(p => semAcento(p.name) === alvo);
+  if (exata?.imagem) return exata.imagem;
+
+  // "Verde" casa com "Verde Neon"; "Rosa" casa com "Rosa Bebe". A
+  // primeira palavra é o que o olho reconhece como a cor.
+  const raiz = alvo.split(' ')[0];
+  const perto = produtos.find(p => p.imagem && semAcento(p.name).split(' ')[0] === raiz);
+  return perto?.imagem || null;
+}
+
+/**
+ * A cor que manda na foto, na ordem em que ela importa.
+ *
+ * `cor_produto` é a peça de verdade e ganha de tudo. Depois vem a tinta
+ * que cobre a maior área — a base —, e por último as que cobrem pouco.
+ * A cor da BOCA nunca entra: ela é Gelo ou Transparente, e trocaria a
+ * peça inteira por causa de um detalhe de dois centímetros.
+ */
+const ORDEM_DA_FOTO = ['cor_produto', 'cor_base', 'cor_topo', 'cor_jateado', 'cor_meio'];
+
 // ── A JANELA DA ARTE SOBRE A FOTO ────────────────────────────
 //
 // Em fração da foto, porque as fotos do cadastro são todas do mesmo
@@ -446,7 +489,7 @@ function FotoDaPeca({ src, espelhar }) {
  * @param face        'frente' | 'verso' — só muda o rótulo e a arte usada
  */
 export default function CopoPreview({
-  escolha = {}, familia = null, fotoModelo = null,
+  escolha = {}, familia = null, fotoModelo = null, fotosPorCor = null,
   arte = null, face = 'frente', altura = 300, gabarito = null,
 }) {
   const { campos = {} } = escolha;
@@ -458,7 +501,10 @@ export default function CopoPreview({
 
   // A foto DA COR ESCOLHIDA vence a do modelo. Escolheu Preto, aparece a
   // peça preta — e não a foto genérica que o catálogo usa na vitrine.
-  const foto = campos.cor_produto?.imagem || fotoModelo || null;
+  const porEscolha = ORDEM_DA_FOTO
+    .map(chave => campos[chave]?.imagem || fotoDaCor(campos[chave], fotosPorCor))
+    .find(Boolean);
+  const foto = porEscolha || fotoModelo || null;
 
   // As cores que a foto não consegue mostrar, nomeadas. Pintura, borda e
   // jateado são serviço sobre a peça: a foto é da peça, e o acabamento

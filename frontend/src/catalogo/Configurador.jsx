@@ -19,7 +19,7 @@
 // fornecedor, urgência interna. A resposta do servidor nem traz esses
 // campos, e é assim que continua não vazando quando alguém mexer aqui.
 // ============================================================
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
@@ -87,15 +87,48 @@ export default function Configurador() {
 
   useEffect(() => { gravarRascunho(chave, estado); }, [chave, estado]);
 
-  // O acabamento inicial vem do card que o cliente clicou; sem ele, o
-  // primeiro da lista. A tela nunca abre sem acabamento escolhido — meia
-  // tela em branco esperando um clique é o que faz a pessoa desistir.
+  // O ACABAMENTO DO CARD CLICADO VENCE O RASCUNHO.
+  //
+  // O rascunho é guardado por MODELO — `caneca 450 ml` — e os quatorze
+  // cards da grade (Bicolor, Degradê, Jateado...) são o mesmo modelo com
+  // acabamentos diferentes. A versão anterior só aplicava o acabamento do
+  // link quando ainda não havia nenhum escolhido, e o rascunho já trazia
+  // um: quem tinha aberto Degradê e voltava para clicar em BICOLOR abria
+  // Degradê de novo. O cliente clica numa coisa e recebe outra, e não há
+  // como ele entender por quê — o motivo estava guardado na sessão dele.
+  //
+  // Agora o link manda. Ele é a intenção mais recente, dita com um clique
+  // um segundo atrás; o rascunho é memória de antes. Só na ausência do
+  // link o rascunho responde, e só na ausência dos dois entra o primeiro
+  // da lista — a tela nunca abre sem acabamento, que é meia tela em
+  // branco esperando um clique.
+  const linkAplicado = useRef(false);
   useEffect(() => {
-    if (!cfg?.acabamentos?.length || estado.acabamento_id) return;
+    if (!cfg?.acabamentos?.length) return;
     const doLink = params.get('acabamento');
-    const escolhido = cfg.acabamentos.find(a => a.id === doLink) || cfg.acabamentos[0];
-    mudar({ acabamento_id: escolhido.id });
-  }, [cfg, params, estado.acabamento_id, mudar]);
+    const pedido = doLink ? cfg.acabamentos.find(a => a.id === doLink) : null;
+
+    // Uma vez só por abertura: depois disto quem manda é o clique nas
+    // pastilhas da tela, e reaplicar o link desfaria a escolha dele.
+    if (linkAplicado.current) {
+      if (!estado.acabamento_id) mudar({ acabamento_id: cfg.acabamentos[0].id });
+      return;
+    }
+    linkAplicado.current = true;
+
+    const alvo = pedido
+      || cfg.acabamentos.find(a => a.id === estado.acabamento_id)
+      || cfg.acabamentos[0];
+    if (alvo.id === estado.acabamento_id) return;
+
+    // Troca limpando o que não vale mais: vindo de Degradê para Bicolor,
+    // a cor da boca continua sendo a mesma pergunta e é grosseria pedir
+    // de novo; a cor do meio do Tricolor não existe aqui e some.
+    const validos = new Set((alvo.campos || []).map(c => c.key));
+    const restante = {};
+    for (const [k, v] of Object.entries(estado.campos || {})) if (validos.has(k)) restante[k] = v;
+    mudar({ acabamento_id: alvo.id, campos: restante });
+  }, [cfg, params, estado.acabamento_id, estado.campos, mudar]);
 
   const acabamento = useMemo(
     () => (cfg?.acabamentos || []).find(a => a.id === estado.acabamento_id) || null,
@@ -534,10 +567,10 @@ export default function Configurador() {
                 faces da MESMA peça. */}
             <div className="rounded-xl px-3 py-4" style={{ background: '#ffffff' }}>
               <div className="flex items-end justify-center gap-4">
-                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteFrente} face="frente"
+                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente"
                   gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 190 : 216} />
                 {personalizado && estado.posicao === 'frente_verso' && (
-                  <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteVerso} face="verso"
+                  <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso"
                     gabarito={gabarito} altura={190} />
                 )}
               </div>
@@ -732,10 +765,10 @@ export default function Configurador() {
                 significar ver diferente. */}
             <div className="rounded-2xl px-6 py-6 flex items-end justify-center gap-8"
               style={{ background: '#ffffff' }}>
-              <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteFrente} face="frente"
+              <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente"
                 gabarito={gabarito} altura={Math.min(520, window.innerHeight * 0.62)} />
               {personalizado && estado.posicao === 'frente_verso' && (
-                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} arte={arteVerso} face="verso"
+                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso"
                   gabarito={gabarito} altura={Math.min(520, window.innerHeight * 0.62)} />
               )}
             </div>
