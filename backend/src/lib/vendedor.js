@@ -16,7 +16,22 @@
 // ============================================================
 const supabase = require('../config/supabase');
 
+// FORMATO x EXISTENCIA sao duas perguntas.
+//
+// UF_REGEX so diz "sao duas letras maiusculas" — e por isso "ZZ" passava
+// por ela e ia parar dentro do territorio de um vendedor, virando um
+// estado fantasma no mapa de cobertura e no filtro de clientes. Ele
+// continua util para PENEIRAR listas vindas de fora (um item torto nao
+// derruba os outros); quem valida ENTRADA usa `ehUf`.
 const UF_REGEX = /^[A-Z]{2}$/;
+
+const UFS = new Set([
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+]);
+
+/** Este estado existe? (as 26 unidades federativas mais o DF) */
+const ehUf = uf => UFS.has(String(uf || '').toUpperCase().trim());
 
 // Só pedido conta. Orçamento vive em ORCAMENTOS; devolução não é venda.
 const SALE_TYPES = ['sale', 'order'];
@@ -793,7 +808,7 @@ const pad2 = n => String(n).padStart(2, '0');
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
 module.exports = {
-  UF_REGEX,
+  UF_REGEX, UFS, ehUf,
   parseMonth, monthKey, prevMonthOf, monthBounds, daysInMonth, effectiveDate,
   fetchSales, saleUnits, saleRevenue, chronological,
   loadPlans, planForMonth, planGoal, tabelaAusente,

@@ -9,16 +9,8 @@ import { useQuery } from '@tanstack/react-query';
 import { UserCog, MapPin, Target, ShieldCheck, LogOut } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { useVend, fmtBRL, fmtUn, fmtPct } from './ui';
+import { useVend, fmtBRL, fmtUn, fmtPct, UF_NOME } from './ui';
 
-const UF_NOME = {
-  AC:'Acre', AL:'Alagoas', AP:'Amapá', AM:'Amazonas', BA:'Bahia', CE:'Ceará',
-  DF:'Distrito Federal', ES:'Espírito Santo', GO:'Goiás', MA:'Maranhão',
-  MT:'Mato Grosso', MS:'Mato Grosso do Sul', MG:'Minas Gerais', PA:'Pará',
-  PB:'Paraíba', PR:'Paraná', PE:'Pernambuco', PI:'Piauí', RJ:'Rio de Janeiro',
-  RN:'Rio Grande do Norte', RS:'Rio Grande do Sul', RO:'Rondônia', RR:'Roraima',
-  SC:'Santa Catarina', SP:'São Paulo', SE:'Sergipe', TO:'Tocantins',
-};
 
 export default function DadosVendedor() {
   const v = useVend();

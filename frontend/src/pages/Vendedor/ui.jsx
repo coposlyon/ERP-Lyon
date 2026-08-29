@@ -44,6 +44,24 @@ export const UF_COR = {
 };
 
 /**
+ * O NOME DE CADA ESTADO, num lugar so.
+ *
+ * Esta lista existia copiada em tres telas do painel (cidades, dados do
+ * vendedor, dashboard). Nao e uma lista que muda, mas e uma lista que se
+ * escreve errado: bastava um "Espirito Santo" sem acento numa das copias
+ * para a mesma UF aparecer de dois jeitos em duas telas vizinhas.
+ */
+export const UF_NOME = {
+  AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia',
+  CE: 'Ceará', DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás',
+  MA: 'Maranhão', MT: 'Mato Grosso', MS: 'Mato Grosso do Sul', MG: 'Minas Gerais',
+  PA: 'Pará', PB: 'Paraíba', PR: 'Paraná', PE: 'Pernambuco', PI: 'Piauí',
+  RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte', RS: 'Rio Grande do Sul',
+  RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina', SP: 'São Paulo',
+  SE: 'Sergipe', TO: 'Tocantins',
+};
+
+/**
  * UMA COR POR VENDEDOR — a paleta do mapa de cobertura.
  *
  * O mapa de cobertura responde "quem atende onde", e para isso a cor

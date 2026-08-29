@@ -716,11 +716,67 @@ router.get('/config/:userId', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+/**
+ * ATRIBUIR OU TIRAR UM ESTADO DE UM VENDEDOR.
+ *
+ * Existe separado do PUT /config/:userId porque aquele reescreve a
+ * configuracao INTEIRA — meta, top de clientes, rotulo da regiao. Para
+ * distribuir vinte e um estados seriam vinte e uma leituras seguidas de
+ * vinte e uma reescritas completas, e duas pessoas distribuindo ao mesmo
+ * tempo derrubariam a meta uma da outra sem ninguem entender por que.
+ * Aqui so o territorio e tocado.
+ *
+ * NAO TIRA DE QUEM JA TEM. Estado dividido entre dois vendedores e caso
+ * legitimo e existe hoje (o RS e do Administrador e da Renata): atribuir
+ * ACRESCENTA. Para deixar um dono so, remove-se o outro — que e uma
+ * decisao, e por isso um clique proprio.
+ */
+router.post('/territorio', requireManager, async (req, res) => {
+  const uf = String(req.body?.uf || '').toUpperCase().trim();
+  const userId = String(req.body?.user_id || '').trim();
+  const remover = req.body?.acao === 'remover';
+
+  if (!V.ehUf(uf)) return res.status(400).json({ error: `"${uf}" nao e um estado brasileiro.` });
+  if (!userId) return res.status(400).json({ error: 'Escolha o vendedor' });
+
+  try {
+    const { data: atual, error: erroLer } = await supabase.from('VENDEDORES')
+      .select('*').eq('tenant_id', req.tenantId).eq('user_id', userId).maybeSingle();
+    if (erroLer) throw erroLer;
+
+    const base = (Array.isArray(atual?.territory) ? atual.territory : [])
+      .map(x => String(x).toUpperCase());
+    const territory = remover
+      ? base.filter(x => x !== uf)
+      : [...new Set([...base, uf])].sort();
+
+    // Vendedor que ainda nao tem linha em VENDEDORES ganha uma com os
+    // mesmos padroes do PUT — atribuir um estado nao pode ser a porta
+    // que cria alguem meio configurado.
+    const { data, error } = await supabase.from('VENDEDORES').upsert({
+      user_id: userId,
+      tenant_id: req.tenantId,
+      is_active: atual?.is_active !== false,
+      region_label: atual?.region_label ?? null,
+      territory,
+      plan_group: atual?.plan_group || 'padrao',
+      top_clients: atual?.top_clients || 10,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' }).select().single();
+    if (error) throw error;
+
+    audit(req, 'update', 'vendedor', userId, { territorio: remover ? 'remover' : 'atribuir', uf, territory });
+    res.json({ ok: true, user_id: userId, territory: data.territory || territory });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.put('/config/:userId', requireManager, async (req, res) => {
   const b = req.body || {};
+  // `ehUf` e nao UF_REGEX: duas letras maiusculas nao fazem um estado, e
+  // um "ZZ" gravado aqui vira estado fantasma no mapa de cobertura.
   const territory = (Array.isArray(b.territory) ? b.territory : [])
     .map(uf => String(uf).toUpperCase().trim())
-    .filter(uf => V.UF_REGEX.test(uf));
+    .filter(V.ehUf);
 
   try {
     const { data, error } = await supabase.from('VENDEDORES').upsert({

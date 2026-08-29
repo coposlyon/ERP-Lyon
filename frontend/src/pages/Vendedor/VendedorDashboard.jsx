@@ -23,24 +23,17 @@ import {
 import { Link } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { useVend, Panel, Kpi, MigracaoPendente, corUf, coresDosVendedores, Trofeu, fmtBRL, fmtUn, fmtPct, MESES } from './ui';
+import { useVend, Panel, Kpi, MigracaoPendente, corUf, coresDosVendedores, Trofeu, fmtBRL, fmtUn, fmtPct, MESES, UF_NOME } from './ui';
 import BrasilMap, { UF_LIST } from './BrasilMap';
 import RankingProdutosModal from './RankingProdutosModal';
 import CarteiraClientesModal from './CarteiraClientesModal';
 import CriarOfertaModal from './CriarOfertaModal';
 import EnviosModal from './EnviosModal';
 import CidadesUfModal from './CidadesUfModal';
+import DistribuirEstadosModal from './DistribuirEstadosModal';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
-const UF_NOME = {
-  AC:'Acre', AL:'Alagoas', AP:'Amapá', AM:'Amazonas', BA:'Bahia', CE:'Ceará',
-  DF:'Distrito Federal', ES:'Espírito Santo', GO:'Goiás', MA:'Maranhão',
-  MT:'Mato Grosso', MS:'Mato Grosso do Sul', MG:'Minas Gerais', PA:'Pará',
-  PB:'Paraíba', PR:'Paraná', PE:'Pernambuco', PI:'Piauí', RJ:'Rio de Janeiro',
-  RN:'Rio Grande do Norte', RS:'Rio Grande do Sul', RO:'Rondônia', RR:'Roraima',
-  SC:'Santa Catarina', SP:'São Paulo', SE:'Sergipe', TO:'Tocantins',
-};
 
 // Cor conhecida → bolinha correspondente. O que não estiver aqui vira
 // cinza: melhor uma bolinha neutra do que adivinhar errado.
@@ -127,6 +120,7 @@ export default function VendedorDashboard() {
   }, [cobertura]);
 
   const semDono = cobertura ? UF_LIST.filter(uf => !(cobertura[uf] || []).length) : [];
+  const [distribuir, setDistribuir] = useState(false);
 
   // { PR: 12, SC: 0 } — quantos compradores únicos por UF. O mapa e a
   // lista leem daqui: é o que decide se o estado sai preenchido ou só
@@ -387,11 +381,22 @@ export default function VendedorDashboard() {
                       Nenhum vendedor com territorio definido.
                     </p>
                   )}
-                  {semDono.length > 0 && (
-                    <p className="text-[11px] pt-1" style={{ color: v.textSubtle }}>
-                      <b style={{ color: '#fbbf24' }}>{semDono.length}</b> estado(s) sem vendedor: {semDono.join(' ')}
-                    </p>
-                  )}
+                  {/* MOSTRAR O BURACO E NAO OFERECER A PA E MEIO CAMINHO:
+                      a linha que conta os estados orfaos e o botao que
+                      resolve. */}
+                  <button onClick={() => setDistribuir(true)}
+                    className="w-full text-left text-[11px] pt-1 rounded px-1.5 py-1 hover:opacity-80"
+                    style={{ background: semDono.length ? 'rgba(251,191,36,0.10)' : 'transparent',
+                             color: v.textSubtle }}>
+                    {semDono.length > 0 ? (
+                      <>
+                        <b style={{ color: '#fbbf24' }}>{semDono.length}</b> estado(s) sem vendedor:{' '}
+                        {semDono.join(' ')} — <b style={{ color: '#60a5fa' }}>distribuir</b>
+                      </>
+                    ) : (
+                      <b style={{ color: '#60a5fa' }}>Rever a distribuicao dos estados</b>
+                    )}
+                  </button>
                 </>
               ) : territorio.length === 0 ? (
                 <p className="text-xs" style={{ color: v.empty }}>
@@ -535,6 +540,8 @@ export default function VendedorDashboard() {
       <EnviosModal open={envios} onClose={() => setEnvios(false)} sellerId={sellerId} />
 
       <CidadesUfModal uf={cidadesUf} onClose={() => setCidadesUf(null)} />
+      <DistribuirEstadosModal aberto={distribuir} cobertura={cobertura}
+        onClose={() => setDistribuir(false)} />
     </div>
   );
 }
