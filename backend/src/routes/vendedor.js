@@ -90,6 +90,22 @@ router.get('/dashboard', async (req, res) => {
     // do estado pelo rosto de quem atende ali.
     const responsaveis = await V.responsaveisPorUf(tenantId, config.territory);
 
+    // A COBERTURA DA EQUIPE — o país inteiro dividido entre os vendedores.
+    //
+    // É a mesma conta de `responsaveis`, sem o recorte do território de
+    // quem está olhando: UF por UF, quem atende. Serve ao mapa, que passa
+    // a pintar cada estado com a cor do vendedor dele — e o estado sem
+    // ninguém fica apagado, que é como um buraco de cobertura aparece
+    // sem alguém precisar conferir vinte e sete cadastros.
+    //
+    // SÓ PARA GESTOR, e sem `user_id` na consulta: é o "Meu painel" de
+    // quem comanda. Um vendedor vendo o território dos colegas é
+    // informação de gestão vazando para quem não gere — e ele já tem, na
+    // lista ao lado, o que precisa sobre os estados dele.
+    const cobertura = (isManager(req) && !req.query.user_id)
+      ? await V.responsaveisPorUf(tenantId, [])
+      : null;
+
     res.json({
       // As tabelas de configuração nascem na migração 065, aplicada à mão
       // no Supabase. Sem elas o painel mostra as vendas e avisa o que falta.
@@ -101,6 +117,7 @@ router.get('/dashboard', async (req, res) => {
         territory: config.territory,
         top_clients: config.top_clients,
         responsaveis,
+        cobertura,
       },
       period: { year, month, month_key: referenceMonth },
       kpis: {

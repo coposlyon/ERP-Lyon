@@ -55,10 +55,68 @@ export const UF_LIST = Object.keys(UF_SHAPES).sort();
  *                   período. UF do território com zero fica só com o
  *                   contorno na cor dela, sem preenchimento: o vendedor
  *                   vê que o estado é dele E que está zerado.
- * @param onSelect   clique numa UF atendida (abre as cidades)
+ * @param cobertura  { PR: [{user_id, name}] } — quem atende cada UF do
+ *                   país. Presente só no "Meu painel" de gestor, e é o
+ *                   que troca o mapa de MEU TERRITÓRIO para COBERTURA DA
+ *                   EQUIPE (ver o bloco logo abaixo).
+ * @param cores      { user_id: '#hex' } — de coresDosVendedores()
+ * @param onSelect   clique numa UF (abre as cidades)
  */
-export default function BrasilMap({ territory = [], buyers = {}, onSelect, height = 220 }) {
+export default function BrasilMap({
+  territory = [], buyers = {}, cobertura = null, cores = {}, onSelect, height = 220,
+}) {
   const atendidos = new Set(territory);
+
+  /**
+   * O MAPA DE COBERTURA — o país dividido entre os vendedores.
+   *
+   * A cor aqui é da PESSOA, não do estado: os quatro estados de um mesmo
+   * vendedor saem da mesma cor, e o mapa passa a se ler de relance como
+   * "esta mancha é do Fulano".
+   *
+   * O ESTADO SEM NINGUÉM FICA APAGADO, e é o ponto: buraco de cobertura
+   * não aparece numa lista de quem atende o quê — aparece no vazio entre
+   * as manchas. Era preciso conferir vinte e sete cadastros para achar o
+   * que este mapa mostra sem ninguém procurar.
+   */
+  if (cobertura) {
+    return (
+      <svg viewBox="0 0 1000 1000" style={{ width: '100%', height, display: 'block' }}
+        role="img" aria-label="Mapa do Brasil com a cobertura da equipe de vendas">
+        {Object.entries(UF_SHAPES).map(([uf, pts]) => {
+          const donos = cobertura[uf] || [];
+          const dono  = donos[0] || null;
+          const cor   = dono ? (cores[dono.user_id] || '#94a3b8') : null;
+          const clicavel = !!dono && !!onSelect;
+          return (
+            <polygon
+              key={uf}
+              points={poly(pts)}
+              fill={cor ? `${cor}55` : 'rgba(148,163,184,0.06)'}
+              stroke={cor || 'rgba(148,163,184,0.28)'}
+              strokeWidth={cor ? 2.5 : 1.2}
+              strokeLinejoin="round"
+              /* ESTADO DIVIDIDO ENTRE DOIS: o contorno vira tracejado. O
+                 preenchimento so cabe uma cor, e pintar o RS inteiro de
+                 uma pessoa quando duas atendem ali seria o mapa mentindo
+                 em silencio. O tracejado avisa; a legenda e o balao
+                 dizem quem sao. */
+              strokeDasharray={donos.length > 1 ? '7 4' : undefined}
+              onClick={clicavel ? () => onSelect(uf) : undefined}
+              style={{ cursor: clicavel ? 'pointer' : 'default', transition: 'fill .2s' }}
+            >
+              <title>
+                {uf}
+                {donos.length
+                  ? ` — ${donos.map(d => d.name).join(' · ')}${donos.length > 1 ? ' (dividido)' : ''}`
+                  : ' — sem vendedor definido'}
+              </title>
+            </polygon>
+          );
+        })}
+      </svg>
+    );
+  }
 
   return (
     <svg viewBox="0 0 1000 1000" style={{ width: '100%', height, display: 'block' }}

@@ -43,6 +43,36 @@ export const UF_COR = {
   SP: '#83cdec', TO: '#ee5896',
 };
 
+/**
+ * UMA COR POR VENDEDOR — a paleta do mapa de cobertura.
+ *
+ * O mapa de cobertura responde "quem atende onde", e para isso a cor
+ * precisa ser da PESSOA, não do estado: quatro estados do mesmo vendedor
+ * têm que sair da mesma cor, senão o mapa conta quatro histórias em vez
+ * de uma.
+ *
+ * São catorze tons tirados da paleta das UFs (já medidos contra o fundo
+ * escuro do painel) e reordenados para que vizinhos na lista fiquem
+ * longes no círculo cromático — com poucos vendedores, que é o caso, as
+ * cores sorteadas nunca saem parecidas.
+ */
+export const CORES_VENDEDOR = [
+  '#5cf5bc', '#f55c5c', '#5ca8f5', '#f5e25c', '#c661ef', '#82f55c', '#ed7d45',
+  '#45ede6', '#ee58a9', '#b3ec83', '#8783ec', '#f55cce', '#ecc983', '#7488f1',
+];
+
+/**
+ * A cor de cada vendedor, estável entre recarregamentos.
+ *
+ * A ordem é a do `user_id`, e não a do nome: renomear alguém não pode
+ * trocar a cor do mapa inteiro. Mais vendedores que cores, a lista dá a
+ * volta — com equipe desse tamanho, isso não acontece.
+ */
+export function coresDosVendedores(cobertura) {
+  const ids = [...new Set(Object.values(cobertura || {}).flat().map(p => p.user_id))].sort();
+  return Object.fromEntries(ids.map((id, i) => [id, CORES_VENDEDOR[i % CORES_VENDEDOR.length]]));
+}
+
 // Cinza translúcido para o que não é UF conhecida.
 const SEM_COR = {
   base: '#94a3b8', fill: 'rgba(148,163,184,0.30)', stroke: 'rgba(148,163,184,0.45)',

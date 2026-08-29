@@ -23,8 +23,8 @@ import {
 import { Link } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { useVend, Panel, Kpi, MigracaoPendente, corUf, Trofeu, fmtBRL, fmtUn, fmtPct, MESES } from './ui';
-import BrasilMap from './BrasilMap';
+import { useVend, Panel, Kpi, MigracaoPendente, corUf, coresDosVendedores, Trofeu, fmtBRL, fmtUn, fmtPct, MESES } from './ui';
+import BrasilMap, { UF_LIST } from './BrasilMap';
 import RankingProdutosModal from './RankingProdutosModal';
 import CarteiraClientesModal from './CarteiraClientesModal';
 import CriarOfertaModal from './CriarOfertaModal';
@@ -103,6 +103,30 @@ export default function VendedorDashboard() {
   const cores    = data?.colors || [];
   const carteiraPrev = data?.carteira || [];
   const territorio = data?.seller?.territory || [];
+
+  // A COBERTURA DA EQUIPE. So vem preenchida no "Meu painel" de gestor -
+  // escolher um vendedor no seletor devolve o mapa ao territorio dele,
+  // que e o que se quer olhar quando se esta olhando UMA pessoa.
+  const cobertura = data?.seller?.cobertura || null;
+  const coresVend = useMemo(() => coresDosVendedores(cobertura), [cobertura]);
+
+  // A legenda que o mapa colorido exige para ser lido: quem e cada cor e
+  // ate onde ela vai. Um mapa de catorze tons sem legenda e decoracao.
+  const equipe = useMemo(() => {
+    if (!cobertura) return [];
+    const por = new Map();
+    for (const [uf, donos] of Object.entries(cobertura)) {
+      for (const d of donos || []) {
+        if (!por.has(d.user_id)) por.set(d.user_id, { ...d, ufs: [] });
+        por.get(d.user_id).ufs.push(uf);
+      }
+    }
+    return [...por.values()]
+      .map(x => ({ ...x, ufs: x.ufs.sort() }))
+      .sort((a, b) => b.ufs.length - a.ufs.length || a.name.localeCompare(b.name, 'pt-BR'));
+  }, [cobertura]);
+
+  const semDono = cobertura ? UF_LIST.filter(uf => !(cobertura[uf] || []).length) : [];
 
   // { PR: 12, SC: 0 } — quantos compradores únicos por UF. O mapa e a
   // lista leem daqui: é o que decide se o estado sai preenchido ou só
@@ -337,13 +361,39 @@ export default function VendedorDashboard() {
           )}
         </Panel>
 
-        <Panel title="Território atendido"
-          hint="Definido pelo Administrativo no cadastro do vendedor — o vendedor não altera. Cada estado tem a sua cor, a mesma da lista ao lado; o estado preenchido é o que teve compra no período, o só contornado é o que está zerado. Clique no estado ou no olho para ver as cidades.">
+        {/* DOIS MAPAS, UM LUGAR.
+            No "Meu painel" de gestor ele mostra a COBERTURA: o pais
+            dividido entre os vendedores, uma cor por pessoa, e o estado
+            sem ninguem apagado - buraco de cobertura nao aparece numa
+            lista, aparece no vazio entre as manchas.
+            Escolhendo um vendedor no seletor, volta a ser o territorio
+            DELE, com o preenchido marcando onde houve compra. */}
+        <Panel title={cobertura ? 'Cobertura da equipe' : 'Território atendido'}
+          hint={cobertura
+            ? 'O pais dividido entre os vendedores: cada cor e uma pessoa, e o estado apagado nao tem ninguem atendendo. Escolha um vendedor no seletor do topo para ver o territorio dele com as compras do periodo. Clique no estado ou no olho para ver as cidades.'
+            : 'Definido pelo Administrativo no cadastro do vendedor — o vendedor não altera. Cada estado tem a sua cor, a mesma da lista ao lado; o estado preenchido é o que teve compra no período, o só contornado é o que está zerado. Clique no estado ou no olho para ver as cidades.'}>
           <div className="grid grid-cols-2 gap-3 items-center">
             <BrasilMap territory={territorio} buyers={compradores} height={190}
-              onSelect={setCidadesUf} />
+              cobertura={cobertura} cores={coresVend} onSelect={setCidadesUf} />
             <div className="space-y-2 overflow-auto" style={{ maxHeight: 190 }}>
-              {territorio.length === 0 ? (
+              {cobertura ? (
+                <>
+                  {equipe.map(pes => (
+                    <LinhaDoVendedor key={pes.user_id} p={pes} v={v} cor={coresVend[pes.user_id]}
+                      onVerCidades={setCidadesUf} />
+                  ))}
+                  {equipe.length === 0 && (
+                    <p className="text-xs" style={{ color: v.empty }}>
+                      Nenhum vendedor com territorio definido.
+                    </p>
+                  )}
+                  {semDono.length > 0 && (
+                    <p className="text-[11px] pt-1" style={{ color: v.textSubtle }}>
+                      <b style={{ color: '#fbbf24' }}>{semDono.length}</b> estado(s) sem vendedor: {semDono.join(' ')}
+                    </p>
+                  )}
+                </>
+              ) : territorio.length === 0 ? (
                 <p className="text-xs" style={{ color: v.empty }}>
                   Nenhuma UF definida. O território é configurado no cadastro do colaborador.
                 </p>
@@ -506,6 +556,43 @@ export default function VendedorDashboard() {
 //
 // Estado sem ninguém configurado volta ao selo antigo com a sigla, e diz
 // "sem responsável" em vez de fingir um rosto.
+/**
+ * Uma linha da legenda do mapa de cobertura: a pessoa, a cor dela e os
+ * estados que ela atende.
+ *
+ * As siglas sao clicaveis uma a uma - e o mesmo caminho do olho, e a
+ * pergunta que se faz olhando um mapa de cobertura costuma ser sobre um
+ * estado especifico ("quais cidades tem no MS?"), nao sobre a pessoa.
+ */
+function LinhaDoVendedor({ p, v, cor, onVerCidades }) {
+  return (
+    <div className="flex items-start gap-2.5" title={`${p.name} atende ${p.ufs.join(', ')}`}>
+      {p.avatar_url ? (
+        <img src={p.avatar_url} alt={p.name} className="w-7 h-7 rounded-full object-cover shrink-0"
+          style={{ border: `2px solid ${cor}` }} />
+      ) : (
+        <span className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+          style={{ background: `${cor}2a`, color: cor, border: `2px solid ${cor}` }}>
+          {p.iniciais}
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-[12px] font-semibold truncate" style={{ color: v.textPrimary }}>{p.name}</p>
+        <div className="flex flex-wrap gap-1 mt-0.5">
+          {p.ufs.map(uf => (
+            <button key={uf} onClick={() => onVerCidades(uf)}
+              title={`Ver as cidades de ${uf}`}
+              className="px-1.5 rounded text-[10px] font-bold leading-[15px]"
+              style={{ background: `${cor}2a`, color: cor }}>
+              {uf}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LinhaDoEstado({ uf, v, comprou, compradores, responsaveis, onVerCidades }) {
   const cor = corUf(uf, comprou);
   const nome = UF_NOME[uf] || uf;
