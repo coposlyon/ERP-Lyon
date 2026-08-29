@@ -25,7 +25,7 @@ import {
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
-  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Megaphone, Factory, ShieldCheck,
+  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, ShieldCheck,
   Calculator, PieChart, Home, Landmark, Star, Trophy,
   MessageSquare, LogOut, LayoutGrid, Globe, CloudUpload, UserPlus, UserMinus,
 } from 'lucide-react';
@@ -71,19 +71,18 @@ export const menuItems = [
       { label: 'Plano de Metas', path: '/vendedor/config', icon: Trophy, adminOnly: true },
     ],
   },
-  // MARKETING É MÓDULO PRÓPRIO.
+  // MARKETING SAIU DO MENU, pelo mesmo caminho que CRM e Qualidade: a
+  // Lyon não vai usar por enquanto, e item de menu que ninguém abre é
+  // uma linha que todo mundo lê todo dia para pular.
   //
-  // Ele morava dentro de Comercial, ao lado de Pedidos e Pagamentos,
-  // porque fala com cliente. Só que quem abre Marketing não está
-  // vendendo: está montando campanha, arte e disparo — outro trabalho,
-  // outra hora do dia, outra pessoa muitas vezes. Dentro do Comercial
-  // ele era a última linha de uma lista que ninguém lê até o fim.
-  {
-    label: 'Marketing',
-    icon: Megaphone,
-    path: '/marketing',
-    module: 'marketing',
-  },
+  // O QUE SAIU foi só o caminho: o item aqui e a caixinha de permissão
+  // (lib/setores.js). A tela, a rota /marketing, as rotas do servidor e
+  // as tabelas de campanha continuam de pé — as campanhas já publicadas
+  // seguem aparecendo para o vendedor montar oferta, que é o único
+  // lugar que consome esse dado.
+  //
+  // PARA VOLTAR: devolva este item e a linha `marketing` em
+  // lib/setores.js. Nada mais precisa ser refeito.
   {
     label: 'Cadastros',
     icon: Package,
@@ -178,17 +177,23 @@ export const menuItems = [
     ],
   },
 
-  // Os portais não pedem módulo: quem entra é a pessoa, não o setor.
-  // Cada um pode ser liberado individualmente em Permissões.
-  {
-    label: 'Portais',
-    icon: Home,
-    children: [
-      { label: 'Meu Portal',         path: '/portal/eu',       icon: Home },
-      { label: 'Portal do Gestor',   path: '/portal/gestor',   icon: Briefcase },
-      { label: 'Portal do Contador', path: '/portal/contador', icon: Calculator },
-    ],
-  },
+  // PORTAIS SAIU DO MENU (Meu Portal, Portal do Gestor, Portal do
+  // Contador). A Lyon não vai usar por enquanto.
+  //
+  // ATENÇÃO AO QUE ISSO MUDA, porque estes três não eram como os outros:
+  // eles não pediam módulo — quem entrava era a PESSOA, liberada uma a
+  // uma em Permissões. Sumindo daqui, somem também da árvore de
+  // permissões (TELAS nasce desta lista), e as liberações individuais
+  // que já existirem deixam de ter onde ser revistas.
+  //
+  // O QUE NÃO QUEBRA: as rotas /portal/eu, /portal/gestor e
+  // /portal/contador continuam de pé, e os avisos do sino que apontam
+  // para /portal/gestor (solicitação, justificativa e férias esperando
+  // decisão — lib/avisos.js) continuam levando a uma tela que abre. A
+  // fila de aprovação do gestor também vive em RH → Férias /
+  // Afastamentos, que segue no menu: nenhum pedido fica sem quem decida.
+  //
+  // PARA VOLTAR: devolva este bloco. As telas nunca saíram do lugar.
 
   // --- Módulos diretos (sem submenu) ---
   {
@@ -204,16 +209,20 @@ export const menuItems = [
       { label: 'Compras',  path: '/purchases', icon: ShoppingCart, module: 'purchases' },
     ],
   },
+  // PRODUÇÃO SAIU DO MENU (Ordens de Produção). A Lyon não vai usar por
+  // enquanto. Sumiu o caminho e a caixinha de permissão (lib/setores.js);
+  // a tela, a rota /production e as rotas do servidor continuam de pé.
+  //
+  // DEVOLUÇÕES FICOU, e por isso voltou a ser item solto. Ela morava
+  // dentro deste grupo porque a peça devolvida vai parar na fábrica —
+  // mas Devoluções é outro módulo (`returns`), que ninguém pediu para
+  // tirar. Deixá-la sozinha dentro de um grupo chamado "Produção" seria
+  // um menu prometendo uma seção que não existe mais.
   {
-    // A devolução é o pedido voltando para a fábrica: quem trata dela é
-    // quem produz. Como item solto no menu, ela ficava a doze linhas de
-    // distância da Produção, que é onde a peça devolvida vai parar.
-    label: 'Produção',
-    icon: Factory,
-    children: [
-      { label: 'Ordens de Produção', path: '/production', icon: Factory, module: 'production' },
-      { label: 'Devoluções',         path: '/returns',    icon: RotateCcw, module: 'returns' },
-    ],
+    label: 'Devoluções',
+    icon: RotateCcw,
+    path: '/returns',
+    module: 'returns',
   },
 
   // Sites — um submenu por endereço público. A lista NÃO é escrita aqui:

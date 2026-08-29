@@ -22,10 +22,18 @@ const supabase = require('../config/supabase');
 // desenha como colunas da matriz — módulo fora daqui não aparece para
 // ninguém marcar, então acrescentar módulo novo começa aqui.
 //
-// CRM e QUALIDADE SAÍRAM DAQUI (e do menu) porque a Lyon não usa
-// nenhum dos dois. As telas e as tabelas continuam no repositório: o
-// que sumiu foi o caminho até elas e a caixinha de permissão. Voltar é
-// devolver a linha aqui e a entrada no menu.
+// CRM, QUALIDADE, MARKETING e PRODUÇÃO SAÍRAM DAQUI (e do menu)
+// porque a Lyon não usa nenhum dos quatro. As telas e as tabelas
+// continuam no repositório: o que sumiu foi o caminho até elas e a
+// caixinha de permissão. Voltar é devolver a linha aqui e a entrada no
+// menu.
+//
+// CUIDADO COM `production`: ele não era só a tela de Ordens de
+// Produção. As fases de fábrica do pedido (vegetal, revelação, pintura,
+// borda, produção, qualidade, embalagem, foto — lib/fluxoPedido.js)
+// perguntam por ele para saber quem pode avançar a etapa. Sem o módulo,
+// ninguém pode ser habilitado nele e essas etapas passam a ser movidas
+// só por gerente e admin, que passam por cima da divisão por área.
 const MODULOS = [
   { key: 'dashboard',        label: 'Dashboard',            grupo: 'Geral' },
   { key: 'vendedor',         label: 'Painel do Vendedor',   grupo: 'Área do vendedor' },
@@ -38,14 +46,12 @@ const MODULOS = [
   { key: 'quotes',           label: 'Orçamentos',           grupo: 'Comercial' },
   { key: 'customizations',   label: 'Personalizações',      grupo: 'Comercial' },
   { key: 'price-tables',     label: 'Tabelas de Preço',     grupo: 'Comercial' },
-  { key: 'marketing',        label: 'Marketing',            grupo: 'Comercial' },
   { key: 'products',         label: 'Produtos',             grupo: 'Cadastros' },
   { key: 'customers',        label: 'Clientes',             grupo: 'Cadastros' },
   { key: 'suppliers',        label: 'Fornecedores',         grupo: 'Cadastros' },
   { key: 'employees',        label: 'Colaboradores',        grupo: 'Cadastros' },
   { key: 'stock',            label: 'Estoque',              grupo: 'Operação' },
   { key: 'purchases',        label: 'Compras',              grupo: 'Operação' },
-  { key: 'production',       label: 'Produção',             grupo: 'Operação' },
   { key: 'logistics',        label: 'Logística',            grupo: 'Operação' },
   { key: 'returns',          label: 'Devoluções',           grupo: 'Operação' },
   { key: 'financial',        label: 'Financeiro',           grupo: 'Administrativo' },
