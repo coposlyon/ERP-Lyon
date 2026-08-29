@@ -61,7 +61,11 @@ const CATALOGO = [
   // Item 9: comprovante de residência é documento PESSOAL.
   { key: 'comprovante_residencia', titulo: 'Comprovante de residência', categoria: 'pessoal', origem: 'externo',
     obrigatorio: true, tem_validade: true, ajuda: 'Conta de luz, água ou telefone — até 90 dias.' },
-  { key: 'foto', titulo: 'Foto 3x4 / foto atual', categoria: 'pessoal', origem: 'externo', obrigatorio: false, sem_validade: true },
+  { key: 'cartao_sus', titulo: 'Cartão do SUS', categoria: 'pessoal', origem: 'externo',
+    obrigatorio: false, sem_validade: true,
+    ajuda: 'Opcional — o kit pede só quando o processo exigir.' },
+  { key: 'foto', titulo: 'Foto 3x4 / foto atual', categoria: 'pessoal', origem: 'externo', obrigatorio: false, sem_validade: true,
+    ajuda: 'Guardada separada da biometria do ponto — são duas coisas, e o kit separa.' },
   { key: 'reservista', titulo: 'Certificado de reservista', categoria: 'pessoal', origem: 'externo', obrigatorio: false, sem_validade: true },
   { key: 'escolaridade', titulo: 'Comprovante de escolaridade', categoria: 'pessoal', origem: 'externo', obrigatorio: false, sem_validade: true },
 
@@ -70,6 +74,9 @@ const CATALOGO = [
     obrigatorio: true, sem_validade: true, contratos: ['CLT', 'Aprendiz', 'Temporário'] },
   { key: 'pis', titulo: 'PIS / NIS / PASEP', categoria: 'trabalhista', origem: 'externo',
     obrigatorio: true, sem_validade: true, contratos: ['CLT', 'Aprendiz', 'Temporário'] },
+  { key: 'certificados_cursos', titulo: 'Certificados de cursos / treinamentos', categoria: 'trabalhista', origem: 'externo',
+    obrigatorio: false, tem_validade: true,
+    ajuda: 'Conforme o cargo — NR, CNH especial, habilitação técnica.' },
   { key: 'antecedentes', titulo: 'Certidão de antecedentes criminais', categoria: 'trabalhista', origem: 'externo',
     obrigatorio: false, tem_validade: true, ajuda: 'Quando o cargo exigir.' },
 
@@ -102,6 +109,26 @@ const CATALOGO = [
     obrigatorio: false, tem_validade: true, condicao: 'tem_filhos' },
 ];
 
+// ── Documentos DA EMPRESA ───────────────────────────────
+//
+// A CCT e o unico documento do kit que nao e de ninguem em particular:
+// ela vale para o quadro inteiro. O kit e explicito sobre o tratamento
+// — "documento corporativo de referencia; cadastrar e versionar, NAO
+// exigir upload do empregado" — e por isso ela entra com `fase:
+// 'corporativo'`, que e o que mantem `exigidosPara()` sem ela.
+//
+// Sem essa marca ela viraria uma pendencia de admissao em cima de cada
+// colaborador, cobrando de vinte pessoas o mesmo PDF que o RH assina uma
+// vez por ano com o sindicato.
+const CORPORATIVOS = [
+  { key: 'cct', titulo: 'CCT / instrumento coletivo', categoria: 'corporativo',
+    fase: 'corporativo', origem: 'corporativo', obrigatorio: true, tem_validade: true,
+    ajuda: 'Vale para o quadro inteiro. Cadastrar e versionar por vigência — nunca pedir ao colaborador.' },
+];
+
+/** Os documentos da EMPRESA, que valem para todo o quadro. */
+const documentosCorporativos = () => CORPORATIVOS.map(d => ({ ...d }));
+
 const CATEGORIAS = {
   pessoal: 'Documentos pessoais',
   trabalhista: 'Documentos trabalhistas',
@@ -112,9 +139,10 @@ const CATEGORIAS = {
   conjuge: 'Cônjuge',
   dependente: 'Filhos e dependentes',
   desligamento: 'Desligamento',
+  corporativo: 'Documentos da empresa',
 };
 
-const porChave = Object.fromEntries(CATALOGO.map(d => [d.key, d]));
+const porChave = Object.fromEntries([...CATALOGO, ...CORPORATIVOS].map(d => [d.key, d]));
 
 /**
  * O que ESTA pessoa precisa entregar.
@@ -210,4 +238,7 @@ function exigidosPara(colaborador) {
   }));
 }
 
-module.exports = { CATALOGO, CATEGORIAS, DESLIGAMENTO, porChave, exigidosPara, exigidosNoDesligamento };
+module.exports = {
+  CATALOGO, CATEGORIAS, DESLIGAMENTO, CORPORATIVOS,
+  porChave, exigidosPara, exigidosNoDesligamento, documentosCorporativos,
+};

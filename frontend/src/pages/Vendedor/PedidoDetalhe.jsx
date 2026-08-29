@@ -160,10 +160,15 @@ export default function PedidoDetalhe() {
   /**
    * Manda o link de acompanhamento para o cliente.
    *
-   * O link não carrega o pedido dentro dele: o cliente entra com o CPF
-   * dele mais o número do pedido. Assim, link encaminhado para o grupo
-   * da família não abre a compra de ninguém — quem não tem o CPF do
-   * titular não passa da porta.
+   * O link não carrega o pedido dentro dele: o cliente entra com o CPF e
+   * a DATA DE NASCIMENTO dele (é o que /acompanhar pede — ver
+   * routes/public-pedido.js, POST /acesso). Assim, link encaminhado para
+   * o grupo da família não abre a compra de ninguém.
+   *
+   * O número do pedido NÃO é senha: a mensagem pedia CPF + número do
+   * pedido, e o número está escrito na própria mensagem. Quem seguisse a
+   * instrução ao pé da letra não entrava, e quem entrasse com o link
+   * encaminhado não precisaria de nada além do que estava ali.
    */
   async function compartilhar(pedido, cliente) {
     const link = `${window.location.origin}/acompanhar`;
@@ -173,7 +178,7 @@ export default function PedidoDetalhe() {
       `Acompanhe seu pedido ${pedido.codigo} em tempo real:`,
       link,
       '',
-      `Entre com o seu CPF e o número do pedido (${pedido.codigo}).`,
+      'Entre com o seu CPF e a sua data de nascimento.',
     ].join('\n');
 
     const fone = String(cliente?.mobile || cliente?.phone || '').replace(/\D/g, '');
