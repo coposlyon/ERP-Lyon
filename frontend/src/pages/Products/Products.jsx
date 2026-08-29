@@ -31,8 +31,10 @@ export default function Products() {
   const [delTarget, setDelTarget] = useState(null); // produto a apagar (confirmação)
   const [exporting, setExporting] = useState(false);
   const [categoryId, setCategoryId] = useState('');
-  // Liso x personalizado. '' = os dois juntos, que é como a tela sempre
-  // funcionou — quem abre Produtos sem escolher continua vendo tudo.
+  // Liso x personalizado. Não são dois estoques: é o MESMO copo em duas
+  // vitrines. Na loja ele sai liso; no catálogo, personalizado. As duas
+  // abas repetem os mesmos produtos de propósito. '' = tudo junto, que é
+  // como a tela sempre funcionou.
   const [catalogo, setCatalogo] = useState('');
   const [linha, setLinha] = useState('');   // '' | tradicional | degrad | bicolor | jateado
   const [cor, setCor] = useState('');       // nome da cor (ex.: AMARELO LIMÃO)
@@ -406,8 +408,8 @@ export default function Products() {
           <h1 className="page-title">Produtos</h1>
           <p className="text-sm text-gray-500 mt-1">
             {data?.total || 0} produto{(data?.total || 0) === 1 ? '' : 's'}
-            {catalogo === 'liso' && ' — vendidos lisos na loja'}
-            {catalogo === 'personalizado' && ' — publicados em /personalizados'}
+            {catalogo === 'liso' && ' — vendidos lisos na loja, sem alteração'}
+            {catalogo === 'personalizado' && ' — no catálogo, com as alterações que o cliente pedir'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -423,7 +425,8 @@ export default function Products() {
         </div>
       </div>
 
-      {/* Onde o produto é vendido. O cadastro é o mesmo; muda a vitrine. */}
+      {/* Onde o produto é vendido. O cadastro é o mesmo e as abas se
+          sobrepõem: quem está nas duas aparece nas duas. */}
       <div className="flex gap-1 p-1 rounded-lg bg-gray-100 w-fit">
         {[
           { k: '', r: 'Todos' },

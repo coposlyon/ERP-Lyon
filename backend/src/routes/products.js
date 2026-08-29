@@ -86,11 +86,18 @@ router.get('/', async (req, res) => {
   // do nome, não um "contém 400" que pegaria 2400, 1400, 4000...
   const volumeFilter = parseInt(req.query.volume) || 0;
 
-  // Liso x personalizado. `show_in_catalogo` é a coluna que o cadastro
-  // mestre usa para publicar em /personalizados (migração 077); o resto
-  // do catálogo é liso e vive na /loja. A comparação com `true` é
-  // proposital: quem nunca foi marcado tem NULL, e NULL é liso — não
-  // é "indefinido" que some das duas listas.
+  // Liso x personalizado. NÃO SÃO DOIS MONTES: são duas VITRINES, e o
+  // mesmo copo mora nas duas. Na /loja ele é vendido liso, do jeito que
+  // sai da máquina; em /personalizados o cliente escolhe acabamento,
+  // cor e arte em cima do MESMO cadastro. Por isso cada aba pergunta
+  // pela sua própria chave — `show_in_store` para a loja de lisos,
+  // `show_in_catalogo` (migração 077) para o catálogo personalizado — e
+  // nenhuma das duas é a negação da outra. Ler "liso" como "não está no
+  // catálogo" esvaziava a aba inteira no dia em que os 97 copos foram
+  // publicados nos dois lugares.
+  //
+  // NULL conta como loja: `show_in_store` nasceu depois de metade do
+  // cadastro, e quem nunca foi marcado sempre foi vendido liso.
   const tipoCatalogo = ['liso', 'personalizado'].includes(req.query.catalogo) ? req.query.catalogo : ''
   const emMemoria = !!borderFilter || !!volumeFilter;
 
@@ -112,7 +119,7 @@ router.get('/', async (req, res) => {
     if (is_active !== undefined) query = query.eq('is_active', is_active === 'true');
 
     if (tipoCatalogo === 'personalizado') query = query.eq('show_in_catalogo', true);
-    else if (tipoCatalogo === 'liso') query = query.or('show_in_catalogo.is.null,show_in_catalogo.eq.false');
+    else if (tipoCatalogo === 'liso') query = query.or('show_in_store.is.null,show_in_store.eq.true');
 
     // Sem filtro em memória: pagina no banco (comportamento normal). Com filtro:
     // traz o conjunto (limitado, igual ao /filters) e pagina depois em memória.
