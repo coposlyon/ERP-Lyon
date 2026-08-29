@@ -145,9 +145,25 @@ export default function MeusPedidos() {
               </p>
 
               <div className="space-y-2">
+                {/* O CARTAO NO CELULAR.
+                    Ele era uma linha de quatro colunas, e a terceira
+                    ("R$ 550,00" + "entrega 29/08/2026") era `shrink-0`:
+                    nunca encolhia. Num telefone de 360px ela comia a
+                    largura do meio ate sobrar menos que a palavra
+                    "PV-000001", que entao quebrava no meio e o status
+                    virava "A...". Tres informacoes disputando a mesma
+                    linha, e a que perdia era o numero do pedido - o
+                    unico dado pelo qual a pessoa procura.
+
+                    Agora o codigo e o valor dividem a PRIMEIRA linha,
+                    um em cada ponta e nenhum dos dois quebravel; o
+                    status fica sozinho na segunda, com espaco para o
+                    nome inteiro; e as datas descem para a terceira,
+                    miudas. Nada e `shrink-0` a nao ser o icone e a
+                    seta, que tem tamanho fixo de verdade. */}
                 {lista.map(p => (
                   <button key={p.id} onClick={() => navigate(`/acompanhar/pedido/${p.id}`)}
-                    className="w-full text-left rounded-xl px-4 py-3.5 flex items-center gap-3 transition-colors"
+                    className="w-full text-left rounded-xl px-3 py-3 sm:px-4 sm:py-3.5 flex items-center gap-2.5 sm:gap-3 transition-colors"
                     style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(96,165,250,0.22)' }}>
                     <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
                       style={{ background: 'rgba(59,130,246,0.16)' }}>
@@ -155,31 +171,27 @@ export default function MeusPedidos() {
                     </span>
 
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-baseline gap-2 flex-wrap">
-                        <span className="font-bold text-white">{p.codigo}</span>
-                        <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                          {dataBR(p.data)}
-                        </span>
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="font-bold text-white whitespace-nowrap">{p.codigo}</span>
+                        <span className="font-semibold text-white text-sm whitespace-nowrap">{brl(p.total)}</span>
                       </span>
+
                       {/* O status usa a mesma cor do ERP: o cliente e a
                           fábrica falando do mesmo pedido com a mesma cor
                           evita o telefonema de "mas aqui está diferente". */}
-                      <span className="flex items-center gap-1.5 mt-1">
+                      <span className="flex items-center gap-1.5 mt-1 min-w-0">
                         <span className="w-1.5 h-1.5 rounded-full shrink-0"
                           style={{ background: corStatus(p.cor) }} />
                         <span className="text-[12px] truncate" style={{ color: corStatus(p.cor) }}>
                           {p.status}
                         </span>
                       </span>
-                    </span>
 
-                    <span className="text-right shrink-0">
-                      <span className="block font-semibold text-white text-sm">{brl(p.total)}</span>
-                      {p.previsao_entrega && (
-                        <span className="block text-[10px]" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                          entrega {dataBR(p.previsao_entrega)}
-                        </span>
-                      )}
+                      <span className="block text-[10px] mt-0.5 truncate"
+                        style={{ color: 'rgba(255,255,255,0.45)' }}>
+                        {dataBR(p.data)}
+                        {p.previsao_entrega ? ` · entrega ${dataBR(p.previsao_entrega)}` : ''}
+                      </span>
                     </span>
 
                     <ChevronRight size={16} className="shrink-0" style={{ color: 'rgba(255,255,255,0.35)' }} />
