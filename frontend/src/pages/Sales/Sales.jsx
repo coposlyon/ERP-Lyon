@@ -87,8 +87,10 @@ export default function Sales() {
   // que está acontecendo. O botão Finalizados traz o histórico de volta,
   // que é o caminho da recompra.
   const rows = finalizados ? todas : todas.filter(r => !ehFinal(r.status));
-  const pageTotal  = rows.reduce((s, r) => s + (r.total || 0), 0);
-  const pageFreight = rows.reduce((s, r) => s + (r.freight || 0), 0);
+  // A SOMA DA PAGINA SAIU. Ela repetia, numa segunda linha, os mesmos
+  // numeros que a coluna ja mostra - e com um pedido na tela dizia
+  // "R$ 550,00" duas vezes, uma embaixo da outra. A contagem de pedidos
+  // continua logo abaixo, na paginacao, que e onde se procura por ela.
   const totalPaginas = Math.max(1, Math.ceil((data?.total || 0) / porPagina));
 
 
@@ -132,7 +134,10 @@ export default function Sales() {
     return () => window.removeEventListener('keydown', onKey);
   }, [isAdmin, delTarget, telaCheia.ativo]); // eslint-disable-line
 
-  const th = 'text-[11px] font-semibold uppercase tracking-wider';
+  // `whitespace-nowrap`: cabecalho de tabela que quebra em duas linhas
+  // empurra o corpo inteiro para baixo e desalinha a leitura de cima a
+  // baixo. As colunas de data ganharam a largura que o rotulo pede.
+  const th = 'text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap';
 
   return (
     <div className="space-y-4">
@@ -278,9 +283,9 @@ export default function Sales() {
               <span className={`${th} flex-1 min-w-[150px]`}>Cliente</span>
               <span className={`${th} w-28 shrink-0 text-right`}>Vr. Total</span>
               <span className={`${th} w-20 shrink-0 text-right`}>Vr. Frete</span>
-              <span className={`${th} w-24 shrink-0`}>Data do evento</span>
-              <span className={`${th} w-24 shrink-0`}>Data de saída</span>
-              <span className={`${th} w-28 shrink-0`}>Previsão de entrega</span>
+              <span className={`${th} w-28 shrink-0`}>Data do evento</span>
+              <span className={`${th} w-28 shrink-0`}>Data de saída</span>
+              <span className={`${th} w-36 shrink-0`}>Previsão de entrega</span>
               <span className={`${th} w-32 shrink-0`}>Transportadora</span>
               <span className={`${th} w-24 shrink-0 text-right`}>Cotação</span>
               {/* w-56: cabe "Em processo de coleta / retirada", o rótulo
@@ -332,13 +337,13 @@ export default function Sales() {
                   {/* OS PRAZOS. Data do evento é a do cliente (o casamento,
                       a formatura); data de saída e previsão de entrega são
                       as nossas. Traço quando ninguém definiu. */}
-                  <span className="w-24 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
+                  <span className="w-28 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
                     {dia(row.event_date)}
                   </span>
-                  <span className="w-24 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
+                  <span className="w-28 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
                     {dia(row.ship_date)}
                   </span>
-                  <span className="w-28 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
+                  <span className="w-36 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
                     {dia(row.delivery_date || row.max_delivery_date)}
                   </span>
                   <span className="w-32 shrink-0 truncate text-[13px]" style={{ color: v.textMuted }}
@@ -378,21 +383,6 @@ export default function Sales() {
               );
             })}
 
-            {/* Soma da página — o rodapé de sempre, só que sem a cara Delphi */}
-            {rows.length > 0 && (
-              <div className="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold"
-                style={{ borderTop: `1px solid ${v.divider}`, color: v.textMuted }}>
-                <span className="flex-1 min-w-0">{rows.length} pedido{rows.length !== 1 ? 's' : ''} nesta página</span>
-                <span className="w-28 text-right" style={{ color: '#22d3ee' }}>{fmt(pageTotal)}</span>
-                <span className="w-20 text-right">{pageFreight > 0 ? fmt(pageFreight) : ''}</span>
-                {/* Os vazios existem para a soma cair debaixo da coluna
-                    que ela soma. Coluna nova sem espaçador aqui empurra
-                    o total para o lado errado. */}
-                <span className="w-24" /><span className="w-24" /><span className="w-28" />
-                <span className="w-32" /><span className="w-24" />
-                <span className="w-56" /><span className="w-16" /><span className="w-20" />
-              </div>
-            )}
           </div>
         </div>
 
