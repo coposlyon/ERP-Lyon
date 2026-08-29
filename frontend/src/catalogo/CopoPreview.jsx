@@ -84,14 +84,14 @@ function fotoDaCor(opcao, produtos) {
   const alvo = semAcento(opcao?.name);
   if (!alvo || !Array.isArray(produtos) || !produtos.length) return null;
 
-  const exata = produtos.find(p => semAcento(p.name) === alvo);
-  if (exata?.imagem) return exata.imagem;
+  const exata = produtos.find(p => p.imagem && semAcento(p.name) === alvo);
+  if (exata) return { url: exata.imagem, peca: exata.name, exata: true };
 
   // "Verde" casa com "Verde Neon"; "Rosa" casa com "Rosa Bebe". A
   // primeira palavra é o que o olho reconhece como a cor.
   const raiz = alvo.split(' ')[0];
   const perto = produtos.find(p => p.imagem && semAcento(p.name).split(' ')[0] === raiz);
-  return perto?.imagem || null;
+  return perto ? { url: perto.imagem, peca: perto.name, exata: false } : null;
 }
 
 /**
@@ -499,12 +499,40 @@ export default function CopoPreview({
   // espelha junto — nome de casal ao contrário não é verso, é erro.
   const espelhar = face === 'verso';
 
-  // A foto DA COR ESCOLHIDA vence a do modelo. Escolheu Preto, aparece a
-  // peça preta — e não a foto genérica que o catálogo usa na vitrine.
-  const porEscolha = ORDEM_DA_FOTO
-    .map(chave => campos[chave]?.imagem || fotoDaCor(campos[chave], fotosPorCor))
+  // A FOTO DA COR ESCOLHIDA, E A VERDADE SOBRE ELA.
+  //
+  // Há duas situações muito diferentes aqui, e a versão anterior tratava
+  // as duas igual — que é como o cliente escolhia VERMELHO e via um copo
+  // transparente sem nada avisando.
+  //
+  //   cor_produto  → a peça É aquela. Foto da peça, ponto.
+  //   pintura      → a peça é transparente e recebe tinta. Não existe
+  //                  foto disso, então a foto é sempre um SUBSTITUTO: a
+  //                  peça de fábrica na cor mais parecida.
+  //
+  // E há um terceiro caso: tinta que não tem peça parecida nenhuma. São
+  // duas das doze — Vermelho e Gelo — porque a fábrica não faz copo
+  // vermelho, faz PINTURA vermelha. Aí a foto cai na transparente, que é
+  // a peça de verdade antes de pintar, e a tela precisa DIZER isso.
+  const decidiu = ORDEM_DA_FOTO
+    .map(chave => {
+      const opcao = campos[chave];
+      if (!opcao) return null;
+      if (opcao.imagem) return { chave, opcao, achado: { url: opcao.imagem, exata: true } };
+      const achado = fotoDaCor(opcao, fotosPorCor);
+      return achado ? { chave, opcao, achado } : { chave, opcao, achado: null };
+    })
     .find(Boolean);
-  const foto = porEscolha || fotoModelo || null;
+
+  const foto = decidiu?.achado?.url || fotoModelo || null;
+  const pintado = decidiu && decidiu.chave !== 'cor_produto';
+
+  // O aviso só existe quando a foto não é a peça. Peça de verdade não
+  // precisa de nota de rodapé.
+  const ressalva = !pintado ? null
+    : decidiu.achado
+      ? `Foto ilustrativa — a pintura ${decidiu.opcao.name} é aplicada sobre a peça.`
+      : `Ainda não temos foto na cor ${decidiu.opcao.name}. A peça aparece transparente, que é como ela entra na pintura.`;
 
   // As cores que a foto não consegue mostrar, nomeadas. Pintura, borda e
   // jateado são serviço sobre a peça: a foto é da peça, e o acabamento
@@ -565,6 +593,10 @@ export default function CopoPreview({
       </div>
       {rodape}
       <Aplicados itens={aplicados} />
+      {ressalva && (
+        <p className="text-[10.5px] leading-snug text-center mt-1.5 max-w-[230px]"
+          style={{ color: '#94a3b8' }}>{ressalva}</p>
+      )}
     </figure>
   );
 }
