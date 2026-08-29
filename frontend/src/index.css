@@ -903,6 +903,42 @@ html.dark select option:hover { background-color: #2f6bff; color: #ffffff; }
 }
 
 /* ============================================================
+   A SETA QUE CHAMA PARA O BOTÃO DE AVANÇAR ETAPA.
+
+   O botão que move o pedido é novo e mora dentro de um card que, até
+   ontem, era só de leitura — quem abria a tela não tinha motivo para
+   procurar ação ali. As três setas piscando resolvem isso sem escrever
+   "clique aqui": elas apontam PARA o botão, e por isso ficam à esquerda
+   dele. À direita estariam apontando para o vazio.
+
+   O atraso escalonado faz o brilho caminhar da primeira para a terceira,
+   na direção do botão. É o que dá sentido de "vai por aqui" em vez de
+   três coisas piscando juntas, que lê como alerta.
+
+   1,4s e opacidade começando em 0,15: a animação fica no canto do olho,
+   e não na frente. Ela mora ao lado de um botão que a pessoa vai usar
+   várias vezes por dia — piscar rápido cansaria até o fim da semana.
+   ============================================================ */
+@keyframes fluxo-chamada {
+  0%, 100% { opacity: 0.15; transform: translateX(-2px); }
+  50%      { opacity: 1;    transform: translateX(2px); }
+}
+
+.fluxo-chamada { display: inline-flex; align-items: center; }
+.fluxo-chamada > svg {
+  margin-right: -7px;
+  animation: fluxo-chamada 1.4s ease-in-out infinite;
+}
+.fluxo-chamada > svg:nth-child(2) { animation-delay: 0.16s; }
+.fluxo-chamada > svg:nth-child(3) { animation-delay: 0.32s; }
+
+/* Quem pediu menos movimento no sistema recebe a seta parada, acesa. O
+   recado continua de pé; só o piscar sai. */
+@media (prefers-reduced-motion: reduce) {
+  .fluxo-chamada > svg { animation: none; opacity: 0.6; transform: none; }
+}
+
+/* ============================================================
    O DETALHE DO PEDIDO MEDE O ESPAÇO QUE TEM, NÃO O TAMANHO DA JANELA.
 
    A tela usava `xl:` para decidir entre uma e duas colunas, e `xl` é uma

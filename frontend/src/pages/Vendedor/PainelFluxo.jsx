@@ -28,7 +28,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Circle, ArrowRight, Undo2, Wallet, Loader2,
-  ShieldAlert, Lock, Landmark,
+  ShieldAlert, Lock, Landmark, ChevronRight,
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -87,6 +87,31 @@ export default function PainelFluxo({ v, id, fluxo }) {
   const { fase_atual: fase, acao, requisitos = [], pagamento, voltar: recuo } = fluxo;
   const naFaseDoPagamento = fase?.key === 'pagamento';
   const ocupado = avancar.isPending || voltar.isPending || liberar.isPending;
+  const mostrarLiberar = naFaseDoPagamento && !pagamento?.liberado;
+
+  /**
+   * QUAL BOTÃO A SETA CHAMA.
+   *
+   * Ela não mora num botão: mora na AÇÃO DO MOMENTO. Presa ao botão de
+   * avançar, ela sumia justamente onde mais precisava aparecer — na fase
+   * de Pagamento, onde "Confirmar o pagamento" está travado de
+   * propósito e quem destrava é o "Liberar pagamento" ao lado.
+   *
+   * A ordem é a da leitura: se há um pagamento a liberar, é esse o
+   * próximo passo; senão, é avançar a etapa.
+   *
+   * "Voltar etapa" nunca recebe a seta. Ele está sempre disponível e
+   * nunca é o caminho para a frente — chamar para ele seria convidar a
+   * desfazer.
+   *
+   * `null` quando nada aqui é clicável: falta a arte, falta a foto, ou a
+   * etapa é de outra área. Aí a resposta não está neste painel, está na
+   * lista de requisitos logo acima — e é para lá que o olho deve ir.
+   */
+  const chamada = (ocupado || caixa) ? null
+    : mostrarLiberar ? 'liberar'
+    : acao?.pode ? 'avancar'
+    : null;
 
   // Pedido encerrado não tem próximo passo — só o registro de que chegou.
   if (fluxo.finalizado) {
@@ -175,29 +200,35 @@ export default function PainelFluxo({ v, id, fluxo }) {
 
         {/* ── O que fazer ─────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2">
-          {naFaseDoPagamento && !pagamento?.liberado && (
-            <button onClick={() => setCaixa('pagamento')} disabled={ocupado}
-              className="btn btn-sm disabled:opacity-50"
-              style={{ background: '#16a34a', color: 'white' }}
-              title="Enquanto a integração bancária não entra, o Financeiro libera aqui">
-              <Wallet size={14} /> Liberar pagamento
-            </button>
+          {mostrarLiberar && (
+            <span className="inline-flex items-center gap-1">
+              {chamada === 'liberar' && <Seta cor={v.isDark ? '#4ade80' : '#16a34a'} />}
+              <button onClick={() => setCaixa('pagamento')} disabled={ocupado}
+                className="btn btn-sm disabled:opacity-50"
+                style={{ background: '#16a34a', color: 'white' }}
+                title="Enquanto a integração bancária não entra, o Financeiro libera aqui">
+                <Wallet size={14} /> Liberar pagamento
+              </button>
+            </span>
           )}
 
           {acao && (
-            <button
-              onClick={() => avancar.mutate()}
-              disabled={!acao.pode || ocupado}
-              title={acao.pode ? `O pedido vai para: ${acao.destino_label}` : acao.motivos.join(' ')}
-              className="btn btn-sm disabled:opacity-45 disabled:cursor-not-allowed"
-              style={{ background: acao.pode ? '#2563eb' : 'transparent',
-                       color: acao.pode ? 'white' : v.textSubtle,
-                       border: acao.pode ? 'none' : `1px solid ${v.divider}` }}>
-              {avancar.isPending
-                ? <Loader2 size={14} className="animate-spin" />
-                : acao.autorizado ? <ArrowRight size={14} /> : <Lock size={14} />}
-              {acao.label}
-            </button>
+            <span className="inline-flex items-center gap-1">
+              {chamada === 'avancar' && <Seta cor={v.isDark ? '#60a5fa' : '#2563eb'} />}
+              <button
+                onClick={() => avancar.mutate()}
+                disabled={!acao.pode || ocupado}
+                title={acao.pode ? `O pedido vai para: ${acao.destino_label}` : acao.motivos.join(' ')}
+                className="btn btn-sm disabled:opacity-45 disabled:cursor-not-allowed"
+                style={{ background: acao.pode ? '#2563eb' : 'transparent',
+                         color: acao.pode ? 'white' : v.textSubtle,
+                         border: acao.pode ? 'none' : `1px solid ${v.divider}` }}>
+                {avancar.isPending
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : acao.autorizado ? <ArrowRight size={14} /> : <Lock size={14} />}
+                {acao.label}
+              </button>
+            </span>
           )}
 
           {recuo?.pode && <BotaoRecuo v={v} recuo={recuo} onAbrir={() => setCaixa('voltar')} />}
@@ -240,6 +271,24 @@ export default function PainelFluxo({ v, id, fluxo }) {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * As três setas que chamam para o botão.
+ *
+ * Ficam à ESQUERDA dele, apontando para ele — à direita estariam
+ * apontando para o vazio. A cor é a do botão que elas chamam: verde
+ * para liberar o pagamento, azul para avançar a etapa. É o que amarra
+ * uma coisa na outra quando os dois botões estão na mesma linha.
+ */
+function Seta({ cor }) {
+  return (
+    <span className="fluxo-chamada" aria-hidden="true" style={{ color: cor }}>
+      <ChevronRight size={15} strokeWidth={3} />
+      <ChevronRight size={15} strokeWidth={3} />
+      <ChevronRight size={15} strokeWidth={3} />
+    </span>
   );
 }
 
