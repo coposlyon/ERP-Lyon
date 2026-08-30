@@ -51,6 +51,9 @@ router.use('/catalogo', require('./public-catalogo'));
 // pedido; a rota não enxerga nada do ERP além do que o cliente comprou.
 router.use('/acompanhar', require('./public-pedido'));
 router.use('/webhooks', require('./webhooks')); // webhooks externos — sem auth
+// A ficha de admissao pelo link. Quem entra e alguem sendo contratado,
+// que ainda nao tem conta - a credencial e o token, e ele tem prazo.
+router.use('/admissao', require('./public-admissao')); // convite de admissao — sem auth
 
 router.use(authMiddleware);
 router.use(tenantMiddleware);
@@ -64,6 +67,7 @@ router.use('/me', pontoAppRoutes);
 router.use('/avisos', require('./avisos'));
 router.use('/search', require('./search'));
 router.use('/ai', require('./ai'));
+router.use('/hr/convites', require('./hr-convites'));
 
 // Rotas usadas por vários módulos aceitam qualquer um deles (basta ter um).
 router.use('/products',  requireModules('products','sales','pdv','quotes','purchases','stock','customizations','price-tables','returns'), productsRoutes);

@@ -9,6 +9,7 @@ import MarcacaoPonto from '@/pages/Ponto/MarcacaoPonto';
 import StoreApp from '@/store/StoreApp';
 import CatalogoApp from '@/catalogo/CatalogoApp';
 import CadastroCliente from '@/pages/Public/CadastroCliente';
+import AdmissaoConvite from '@/pages/Public/AdmissaoConvite';
 import CadastroFornecedor from '@/pages/Public/CadastroFornecedor';
 import CadastroTransportadora from '@/pages/Public/CadastroTransportadora';
 import AcompanharPedido from '@/pages/Public/AcompanharPedido';
@@ -190,6 +191,9 @@ function AppRoutes() {
       <Route path="/catalogo/*" element={<RedirecionaPersonalizados />} />
       {/* Autocadastro de cliente — link público p/ enviar ao cliente */}
       <Route path="/cadastro" element={<CadastroCliente />} />
+      {/* Ficha de admissão — link com prazo, para quem está sendo
+          contratado preencher a própria ficha sem ter conta. */}
+      <Route path="/admissao/:token" element={<AdmissaoConvite />} />
       {/* Autocadastro de fornecedora — link público p/ enviar à fornecedora */}
       <Route path="/cadastro-fornecedor" element={<CadastroFornecedor />} />
       {/* Autocadastro de transportadora — link público p/ enviar à transportadora */}

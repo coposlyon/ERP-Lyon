@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Briefcase, MessageCircle, UserCheck, UserX } from 'lucide-react';
+import { Plus, Search, Edit2, Briefcase, MessageCircle, UserCheck, UserX, Link2, Send } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
+import { GerarConviteModal, ListaPendentes } from './ConvitesAdmissao';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -34,11 +35,26 @@ export default function Employees() {
   const [page, setPage]             = useState(1);
   const [search, setSearch]         = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [statusFilter, setStatusFilter] = useState(''); // '' | 'active' | 'inactive'
+  // '' | 'active' | 'inactive' | 'pendentes'
+  //
+  // 'pendentes' nao e um filtro da lista: e OUTRA lista. Fichas que
+  // chegaram pelo link ainda nao sao colaboradores - elas nao tem id em
+  // CLIENTES e nao aparecem em busca nenhuma ate alguem aprovar.
+  const [statusFilter, setStatusFilter] = useState('');
+  const [convite, setConvite] = useState(false);
   const qc = useQueryClient();
   const navigate = useNavigate();
 
+  const pendentes = statusFilter === 'pendentes';
+
+  // Contador do selo da aba. Barato: so os enviados, sem os dados.
+  const { data: aguardando } = useQuery({
+    queryKey: ['convites', 'enviado'],
+    queryFn: () => api.get('/hr/convites?status=enviado'),
+  });
+
   const { data, isLoading } = useQuery({
+    enabled: !pendentes,
     queryKey: ['employees', page, search, statusFilter],
     queryFn: () => {
       let url = `/customers?type=CO&page=${page}&limit=20`;
@@ -142,9 +158,19 @@ export default function Employees() {
             <p className="text-sm text-gray-500 mt-0.5">{total} cadastrado{total !== 1 ? 's' : ''} · {ativos} ativo{ativos !== 1 ? 's' : ''}</p>
           </div>
         </div>
-        <button onClick={openNew} className="btn-primary">
-          <Plus size={16}/> Novo Colaborador
-        </button>
+        <div className="flex gap-2">
+          {/* O LINK FAZ O CAMINHO INVERSO DO BOTAO AO LADO.
+              "Novo Colaborador" e o RH digitando a vida de outra pessoa
+              - CPF, PIS, RG, endereco, filhos -, dado que ela sabe de
+              cor e o RH so pode errar. O link manda a ficha para quem
+              tem a informacao, e o RH passa a conferir. */}
+          <button onClick={() => setConvite(true)} className="btn-secondary">
+            <Link2 size={16}/> Link de admissão
+          </button>
+          <button onClick={openNew} className="btn-primary">
+            <Plus size={16}/> Novo Colaborador
+          </button>
+        </div>
       </div>
 
       {/* Tabela */}
@@ -154,9 +180,10 @@ export default function Employees() {
           {/* Filtro status */}
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
             {[
-              { v: '',         l: 'Todos'    },
-              { v: 'active',   l: '✅ Ativos'  },
-              { v: 'inactive', l: '⛔ Inativos' },
+              { v: '',          l: 'Todos'      },
+              { v: 'active',    l: '✅ Ativos'   },
+              { v: 'inactive',  l: '⛔ Inativos' },
+              { v: 'pendentes', l: 'Pendentes', selo: aguardando?.data?.length || 0 },
             ].map(f => (
               <button key={f.v} onClick={() => { setStatusFilter(f.v); setPage(1); }}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
@@ -165,12 +192,20 @@ export default function Employees() {
                     : 'text-gray-500 hover:text-gray-800'
                 }`}>
                 {f.l}
+                {/* O numero so aparece quando ha o que conferir: um
+                    zero permanente vira ruido e ninguem olha mais. */}
+                {f.selo > 0 && (
+                  <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500 text-white">
+                    {f.selo}
+                  </span>
+                )}
               </button>
             ))}
           </div>
 
           {/* Busca */}
-          <form onSubmit={handleSearch} className="flex gap-2 flex-1 max-w-sm ml-auto">
+          <form onSubmit={handleSearch}
+            className={`flex gap-2 flex-1 max-w-sm ml-auto ${pendentes ? 'invisible' : ''}`}>
             <div className="relative flex-1">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
               <input
@@ -197,10 +232,16 @@ export default function Employees() {
             entao ela parecia clicavel e nao era.
             O WhatsApp e o lapis param a propagacao para nao abrirem
             duas coisas de uma vez. */}
-        <Table columns={columns} data={data?.data} loading={isLoading}
-          onRowClick={openEdit} rowClassName={() => 'group'} />
-        <Pagination page={page} total={total} limit={20} onPageChange={setPage}/>
+        {pendentes ? <ListaPendentes /> : (
+          <>
+            <Table columns={columns} data={data?.data} loading={isLoading}
+              onRowClick={openEdit} rowClassName={() => 'group'} />
+            <Pagination page={page} total={total} limit={20} onPageChange={setPage}/>
+          </>
+        )}
       </div>
+
+      <GerarConviteModal aberto={convite} onClose={() => setConvite(false)} />
 
     </div>
   );
