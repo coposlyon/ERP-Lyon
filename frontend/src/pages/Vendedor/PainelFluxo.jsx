@@ -206,7 +206,10 @@ export default function PainelFluxo({ v, id, fluxo }) {
             <Hourglass size={14} className="shrink-0 mt-0.5" style={{ color: '#fbbf24' }} />
             <span>
               <b style={{ color: v.textPrimary }}>{producao.aguardando}</b>
-              {producao.em && (
+              {/* Pedido anterior à regra não foi enviado por ninguém —
+                  ele já estava na fábrica. Dizer "enviado em <data do
+                  cadastro>" seria inventar um ato que não houve. */}
+              {producao.em && !producao.legado && (
                 <span className="block mt-0.5" style={{ color: v.textSubtle }}>
                   Enviado à produção {producao.por ? `por ${producao.por} ` : ''}em {dataHora(producao.em)}.
                 </span>

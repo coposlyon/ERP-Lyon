@@ -93,7 +93,7 @@ export default function Sales() {
     [statusList],
   );
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['sales', page, status, search, startDate, endDate, porPagina],
     queryFn: () => {
       let url = `/sales?page=${page}&limit=${porPagina}`;
@@ -350,6 +350,8 @@ export default function Sales() {
               <div className="flex items-center justify-center h-40">
                 <Loader2 size={22} className="animate-spin" style={{ color: v.textMuted }} />
               </div>
+            ) : error ? (
+              <FalhouAoCarregar v={v} erro={error} onTentar={refetch} />
             ) : rows.length === 0 ? (
               <p className="text-center py-14 text-sm" style={{ color: v.empty }}>
                 {hasFilters
@@ -459,6 +461,8 @@ export default function Sales() {
             <div className="flex items-center justify-center h-40">
               <Loader2 size={22} className="animate-spin" style={{ color: v.textMuted }} />
             </div>
+          ) : error ? (
+            <FalhouAoCarregar v={v} erro={error} onTentar={refetch} />
           ) : rows.length === 0 ? (
             <p className="text-center py-14 px-4 text-sm" style={{ color: v.empty }}>
               {hasFilters
@@ -532,6 +536,33 @@ export default function Sales() {
       <ExcluirPedidoModal pedido={delTarget} modo="proprio"
         onClose={() => setDelTarget(null)}
         onExcluido={() => qc.invalidateQueries(['sales'])} />
+    </div>
+  );
+}
+
+/**
+ * "NENHUM PEDIDO" E "NÃO CONSEGUI PERGUNTAR" SÃO RESPOSTAS DIFERENTES.
+ *
+ * A lista dizia "Nenhum pedido em andamento" tanto quando a empresa
+ * realmente não tinha pedido nenhum quanto quando a consulta falhou —
+ * e a segunda é uma mentira tranquilizadora: quem lê fecha a tela
+ * achando que está tudo certo, quando o servidor não respondeu.
+ */
+function FalhouAoCarregar({ v, erro, onTentar }) {
+  return (
+    <div className="text-center py-12 px-4">
+      <AlertTriangle size={26} className="mx-auto mb-2" style={{ color: '#fbbf24' }} />
+      <p className="text-sm font-semibold" style={{ color: v.textPrimary }}>
+        Não consegui carregar os pedidos.
+      </p>
+      <p className="text-xs mt-1 mb-3" style={{ color: v.textSubtle }}>
+        {erro?.error || erro?.message || 'O servidor não respondeu.'}
+      </p>
+      <button onClick={() => onTentar()}
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-[0.6rem] text-sm"
+        style={{ background: v.control.background, color: v.textPrimary, border: v.control.border }}>
+        <RefreshCw size={14} /> Tentar de novo
+      </button>
     </div>
   );
 }

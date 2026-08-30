@@ -70,11 +70,14 @@ export default function Production() {
   const [query, setQuery] = useState({ start_date: '', end_date: '', search: '' });
   const [selId, setSelId] = useState(null);
 
-  const { data, isFetching, refetch } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['production', query],
     queryFn: () => api.get(`/production?${new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([, v]) => v)))}`),
   });
   const rows = data?.data || [];
+  // Quantos ainda esperam o comercial mandar. Fila vazia com pedidos
+  // represados é uma resposta; fila vazia e mais nada é um mistério.
+  const aguardandoEnvio = data?.aguardando_envio || 0;
   const selected = rows.find(r => r.id === selId) || null;
 
   const { data: detail } = useQuery({
@@ -263,8 +266,9 @@ export default function Production() {
               </tr>
             </thead>
             <tbody>
-              {isFetching && rows.length === 0 && <tr><td colSpan={11} className="p-8 text-center text-gray-400"><Loader2 className="animate-spin mx-auto" /></td></tr>}
-              {!isFetching && rows.length === 0 && <tr><td colSpan={11} className="p-8 text-center text-gray-400">Nenhum pedido em produção.</td></tr>}
+              {isLoading && <tr><td colSpan={11} className="p-8 text-center text-gray-400"><Loader2 className="animate-spin mx-auto" /></td></tr>}
+              {!isLoading && error && <tr><td colSpan={11} className="p-0"><FalhouAoCarregar erro={error} onTentar={refetch} /></td></tr>}
+              {!isLoading && !error && rows.length === 0 && <tr><td colSpan={11} className="p-0"><FilaVazia aguardandoEnvio={aguardandoEnvio} /></td></tr>}
               {rows.map(r => {
                 const st = STAGES[r.stage] || STAGES.aguardando_producao;
                 const dd = r.diff_deadline ?? r.diff_days;
@@ -300,12 +304,11 @@ export default function Production() {
 
         {/* ── A MESMA LISTA, EM CARTÕES (celular) ─────────────── */}
         <div className="lg:hidden divide-y divide-gray-200">
-          {isFetching && rows.length === 0 && (
+          {isLoading && (
             <div className="p-8 text-center text-gray-400"><Loader2 className="animate-spin mx-auto" /></div>
           )}
-          {!isFetching && rows.length === 0 && (
-            <p className="p-8 text-center text-gray-400 text-sm">Nenhum pedido em produção.</p>
-          )}
+          {!isLoading && error && <FalhouAoCarregar erro={error} onTentar={refetch} />}
+          {!isLoading && !error && rows.length === 0 && <FilaVazia aguardandoEnvio={aguardandoEnvio} />}
           {rows.map(r => (
             <CartaoProducao key={r.id} r={r} selecionado={selId === r.id}
               onSelecionar={() => { setSelId(r.id); setEdit({}); }} />
@@ -622,6 +625,43 @@ function Prazo({ rotulo, valor }) {
     <div className="min-w-0">
       <p className="text-[10px] uppercase tracking-wider text-gray-400">{rotulo}</p>
       <p className="text-[12.5px] text-gray-600 truncate">{valor}</p>
+    </div>
+  );
+}
+
+/**
+ * CARREGANDO PARA SEMPRE NÃO É UM ESTADO — É UM ERRO SEM NOME.
+ *
+ * A tela mostrava o mesmo rodopiando quer a resposta estivesse a
+ * caminho, quer o servidor tivesse recusado. Quem ficou olhando dez
+ * minutos não tinha como saber que não ia chegar nunca, e a única
+ * saída era recarregar a página no escuro.
+ */
+function FalhouAoCarregar({ erro, onTentar }) {
+  return (
+    <div className="p-8 text-center">
+      <AlertTriangle size={28} className="text-amber-500 mx-auto mb-2" />
+      <p className="text-sm font-semibold text-gray-700">Não consegui carregar a fila da produção.</p>
+      <p className="text-xs text-gray-400 mt-1 mb-3">{erro?.error || erro?.message || 'O servidor não respondeu.'}</p>
+      <button onClick={() => onTentar()} className="btn-secondary text-sm mx-auto">
+        <RefreshCw size={14} /> Tentar de novo
+      </button>
+    </div>
+  );
+}
+
+/** Fila vazia com pedidos represados é resposta; sem isso é mistério. */
+function FilaVazia({ aguardandoEnvio }) {
+  return (
+    <div className="p-8 text-center">
+      <p className="text-sm text-gray-500">Nenhum pedido na fila da produção.</p>
+      {aguardandoEnvio > 0 && (
+        <p className="text-xs text-gray-400 mt-1.5 max-w-md mx-auto leading-relaxed">
+          {aguardandoEnvio === 1
+            ? 'Há 1 pedido esperando o comercial clicar em "Enviar para produção" no pedido de venda.'
+            : `Há ${aguardandoEnvio} pedidos esperando o comercial clicar em "Enviar para produção" no pedido de venda.`}
+        </p>
+      )}
     </div>
   );
 }

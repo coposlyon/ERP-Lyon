@@ -161,11 +161,34 @@ const FASES_DA_FABRICA = ['vegetal', 'revelacao', 'pintura', 'borda', 'producao'
  * acertar depois; segurá-lo esperando alguém apertar um botão só
  * atrasaria o que já estava combinado.
  */
+/**
+ * O DIA EM QUE ESTA REGRA PASSOU A EXISTIR.
+ *
+ * Pedido criado antes disto nunca teve como receber o evento de envio —
+ * o botão não existia. Sem esta linha, ligar a regra APAGOU A FILA DA
+ * FÁBRICA INTEIRA de uma vez: todo pedido em andamento sumiu da tela de
+ * produção no instante do deploy, porque nenhum deles tinha sido
+ * "enviado" por alguém.
+ *
+ * Regra nova não pode reprovar o passado. O que existia antes entra
+ * como já enviado, e a exigência vale para quem nasce depois. A
+ * constante se apaga sozinha com o tempo: daqui a um ano não haverá
+ * mais pedido aberto anterior a ela.
+ */
+const REGRA_DO_ENVIO_DESDE = '2026-08-31T00:00:00.000Z';
+
 function envioParaProducao(venda) {
   const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
   const e = log.find(x => x.action === 'enviado_producao');
-  if (!e) return { enviado: false, em: null, por: null };
-  return { enviado: true, em: e.at || null, por: e.user || null };
+  if (e) return { enviado: true, em: e.at || null, por: e.user || null, legado: false };
+
+  // O passado, já dentro da fábrica.
+  const nascimento = venda?.created_at || null;
+  if (nascimento && String(nascimento) < REGRA_DO_ENVIO_DESDE) {
+    return { enviado: true, em: nascimento, por: null, legado: true };
+  }
+
+  return { enviado: false, em: null, por: null, legado: false };
 }
 
 /**
