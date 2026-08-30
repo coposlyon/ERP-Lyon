@@ -316,8 +316,11 @@ export default function Configurador() {
           sempre visível enquanto se rola as etapas. */}
       <div className="grid gap-4 items-start xl:grid-cols-[minmax(0,1.35fr)_minmax(330px,0.65fr)]">
 
-        {/* ═══ ESQUERDA — as etapas, na ordem ═══ */}
-        <div className="space-y-4">
+        {/* ═══ ESQUERDA — as etapas, na ordem ═══
+            `min-w-0` nas duas colunas: sem ele um filho largo demais
+            estica a coluna, a coluna estica a grade e a página inteira
+            fica mais larga que o celular. */}
+        <div className="space-y-4 min-w-0">
 
           <Painel titulo="1. Produto e Configuração" cor={NEON.ciano} icone={Box}>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -580,7 +583,7 @@ export default function Configurador() {
         </div>
 
         {/* ═══ DIREITA — a peça, o preço e os botões ═══ */}
-        <div className="space-y-3 xl:sticky xl:top-4">
+        <div className="space-y-3 min-w-0 xl:sticky xl:top-4">
           <Painel titulo="Como vai ficar" cor={NEON.azul} icone={Box}>
             {/* O PALCO BRANCO.
                 Fundo branco atrás de peça é o estúdio, e é o que o
@@ -590,8 +593,8 @@ export default function Configurador() {
                 verso e as legendas. Um cartãozinho por foto emoldurava
                 cada copo e os separava; o palco inteiro mostra as duas
                 faces da MESMA peça. */}
-            <div className="rounded-xl px-3 py-4" style={{ background: '#ffffff' }}>
-              <div className="flex items-end justify-center gap-4">
+            <div className="rounded-xl px-2 sm:px-3 py-4 overflow-hidden" style={{ background: '#ffffff' }}>
+              <div className="flex items-end justify-center gap-2 sm:gap-4">
                 <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente"
                   gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 190 : 216} />
                 {personalizado && estado.posicao === 'frente_verso' && (
@@ -772,7 +775,7 @@ export default function Configurador() {
             onClick={e => e.stopPropagation()}>
             {/* O mesmo palco branco da prévia pequena: ver maior não pode
                 significar ver diferente. */}
-            <div className="rounded-2xl px-6 py-6 flex items-end justify-center gap-8"
+            <div className="rounded-2xl px-3 sm:px-6 py-6 max-w-full flex items-end justify-center gap-3 sm:gap-8"
               style={{ background: '#ffffff' }}>
               <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente"
                 gabarito={gabarito} altura={Math.min(520, window.innerHeight * 0.62)} />
@@ -783,7 +786,6 @@ export default function Configurador() {
             </div>
           </div>
         </div>
-      )}
       )}
     </CatalogoShell>
   );

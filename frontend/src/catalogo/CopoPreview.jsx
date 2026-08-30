@@ -265,10 +265,13 @@ function Desenho({
     : Math.min(F.arte.alturaMax, larguraArte * 1.9);
 
   return (
-    <figure className="flex flex-col items-center m-0">
+    <figure className="flex flex-col items-center m-0 min-w-0 max-w-full">
+      {/* `altura` é o tamanho DESEJADO, não o obrigatório: em tela
+          estreita a peça encolhe em vez de empurrar a página para fora.
+          Ver a nota do mesmo assunto na prévia com foto, abaixo. */}
       <svg viewBox={`0 0 ${F.vb} 268`} height={altura} width={altura * F.vb / 268} role="img"
         aria-label="Prévia da peça"
-        style={{ transform: espelhar ? 'scaleX(-1)' : undefined }}>
+        style={{ maxWidth: '100%', height: 'auto', transform: espelhar ? 'scaleX(-1)' : undefined }}>
         <defs>
           <linearGradient id={`${id}-corpo`} x1="0" y1="1" x2="0" y2="0">
             <stop offset="0%" stopColor={corBase} stopOpacity={vidro ? 0.34 : 0.98} />
@@ -552,7 +555,7 @@ export default function CopoPreview({
 
   if (!foto) {
     return (
-      <figure className="flex flex-col items-center m-0">
+      <figure className="flex flex-col items-center m-0 min-w-0 max-w-full">
         <Desenho escolha={escolha} familia={familia} arte={arte}
           altura={altura} gabarito={gabarito} espelhar={espelhar} />
         {rodape}
@@ -564,14 +567,27 @@ export default function CopoPreview({
   const janela = JANELA_ARTE[familia] || JANELA_PADRAO;
 
   return (
-    <figure className="flex flex-col items-center m-0">
+    <figure className="flex flex-col items-center m-0 min-w-0 max-w-full">
       {/* SEM CARTÃO POR FOTO. O branco agora é o palco inteiro da prévia,
           desenhado uma vez lá no Configurador e cobrindo frente e verso.
           Um retângulo por foto emoldurava cada copo e os separava, quando
           são as duas faces da MESMA peça.
           O recorte continua valendo: foto com papel amarelado ou cinza
           entra no palco sem uma mancha em volta. */}
-      <div className="relative" style={{ height: altura, width: altura * 0.78 }}>
+      {/* A LARGURA PEDIDA, NÃO A IMPOSTA.
+          Isto era `height: altura; width: altura * 0.78` — dois números
+          em pixels que não sabiam o tamanho da tela. No celular a prévia
+          de frente E verso somava 148 + 148 + folga: mais largo que a
+          coluna, e como a coluna cresce com o filho, a PÁGINA INTEIRA
+          ficava mais larga que o aparelho. O catálogo esconde o estouro
+          (`overflow-x-hidden` na casca), então nada rolava para o lado —
+          simplesmente sumia: "Boleto", "Arte colorida" e "Frente e
+          verso" ficavam cortados fora da tela, sem como alcançar.
+          Agora `altura` é o tamanho desejado e `maxWidth: 100%` é a
+          palavra final; a proporção segura o resto, e a janela da arte
+          continua certa porque é toda em porcentagem. */}
+      <div className="relative"
+        style={{ width: altura * 0.78, maxWidth: '100%', aspectRatio: '0.78' }}>
         <FotoDaPeca src={foto} espelhar={espelhar} />
 
         {/* A ARTE, na janela onde a impressão realmente sai. Vem como SVG
