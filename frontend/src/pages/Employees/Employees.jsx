@@ -69,7 +69,11 @@ export default function Employees() {
       key: 'name', label: 'Colaborador',
       render: (v, row) => (
         <div>
-          <p className="font-medium text-gray-900 text-sm">{v}</p>
+          {/* A linha inteira abre o cadastro (ver o onRowClick da Table
+              la embaixo). O sublinhado no hover existe porque o nome e
+              onde a pessoa mira: sem ele, a unica pista de que da para
+              clicar era o cursor mudar. */}
+          <p className="font-medium text-gray-900 text-sm group-hover:underline">{v}</p>
           {row.cpf_cnpj && <p className="text-xs text-gray-400">{row.cpf_cnpj}</p>}
         </div>
       ),
@@ -97,6 +101,7 @@ export default function Employees() {
         const link = whatsappLink(v, row.name);
         return link
           ? <a href={link} target="_blank" rel="noreferrer"
+              onClick={e => e.stopPropagation()}
               className="flex items-center gap-1 text-green-600 hover:text-green-700 text-sm font-medium">
               <MessageCircle size={13}/> {v}
             </a>
@@ -115,7 +120,8 @@ export default function Employees() {
     {
       key: 'id', label: '', width: 50,
       render: (_, row) => (
-        <button onClick={() => openEdit(row)} className="btn-ghost p-1.5" title="Editar">
+        <button onClick={e => { e.stopPropagation(); openEdit(row); }}
+          className="btn-ghost p-1.5" title="Abrir cadastro">
           <Edit2 size={14}/>
         </button>
       ),
@@ -184,7 +190,15 @@ export default function Employees() {
           </form>
         </div>
 
-        <Table columns={columns} data={data?.data} loading={isLoading} />
+        {/* CLICAR NA LINHA ABRE O COLABORADOR.
+            A Table ja sabia fazer isto (onRowClick) e esta tela nao
+            usava: o unico caminho ate o cadastro era o lapis de 14px na
+            ponta direita. Pior, a linha ja vinha com cursor-pointer,
+            entao ela parecia clicavel e nao era.
+            O WhatsApp e o lapis param a propagacao para nao abrirem
+            duas coisas de uma vez. */}
+        <Table columns={columns} data={data?.data} loading={isLoading}
+          onRowClick={openEdit} rowClassName={() => 'group'} />
         <Pagination page={page} total={total} limit={20} onPageChange={setPage}/>
       </div>
 

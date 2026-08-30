@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import CustomerForm from './CustomerForm';
+import FichaClienteModal from '@/components/Cliente/FichaClienteModal';
 import MarketingModal from './MarketingModal';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -58,6 +59,7 @@ export default function Customers() {
   const [exportingContacts, setExportingContacts] = useState(false);
   const [scoreCustomer, setScoreCustomer] = useState(null); // cliente do modal de score
   const [selectedId, setSelectedId] = useState(null); // linha marcada ao clicar no cliente
+  const [fichaCliente, setFichaCliente] = useState(null); // olho ao lado do nome
 
   const scoreMut = useMutation({
     mutationFn: (cid) => api.post(`/customers/${cid}/credit-check`),
@@ -185,6 +187,14 @@ export default function Customers() {
               </span>
             )}
             <span>{v || '—'}</span>
+            {/* Ver a ficha inteira sem sair da lista. A linha ja faz
+                outra coisa (expande a selecao), por isso o
+                stopPropagation. */}
+            <button onClick={e => { e.stopPropagation(); setFichaCliente(row.id); }}
+              title={`Ver a ficha de ${v}`}
+              className="shrink-0 mt-0.5 text-gray-300 hover:text-indigo-600 transition-colors">
+              <Eye size={13} />
+            </button>
           </p>
           {row.nome_fantasia && <p className="text-xs text-gray-400 break-words">{row.nome_fantasia}</p>}
         </div>
@@ -386,6 +396,8 @@ export default function Customers() {
             : ''} />
         <Pagination page={page} total={data?.total || 0} limit={100} onPageChange={setPage} />
       </div>
+
+      <FichaClienteModal clienteId={fichaCliente} onClose={() => setFichaCliente(null)} />
 
       <MarketingModal isOpen={marketingOpen} onClose={() => setMarketingOpen(false)} />
 

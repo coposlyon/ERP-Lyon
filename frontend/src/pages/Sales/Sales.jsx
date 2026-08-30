@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import ExcluirPedidoModal from '@/components/UI/ExcluirPedidoModal';
+import FichaClienteModal from '@/components/Cliente/FichaClienteModal';
 import { useVend, fmtBRL } from '@/components/UI/theme';
 import { corStatus, NIVEL_ATENCAO, CSS_ATENCAO, codigoPedido, codigoCliente } from '@/lib/pedidoUi';
 import { saleStatusLabel } from '@/lib/saleStatus';
@@ -36,6 +37,7 @@ function TBtn({ icon: Icon, label, sub, onClick, disabled, danger }) {
 export default function Sales() {
   const v = useVend();
   const [page, setPage] = useState(1);
+  const [fichaCliente, setFichaCliente] = useState(null);  // olho ao lado do nome
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -324,9 +326,25 @@ export default function Sales() {
                   <span className="w-20 shrink-0 font-mono text-[13px]" style={{ color: v.textMuted }}>
                     {codigoCliente(row.CLIENTES?.display_id) || '—'}
                   </span>
-                  <span className="flex-1 min-w-[150px] truncate" style={{ color: v.textPrimary }}
-                    title={row.CLIENTES?.name || 'Consumidor Final'}>
-                    {row.CLIENTES?.name || 'Consumidor Final'}
+                  {/* O OLHO AO LADO DO NOME.
+                      Conferir o telefone de um cliente no meio da lista
+                      obrigava a abrir o cadastro dele e voltar, perdendo
+                      filtro e rolagem. O olho abre a ficha por cima.
+                      stopPropagation porque a linha inteira abre o
+                      PEDIDO - sem isso, um clique faria as duas coisas. */}
+                  <span className="flex-1 min-w-[150px] flex items-center gap-1.5">
+                    <span className="truncate" style={{ color: v.textPrimary }}
+                      title={row.CLIENTES?.name || 'Consumidor Final'}>
+                      {row.CLIENTES?.name || 'Consumidor Final'}
+                    </span>
+                    {row.CLIENTES?.id && (
+                      <button onClick={e => { e.stopPropagation(); setFichaCliente(row.CLIENTES.id); }}
+                        title={`Ver a ficha de ${row.CLIENTES.name}`}
+                        className="shrink-0 opacity-50 hover:opacity-100 transition-opacity"
+                        style={{ color: '#60a5fa' }}>
+                        <Eye size={14} />
+                      </button>
+                    )}
                   </span>
                   <span className="w-28 shrink-0 text-right font-semibold" style={{ color: '#22d3ee' }}>
                     {fmt(row.total)}
@@ -433,6 +451,8 @@ export default function Sales() {
       {/* Excluir pedido (admin + senha) */}
       {/* Exclusao com senha — mesma peca usada na tela do vendedor,
           la no modo que pede o acesso do gerente. */}
+      <FichaClienteModal clienteId={fichaCliente} onClose={() => setFichaCliente(null)} />
+
       <ExcluirPedidoModal pedido={delTarget} modo="proprio"
         onClose={() => setDelTarget(null)}
         onExcluido={() => qc.invalidateQueries(['sales'])} />
