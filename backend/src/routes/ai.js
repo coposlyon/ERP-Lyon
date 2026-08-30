@@ -2,8 +2,45 @@ const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
 const { askClaude, extractJSON } = require('../lib/ai');
+const { responder } = require('../lib/copiloto');
 
 const brl = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+
+// ── Copiloto: dúvida sobre COMO USAR o sistema ──────────────
+//
+// Outro assunto que o /assistant logo abaixo, e por isso outra rota: o
+// /assistant lê o banco e responde sobre os números da empresa; este
+// responde sobre o sistema, lê print de tela e sabe abrir tela.
+//
+// As telas permitidas vêm do NAVEGADOR, montadas do menu que aquele
+// usuário enxerga. O servidor não tem essa lista — o menu e as
+// permissões vivem no front — e inventá-la aqui criaria uma segunda
+// cópia para sair de sincronia com a primeira.
+router.post('/copiloto', async (req, res) => {
+  const pergunta = String(req.body?.pergunta || '').trim();
+  const imagem   = req.body?.imagem || null;
+
+  if (!pergunta && !imagem) return res.status(400).json({ error: 'Escreva a sua dúvida.' });
+
+  // Só o que a instrução usa. Deixar passar o objeto cru do menu poria
+  // ícone e componente React dentro do prompt.
+  const telas = (Array.isArray(req.body?.telas) ? req.body.telas : [])
+    .filter(t => t && typeof t.path === 'string' && t.path.startsWith('/') && t.label)
+    .slice(0, 120)
+    .map(t => ({ label: String(t.label).slice(0, 60), path: t.path, grupo: t.grupo ? String(t.grupo).slice(0, 40) : null }));
+
+  try {
+    const r = await responder({
+      pergunta: pergunta || 'Olhe este print e me diga o que está acontecendo.',
+      imagem,
+      historico: req.body?.historico,
+      telas,
+      ctx: { tela_atual: req.body?.tela_atual ? String(req.body.tela_atual).slice(0, 80) : null },
+    });
+    if (!r.ok) return res.status(400).json({ error: r.error });
+    res.json({ resposta: r.resposta, acao: r.acao });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // ── Assistente de gestão (responde com base nos dados da empresa) ──
 router.post('/assistant', async (req, res) => {
