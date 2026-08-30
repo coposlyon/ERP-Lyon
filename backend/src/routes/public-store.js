@@ -12,7 +12,7 @@ const uploadDocs = multer({
 });
 const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
 const { fichaPricing } = require('../lib/rateioLib');
-const { uploadDataUrl } = require('../lib/storage');
+const { uploadDataUrl, uploadPrivado } = require('../lib/storage');
 const { freteDoEstado, ufFromCep, getFreteConfig } = require('../lib/shipping');
 const { fetchInstagramMedia } = require('../lib/social');
 const { acharPorDocumento, criarSolicitacao } = require('../lib/cadastroSolicitacoes');
@@ -752,6 +752,17 @@ router.post('/quote', async (req, res) => {
       notes: fullNotes, event_date: eventDate,
     };
 
+    // Cobrança de zero não é cobrança — a mesma regra do catálogo. Só
+    // vale para quem quis PAGAR: orçamento de valor a combinar existe.
+    if (querPagar && pedido.total <= 0) {
+      console.error('[public-store:quote] pedido sem preço:',
+        orderItems.map(i => `${i.product_name} x${i.quantity}`).join(', '));
+      return res.status(400).json({
+        error: 'Não consegui calcular o valor deste pedido. Fale com um atendente para fecharmos por aqui.',
+        code: 'SEM_PRECO',
+      });
+    }
+
     // Sem chave PIX configurada não dá para cobrar: mantém o comportamento
     // antigo (pedido entra direto no Comercial) em vez de travar a loja.
     // E quem pediu ORÇAMENTO não é cobrado nem com chave configurada.
@@ -804,7 +815,7 @@ router.post('/quote', async (req, res) => {
 router.get('/pedido/:id', async (req, res) => {
   try {
     const { data: ped } = await supabase.from('PEDIDOS_LOJA')
-      .select('id, status, total, expires_at, sale_id, pix_copy_paste')
+      .select('id, status, total, expires_at, sale_id, pix_copy_paste, receipt_url')
       .eq('tenant_id', STORE_TENANT).eq('id', req.params.id).maybeSingle();
     if (!ped) return res.status(404).json({ error: 'Pedido não encontrado' });
 
@@ -818,6 +829,10 @@ router.get('/pedido/:id', async (req, res) => {
     res.json({
       id: ped.id, status: ped.status, total: Number(ped.total) || 0,
       expires_at: ped.expires_at, number,
+      // SÓ O SIM OU NÃO, nunca o arquivo: esta rota é pública, e o
+      // comprovante traz nome do pagador e valor. A tela só precisa
+      // saber se já pediu isso ao cliente uma vez.
+      comprovante: !!ped.receipt_url,
       pix_copy_paste: pendente ? ped.pix_copy_paste : null,
       // QR refeito na hora a partir do copia-e-cola (não ocupa espaço no banco)
       pix_qr_base64: pendente && ped.pix_copy_paste ? await qrBase64(ped.pix_copy_paste) : null,
@@ -825,8 +840,24 @@ router.get('/pedido/:id', async (req, res) => {
   } catch (err) { fail(res, err, 'pedido'); }
 });
 
-// Cliente avisa que pagou (opcionalmente anexando o comprovante). Não
-// libera nada — só sinaliza a fila para alguém conferir no banco.
+// O que o navegador pode mandar como comprovante. PDF entra porque o
+// extrato do banco sai em PDF; o resto o cliente fotografa.
+const COMPROVANTE_MIME = /^(image\/(png|jpe?g|webp|heic|heif)|application\/pdf)$/i;
+const COMPROVANTE_MB = 8;
+
+/**
+ * Cliente avisa que pagou — com o comprovante anexado ou sem ele.
+ *
+ * NÃO LIBERA NADA. O pedido continua aguardando: quem confere o extrato
+ * é uma pessoa, no ERP. Isto só põe o pedido na frente da fila com o
+ * comprovante do lado, para a conferência ser olhar duas coisas na
+ * mesma tela em vez de caçar um print no WhatsApp.
+ *
+ * O COMPROVANTE VAI PARA O BUCKET PRIVADO. Ele traz nome do pagador,
+ * banco e valor; no bucket público bastaria a URL vazar num print para
+ * o extrato de alguém ficar aberto para sempre. Guardamos o CAMINHO, e
+ * quem for conferir pede um link assinado que expira.
+ */
 router.post('/pedido/:id/paguei', cadastroLimiter, async (req, res) => {
   try {
     const { data: ped } = await supabase.from('PEDIDOS_LOJA')
@@ -834,16 +865,28 @@ router.post('/pedido/:id/paguei', cadastroLimiter, async (req, res) => {
     if (!ped) return res.status(404).json({ error: 'Pedido não encontrado' });
     if (ped.status !== 'aguardando_pagamento') return res.json({ ok: true, status: ped.status });
 
-    let receiptUrl = null;
+    let caminho = null;
     const receipt = req.body?.receipt;
     if (typeof receipt === 'string' && receipt.startsWith('data:')) {
-      receiptUrl = await uploadDataUrl(receipt, 'comprovantes');
+      const tipo = (receipt.match(/^data:(.+?);base64,/) || [])[1] || '';
+      if (!COMPROVANTE_MIME.test(tipo)) {
+        return res.status(400).json({ error: 'Envie uma foto (JPG, PNG) ou o PDF do comprovante.' });
+      }
+      // O base64 é ~4/3 do arquivo; medir aqui evita subir 30 MB para
+      // descobrir o tamanho depois.
+      const bytes = Math.ceil((receipt.length - receipt.indexOf(',') - 1) * 0.75);
+      if (bytes > COMPROVANTE_MB * 1024 * 1024) {
+        return res.status(400).json({ error: `O comprovante passa de ${COMPROVANTE_MB} MB. Envie uma foto menor.` });
+      }
+      caminho = await uploadPrivado(receipt, 'comprovantes');
+      if (!caminho) return res.status(500).json({ error: 'Não consegui guardar o comprovante. Tente de novo.' });
     }
+
     await supabase.from('PEDIDOS_LOJA').update({
       paid_notified_at: new Date().toISOString(),
-      ...(receiptUrl ? { receipt_url: receiptUrl } : {}),
+      ...(caminho ? { receipt_url: caminho } : {}),
     }).eq('id', ped.id);
-    res.json({ ok: true, status: 'aguardando_pagamento' });
+    res.json({ ok: true, status: 'aguardando_pagamento', comprovante: !!caminho });
   } catch (err) { fail(res, err, 'paguei'); }
 });
 

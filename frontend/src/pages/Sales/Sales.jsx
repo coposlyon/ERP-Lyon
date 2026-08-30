@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Eye, CheckCircle2, Siren, RotateCcw, Wrench, Maximize2, Minimize2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Plus, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Eye, CheckCircle2, Siren, RotateCcw, Wrench, Maximize2, Minimize2, Wallet } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import ExcluirPedidoModal from '@/components/UI/ExcluirPedidoModal';
@@ -58,6 +58,27 @@ export default function Sales() {
   const qc = useQueryClient();
   const searchRef = useRef();
   const telaCheia = useTelaCheia();
+
+  /**
+   * "CADÊ O PEDIDO QUE O CLIENTE ACABOU DE FAZER?"
+   *
+   * Pedido do site NÃO entra aqui na hora. Ele espera o PIX ser
+   * conferido em Pagamentos da Loja, e só vira Pedido de Venda quando
+   * alguém confirma — é assim de propósito: pedido não é venda enquanto
+   * o dinheiro não está na conta.
+   *
+   * O que faltava era DIZER isso. Quem fechava a compra no catálogo e
+   * abria esta tela via a lista de ontem e concluía que o pedido tinha
+   * se perdido. A faixa abaixo é a resposta, com o caminho junto.
+   */
+  const { data: fila } = useQuery({
+    queryKey: ['store-payments', 'aguardando_pagamento'],
+    queryFn: () => api.get('/store-payments?status=aguardando_pagamento'),
+    refetchInterval: 60000,
+    retry: false,
+  });
+  const aguardando = fila?.total || 0;
+  const comComprovante = fila?.com_comprovante || 0;
 
   // O fluxo (label, cor e quem responde por cada etapa) vem do servidor —
   // a mesma fonte que a carteira do vendedor lê, para as duas telas nunca
@@ -165,7 +186,7 @@ export default function Sales() {
               ESC ou o mesmo botão devolvem o menu, e trocar de módulo
               também. */}
           <button type="button" onClick={telaCheia.alternar}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-[0.6rem] text-sm"
+            className="hidden lg:flex items-center gap-2 px-3 py-2.5 rounded-[0.6rem] text-sm"
             title={telaCheia.ativo
               ? 'Sair da tela cheia (ESC) — traz o menu e o cabeçalho de volta'
               : 'Tela cheia — esconde o menu lateral e o cabeçalho, e dá a largura toda para a lista'}
@@ -178,6 +199,26 @@ export default function Sales() {
           </button>
         </div>
       </div>
+
+      {/* ── Os pedidos do site esperando conferência ─────────── */}
+      {aguardando > 0 && (
+        <Link to="/store-payments"
+          className="flex items-center gap-3 px-4 py-3 rounded-xl transition-opacity hover:opacity-85"
+          style={{
+            background: 'rgba(37,99,235,0.12)',
+            border: '1px solid rgba(37,99,235,0.35)',
+          }}>
+          <Wallet size={18} className="shrink-0" style={{ color: '#60a5fa' }} />
+          <span className="text-sm min-w-0" style={{ color: v.textPrimary }}>
+            <b>{aguardando}</b> {aguardando === 1 ? 'pedido do site espera' : 'pedidos do site esperam'} confirmação do
+            pagamento{comComprovante > 0 && <> — <b>{comComprovante}</b> com comprovante anexado</>}.
+            <span className="block text-[12px]" style={{ color: v.textSubtle }}>
+              Eles entram aqui como Pedido de Venda assim que forem confirmados.
+            </span>
+          </span>
+          <ChevronRight size={16} className="ml-auto shrink-0" style={{ color: v.textSubtle }} />
+        </Link>
+      )}
 
       {/* ── Filtros ───────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3">
@@ -264,7 +305,15 @@ export default function Sales() {
             Duas coisas tiram o peso disso: o botão Tela cheia, que apaga
             o menu e devolve 260px, e o cabeçalho congelado, que mantém o
             nome da coluna à vista enquanto se rola. */}
-        <div className="overflow-x-auto">
+        {/* NO CELULAR A GRADE NAO ABRE.
+            Catorze colunas em 1640 pontos num aparelho de 360 e arrastar
+            a lista de lado cinco vezes para ler UM pedido — e o cabecalho
+            congelado, que salva a leitura no computador, nao ajuda quem
+            perdeu de vista a linha inteira. Abaixo de `lg` a mesma lista
+            vira um cartao por pedido, com tudo empilhado e nada para
+            arrastar. Os dois leem os MESMOS `rows`: nao existe uma
+            segunda consulta nem uma segunda regra de atencao. */}
+        <div className="hidden lg:block overflow-x-auto">
           <div className="min-w-[1640px]">
             {/* CABECALHO CONGELADO.
                 Rolando a lista, os titulos das colunas saiam da tela e a
@@ -404,6 +453,33 @@ export default function Sales() {
           </div>
         </div>
 
+        {/* ── A MESMA LISTA, EM CARTOES (celular) ─────────────── */}
+        <div className="lg:hidden">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-40">
+              <Loader2 size={22} className="animate-spin" style={{ color: v.textMuted }} />
+            </div>
+          ) : rows.length === 0 ? (
+            <p className="text-center py-14 px-4 text-sm" style={{ color: v.empty }}>
+              {hasFilters
+                ? 'Nenhum pedido com esses filtros.'
+                : 'Nenhum pedido em andamento. Ligue o filtro Finalizados para ver o histórico.'}
+            </p>
+          ) : rows.map(row => {
+            const info = statusInfo[row.status];
+            return (
+              <CartaoPedido
+                key={row.id} v={v} row={row} info={info}
+                atencao={calcularAtencao(row, info)}
+                podeExcluir={podeExcluir}
+                onAbrir={() => abrirPedido(row.id)}
+                onFicha={() => setFichaCliente(row.CLIENTES.id)}
+                onExcluir={() => setDelTarget(row)}
+              />
+            );
+          })}
+        </div>
+
         {/* Paginação */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
           style={{ borderTop: `1px solid ${v.divider}`, color: v.textMuted }}>
@@ -456,6 +532,105 @@ export default function Sales() {
       <ExcluirPedidoModal pedido={delTarget} modo="proprio"
         onClose={() => setDelTarget(null)}
         onExcluido={() => qc.invalidateQueries(['sales'])} />
+    </div>
+  );
+}
+
+/**
+ * UM PEDIDO, UM CARTAO — a lista no celular.
+ *
+ * A grade de catorze colunas responde "qual esta atrasado?" de relance
+ * porque tudo esta alinhado. Num aparelho de 360 pontos nada esta
+ * alinhado: sobra arrastar de lado, e arrastar de lado nao responde
+ * nada.
+ *
+ * O cartao inverte a ordem: primeiro o que identifica (numero, cliente,
+ * situacao), depois o que decide (valor e os tres prazos), e o resto —
+ * transportadora, cotacao, frete — so aparece quando existe. Campo vazio
+ * no computador e uma celula com traco; no celular e uma linha inteira
+ * gasta para dizer "nada".
+ *
+ * Toca no cartao e abre o pedido, igual a linha da grade.
+ */
+function CartaoPedido({ v, row, info, atencao, podeExcluir, onAbrir, onFicha, onExcluir }) {
+  const cor = corStatus(info?.cor);
+  const cliente = row.CLIENTES?.name || 'Consumidor Final';
+  const prazos = [
+    ['Evento',  dia(row.event_date)],
+    ['Saída',   dia(row.ship_date)],
+    ['Entrega', dia(row.delivery_date || row.max_delivery_date)],
+  ];
+
+  return (
+    <div role="button" tabIndex={0} onClick={onAbrir}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAbrir(); } }}
+      className="px-4 py-3.5 cursor-pointer linha-pedido"
+      style={{ borderBottom: `1px solid ${v.divider}` }}>
+
+      {/* Numero, situacao e o sinal de atencao */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-bold text-[15px]" style={{ color: '#60a5fa' }}>
+          {codigoPedido(row.number)}
+        </span>
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px]"
+          style={{ border: `1px solid ${cor}55`, color: cor }}>
+          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: cor }} />
+          {info?.label || saleStatusLabel(row.status)}
+        </span>
+        <span className="ml-auto flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+          <SinalAtencao atencao={atencao} />
+          {podeExcluir && (
+            <Acao titulo="Excluir pedido (pede sua senha)" cor="#ef4444" Icon={Trash2} onClick={onExcluir} />
+          )}
+        </span>
+      </div>
+
+      {/* O cliente, com o olho que abre a ficha */}
+      <div className="flex items-center gap-1.5 mt-1.5">
+        <span className="truncate font-medium" style={{ color: v.textPrimary }}>{cliente}</span>
+        {row.CLIENTES?.id && (
+          <button onClick={e => { e.stopPropagation(); onFicha(); }}
+            title={`Ver a ficha de ${cliente}`}
+            className="shrink-0 opacity-60" style={{ color: '#60a5fa' }}>
+            <Eye size={14} />
+          </button>
+        )}
+      </div>
+
+      <p className="text-[12px] mt-0.5" style={{ color: v.textSubtle }}>
+        Cód. {codigoCliente(row.CLIENTES?.display_id) || '—'}
+        {' · '}
+        {dataHora(row.operation_date ? `${row.operation_date}T12:00:00` : row.created_at)}
+      </p>
+
+      {/* O VALOR EM CIMA, OS PRAZOS EMBAIXO — e não os dois na mesma
+          linha: dividida com o valor, cada prazo ficava com 70 pontos e
+          "31/08/2027" saía "31/08/20…". Data cortada não é data. Em
+          linha própria os três cabem inteiros com folga. */}
+      <div className="flex items-baseline justify-between gap-3 mt-2.5">
+        <span className="text-[17px] font-bold" style={{ color: '#22d3ee' }}>{fmt(row.total)}</span>
+        {row.freight > 0 && (
+          <span className="text-[11px]" style={{ color: v.textSubtle }}>frete {fmt(row.freight)}</span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 mt-2">
+        {prazos.map(([rotulo, valor]) => (
+          <div key={rotulo} className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wider" style={{ color: v.textSubtle }}>{rotulo}</p>
+            <p className="text-[12.5px] truncate" style={{ color: v.textMuted }}>{valor}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* So aparece quando existe: no celular, campo vazio e linha
+          perdida. */}
+      {(row.transportadora || row.freight_quote) && (
+        <p className="text-[11px] mt-2 truncate" style={{ color: v.textSubtle }}>
+          {row.transportadora || 'sem transportadora'}
+          {row.freight_quote ? ` · cotação ${row.freight_quote}` : ''}
+        </p>
+      )}
     </div>
   );
 }

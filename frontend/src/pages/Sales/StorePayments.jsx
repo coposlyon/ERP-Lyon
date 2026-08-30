@@ -41,7 +41,8 @@ export default function StorePayments() {
   const abas = ABAS.filter(a => !ehOrcamentos(a.key) || podeOrcamentos);
   const [aba, setAba] = useState('aguardando_pagamento');
   const [aberto, setAberto] = useState(null);     // pedido no modal de detalhe
-  const [cancelando, setCancelando] = useState(null);
+  const [cancelando, setCancelando] = useState(null);   // reprovar
+  const [confirmando, setConfirmando] = useState(null); // confirmar
   const [motivo, setMotivo] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -63,7 +64,7 @@ export default function StorePayments() {
       if (r.lancamento === 'falhou') {
         toast('O recebimento não entrou no Financeiro — lance a mão.', { icon: '⚠️' });
       }
-      setAberto(null);
+      setAberto(null); setConfirmando(null);
       qc.invalidateQueries({ queryKey: ['store-payments'] });
     } catch (e) {
       toast.error(e.error || 'Não foi possível confirmar');
@@ -74,11 +75,11 @@ export default function StorePayments() {
     setBusy(true);
     try {
       await api.post(`/store-payments/${cancelando.id}/cancelar`, { reason: motivo.trim() || null });
-      toast.success('Pedido cancelado');
+      toast.success('Pedido reprovado');
       setCancelando(null); setMotivo(''); setAberto(null);
       qc.invalidateQueries({ queryKey: ['store-payments'] });
     } catch (e) {
-      toast.error(e.error || 'Não foi possível cancelar');
+      toast.error(e.error || 'Não foi possível reprovar');
     } finally { setBusy(false); }
   }
 
@@ -146,11 +147,19 @@ export default function StorePayments() {
                 <div className="flex-1 min-w-[200px]">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-bold text-gray-900">{p.CLIENTES?.name || p.customer?.name || 'Cliente'}</p>
-                    {p.paid_notified_at && p.status === 'aguardando_pagamento' && (
+                    {/* ANEXOU COMPROVANTE É OUTRA COISA de avisou que
+                        pagou: um é documento para conferir, o outro é
+                        recado. Quem está na fila precisa saber de
+                        relance qual dos dois tem na mão. */}
+                    {p.tem_comprovante && p.status === 'aguardando_pagamento' ? (
+                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <FileImage size={11} /> cliente anexou comprovante
+                      </span>
+                    ) : p.paid_notified_at && p.status === 'aguardando_pagamento' ? (
                       <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
                         cliente avisou que pagou
                       </span>
-                    )}
+                    ) : null}
                     {p.expirado && (
                       <span className="text-[11px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full flex items-center gap-1">
                         <AlertTriangle size={11} /> prazo vencido
@@ -175,13 +184,18 @@ export default function StorePayments() {
                   <button onClick={() => setAberto(p)} className="btn-secondary text-sm">Detalhes</button>
                   {p.status === 'aguardando_pagamento' && (
                     <>
-                      <button onClick={() => confirmar(p)} disabled={busy}
+                      {/* OS DOIS PEDEM CONFIRMAÇÃO. Confirmar cria a
+                          venda e o recebimento; reprovar diz "não" a um
+                          documento que alguém mandou. Nenhum dos dois é
+                          coisa para um toque errado resolver. */}
+                      <button onClick={() => setConfirmando(p)} disabled={busy}
                         className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold text-sm px-4 py-2 rounded-xl flex items-center gap-1.5 transition-colors">
-                        <CheckCircle2 size={15} /> Confirmar pagamento
+                        <CheckCircle2 size={15} /> Confirmar pedido
                       </button>
                       <button onClick={() => { setCancelando(p); setMotivo(''); }}
-                        className="text-gray-400 hover:text-red-500 px-2" title="Cancelar pedido">
-                        <XCircle size={18} />
+                        className="border border-red-200 text-red-600 hover:bg-red-50 font-semibold text-sm px-4 py-2 rounded-xl flex items-center gap-1.5 transition-colors"
+                        title="Reprovar o pedido — sai da fila e não vira venda">
+                        <XCircle size={15} /> Reprovar pedido
                       </button>
                     </>
                   )}
@@ -230,8 +244,11 @@ export default function StorePayments() {
 
             {aberto.notes && <p className="text-xs text-gray-500 whitespace-pre-line bg-gray-50 rounded-xl p-3">{aberto.notes}</p>}
 
-            {aberto.receipt_url && (
-              <a href={aberto.receipt_url} target="_blank" rel="noreferrer"
+            {/* O LINK É ASSINADO E EXPIRA. O comprovante mora no bucket
+                privado — traz nome do pagador, banco e valor — e o que
+                chega aqui é um endereço com hora para acabar. */}
+            {aberto.receipt_link && (
+              <a href={aberto.receipt_link} target="_blank" rel="noreferrer"
                 className="btn-secondary w-full justify-center"><FileImage size={15} /> Ver comprovante enviado</a>
             )}
 
@@ -244,35 +261,111 @@ export default function StorePayments() {
                   Confira no extrato da conta se entrou <b>{fmt(aberto.total)}</b> de <b>{aberto.customer?.name}</b>.
                   Só confirme depois de ver o dinheiro na conta — confirmar cria a venda e o recebimento.
                 </div>
-                <button onClick={() => confirmar(aberto)} disabled={busy}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold w-full py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
-                  <CheckCircle2 size={16} /> {busy ? 'Liberando...' : 'Confirmar pagamento e liberar pedido'}
-                </button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button onClick={() => setConfirmando(aberto)} disabled={busy}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                    <CheckCircle2 size={16} /> Confirmar pedido
+                  </button>
+                  <button onClick={() => { setCancelando(aberto); setMotivo(''); }} disabled={busy}
+                    className="flex-1 border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60 font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                    <XCircle size={16} /> Reprovar pedido
+                  </button>
+                </div>
               </>
             )}
           </div>
         )}
       </Modal>
 
-      {/* Cancelar */}
-      <Modal isOpen={!!cancelando} onClose={() => setCancelando(null)} title="Cancelar pedido" size="sm">
-        <div className="space-y-4">
-          <p className="text-sm text-gray-500">
-            O pedido sai da fila e não vira venda. Use quando o cliente desistiu ou o PIX não chegou.
-          </p>
-          <div>
-            <label className="label">Motivo (opcional)</label>
-            <input className="input" value={motivo} onChange={e => setMotivo(e.target.value)}
-              placeholder="Ex.: cliente desistiu" autoFocus />
+      {/* ── CONFIRMAR ────────────────────────────────────────
+          Confirmar não é marcar uma caixinha: cria a VENDA, cria o
+          RECEBIMENTO no Financeiro e solta o pedido para a produção.
+          Desfazer isso depois é trabalho de três telas. Por isso a
+          pergunta vem com o valor e o nome do pagador escritos — é
+          exatamente o que a pessoa tem que ter achado no extrato. */}
+      <Modal isOpen={!!confirmando} onClose={() => !busy && setConfirmando(null)}
+        title="Confirmar pedido" size="sm">
+        {confirmando && (
+          <div className="space-y-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-gray-700">
+              Confirme só depois de <b>ver o dinheiro na conta</b>. Confirmar cria a venda,
+              lança o recebimento no Financeiro e libera o pedido para a produção.
+            </div>
+            <div className="rounded-xl border border-gray-200 p-3 space-y-1 text-sm">
+              <p className="flex justify-between gap-3">
+                <span className="text-gray-500">Cliente</span>
+                <b className="text-gray-900 text-right">{confirmando.CLIENTES?.name || confirmando.customer?.name || '—'}</b>
+              </p>
+              <p className="flex justify-between gap-3">
+                <span className="text-gray-500">Valor</span>
+                <b className="text-gray-900">{fmt(confirmando.total)}</b>
+              </p>
+              <p className="flex justify-between gap-3">
+                <span className="text-gray-500">Comprovante</span>
+                <b className={confirmando.tem_comprovante ? 'text-emerald-600' : 'text-gray-400'}>
+                  {confirmando.tem_comprovante ? 'anexado pelo cliente' : 'não anexado'}
+                </b>
+              </p>
+            </div>
+            {confirmando.receipt_link && (
+              <a href={confirmando.receipt_link} target="_blank" rel="noreferrer"
+                className="btn-secondary w-full justify-center">
+                <FileImage size={15} /> Ver o comprovante antes de confirmar
+              </a>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmando(null)} disabled={busy} className="btn-secondary flex-1">
+                Voltar
+              </button>
+              <button onClick={() => confirmar(confirmando)} disabled={busy}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold py-2 rounded-xl transition-colors">
+                {busy ? 'Liberando…' : 'Sim, confirmar'}
+              </button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => setCancelando(null)} className="btn-secondary flex-1">Voltar</button>
-            <button onClick={cancelar} disabled={busy}
-              className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-semibold py-2 rounded-xl transition-colors">
-              {busy ? 'Cancelando...' : 'Cancelar pedido'}
-            </button>
+        )}
+      </Modal>
+
+      {/* ── REPROVAR ─────────────────────────────────────────
+          Com comprovante anexado o motivo é OBRIGATÓRIO (o servidor
+          também exige): o cliente mandou um documento e vai levar um
+          "não" — sem o porquê, quem atender o telefone dele não tem o
+          que dizer, e ele não sabe o que corrigir. */}
+      <Modal isOpen={!!cancelando} onClose={() => !busy && setCancelando(null)}
+        title="Reprovar pedido" size="sm">
+        {cancelando && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">
+              O pedido sai da fila e <b>não vira venda</b>. Use quando o cliente desistiu, o PIX
+              não chegou ou o comprovante não confere.
+            </p>
+            {cancelando.tem_comprovante && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-gray-700">
+                Este cliente <b>anexou um comprovante</b>. Diga por que ele não confere — é o que
+                o atendimento vai repetir para ele.
+              </div>
+            )}
+            <div>
+              <label className="label">
+                Motivo {cancelando.tem_comprovante ? '(obrigatório)' : '(opcional)'}
+              </label>
+              <input className="input" value={motivo} onChange={e => setMotivo(e.target.value)}
+                placeholder={cancelando.tem_comprovante
+                  ? 'Ex.: o valor do comprovante não bate com o pedido'
+                  : 'Ex.: cliente desistiu'} autoFocus />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setCancelando(null)} disabled={busy} className="btn-secondary flex-1">
+                Voltar
+              </button>
+              <button onClick={cancelar}
+                disabled={busy || (cancelando.tem_comprovante && !motivo.trim())}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2 rounded-xl transition-colors">
+                {busy ? 'Reprovando…' : 'Sim, reprovar'}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </Modal>
     </div>
   );

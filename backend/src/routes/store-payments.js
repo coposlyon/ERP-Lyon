@@ -11,6 +11,7 @@ const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
+const { linkAssinado } = require('../lib/storage');
 const { criarVendaDoPedido, registrarRecebimento } = require('../lib/pedidoLoja');
 
 const STATUS = ['aguardando_pagamento', 'pago', 'expirado', 'cancelado'];
@@ -50,7 +51,27 @@ function paraTela(p, porId) {
     expirado: vencido(p),
     // Quem avisou que pagou vai na frente da fila.
     avisou_pagamento: !!p.paid_notified_at,
+    // ANEXOU COMPROVANTE É OUTRA COISA de avisou que pagou. "Avisei" é
+    // palavra; comprovante é o documento que se confere contra o
+    // extrato. A tela separa os dois, e a fila põe o comprovante na
+    // frente — é o que dá para resolver agora.
+    tem_comprovante: !!p.receipt_url,
   };
+}
+
+/**
+ * O LINK DO COMPROVANTE, ASSINADO E COM HORA PARA ACABAR.
+ *
+ * O arquivo mora no bucket privado (traz nome do pagador, banco e
+ * valor). O caminho cru não abre em lugar nenhum; o link assinado abre
+ * por dez minutos, que é tempo de conferir e não é tempo de virar
+ * corrente de WhatsApp. Comprovante antigo, gravado como URL inteira
+ * quando o bucket era público, continua passando direto.
+ */
+async function comLinkDoComprovante(linhas) {
+  return Promise.all(linhas.map(async l => (
+    l.receipt_url ? { ...l, receipt_link: await linkAssinado(l.receipt_url, 600) } : l
+  )));
 }
 
 const vencido = p => p.status === 'aguardando_pagamento'
@@ -70,14 +91,17 @@ router.get('/', async (req, res) => {
     if (error) throw error;
 
     const porId = await clientesDe(req.tenantId, data || []);
-    const linhas = (data || []).map(p => paraTela(p, porId));
-    // Quem avisou que pagou primeiro — é quem está esperando resposta.
-    linhas.sort((a, b) => (b.avisou_pagamento ? 1 : 0) - (a.avisou_pagamento ? 1 : 0));
+    const linhas = await comLinkDoComprovante((data || []).map(p => paraTela(p, porId)));
+    // A fila é por quem dá para resolver AGORA: comprovante anexado na
+    // frente, depois quem só avisou, e por último quem nem avisou.
+    const peso = l => (l.tem_comprovante ? 2 : 0) + (l.avisou_pagamento ? 1 : 0);
+    linhas.sort((a, b) => peso(b) - peso(a));
 
     res.json({
       data: linhas,
       total: count ?? linhas.length,
       aguardando_conferencia: linhas.filter(l => l.avisou_pagamento).length,
+      com_comprovante: linhas.filter(l => l.tem_comprovante).length,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -101,7 +125,8 @@ router.get('/:id', async (req, res) => {
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Pedido não encontrado' });
     const porId = await clientesDe(req.tenantId, [data]);
-    res.json(paraTela(data, porId));
+    const [linha] = await comLinkDoComprovante([paraTela(data, porId)]);
+    res.json(linha);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -136,14 +161,25 @@ router.post('/:id/confirmar', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Cancelar (não pagou, desistiu, pagamento não localizado) ──
+// ── Reprovar (não pagou, desistiu, comprovante não confere) ───
+//
+// A tela chama de REPROVAR quando o cliente anexou comprovante, porque é
+// isso que está acontecendo: alguém mandou um documento e a Lyon está
+// dizendo que ele não fecha. É a mesma porta do cancelamento comum — um
+// pedido recusado e um pedido abandonado terminam no mesmo lugar.
 router.post('/:id/cancelar', async (req, res) => {
   const reason = String(req.body?.reason || '').trim() || null;
   try {
-    const { data: ped } = await supabase.from('PEDIDOS_LOJA').select('id, status')
+    const { data: ped } = await supabase.from('PEDIDOS_LOJA').select('id, status, receipt_url')
       .eq('tenant_id', req.tenantId).eq('id', req.params.id).maybeSingle();
     if (!ped) return res.status(404).json({ error: 'Pedido não encontrado' });
     if (ped.status === 'pago') return res.status(409).json({ error: 'Pedido já confirmado — cancele pela venda' });
+    // RECUSAR COMPROVANTE EXIGE MOTIVO. O cliente mandou um documento e
+    // vai receber um "não": sem o porquê, quem for atendê-lo no telefone
+    // não tem o que dizer, e o próprio cliente não sabe o que corrigir.
+    if (ped.receipt_url && !reason) {
+      return res.status(400).json({ error: 'Diga por que o comprovante não confere — o cliente anexou um documento.' });
+    }
 
     await supabase.from('PEDIDOS_LOJA')
       .update({ status: 'cancelado', canceled_reason: reason })

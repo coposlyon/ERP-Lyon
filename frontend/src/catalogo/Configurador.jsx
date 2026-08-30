@@ -577,7 +577,7 @@ export default function Configurador() {
                 ativo={estado.pagamento === 'boleto'} onClick={() => mudar({ pagamento: 'boleto' })} />
             </div>
             <Nota icone={Info} cor={NEON.roxo}>
-              Ao clicar em "Gerar pagamento", o sistema solicitará seu cadastro para prosseguir.
+              Ao clicar em "Confirmar pedido", o sistema solicitará seu cadastro para prosseguir.
             </Nota>
           </Painel>
         </div>
@@ -632,7 +632,7 @@ export default function Configurador() {
               Gerar orçamento
             </Botao>
             <Botao cheio icone={Lock} onClick={() => adicionar('pagamento')} disabled={!podeFechar}>
-              Gerar pagamento
+              Confirmar pedido
             </Botao>
 
             {/* Os campos que faltam já estão marcados em vermelho no painel 1.

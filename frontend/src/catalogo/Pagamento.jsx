@@ -21,7 +21,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   QrCode, Copy, Check, Loader2, Clock, PackageCheck, Headphones,
-  AlertTriangle, ArrowLeft, Info,
+  AlertTriangle, ArrowLeft, Info, Paperclip, MessageCircle, FileCheck2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { lojaApi } from './api';
@@ -32,6 +32,14 @@ import { CatalogoShell, Painel, NEON, bordaNeon, corComAlfa, Botao, Nota, brl } 
 // bastante para não martelar o servidor com a aba aberta a tarde toda.
 const INTERVALO = 6000;
 
+/** O arquivo do celular vira data URL — é o formato que a rota aceita. */
+const comoDataUrl = arquivo => new Promise((resolve, reject) => {
+  const leitor = new FileReader();
+  leitor.onload = () => resolve(leitor.result);
+  leitor.onerror = () => reject(new Error('Não consegui ler o arquivo escolhido.'));
+  leitor.readAsDataURL(arquivo);
+});
+
 export default function Pagamento() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -41,7 +49,10 @@ export default function Pagamento() {
   const [copiado, setCopiado] = useState(false);
   const [avisando, setAvisando] = useState(false);
   const [avisado, setAvisado] = useState(false);
+  const [comprovante, setComprovante] = useState(false);   // já anexou nesta sessão
+  const [loja, setLoja] = useState(null);                  // telefone do atendimento
   const timer = useRef(null);
+  const inputComprovante = useRef(null);
 
   useEffect(() => {
     let vivo = true;
@@ -64,6 +75,16 @@ export default function Pagamento() {
     return () => { vivo = false; clearInterval(timer.current); };
   }, [id]);
 
+  // O WHATSAPP DA LOJA VEM DO CADASTRO, e não colado no código: os
+  // links antigos apontavam para `wa.me/?text=…` sem número nenhum —
+  // abriam o WhatsApp na lista de conversas e deixavam o cliente
+  // procurando com quem falar.
+  useEffect(() => {
+    let vivo = true;
+    lojaApi.get('/store').then(r => { if (vivo) setLoja(r); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+
   async function copiar() {
     try {
       await navigator.clipboard.writeText(pedido.pix_copy_paste);
@@ -75,17 +96,41 @@ export default function Pagamento() {
     }
   }
 
-  async function jaPaguei() {
+  /**
+   * Avisa que pagou — com o comprovante junto quando houver.
+   *
+   * NÃO CONFIRMA NADA, e a tela não finge que confirma: quem confere o
+   * extrato é a Lyon. O que muda com o comprovante anexado é a fila —
+   * o pedido sobe para o topo com o documento do lado, em vez de virar
+   * um "ele disse que pagou" que alguém precisa caçar no WhatsApp.
+   */
+  async function jaPaguei(arquivo) {
     setAvisando(true);
     try {
-      await lojaApi.post(`/pedido/${id}/paguei`, {});
+      const receipt = arquivo ? await comoDataUrl(arquivo) : null;
+      const r = await lojaApi.post(`/pedido/${id}/paguei`, receipt ? { receipt } : {});
       setAvisado(true);
-      toast.success('Avisamos a equipe. Assim que confirmarmos, seu pedido é liberado.');
+      if (r?.comprovante) setComprovante(true);
+      toast.success(r?.comprovante
+        ? 'Comprovante recebido! Assim que conferirmos, seu pedido é liberado.'
+        : 'Avisamos a equipe. Assim que confirmarmos, seu pedido é liberado.');
     } catch (e) {
       toast.error(e.message);
     } finally {
       setAvisando(false);
     }
+  }
+
+  /** O arquivo escolhido, já checado antes de subir. */
+  function escolherComprovante(e) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = '';
+    if (!arquivo) return;
+    if (arquivo.size > 8 * 1024 * 1024) {
+      toast.error('O comprovante passa de 8 MB. Mande uma foto menor.');
+      return;
+    }
+    jaPaguei(arquivo);
   }
 
   if (erro) {
@@ -111,6 +156,42 @@ export default function Pagamento() {
   }
 
   const pendente = pedido.status === 'aguardando_pagamento';
+
+  // O comprovante pode ter sido enviado nesta sessão ou numa anterior —
+  // o cliente volta a esta tela pelo mesmo link, e ela não pode pedir de
+  // novo o que ele já mandou ontem.
+  const comprovanteEnviado = comprovante || !!pedido.comprovante;
+
+  // A referência curta do pedido: o uuid inteiro numa mensagem de
+  // WhatsApp não é referência, é ruído. Oito caracteres bastam para
+  // achar a linha na fila.
+  const referencia = String(id).slice(0, 8).toUpperCase();
+
+  // 55 na frente quando o cadastro guardou só DDD + número, que é como
+  // o Brasil escreve telefone. Sem número o link vira o WhatsApp sem
+  // destinatário — melhor isso do que um botão que some.
+  const foneLoja = String(loja?.cadastro?.whatsapp || loja?.phone || '').replace(/\D/g, '');
+  const destino = foneLoja ? (foneLoja.length <= 11 ? `55${foneLoja}` : foneLoja) : '';
+  const zap = texto => `https://wa.me/${destino}?text=${encodeURIComponent(texto)}`;
+
+  const linkWhatsapp = zap(
+    `Olá! Segue o comprovante do pedido ${referencia} — ${brl(pedido.total)}.`,
+  );
+  const linkAtendente = zap(
+    `Olá, fiz o pedido ${referencia} no catálogo e preciso de ajuda com o pagamento.`,
+  );
+
+  /**
+   * Mandar no WhatsApp também avisa a fila.
+   *
+   * Sem isto o pedido continuaria como "ninguém disse nada" enquanto o
+   * comprovante estava chegando por outro canal — e quem confere não
+   * saberia que tem algo para procurar. O link abre do mesmo jeito: o
+   * aviso é um efeito, não uma etapa a mais.
+   */
+  function avisarPeloWhats() {
+    if (!avisado && !avisando) jaPaguei(null);
+  }
 
   // ── Pagamento confirmado (§33) ────────────────────────────
   if (!pendente) {
@@ -211,14 +292,60 @@ export default function Pagamento() {
           </span>
         </div>
 
-        <div className="mt-3 space-y-2.5">
-          <Botao cor={NEON.roxo} icone={avisado ? Check : Info}
-            onClick={jaPaguei} disabled={avisando || avisado}>
-            {avisando ? 'Avisando…' : avisado ? 'Equipe avisada' : 'Já paguei'}
-          </Botao>
+        {/* ── DEPOIS DE PAGAR, O COMPROVANTE ───────────────────
+            O PIX cai direto na conta da Lyon e o banco não avisa o
+            sistema: quem confere é uma pessoa, olhando o extrato. O
+            comprovante é o que encurta essa conferência de "procurar um
+            pagamento de R$ 340 no meio do dia" para "bater este
+            documento com esta linha".
+            Dois caminhos porque as duas coisas acontecem: quem já está
+            com o print na mão anexa aqui; quem prefere conversar manda
+            no WhatsApp. Os dois marcam o pedido como avisado — o que
+            muda é onde o documento chega. */}
+        <div className="mt-4 p-3 rounded-xl" style={bordaNeon(NEON.magenta, 0.5)}>
+          <p className="text-[12.5px] font-semibold mb-1" style={{ color: NEON.texto }}>
+            Já pagou? Mande o comprovante.
+          </p>
+          <p className="text-[11.5px] leading-relaxed mb-3" style={{ color: NEON.suave }}>
+            Não é obrigatório, mas é o que faz seu pedido ser liberado mais rápido.
+          </p>
 
-          <a href="https://wa.me/?text=Ol%C3%A1%2C%20fiz%20um%20pedido%20no%20cat%C3%A1logo%20e%20preciso%20de%20ajuda%20com%20o%20pagamento"
-            target="_blank" rel="noreferrer"
+          <input ref={inputComprovante} type="file" className="hidden"
+            accept="image/*,application/pdf" onChange={escolherComprovante} />
+
+          <div className="space-y-2.5">
+            <Botao cheio icone={comprovanteEnviado ? FileCheck2 : Paperclip}
+              onClick={() => inputComprovante.current?.click()}
+              disabled={avisando}>
+              {avisando ? <><Loader2 size={16} className="animate-spin" /> Enviando…</>
+                : comprovanteEnviado ? 'Comprovante enviado — trocar' : 'Anexar comprovante aqui'}
+            </Botao>
+
+            <a href={linkWhatsapp} target="_blank" rel="noreferrer" onClick={avisarPeloWhats}
+              className="w-full rounded-xl py-3 px-4 font-semibold text-[14px] flex items-center justify-center gap-2"
+              style={{ ...bordaNeon('#25d366', 0.7), color: '#4ade80' }}>
+              <MessageCircle size={17} /> Enviar no WhatsApp
+            </a>
+          </div>
+
+          {comprovanteEnviado ? (
+            <p className="text-[11.5px] leading-relaxed mt-3 flex items-start gap-1.5"
+              style={{ color: '#4ade80' }}>
+              <Check size={13} className="shrink-0 mt-0.5" />
+              Recebemos seu comprovante. Ele está na fila de conferência — esta tela avisa
+              sozinha quando o pedido for liberado.
+            </p>
+          ) : avisado && (
+            <p className="text-[11.5px] leading-relaxed mt-3 flex items-start gap-1.5"
+              style={{ color: NEON.suave }}>
+              <Check size={13} className="shrink-0 mt-0.5" style={{ color: NEON.ciano }} />
+              Equipe avisada. Se puder, anexe o comprovante — com ele a conferência é na hora.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-3">
+          <a href={linkAtendente} target="_blank" rel="noreferrer"
             className="w-full rounded-xl py-3 px-4 font-semibold text-[14px] flex items-center justify-center gap-2"
             style={{ ...bordaNeon(NEON.magenta), color: NEON.magenta }}>
             <Headphones size={17} /> Falar com atendente

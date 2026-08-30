@@ -6,7 +6,7 @@
 //
 //   Continuar comprando → volta para a vitrine, carrinho intacto.
 //   Gerar orçamento     → grava um orçamento aberto. NÃO vira pedido.
-//   Gerar pagamento     → exige cadastro, gera a cobrança, e o pedido só
+//   Confirmar pedido    → exige cadastro, gera a cobrança, e o pedido só
 //                         entra no fluxo de venda quando o dinheiro
 //                         estiver conferido.
 //
@@ -230,7 +230,7 @@ export default function Carrinho() {
     }
   }
 
-  // ── Gerar pagamento (§30 a §32) ───────────────────────────
+  // ── Confirmar pedido → cobrança (§30 a §32) ───────────────
   async function gerarPagamento(clienteAtual = cliente) {
     if (!itens.length) return;
     setEnviando('pagamento');
@@ -524,10 +524,14 @@ export default function Carrinho() {
                 ? <><Loader2 size={16} className="animate-spin" /> Gerando…</>
                 : 'Gerar orçamento'}
             </Botao>
+            {/* "CONFIRMAR PEDIDO", e não "Gerar pagamento": o cliente
+                não está gerando nada, está fechando a compra. O que
+                acontece depois — o PIX aparecer — é consequência, e a
+                tela seguinte explica. */}
             <Botao cheio icone={Lock} onClick={() => gerarPagamento()} disabled={!!enviando}>
               {enviando === 'pagamento'
-                ? <><Loader2 size={16} className="animate-spin" /> Gerando…</>
-                : 'Gerar pagamento'}
+                ? <><Loader2 size={16} className="animate-spin" /> Confirmando…</>
+                : 'Confirmar pedido'}
             </Botao>
             <AtendenteBotao />
           </div>

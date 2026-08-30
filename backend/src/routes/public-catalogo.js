@@ -587,6 +587,30 @@ router.post('/pagamento', escritaLimiter, async (req, res) => {
       event_date: data_evento || null,
     };
 
+    /**
+     * COBRANÇA DE ZERO NÃO É COBRANÇA.
+     *
+     * `precoDoItem` devolve 0 quando o produto de referência do modelo
+     * está sem preço de venda e sem tabela de faixas no cadastro. O
+     * checkout seguia adiante assim mesmo: gerava um PIX sem valor (o
+     * campo 54 do código nem chega a existir), a tela mostrava
+     * "Total a pagar — R$ 0,00", e o cliente ficava esperando confirmar
+     * um pagamento que ele não tem como fazer.
+     *
+     * Recusar aqui é o único fim honesto: um pedido de R$ 0,00 liberado
+     * viraria uma venda de zero real no Comercial. O recado manda para o
+     * atendente, que é quem consegue resolver — e o log diz ao pessoal
+     * do ERP exatamente qual produto está sem preço.
+     */
+    if (pedido.total <= 0) {
+      console.error('[catalogo:pagamento] pedido sem preço — produtos sem sale_price/price_tiers:',
+        linhas.map(l => `${l.configuracao?.codigo || '?'} x${l.quantidade}`).join(', '));
+      return res.status(400).json({
+        error: 'Não consegui calcular o valor deste pedido. Fale com um atendente para fecharmos por aqui.',
+        code: 'SEM_PRECO',
+      });
+    }
+
     // Sem chave PIX configurada não há como cobrar: o pedido entra no
     // Comercial para o vendedor fechar por fora, em vez de a tela travar
     // com o carrinho montado.
