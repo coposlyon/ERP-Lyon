@@ -61,6 +61,37 @@ export default function AIAssistant() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, loading]);
 
+  // O PRINT VAI REDUZIDO.
+  //
+  // Um PrintScreen de tela cheia vira 3 a 8 MB depois do base64, e esse
+  // peso todo nao compra nada: a propria Groq reduz a imagem antes de
+  // olhar (um print 1920x1080 chega la como ~785 tokens). O que o peso
+  // compra e risco - limite de corpo em proxy, limite de tokens por
+  // minuto, e a espera de subir megabytes numa conexao de fabrica.
+  //
+  // 1400px na maior aresta mantem texto de tela legivel e derruba o
+  // arquivo para dezenas de KB. JPEG porque print de interface comprime
+  // bem e a fidelidade de pixel nao importa aqui.
+  const LADO_MAX = 1400;
+
+  function reduzir(dataUrl) {
+    return new Promise(resolve => {
+      const im = new Image();
+      im.onload = () => {
+        const escala = Math.min(1, LADO_MAX / Math.max(im.width, im.height));
+        if (escala === 1 && dataUrl.length < 700000) return resolve(dataUrl);
+        const c = document.createElement('canvas');
+        c.width = Math.round(im.width * escala);
+        c.height = Math.round(im.height * escala);
+        c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+        try { resolve(c.toDataURL('image/jpeg', 0.85)); }
+        catch { resolve(dataUrl); }   // canvas sujo: manda o original
+      };
+      im.onerror = () => resolve(dataUrl);
+      im.src = dataUrl;
+    });
+  }
+
   function carregarArquivo(file) {
     if (!file || !file.type.startsWith('image/')) return;
     if (file.size > MAX_MB * 1024 * 1024) {
@@ -68,7 +99,7 @@ export default function AIAssistant() {
       return;
     }
     const r = new FileReader();
-    r.onload = () => setImg(r.result);
+    r.onload = async () => setImg(await reduzir(r.result));
     r.readAsDataURL(file);
   }
 
@@ -104,7 +135,18 @@ export default function AIAssistant() {
       });
       setMsgs(m => [...m, { role: 'assistant', text: res.resposta, acao: res.acao }]);
     } catch (e) {
-      setMsgs(m => [...m, { role: 'assistant', text: e.error || 'Não consegui responder agora.', err: true }]);
+      // NAO ENGOLIR O ERRO.
+      //
+      // Isto era `e.error || 'Nao consegui responder agora.'`. Quando a
+      // resposta nao trazia um {error} - proxy devolvendo HTML, corpo
+      // grande demais, rede caindo - a pessoa lia a frase generica e nao
+      // havia como saber o que tinha acontecido. Um print falhou assim e
+      // custou uma investigacao inteira as cegas.
+      const detalhe = e?.error
+        || (e?.response?.status ? `o servidor respondeu ${e.response.status}` : null)
+        || (e?.message === 'Network Error' ? 'não deu para falar com o servidor' : e?.message)
+        || 'motivo desconhecido';
+      setMsgs(m => [...m, { role: 'assistant', text: `Não consegui responder: ${detalhe}.`, err: true }]);
     } finally { setLoading(false); }
   }
 

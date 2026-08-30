@@ -40,12 +40,28 @@ const MAX_IMAGEM_MB = 4;
  *                   pode ser string ou o array multimodal com imagem.
  * @returns { ok, text } ou { ok: false, error }
  */
+const dorme = ms => new Promise(r => setTimeout(r, ms));
+
+/**
+ * O LIMITE DE TAXA DA GROQ É O ERRO MAIS COMUM AQUI, E É PASSAGEIRO.
+ *
+ * A conta gratuita conta tokens por minuto, e pergunta com print gasta
+ * bem mais do que pergunta de texto. Devolver "tente de novo" para algo
+ * que passa sozinho em dois segundos é empurrar para o usuário um
+ * trabalho que o servidor faz melhor: ele espera e repete uma vez.
+ *
+ * Uma vez só. Duas seria disfarçar uma conta que precisa de plano maior.
+ */
+const TENTATIVAS = 2;
+const ESPERA_MS = 2500;
+
 async function askGroq({ system, mensagens, max_tokens = 1200, model, temperature = 0.3 }) {
   const key = process.env.GROQ_API_KEY;
   if (!key) return { ok: false, error: 'Assistente não configurado (defina GROQ_API_KEY no servidor).' };
 
   const msgs = system ? [{ role: 'system', content: system }, ...mensagens] : mensagens;
 
+  for (let tentativa = 1; tentativa <= TENTATIVAS; tentativa++) {
   try {
     const res = await fetch(GROQ_URL, {
       method: 'POST',
@@ -60,9 +76,15 @@ async function askGroq({ system, mensagens, max_tokens = 1200, model, temperatur
     const data = await res.json().catch(() => null);
     if (!res.ok) {
       const msg = data?.error?.message || `Groq HTTP ${res.status}`;
+      const limite = res.status === 429 || /rate limit|too many/i.test(msg);
+
+      // Passageiro: espera e repete, em vez de devolver o problema.
+      if (limite && tentativa < TENTATIVAS) { await dorme(ESPERA_MS); continue; }
+
       // O erro cru da Groq é em inglês e fala de "messages[0].content".
       // Quem lê é o vendedor, no meio do trabalho.
-      if (/rate limit/i.test(msg)) return { ok: false, error: 'O assistente está sobrecarregado agora. Tente de novo em alguns segundos.' };
+      if (limite)                  return { ok: false, error: 'O assistente atingiu o limite de uso do minuto. Espere meio minuto e pergunte de novo.' };
+      if (/context|too large|token/i.test(msg)) return { ok: false, error: 'A conversa ficou longa demais. Use a lixeira no topo para limpar e pergunte de novo.' };
       if (/image/i.test(msg))      return { ok: false, error: 'Não consegui ler essa imagem. Tente um print em PNG ou JPG.' };
       return { ok: false, error: msg };
     }
@@ -74,8 +96,11 @@ async function askGroq({ system, mensagens, max_tokens = 1200, model, temperatur
     return { ok: true, text };
   } catch (err) {
     if (err.name === 'TimeoutError') return { ok: false, error: 'O assistente demorou demais para responder. Tente de novo.' };
+    if (tentativa < TENTATIVAS) { await dorme(ESPERA_MS); continue; }
     return { ok: false, error: err.message };
   }
+  }
+  return { ok: false, error: 'O assistente não respondeu.' };
 }
 
 /**

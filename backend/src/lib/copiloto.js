@@ -26,6 +26,7 @@
 // ============================================================
 
 const { askGroq, conteudoDoUsuario } = require('./groq');
+const conhecimento = require('./conhecimento');
 
 // Quantas trocas de mensagem o copiloto lembra. Passar disso encarece
 // cada pergunta sem melhorar a resposta — e a conversa de suporte
@@ -84,7 +85,7 @@ virar cliente de verdade.
  * @param telas  [{ label, path }] — o menu real do usuário
  * @param ctx    { tela_atual, nome, cargo }
  */
-function instrucao(telas, ctx = {}, contextoTela = null) {
+function instrucao(telas, ctx = {}, contextoTela = null, regras = null) {
   // O GRUPO VAI JUNTO porque a resposta cita o caminho do menu. Sem
   // ele o modelo chuta o grupo: mandou "Cadastros > Formação de Preço"
   // quando a tela mora em "Engenharia de Custos". O usuário procura
@@ -145,7 +146,21 @@ ${contextoTela}
 ` : ''}
 
 COMO O SISTEMA FUNCIONA
-${COMO_FUNCIONA}`;
+${COMO_FUNCIONA}
+${regras ? `
+REGRAS DETALHADAS QUE VALEM PARA ESTA PERGUNTA
+
+O que vem abaixo foi tirado da documentação interna do próprio sistema —
+é a regra como ela foi escrita por quem construiu a funcionalidade, e
+vale mais do que qualquer suposição sua. Ela cobre: ${conhecimento.indiceDeAreas()}.
+
+Use isto para responder com precisão. Se o trecho responder a pergunta,
+responda com base nele e não generalize. Fale a regra em português
+simples de quem opera a fábrica — NÃO cite nome de arquivo, de tabela,
+de função nem de migração: quem pergunta é vendedor, não programador.
+
+${regras}
+` : ''}`;
 }
 
 /**
@@ -187,6 +202,8 @@ function separarAcao(texto, telas) {
  * @param ctx        { tela_atual }
  */
 async function responder({ pergunta, imagem, historico = [], telas = [], ctx = {}, contextoTela = null }) {
+  // O que a base de conhecimento tem a dizer sobre ESTA pergunta.
+  const regras = conhecimento.buscar(pergunta, contextoTela);
   const anteriores = (Array.isArray(historico) ? historico : [])
     .slice(-MAX_HISTORICO)
     .filter(h => h && h.text && (h.role === 'user' || h.role === 'assistant'))
@@ -195,7 +212,7 @@ async function responder({ pergunta, imagem, historico = [], telas = [], ctx = {
     .map(h => ({ role: h.role, content: String(h.text).slice(0, 4000) }));
 
   const r = await askGroq({
-    system: instrucao(telas, ctx, contextoTela),
+    system: instrucao(telas, ctx, contextoTela, regras),
     mensagens: [...anteriores, { role: 'user', content: conteudoDoUsuario(pergunta, imagem) }],
     max_tokens: 1200,
   });
