@@ -181,33 +181,45 @@ export default function CidadesUfModal({ uf, onClose }) {
                           <span style={{ color: v.textSubtle }}>Só a sede</span>
                         )}
                       </td>
-                      {/* TRÊS ESTADOS, E O NÚMERO É O MESMO NOS DOIS PRIMEIROS.
-                          Quem preenche etiqueta quer LER O CEP, e nao decifrar
-                          uma faixa: por isso "83490-000 a 83490-999" virou
-                          "83490-000" com um selo. O selo e que carrega a
-                          diferenca, para quem precisa dela:
+                      {/* QUATRO ESTADOS. Os dois primeiros mostram UM número
+                          porque um número existe; o terceiro mostra a faixa
+                          inteira porque um número seria mentira:
 
-                            unico  a cidade inteira usa este numero
-                            geral  o CEP da localidade; as ruas variam depois
-                                   do trace, dentro do mesmo prefixo
-                            em branco  a cidade tem faixa de verdade (o CEP
-                                   muda de bairro para bairro) e nao existe um
-                                   numero que a represente
+                            unico  start == end. A cidade inteira usa este
+                                   numero.
+                            geral  start != end, MESMO prefixo. E o CEP da
+                                   localidade; as ruas variam so depois do
+                                   traco. Selo "geral".
+                            faixa  start != end, prefixos DIFERENTES. A cidade
+                                   e grande e o CEP muda de bairro para bairro.
+                                   Aqui mostrar so o start seria o pior erro
+                                   possivel: o 88801-000 de Criciuma nao e "o
+                                   CEP de Criciuma", e a Avenida Centenario.
+                                   Entao vai a faixa inteira.
+                            branco a amostra nao provou nada e ninguem chutou.
 
-                          Mostrar so a faixa escondia o CEP no meio dela; e
-                          mostrar so o numero, sem o selo, faria "83490-000"
-                          parecer o endereco exato de todo mundo. */}
+                          Nao precisou de coluna nova: os tres casos ja estao
+                          escritos na diferenca entre cep_start e cep_end. */}
                       <td className="px-4 py-2.5 tabular-nums"
                         style={{ color: c.cep_start ? v.textMuted : v.textSubtle }}>
                         {!c.cep_start ? '—' : (() => {
-                          const faixa = c.cep_end && c.cep_end !== c.cep_start;
+                          const variavel = c.cep_end && c.cep_end !== c.cep_start;
+                          const mesmoPrefixo = variavel && c.cep_end.slice(0, 5) === c.cep_start.slice(0, 5);
+
+                          if (variavel && !mesmoPrefixo) return (
+                            <span className="text-[11px] whitespace-nowrap"
+                              title={`${c.name} tem faixa de CEP: o número muda de bairro para bairro, de ${c.cep_start} a ${c.cep_end}. Não existe um CEP único que represente a cidade.`}>
+                              {c.cep_start} <span style={{ color: v.textSubtle }}>a</span> {c.cep_end}
+                            </span>
+                          );
+
                           return (
                             <span className="inline-flex items-center gap-1.5"
-                              title={faixa
+                              title={variavel
                                 ? `CEP geral de ${c.name}. As ruas usam de ${c.cep_start} a ${c.cep_end}.`
                                 : 'A cidade inteira usa este CEP'}>
                               {c.cep_start}
-                              {faixa && (
+                              {variavel && (
                                 <span className="text-[9px] px-1 py-0.5 rounded"
                                   style={{ background: 'rgba(96,165,250,0.16)', color: '#93c5fd' }}>geral</span>
                               )}
@@ -242,11 +254,13 @@ export default function CidadesUfModal({ uf, onClose }) {
                 <span>
                   Número limpo = a cidade inteira usa aquele CEP. Com o selo
                   <b> geral</b> = as ruas mudam depois do traço, mas todas dentro do
-                  mesmo prefixo, e aquele é o CEP da localidade. Em branco = a cidade
-                  tem FAIXA de verdade (o CEP muda de bairro para bairro) e não existe
-                  um número que a represente — faixa por município só sai do DNE dos
-                  Correios, que é pago. Continua em branco de propósito: melhor vazio
-                  do que um CEP chutado virando etiqueta errada.
+                  mesmo prefixo, e aquele é o CEP da localidade. <b>Faixa</b> (dois
+                  números) = cidade grande, o CEP muda de bairro para bairro e não
+                  existe um número único que a represente — a faixa é a OBSERVADA:
+                  serve para conferir se um CEP é daquela cidade e para se situar, mas
+                  as pontas podem ir um pouco além — CEP de entrega é sempre o da rua.
+                  Em branco = nem isso deu para provar, e ninguém chutou:
+                  melhor vazio do que um CEP inventado virando etiqueta errada.
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]" style={{ color: v.textSubtle }}>
