@@ -491,6 +491,23 @@ const POLITICAS = [
   { key: 'sigilo', label: 'Termo de sigilo', desc: 'Preço de custo, carteira de clientes e processos.' },
 ];
 
+// O ACEITE DE POLITICA E UMA DATA - MAS NEM SEMPRE FOI.
+//
+// `marcar` grava a data do aceite ('2027-01-05'), e a descricao fazia
+// `aceitas[p.key].split('-')` direto. Bastava um registro com `true` no
+// lugar da data para a etapa inteira sumir atras de "Algo deu errado
+// nesta tela" - foi o que aconteceu com um colaborador de exemplo cujo
+// seed gravou booleanos.
+//
+// Um dado ruim de uma politica nao pode derrubar a tela: aqui ele vira
+// "Aceito" sem data, que e verdade, e o resto da etapa continua de pe.
+// Quem consertar o dado ve a data aparecer sozinha.
+const aceiteEm = v => {
+  if (typeof v !== 'string') return 'Aceito';
+  const d = v.slice(0, 10).split('-');
+  return d.length === 3 ? `Aceito em ${d.reverse().join('/')}` : 'Aceito';
+};
+
 export function ContratoPoliticas({ f, set }) {
   const aceitas = f.politicas || {};
   const marcar = (k, v) => set('politicas', { ...aceitas, [k]: v ? new Date().toISOString().slice(0, 10) : null });
@@ -524,7 +541,7 @@ export function ContratoPoliticas({ f, set }) {
           <div key={p.key} className="sm:col-span-1">
             <Chave ligado={!!aceitas[p.key]} aoMudar={v => marcar(p.key, v)}
               titulo={p.label}
-              descricao={aceitas[p.key] ? `Aceito em ${aceitas[p.key].split('-').reverse().join('/')}` : p.desc} />
+              descricao={aceitas[p.key] ? aceiteEm(aceitas[p.key]) : p.desc} />
           </div>
         ))}
       </Secao>

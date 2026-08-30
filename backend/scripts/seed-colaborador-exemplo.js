@@ -107,7 +107,24 @@ const ANEXADOS = [
     contrato_inicio: '2027-01-05',
     contrato_fim: null,
     contrato_assinado_em: '2027-01-05T09:00:00.000Z',
-    politicas: { conduta: true, lgpd: true, seguranca: true, recursos: true, anticorrupcao: true },
+    // O ACEITE E A DATA EM QUE FOI ACEITO, NAO UM SIM.
+    //
+    // A primeira versao gravou booleanos e inventou tres chaves que nao
+    // existem ('seguranca', 'recursos', 'anticorrupcao'), deixando de
+    // fora tres que existem. A tela faz `aceite.split('-')` para mostrar
+    // "Aceito em 05/01/2027": com `true` no lugar da data, a etapa
+    // Contrato e Politicas inteira caia em "Algo deu errado nesta tela".
+    //
+    // As chaves sao as de POLITICAS, em passos.jsx. Um exemplo que nao
+    // usa as chaves de verdade nao testa nada.
+    politicas: {
+      termo_sistema: '2027-01-05',
+      lgpd:          '2027-01-05',
+      imagem:        '2027-01-05',
+      epi:           '2027-01-05',
+      conduta:       '2027-01-05',
+      sigilo:        '2027-01-05',
+    },
 
     // Acesso
     has_access: true,
