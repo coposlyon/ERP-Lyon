@@ -39,6 +39,26 @@ async function criarVendaDoPedido(pedido, actor = {}) {
     total: pedido.total,
     notes: pedido.notes,
     status: 'iniciando_pedido',
+    /**
+     * PEDIDO DO SITE JÁ NASCE ENVIADO PARA A PRODUÇÃO.
+     *
+     * O pedido do ERP espera alguém apertar "Enviar para produção",
+     * porque ali o comercial ainda pode estar acertando quantidade,
+     * prazo ou arte com o cliente.
+     *
+     * No site não há esse "ainda": o cliente montou a peça no
+     * configurador, fechou a arte, escolheu a quantidade e pagou.
+     * Segurá-lo esperando um clique interno seria atrasar o que já
+     * estava combinado — e ninguém tem o que revisar.
+     */
+    production_log: [{
+      stage: 'status',
+      action: 'enviado_producao',
+      at: new Date().toISOString(),
+      user_id: null,
+      user: 'Pedido do site',
+      origem: 'site',
+    }],
   };
 
   // source/event_date podem não existir em bases antigas (migrations 029/…)
@@ -46,6 +66,12 @@ async function criarVendaDoPedido(pedido, actor = {}) {
   // origin='Site' porque foi o próprio cliente quem montou o pedido na
   // loja — é o único caso em que o ERP sabe a origem sem perguntar.
   let { data: sale, error } = await trySale({ source: 'site', origin: 'Site', event_date: pedido.event_date || null });
+  // Base antiga sem `production_log`: o pedido tem que entrar do mesmo
+  // jeito — só perde a marca de já ter ido para a produção.
+  if (error && /production_log/i.test(error.message || '')) {
+    delete baseSale.production_log;
+    ({ data: sale, error } = await trySale({ source: 'site', origin: 'Site', event_date: pedido.event_date || null }));
+  }
   if (error && /(source|origin|event_date)/i.test(error.message || '')) {
     ({ data: sale, error } = await trySale({ source: 'site', origin: 'Site' }));
     if (error && /origin/i.test(error.message || '')) ({ data: sale, error } = await trySale({ source: 'site' }));

@@ -134,6 +134,41 @@ const REQUISITOS = {
 };
 
 /**
+ * AS FASES QUE SÃO DO CHÃO DE FÁBRICA.
+ *
+ * Não é a mesma lista de `REGRAS[...].modulos` conter 'production':
+ * ARTE também é da produção, mas quem aprova arte é o comercial com o
+ * cliente do lado — a arte acontece ANTES de o pedido ir para a
+ * fábrica. Daqui para baixo é a fábrica que responde.
+ */
+const FASES_DA_FABRICA = ['vegetal', 'revelacao', 'pintura', 'borda', 'producao', 'qualidade', 'embalagem'];
+
+/**
+ * O PEDIDO JÁ FOI ENVIADO PARA A PRODUÇÃO?
+ *
+ * Lido do histórico, pela mesma razão da liberação de pagamento: é um
+ * EVENTO — quem mandou e quando —, e uma coluna booleana guardaria o
+ * "sim" e perderia o resto.
+ *
+ * POR QUE ISTO EXISTE. Antes, um pedido caía na fila da produção só por
+ * chegar num status; ninguém tinha DITO que ele podia começar. O
+ * comercial ainda estava acertando quantidade com o cliente e a fábrica
+ * já estava com o pedido na tela. Agora existe um momento explícito —
+ * "Enviar para produção" — e é ele que põe o pedido na fila.
+ *
+ * PEDIDO DO SITE JÁ NASCE ENVIADO: ele foi montado e pago pelo próprio
+ * cliente, com arte fechada no configurador. Não há o que o comercial
+ * acertar depois; segurá-lo esperando alguém apertar um botão só
+ * atrasaria o que já estava combinado.
+ */
+function envioParaProducao(venda) {
+  const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
+  const e = log.find(x => x.action === 'enviado_producao');
+  if (!e) return { enviado: false, em: null, por: null };
+  return { enviado: true, em: e.at || null, por: e.user || null };
+}
+
+/**
  * A LIBERAÇÃO DO PAGAMENTO, lida do histórico do pedido.
  *
  * POR QUE NO LOG E NÃO NUMA COLUNA. Porque a liberação é um EVENTO —
@@ -303,12 +338,21 @@ function fichaDeFluxo(venda, aplicaveis = {}, quem = {}) {
   const plano = planoDeAvanco(venda, aplicaveis);
   const volta = planoDeVolta(venda, aplicaveis);
 
+  const envio = envioParaProducao(venda);
+  const personalizado = !!aplicaveis.personalizado;
+
   const base = {
     status: venda?.status || null,
     status_label: infoAtual.label,
     finalizado: A.finalizado(venda?.status),
     retirada,
     pagamento,
+    // A TELA PRECISA DIZER ISSO EM VOZ ALTA. Pedido liso não passa pela
+    // serigrafia e pedido não enviado não está na fila da fábrica — as
+    // duas coisas eram invisíveis, e quem olhava concluía que o sistema
+    // tinha travado.
+    personalizado,
+    producao: { ...envio, fases: FASES_DA_FABRICA },
     etapas,
   };
 
@@ -346,22 +390,61 @@ function fichaDeFluxo(venda, aplicaveis = {}, quem = {}) {
   if (!autorizado) motivos.push(`Só ${A.AREAS[area] || area} (ou um gerente) pode dar este passo.`);
   for (const r of faltando) motivos.push(`Falta: ${r.label.toLowerCase()}.`);
 
+  /**
+   * O PEDIDO ESTÁ NA PORTA DA FÁBRICA E NINGUÉM ABRIU A PORTA.
+   *
+   * Quando a fase atual é da fábrica e o pedido não foi enviado, o passo
+   * que falta não é "concluir a etapa" — é ALGUÉM MANDAR. O botão troca
+   * de texto e de dono: quem envia é o comercial, não a produção.
+   */
+  const naFabrica = FASES_DA_FABRICA.includes(fase.key);
+  const faltaEnviar = naFabrica && !envio.enviado;
+
+  /**
+   * E QUANDO JÁ FOI ENVIADO, a espera fica escrita.
+   *
+   * "Aguardando produção confirmar a conclusão" é a frase que faltava:
+   * o pedido parado numa fase da fábrica parecia pedido travado, e o
+   * comercial ligava para a produção perguntando o que tinha quebrado.
+   * Nada tinha quebrado — era a vez deles.
+   */
+  const aguardandoProducao = !naFabrica || !envio.enviado ? null
+    // Para quem NÃO trabalha na produção, a frase é a espera.
+    : !autorizado
+      ? `Aguardando a produção confirmar a conclusão de ${fase.label.toLowerCase()} para prosseguir.`
+      // Para quem trabalha nela, dizer "aguardando a produção" seria o
+      // sistema pedindo que ela esperasse por si mesma. A ela cabe a
+      // outra metade da frase: a bola está com você.
+      : `Este pedido está com a produção: conclua ${fase.label.toLowerCase()} para ele prosseguir.`;
+
   return {
     ...base,
     fase_atual: {
       key: fase.key,
       label: retirada && fase.key === 'coleta' ? 'Retirada' : fase.label,
       area, area_label: A.AREAS[area] || area,
+      da_fabrica: naFabrica,
     },
     requisitos,
+    producao: {
+      ...base.producao,
+      // `precisa` = este pedido, agora, depende de ter sido enviado.
+      precisa: faltaEnviar,
+      // Quem envia é o comercial (ou um gerente) — a produção não se
+      // convida para o trabalho.
+      pode_enviar: faltaEnviar && podeAtuarNaFase('realizado', quem),
+      aguardando: aguardandoProducao,
+    },
     acao: {
       label: (retirada && ACAO_RETIRADA[fase.key]) || regra.acao,
       destino,
       destino_label: A.infoStatus(destino).label,
       proxima_fase: proxima ? proxima.label : null,
       autorizado,
-      pode: autorizado && faltando.length === 0,
-      motivos,
+      pode: autorizado && faltando.length === 0 && !faltaEnviar,
+      motivos: faltaEnviar
+        ? [...motivos, 'Este pedido ainda não foi enviado para a produção.']
+        : motivos,
     },
     voltar: podeVoltar(volta, quem),
   };
@@ -405,6 +488,16 @@ function avancar(venda, aplicaveis, quem, req, observacao = null) {
 
   const { fase, destino, marcos } = plano;
 
+  // A FÁBRICA SÓ TRABALHA NO QUE FOI MANDADO. Sem o envio, nem gerente
+  // avança: não é questão de permissão, é que o pedido não entrou na
+  // fila — concluir uma etapa que ninguém começou é registrar mentira.
+  if (FASES_DA_FABRICA.includes(fase.key) && !envioParaProducao(venda).enviado) {
+    return {
+      erro: 'Este pedido ainda não foi enviado para a produção. Use "Enviar para produção" no pedido de venda.',
+      http: 409,
+    };
+  }
+
   if (!podeAtuarNaFase(fase.key, quem)) {
     const area = A.infoStatus(statusDeEntrada(fase)).area;
     return { erro: `Esta etapa é de ${A.AREAS[area] || area}. Peça a alguém da área ou a um gerente.`, http: 403 };
@@ -429,6 +522,40 @@ function avancar(venda, aplicaveis, quem, req, observacao = null) {
   });
 
   return { status: destino, log, fase, destino };
+}
+
+/**
+ * O QUE GRAVAR PARA ENVIAR O PEDIDO À PRODUÇÃO.
+ *
+ * Não move o pedido de status: ele continua exatamente onde estava. O
+ * que muda é que a fábrica passa a ver o pedido na fila e as fases dela
+ * destravam. Enviar é uma AUTORIZAÇÃO, não uma etapa cumprida — marcar
+ * status aqui faria o pedido parecer adiantado sem ninguém ter
+ * encostado nele.
+ */
+function enviarParaProducao(venda, aplicaveis, quem, req) {
+  if (A.finalizado(venda?.status)) {
+    return { erro: 'Este pedido já está encerrado.' };
+  }
+  if (envioParaProducao(venda).enviado) {
+    return { erro: 'Este pedido já está com a produção.', http: 409 };
+  }
+  // Liso não tem serigrafia, mas tem produção, qualidade e embalagem —
+  // continua sendo enviado. Quem não passa pela fábrica é pedido sem
+  // nenhuma fase dela no trilho.
+  const trilho = A.fasesVisiveis(venda, aplicaveis);
+  if (!trilho.some(f => FASES_DA_FABRICA.includes(f.key))) {
+    return { erro: 'Este pedido não passa pela produção.', http: 409 };
+  }
+  if (!podeAtuarNaFase('realizado', quem)) {
+    return { erro: 'Enviar para a produção é do comercial (ou de um gerente).', http: 403 };
+  }
+
+  const log = Array.isArray(venda.production_log) ? [...venda.production_log] : [];
+  log.push(marco('enviado_producao', req, {
+    personalizado: !!aplicaveis.personalizado,
+  }));
+  return { log };
 }
 
 /** O que gravar para voltar uma fase. Exige motivo — e gerente. */
@@ -565,4 +692,5 @@ module.exports = {
   fichaDeFluxo, avancar, voltar, liberarPagamento, liberacaoDePagamento,
   planoDeAvanco, planoDeVolta, indiceAtual, podeAtuarNaFase,
   statusDeEntrada, statusDeConclusao,
+  enviarParaProducao, envioParaProducao, FASES_DA_FABRICA,
 };

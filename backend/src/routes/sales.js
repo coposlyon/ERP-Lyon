@@ -609,6 +609,35 @@ router.post('/:id/fluxo/avancar', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+/**
+ * ENVIAR O PEDIDO PARA A PRODUÇÃO.
+ *
+ * O pedido NÃO muda de status: ele continua onde estava. O que muda é
+ * que a fábrica passa a vê-lo na fila e as etapas dela destravam.
+ *
+ * Antes disto, a produção via na tela qualquer pedido que tivesse
+ * chegado num certo status — inclusive os que o comercial ainda estava
+ * acertando com o cliente. Agora existe um momento em que alguém diz
+ * "pode começar", e ele fica no histórico com nome e hora.
+ */
+router.post('/:id/producao/enviar', async (req, res) => {
+  try {
+    const carga = await carregarParaFluxo(req.tenantId, req.params.id);
+    if (!carga) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const passo = F.enviarParaProducao(carga.venda, carga.aplicaveis, quemPergunta(req), req);
+    if (passo.erro) return res.status(passo.http || 400).json({ error: passo.erro });
+
+    const { error } = await supabase.from('VENDAS')
+      .update({ production_log: passo.log })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId);
+    if (error) throw error;
+
+    audit(req, 'update', 'sale', req.params.id, { fluxo: 'enviar_producao' });
+    res.json({ ok: true, fluxo: await fichaAtual(req) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Um passo atrás, com motivo, para corrigir etapa marcada por engano.
 router.post('/:id/fluxo/voltar', async (req, res) => {
   try {

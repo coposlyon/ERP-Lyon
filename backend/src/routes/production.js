@@ -43,6 +43,23 @@ const FASE_DA_ETAPA = {
   embalagem: { fase: 'embalagem', processo: 'embalando_pedido' },
 };
 
+/**
+ * A FILA DA PRODUÇÃO — quem entra e quem não entra.
+ *
+ * Duas peneiras, e as duas existem porque a fila estava mostrando
+ * trabalho que não era trabalho:
+ *
+ *   1. O PEDIDO FOI ENVIADO. Antes bastava o pedido chegar num certo
+ *      status para cair aqui — inclusive os que o comercial ainda
+ *      estava acertando com o cliente. Agora alguém precisa ter dito
+ *      "pode começar" (pedido do site já nasce dito).
+ *
+ *   2. TEM O QUE GRAVAR. Copo liso não tem arte, nem vegetal, nem tela:
+ *      não há uma etapa de serigrafia sequer para a fábrica registrar.
+ *      Ele continua APARECENDO — some da tela seria a produção
+ *      descobrir por telefone que existe um pedido —, mas aparece
+ *      marcado e sem botão, porque não há o que iniciar.
+ */
 // ── Board de produção ─────────────────────────────────────
 router.get('/', async (req, res) => {
   const { start_date, end_date, search, stage } = req.query;
@@ -58,11 +75,23 @@ router.get('/', async (req, res) => {
 
     let q = supabase
       .from('VENDAS')
-      .select('*, CLIENTES(name, cpf_cnpj, phone, address), USUARIOS(name)')
+      .select('*, CLIENTES(name, cpf_cnpj, phone, address), USUARIOS(name), VENDA_ITENS(product_name, quantity, unit_price, total, customization, PRODUTOS(code, name, unit, ink_type))')
       .eq('tenant_id', req.tenantId)
       .in('status', [
-        // novos status do pedido de venda (janela de produção)
-        'aguardando_estoque', 'aguardando_arte', 'aguardando_vegetal', 'aguardando_revelacao', 'aguardando_coleta', 'em_transito',
+        // A JANELA DE PRODUÇÃO, agora completa. Faltavam justamente as
+        // fases da própria fábrica — um pedido em "aguardando produção"
+        // ou "aguardando embalagem" não aparecia na tela da produção,
+        // enquanto "em trânsito", que já saiu daqui, aparecia.
+        'aguardando_estoque', 'estoque_confirmado',
+        'aguardando_arte', 'arte_aprovada',
+        'aguardando_vegetal', 'vegetal_impresso',
+        'aguardando_revelacao', 'revelacao_processo', 'revelacao_finalizada',
+        'aguardando_pintura', 'pintura_processo', 'pintura_finalizada',
+        'aguardando_borda', 'borda_processo', 'borda_finalizada',
+        'aguardando_producao', 'producao_processo', 'producao_finalizada',
+        'aguardando_qualidade', 'conferencia_processo', 'qualidade_finalizada',
+        'aguardando_embalagem', 'embalando_pedido', 'embalagem_finalizada',
+        'aguardando_foto',
         // status antigos (vendas anteriores ao novo fluxo)
         'confirmed', 'in_production', 'ready',
       ])
@@ -84,7 +113,17 @@ router.get('/', async (req, res) => {
       const addr = s.CLIENTES?.address || {};
       // prazo de referência: prazo máximo → evento → saída
       const deadline = s.max_delivery_date || s.event_date || s.ship_date || null;
+      const itens = (s.VENDA_ITENS || []).map(caracteristicasDoItem);
+      const aplicaveis = etapasDosItens(itens);
+      const envio = F.envioParaProducao(s);
       return {
+        // O que a fábrica pode ou não fazer com este pedido, respondido
+        // aqui e não na tela: a tela desenha, o servidor decide.
+        personalizado: !!aplicaveis.personalizado,
+        enviado_producao: envio.enviado,
+        enviado_em: envio.em,
+        enviado_por: envio.por,
+        interagivel: envio.enviado && !!aplicaveis.personalizado,
         id: s.id, number: s.number, created_at: s.created_at,
         customer: s.CLIENTES?.name || 'Consumidor Final',
         seller: s.USUARIOS?.name || null,
@@ -102,7 +141,19 @@ router.get('/', async (req, res) => {
         art_file: s.art_file, total: s.total, status: s.status,
       };
     });
-    res.json({ data: rows });
+    // PEDIDO NÃO ENVIADO NÃO É FILA DA PRODUÇÃO. Ele ainda está com o
+    // comercial. `?pendentes=1` mostra os que aguardam o envio, para
+    // quem quiser conferir o que está represado.
+    const soPendentes = req.query.pendentes === '1';
+    const fila = rows.filter(r => (soPendentes ? !r.enviado_producao : r.enviado_producao));
+
+    res.json({
+      data: fila,
+      // Os números da tela: quantos esperam o comercial mandar e
+      // quantos estão aqui sem nada para gravar.
+      aguardando_envio: rows.filter(r => !r.enviado_producao).length,
+      sem_personalizacao: fila.filter(r => !r.personalizado).length,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -302,6 +353,30 @@ router.post('/:id/stage', async (req, res) => {
                VENDA_ITENS ( id, product_name, quantity, customization, PRODUTOS ( id, code, name, ink_type ) )`)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
     if (e0 || !sale) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    /**
+     * A MESMA PENEIRA DA FILA, AGORA NA AÇÃO.
+     *
+     * A tela já apaga o botão de quem não pode; isto é o servidor
+     * dizendo a mesma coisa. Sem isto, bastaria a requisição chegar por
+     * outro caminho — uma aba velha, um duplo clique antes do filtro
+     * carregar — para a fábrica registrar revelação num copo liso.
+     */
+    {
+      const itensDoPedido = (sale.VENDA_ITENS || []).map(i => caracteristicasDoItem(i));
+      const aplicaveisDoPedido = etapasDosItens(itensDoPedido);
+      if (!F.envioParaProducao(sale).enviado) {
+        return res.status(409).json({
+          error: 'Este pedido ainda não foi enviado para a produção. O comercial precisa liberar antes.',
+        });
+      }
+      if (!aplicaveisDoPedido.personalizado) {
+        return res.status(409).json({
+          error: 'Este pedido não tem personalização — não passa pela serigrafia. '
+               + 'Ele segue pela tela do pedido de venda.',
+        });
+      }
+    }
 
     const now = new Date().toISOString();
     const actor = String(actor_user || '').trim() || req.user?.name || req.user?.email || 'Usuário';

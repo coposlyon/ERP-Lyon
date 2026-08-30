@@ -28,7 +28,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2, Circle, ArrowRight, Undo2, Wallet, Loader2,
-  ShieldAlert, Lock, Landmark, ChevronRight,
+  ShieldAlert, Lock, Landmark, ChevronRight, Factory, Hourglass, Info,
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -63,6 +63,23 @@ export default function PainelFluxo({ v, id, fluxo }) {
     onError: e => toast.error(e.error || 'Não foi possível avançar a etapa'),
   });
 
+  /**
+   * ENVIAR PARA A PRODUÇÃO.
+   *
+   * Não move o pedido de etapa: ele fica exatamente onde está. O que
+   * muda é que a fábrica passa a vê-lo na fila dela e as etapas do chão
+   * de fábrica destravam. É o momento em que alguém do comercial diz
+   * "pode começar" — e ele fica no histórico com nome e hora.
+   */
+  const enviarProducao = useMutation({
+    mutationFn: () => api.post(`/sales/${id}/producao/enviar`, {}),
+    onSuccess: () => {
+      toast.success('Pedido enviado para a produção — já aparece na fila da fábrica.');
+      recarregar();
+    },
+    onError: e => toast.error(e.error || 'Não foi possível enviar para a produção'),
+  });
+
   const voltar = useMutation({
     mutationFn: motivo => api.post(`/sales/${id}/fluxo/voltar`, { motivo }),
     onSuccess: r => {
@@ -86,8 +103,9 @@ export default function PainelFluxo({ v, id, fluxo }) {
   if (!fluxo) return null;
 
   const { fase_atual: fase, acao, requisitos = [], pagamento, voltar: recuo } = fluxo;
+  const producao = fluxo.producao || {};
   const naFaseDoPagamento = fase?.key === 'pagamento';
-  const ocupado = avancar.isPending || voltar.isPending || liberar.isPending;
+  const ocupado = avancar.isPending || voltar.isPending || liberar.isPending || enviarProducao.isPending;
   const mostrarLiberar = naFaseDoPagamento && !pagamento?.liberado;
 
   /**
@@ -110,6 +128,7 @@ export default function PainelFluxo({ v, id, fluxo }) {
    * lista de requisitos logo acima — e é para lá que o olho deve ir.
    */
   const chamada = (ocupado || caixa) ? null
+    : producao.pode_enviar ? 'producao'
     : mostrarLiberar ? 'liberar'
     : acao?.pode ? 'avancar'
     : null;
@@ -165,6 +184,46 @@ export default function PainelFluxo({ v, id, fluxo }) {
           </p>
         )}
 
+        {/* ── ONDE ESTE PEDIDO ESTÁ EM RELAÇÃO À FÁBRICA ──────
+            As três frases que faltavam. Um pedido parado numa fase da
+            produção parecia pedido travado, e o comercial ligava para a
+            fábrica perguntando o que tinha quebrado — nada tinha
+            quebrado: ou ninguém tinha mandado, ou era a vez deles. */}
+        {producao.precisa && (
+          <div className="rounded-lg px-3 py-2.5 text-[12px] leading-relaxed flex items-start gap-2"
+            style={{ background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.35)', color: v.textMuted }}>
+            <Factory size={14} className="shrink-0 mt-0.5" style={{ color: '#60a5fa' }} />
+            <span>
+              <b style={{ color: v.textPrimary }}>Este pedido ainda não foi enviado para a produção.</b>{' '}
+              Enquanto não for, ele não aparece na fila da fábrica e a etapa não anda.
+            </span>
+          </div>
+        )}
+
+        {producao.aguardando && (
+          <div className="rounded-lg px-3 py-2.5 text-[12px] leading-relaxed flex items-start gap-2"
+            style={{ background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.35)', color: v.textMuted }}>
+            <Hourglass size={14} className="shrink-0 mt-0.5" style={{ color: '#fbbf24' }} />
+            <span>
+              <b style={{ color: v.textPrimary }}>{producao.aguardando}</b>
+              {producao.em && (
+                <span className="block mt-0.5" style={{ color: v.textSubtle }}>
+                  Enviado à produção {producao.por ? `por ${producao.por} ` : ''}em {dataHora(producao.em)}.
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+
+        {/* Liso não passa pela serigrafia, e dizer isso evita a pergunta
+            "cadê a revelação deste pedido?". */}
+        {fluxo.personalizado === false && (
+          <p className="text-[11.5px] flex items-start gap-1.5" style={{ color: v.textSubtle }}>
+            <Info size={12} className="shrink-0 mt-0.5" />
+            Pedido sem personalização — não passa por arte, vegetal nem revelação.
+          </p>
+        )}
+
         {/* ── O que falta ─────────────────────────────────── */}
         {requisitos.length > 0 && (
           <ul className="space-y-1.5">
@@ -217,6 +276,27 @@ export default function PainelFluxo({ v, id, fluxo }) {
                 style={{ background: 'transparent', color: '#4ade80', border: '1px solid rgba(74,222,128,0.45)' }}
                 title="Sem comprovante em mãos: o Financeiro assume a liberação">
                 <Wallet size={14} /> Liberar sem comprovante
+              </button>
+            </span>
+          )}
+
+          {producao.precisa && (
+            <span className="inline-flex items-center gap-1">
+              {chamada === 'producao' && <Seta cor={v.isDark ? '#60a5fa' : '#2563eb'} />}
+              <button
+                onClick={() => enviarProducao.mutate()}
+                disabled={!producao.pode_enviar || ocupado}
+                title={producao.pode_enviar
+                  ? 'A fábrica passa a ver este pedido na fila dela'
+                  : 'Enviar para a produção é do comercial (ou de um gerente).'}
+                className="btn btn-sm disabled:opacity-45 disabled:cursor-not-allowed"
+                style={{ background: producao.pode_enviar ? '#2563eb' : 'transparent',
+                         color: producao.pode_enviar ? 'white' : v.textSubtle,
+                         border: producao.pode_enviar ? 'none' : `1px solid ${v.divider}` }}>
+                {enviarProducao.isPending
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : producao.pode_enviar ? <Factory size={14} /> : <Lock size={14} />}
+                Enviar para produção
               </button>
             </span>
           )}

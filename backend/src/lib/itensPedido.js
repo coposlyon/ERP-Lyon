@@ -82,6 +82,32 @@ function caracteristicasDoItem(item) {
     .filter(a => a !== degrade && a !== bicolor && a !== jateado)
     .forEach(a => push(a.tipo, a.valor || 'sim'));
 
+  /**
+   * ESTE ITEM TEM PERSONALIZAÇÃO?
+   *
+   * É a pergunta que decide se o pedido passa pela serigrafia — arte,
+   * vegetal, revelação — ou se é copo liso, que sai do estoque para a
+   * embalagem sem nada gravado.
+   *
+   * As duas portas de entrada escrevem diferente, e as duas contam:
+   *   PDV        grava "Cor da personalização" na personalização do item
+   *   catálogo   grava `impressao` (o processo) e o `design` com a arte
+   *
+   * Na dúvida a resposta é NÃO. Um liso marcado como personalizado por
+   * engano fica parado esperando uma arte que não existe; um
+   * personalizado marcado como liso pula a revelação e alguém percebe na
+   * hora de gravar — o segundo erro é barulhento, o primeiro é mudo.
+   */
+  const desenho = c.design || {};
+  const temPersonalizacao = !!(
+    c['Cor da personalização']
+    || c.impressao
+    || c.preview
+    || desenho.impressao
+    || desenho.arte
+    || desenho.tipo_pedido === 'personalizado'
+  );
+
   return {
     codigo: c['Código'] || item.PRODUTOS?.code || null,
     produto: nome,
@@ -94,6 +120,7 @@ function caracteristicasDoItem(item) {
     // não um palpite sobre o produto.
     tem_borda: temBorda,
     tem_pintura: !!(degrade || bicolor || jateado),
+    tem_personalizacao: temPersonalizacao,
     acessorio: corBorda ? `Borda ${corBorda}` : (temBorda ? 'Borda' : null),
     quantidade: Number(item.quantity) || 0,
     valor_unitario: Number(item.unit_price) || 0,
@@ -115,6 +142,10 @@ function etapasDosItens(itens) {
   return {
     borda:   lista.some(i => i.tem_borda),
     pintura: lista.some(i => i.tem_pintura),
+    // UM ITEM PERSONALIZADO BASTA. Pedido misto (dez lisos e cem
+    // gravados) passa pela serigrafia inteira — o que decide é existir
+    // algo para gravar, não a proporção.
+    personalizado: lista.some(i => i.tem_personalizacao),
   };
 }
 

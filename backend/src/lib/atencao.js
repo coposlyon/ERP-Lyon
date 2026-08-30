@@ -319,9 +319,17 @@ const FASES = [
   { key: 'realizado',  label: 'Pedido Realizado',      icone: 'CircleCheck',    entrando: [],                        concluida: ['iniciando_pedido'] },
   { key: 'pagamento',  label: 'Pagamento',             icone: 'Wallet',         entrando: ['aguardando_financeiro'], concluida: ['pagamento_confirmado'] },
   { key: 'estoque',    label: 'Estoque',               icone: 'Package',        entrando: ['aguardando_estoque'],    concluida: ['estoque_confirmado'] },
-  { key: 'arte',       label: 'Arte',                  icone: 'PenTool',        entrando: ['aguardando_arte'],       concluida: ['arte_aprovada'] },
-  { key: 'vegetal',    label: 'Vegetal',               icone: 'FileImage',      entrando: ['aguardando_vegetal'],    concluida: ['vegetal_impresso'] },
-  { key: 'revelacao',  label: 'Revelação',            icone: 'FlaskConical',   entrando: ['aguardando_revelacao'],  concluida: ['revelacao_finalizada'] },
+  // ARTE, VEGETAL E REVELAÇÃO SÃO A SERIGRAFIA — e serigrafia só existe
+  // onde há o que gravar. O copo liso não tem arte para aprovar, nem
+  // vegetal para imprimir, nem tela para revelar: as três fases ficavam
+  // na linha do tempo dele esperando para sempre, e a produção via na
+  // fila um pedido que não tinha nada para fazer. `opcional:
+  // 'personalizado'` tira as três do trilho do liso — e a mesma regra
+  // vale para a tela do cliente, a do vendedor e o motor que move o
+  // pedido, porque todos leem daqui.
+  { key: 'arte',       label: 'Arte',                  icone: 'PenTool',        entrando: ['aguardando_arte'],       concluida: ['arte_aprovada'],        opcional: 'personalizado' },
+  { key: 'vegetal',    label: 'Vegetal',               icone: 'FileImage',      entrando: ['aguardando_vegetal'],    concluida: ['vegetal_impresso'],     opcional: 'personalizado' },
+  { key: 'revelacao',  label: 'Revelação',            icone: 'FlaskConical',   entrando: ['aguardando_revelacao'],  concluida: ['revelacao_finalizada'], opcional: 'personalizado' },
   { key: 'pintura',    label: 'Pintura',               icone: 'Brush',          entrando: ['aguardando_pintura'],    concluida: ['pintura_finalizada'],   opcional: 'pintura' },
   { key: 'borda',      label: 'Borda',                 icone: 'CircleDashed',   entrando: ['aguardando_borda'],      concluida: ['borda_finalizada'],     opcional: 'borda' },
   { key: 'producao',   label: 'Produção',             icone: 'Settings',       entrando: ['aguardando_producao'],   concluida: ['producao_finalizada'] },

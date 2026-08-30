@@ -34,8 +34,26 @@ const STEPS = [
 ];
 const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
 
+/**
+ * A FÁBRICA SÓ MEXE NO QUE É DELA.
+ *
+ * Duas condições antes de qualquer etapa, e as duas vêm do servidor
+ * (`interagivel`), não de um palpite da tela:
+ *
+ *   ENVIADO       alguém do comercial disse "pode começar". Antes, o
+ *                 pedido caía na fila só por mudar de status — inclusive
+ *                 o que ainda estava sendo acertado com o cliente.
+ *   PERSONALIZADO copo liso não tem arte, vegetal nem tela. Não há o que
+ *                 revelar, e um botão "Iniciar Revelação" nele é um
+ *                 convite a registrar trabalho que não existe.
+ *
+ * O pedido liso continua aparecendo na lista — some da tela seria a
+ * produção descobrir por telefone que ele existe. Aparece marcado, e
+ * sem botão.
+ */
 function canDo(s, stage, action) {
   if (!s) return false;
+  if (!s.interagivel) return false;
   if (action === 'finish') return s.stage === stage;
   if (stage === 'revelacao') return ['aguardando_arte', 'aguardando_producao'].includes(s.stage);
   if (stage === 'pintura')     return s.stage === 'revelacao';
@@ -155,23 +173,50 @@ export default function Production() {
         <button onClick={() => refetch()} className="btn-secondary"><RefreshCw size={15} className={isFetching ? 'animate-spin' : ''} /> Atualizar</button>
       </div>
 
-      {/* Toolbar de etapas */}
+      {/* Toolbar de etapas.
+          NO CELULAR SÓ APARECE O QUE DÁ PARA FAZER. As cinco etapas em
+          dez botões ocupavam uma tela inteira do aparelho — e oito
+          deles sempre apagados, porque o pedido está numa etapa de cada
+          vez. No computador a régua inteira continua à vista (ela conta
+          o caminho); no celular fica o passo de agora, que é o que a
+          pessoa de pé na bancada precisa alcançar. */}
       <div className="card p-3 flex flex-wrap items-center gap-2">
-        {STEPS.map(s => (
-          <div key={s.stage} className="flex items-center gap-1">
-            <button disabled={!canDo(selected, s.stage, 'start') || stageMut.isPending}
-              onClick={() => doStage(s.stage, 'start')}
-              className="text-xs font-medium px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-30 inline-flex items-center gap-1">
-              <Play size={13} /> Iniciar {s.label}
-            </button>
-            <button disabled={!canDo(selected, s.stage, 'finish') || stageMut.isPending}
-              onClick={() => doStage(s.stage, 'finish')}
-              className="text-xs font-medium px-3 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-30 inline-flex items-center gap-1">
-              <Check size={13} /> Finalizar {s.label}
-            </button>
-          </div>
-        ))}
+        {STEPS.map(s => {
+          const podeIniciar = canDo(selected, s.stage, 'start');
+          const podeFinalizar = canDo(selected, s.stage, 'finish');
+          const agora = podeIniciar || podeFinalizar;
+          return (
+            <div key={s.stage} className={`items-center gap-1 ${agora ? 'flex w-full sm:w-auto' : 'hidden lg:flex'}`}>
+              <button disabled={!podeIniciar || stageMut.isPending}
+                onClick={() => doStage(s.stage, 'start')}
+                className="flex-1 lg:flex-none justify-center text-xs font-medium px-3 py-2.5 lg:py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-30 inline-flex items-center gap-1">
+                <Play size={13} /> Iniciar {s.label}
+              </button>
+              <button disabled={!podeFinalizar || stageMut.isPending}
+                onClick={() => doStage(s.stage, 'finish')}
+                className="flex-1 lg:flex-none justify-center text-xs font-medium px-3 py-2.5 lg:py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-30 inline-flex items-center gap-1">
+                <Check size={13} /> Finalizar {s.label}
+              </button>
+            </div>
+          );
+        })}
+        {/* Nada possível e nenhum aviso: o pedido está entre etapas. */}
+        {selected?.interagivel && !STEPS.some(s => canDo(selected, s.stage, 'start') || canDo(selected, s.stage, 'finish')) && (
+          <span className="text-xs text-gray-400 lg:hidden">
+            Nenhuma etapa da produção disponível agora para este pedido.
+          </span>
+        )}
         {!selected && <span className="text-xs text-gray-400 ml-2">Selecione um pedido na lista.</span>}
+        {/* BOTÃO APAGADO SEM EXPLICAÇÃO É BOTÃO QUEBRADO. Quem clica e
+            não acontece nada conclui que o sistema travou. */}
+        {selected && !selected.interagivel && (
+          <span className="text-xs ml-2 flex items-center gap-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            <AlertTriangle size={13} className="shrink-0" />
+            {!selected.personalizado
+              ? 'Pedido sem personalização — não passa pela serigrafia. Ele segue pela tela do pedido de venda.'
+              : 'Pedido ainda não enviado para a produção. O comercial precisa liberar no pedido de venda.'}
+          </span>
+        )}
       </div>
 
       {/* Filtros */}
@@ -194,7 +239,13 @@ export default function Production() {
 
       {/* Board */}
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* NO CELULAR A TABELA NÃO ABRE.
+            Onze colunas num aparelho de 360 pontos viram arrastar de lado
+            para ler cada pedido — e a coluna que decide (o prazo) é
+            justamente a do meio, a que nunca está na tela. Abaixo de `lg`
+            a mesma lista vira um cartão por pedido. Os dois leem os
+            MESMOS `rows`: não existe segunda consulta nem segunda regra. */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-[11px] text-gray-500 uppercase border-b border-gray-100 bg-gray-50 align-bottom">
@@ -221,8 +272,13 @@ export default function Production() {
                 const soon = dd != null && dd >= 0 && dd <= 3;
                 return (
                   <tr key={r.id} onClick={() => { setSelId(r.id); setEdit({}); }}
-                    className={`border-b border-gray-50 cursor-pointer ${selId === r.id ? 'bg-orange-50' : 'hover:bg-gray-50/60'}`}>
-                    <td className="px-3 py-2 font-mono font-semibold">#{String(r.number || '').padStart(4, '0')}</td>
+                    className={`border-b border-gray-50 cursor-pointer ${selId === r.id ? 'bg-orange-50' : 'hover:bg-gray-50/60'} ${r.interagivel ? '' : 'opacity-60'}`}>
+                    <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap">
+                      #{String(r.number || '').padStart(4, '0')}
+                      {!r.personalizado && (
+                        <span className="block text-[9px] font-sans font-semibold text-amber-600 uppercase tracking-wide">liso</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2">{r.customer}</td>
                     <td className="px-3 py-2 text-gray-500">{fmtDate(r.order_date)}</td>
                     <td className="px-3 py-2 text-gray-500">{fmtDate(r.event_date)}</td>
@@ -240,6 +296,20 @@ export default function Production() {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* ── A MESMA LISTA, EM CARTÕES (celular) ─────────────── */}
+        <div className="lg:hidden divide-y divide-gray-200">
+          {isFetching && rows.length === 0 && (
+            <div className="p-8 text-center text-gray-400"><Loader2 className="animate-spin mx-auto" /></div>
+          )}
+          {!isFetching && rows.length === 0 && (
+            <p className="p-8 text-center text-gray-400 text-sm">Nenhum pedido em produção.</p>
+          )}
+          {rows.map(r => (
+            <CartaoProducao key={r.id} r={r} selecionado={selId === r.id}
+              onSelecionar={() => { setSelId(r.id); setEdit({}); }} />
+          ))}
         </div>
       </div>
 
@@ -489,6 +559,69 @@ export default function Production() {
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+/**
+ * UM PEDIDO, UM CARTÃO — a fila da produção no celular.
+ *
+ * A tabela responde "qual está mais apertado?" de relance porque as
+ * datas estão alinhadas em coluna. Num aparelho de 360 pontos nada está
+ * alinhado: sobra arrastar de lado, e arrastar de lado não responde
+ * nada.
+ *
+ * O cartão inverte a ordem de leitura: primeiro o prazo — que é o que
+ * a produção decide por —, depois quem é o pedido, e por último o
+ * resto. Cidade, transportadora e vendedor só aparecem quando existem:
+ * no computador um campo vazio é uma célula com traço; aqui é uma linha
+ * inteira gasta para dizer "nada".
+ */
+function CartaoProducao({ r, selecionado, onSelecionar }) {
+  const st = STAGES[r.stage] || STAGES.aguardando_producao;
+  const dd = r.diff_deadline ?? r.diff_days;
+  const atrasado = dd != null && dd < 0;
+  const perto = dd != null && dd >= 0 && dd <= 3;
+  const rodape = [r.city ? `${r.city}/${r.uf || ''}` : null, r.carrier, r.seller].filter(Boolean).join(' · ');
+
+  return (
+    <div role="button" tabIndex={0} onClick={onSelecionar}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelecionar(); } }}
+      className={`px-4 py-3.5 cursor-pointer ${selecionado ? 'bg-orange-50' : ''} ${r.interagivel ? '' : 'opacity-70'}`}>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-mono font-bold text-gray-900">#{String(r.number || '').padStart(4, '0')}</span>
+        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+        {/* O selo do liso vem antes de qualquer número: ele muda o que
+            dá para fazer com o pedido, e isso se lê primeiro. */}
+        {!r.personalizado && (
+          <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+            sem personalização
+          </span>
+        )}
+        <span className={`ml-auto text-[13px] font-bold whitespace-nowrap ${atrasado ? 'text-red-600' : perto ? 'text-orange-500' : 'text-gray-500'}`}>
+          {dd == null ? '—' : atrasado ? `${Math.abs(dd)}d atraso` : `${dd}d p/ prazo`}
+        </span>
+      </div>
+
+      <p className="font-semibold text-gray-800 mt-1 truncate">{r.customer}</p>
+
+      <div className="grid grid-cols-3 gap-2 mt-2">
+        <Prazo rotulo="Evento"  valor={fmtDate(r.event_date)} />
+        <Prazo rotulo="Saída"   valor={fmtDate(r.ship_date)} />
+        <Prazo rotulo="Entrega" valor={fmtDate(r.max_delivery_date)} />
+      </div>
+
+      {rodape && <p className="text-[11px] text-gray-400 mt-2 truncate">{rodape}</p>}
+    </div>
+  );
+}
+
+function Prazo({ rotulo, valor }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase tracking-wider text-gray-400">{rotulo}</p>
+      <p className="text-[12.5px] text-gray-600 truncate">{valor}</p>
     </div>
   );
 }
