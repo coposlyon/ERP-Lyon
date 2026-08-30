@@ -81,6 +81,24 @@ const args   = process.argv.slice(2);
 const UF_ARG = (args.find(a => /^[A-Za-z]{2}$/.test(a)) || '').toUpperCase() || null;
 const DRY    = args.includes('--dry');
 
+// ── MODO PERMISSIVO ─────────────────────────────────────────
+//
+// O modo normal recusa muita coisa que é VERDADE, por excesso de rigor:
+// cidade cuja amostra caiu toda num prefixo só é mandada embora ("é
+// caso do seed-cep-geral"), e cidade com poucas ruas conhecidas também.
+// Só que o seed-cep-geral já passou por elas e recusou por outro
+// motivo — o prefixo-000 dele era uma rua de verdade. Resultado: elas
+// ficam sem nada, embora a ViaCEP diga, com o código do IBGE batendo,
+// que aquele prefixo é daquele município.
+//
+// Neste modo o prefixo confirmado vira faixa: `prefixo-000 a
+// prefixo-999`. Continua sendo dado REAL — cada prefixo gravado foi
+// confirmado pelo IBGE. O que se perde é largura: a faixa pode ser mais
+// estreita que a verdadeira. Como a tela apresenta faixa como faixa
+// (dois números, "serve para conferir, não para entregar"), estreitar é
+// honesto; inventar não seria.
+const PERMISSIVO = args.includes('--permissivo');
+
 const MIN_RUAS      = 25;    // amostra mínima para o bloco significar algo
 const DENSIDADE_MIN = 0.60;  // prefixos vistos / tamanho do intervalo
 const PAUSA_MS      = 120;   // educação com a ViaCEP
@@ -188,7 +206,7 @@ async function main() {
     // PROVA 1: amostra. Poucas ruas nao reprova de saida — reprova la
     // embaixo, se as bordas tambem nao fecharem.
     const amostraFraca = ceps.size < MIN_RUAS;
-    if (ceps.size < 3) {
+    if (!PERMISSIVO && ceps.size < 3) {
       recusas.push(`${m.uf} ${m.name}: so ${ceps.size} ruas - nao da para desenhar bloco nenhum`);
       pulados++; continue;
     }
@@ -196,8 +214,10 @@ async function main() {
     const prefixos = [...new Set([...ceps].map(c => c.slice(0, 5)))].map(Number).sort((a, b) => a - b);
     const min = prefixos[0], max = prefixos[prefixos.length - 1];
 
-    // Prefixo unico aqui seria caso do seed-cep-geral, nao deste script.
-    if (min === max) {
+    // Prefixo unico: no modo normal e caso do seed-cep-geral (que ja
+    // recusou, senao a cidade nao estaria aqui). No permissivo, o
+    // prefixo confirmado pelo IBGE vira a faixa da cidade.
+    if (min === max && !PERMISSIVO) {
       recusas.push(`${m.uf} ${m.name}: prefixo unico ${min} - e caso do seed-cep-geral`);
       pulados++; continue;
     }
@@ -214,8 +234,13 @@ async function main() {
     // e a prova de que a amostra nao chegou na ponta. Jaragua do Sul e
     // Videira morreram assim na primeira versao. Entao o bloco cresce
     // ate encontrar outra cidade ou o silencio.
-    const { fim: minFinal, borda: bAbaixo } = await estender(min, -1, m.ibge_code);
-    const { fim: maxFinal, borda: bAcima }  = await estender(max, +1, m.ibge_code);
+    // Sondar borda custa ate 6 requisicoes por lado. No permissivo, com
+    // amostra minuscula, isso e caro e diz pouco: fica so o observado.
+    const sondar = !PERMISSIVO || ceps.size >= MIN_RUAS;
+    const { fim: minFinal, borda: bAbaixo } = sondar
+      ? await estender(min, -1, m.ibge_code) : { fim: min, borda: 'nao sondada' };
+    const { fim: maxFinal, borda: bAcima } = sondar
+      ? await estender(max, +1, m.ibge_code) : { fim: max, borda: 'nao sondada' };
 
     // PROVA 3b: buraco que pertence a OUTRA cidade invalida o bloco.
     //
@@ -239,7 +264,7 @@ async function main() {
     // Amostra fraca passa com tres prefixos confirmados pelo IBGE e a
     // prova 3 limpa. Ver o cabecalho: exigir borda provada media a
     // extensao do bloco, nao a veracidade dele.
-    if (amostraFraca && prefixos.length < 3) {
+    if (!PERMISSIVO && amostraFraca && prefixos.length < 3) {
       recusas.push(`${m.uf} ${m.name}: so ${ceps.size} ruas em ${prefixos.length} prefixo(s) - amostra fraca demais`);
       pulados++; continue;
     }
