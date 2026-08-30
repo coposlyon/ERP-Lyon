@@ -36,6 +36,7 @@ import {
   DollarSign, Truck, ShieldCheck, CircleCheck, Paperclip, Palette, X,
 } from 'lucide-react';
 import api from '@/lib/api';
+import VisualizarArteModal, { ehImagemDeArte } from '@/components/UI/VisualizarArteModal';
 import { fmtBRL, fmtUn, fmtDate } from './ui';
 
 const PAGAMENTO = {
@@ -73,6 +74,7 @@ export default function DocumentoPedido() {
   // 'pb' = preto e branco (papel) · 'cor' = como está na tela
   const [modo, setModo] = useState('pb');
   const [perguntando, setPerguntando] = useState(false);
+  const [verArte, setVerArte] = useState(false);
 
   const { data: p, isLoading, error } = useQuery({
     queryKey: ['pedido-vendedor', id],
@@ -171,7 +173,8 @@ export default function DocumentoPedido() {
   ].filter(Boolean).join(', ');
 
   const temArte = !!p.artwork_url;
-  const ehImagem = temArte && /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(p.artwork_url);
+
+  const ehImagem = temArte && ehImagemDeArte(p.artwork_url);
 
   return (
     <>
@@ -257,8 +260,11 @@ export default function DocumentoPedido() {
           <div className="flex flex-wrap items-center gap-2">
             <BotaoNeon cor={CIANO} onClick={() => setPerguntando(true)} Icon={Download}>Baixar PDF</BotaoNeon>
             <BotaoNeon cor="#60a5fa" onClick={() => imprimir('pb')} Icon={Printer}>Imprimir em preto e branco</BotaoNeon>
+            {/* Abre o visualizador do sistema, encaixada na tela. A aba
+                com a URL crua do storage desenhava a imagem no tamanho
+                real e, no celular, virava um pedaço da arte. */}
             <BotaoNeon cor={ROSA} Icon={Eye} desabilitado={!temArte}
-              onClick={() => temArte && window.open(p.artwork_url, '_blank', 'noopener')}>
+              onClick={() => temArte && setVerArte(true)}>
               Visualizar arte
             </BotaoNeon>
           </div>
@@ -484,7 +490,7 @@ export default function DocumentoPedido() {
 
             {temArte ? (
               <>
-                <button onClick={() => window.open(p.artwork_url, '_blank', 'noopener')}
+                <button onClick={() => setVerArte(true)}
                   className="w-full rounded-xl overflow-hidden mb-3 flex items-center justify-center"
                   style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.10)', minHeight: 140 }}>
                   {ehImagem
@@ -538,6 +544,19 @@ export default function DocumentoPedido() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* A arte, encaixada na tela. `doc-chrome` porque o visualizador é
+          da tela e não do papel: imprimir com ele aberto sairia uma
+          folha preta. */}
+      {verArte && (
+        <VisualizarArteModal
+          className="doc-chrome"
+          url={p.artwork_url}
+          titulo={`Arte do pedido ${p.codigo}`}
+          notas={p.artwork_notes}
+          onClose={() => setVerArte(false)}
+        />
       )}
     </>
   );

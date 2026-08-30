@@ -35,6 +35,7 @@ import LogoOrigem from '@/components/UI/LogoOrigem';
 import SubstituirArteModal from '@/components/UI/SubstituirArteModal';
 import PainelFluxo from './PainelFluxo';
 import ClienteFichaModal from './ClienteFichaModal';
+import VisualizarArteModal from '@/components/UI/VisualizarArteModal';
 
 /**
  * Os ícones da linha do tempo, um a um.
@@ -90,6 +91,7 @@ export default function PedidoDetalhe() {
   const documentoEm = noErp ? `/sales/${id}/documento` : `/vendedor/pedidos/${id}/documento`;
   const [verHistorico, setVerHistorico] = useState(false);
   const [verCliente, setVerCliente] = useState(false);  // a ficha do cliente, pelo olho ao lado do nome
+  const [verArte, setVerArte] = useState(false);        // a arte aberta encaixada na tela
   const [enviando, setEnviando] = useState(null);   // 'arte' | 'comprovante'
   const [trocarArte, setTrocarArte] = useState(null); // pedido cuja arte se quer substituir
   const qc = useQueryClient();
@@ -518,7 +520,7 @@ export default function PedidoDetalhe() {
               aguardando={aguardandoArte}
               enviando={enviando === 'arte'}
               notas={p.artwork_notes}
-              urlArte={p.artwork_url}
+              onVerArte={() => setVerArte(true)}
               onAnexar={() => (p.artwork_url ? setTrocarArte(p) : inputArte.current?.click())}
             />
           </Bloco>
@@ -657,6 +659,16 @@ export default function PedidoDetalhe() {
           onClose={() => setVerCliente(false)}
         />
       )}
+
+      {/* A arte, encaixada na tela — sem arrastar para achar o desenho. */}
+      {verArte && (
+        <VisualizarArteModal
+          url={p.artwork_url}
+          titulo={`Arte do pedido ${p.codigo}`}
+          notas={p.artwork_notes}
+          onClose={() => setVerArte(false)}
+        />
+      )}
     </div>
   );
 }
@@ -731,7 +743,7 @@ function Balao({ v, fase, atrasado }) {
  * painel escuro. No tema claro o brilho sai (fica ilegivel sobre branco)
  * e sobra a cor da borda, que ja carrega o recado.
  */
-function CartaoDaArte({ v, temArte, aguardando, enviando, notas, urlArte, onAnexar }) {
+function CartaoDaArte({ v, temArte, aguardando, enviando, notas, onAnexar, onVerArte }) {
   const VERDE = '#4ade80', VERMELHO = '#f87171', AMARELO = '#facc15';
 
   const selo = temArte
@@ -784,8 +796,13 @@ function CartaoDaArte({ v, temArte, aguardando, enviando, notas, urlArte, onAnex
         </BotaoNeon>
 
         {temArte ? (
+          /* ABRE DENTRO DO SISTEMA, e nao mais numa aba com a URL crua do
+             storage: no celular o navegador desenhava a imagem no tamanho
+             real dela, e quem clicava caia num pedaco branco do copo em
+             sete vezes o tamanho da tela. O visualizador encaixa a arte
+             inteira de primeira; ampliar virou escolha de quem olha. */
           <BotaoNeon v={v} cor={VERDE} aceso={aceso} Icon={Eye}
-            titulo="Abrir o arquivo da arte" href={urlArte}>
+            titulo="Ver a arte deste pedido" onClick={onVerArte}>
             Visualizar arte
           </BotaoNeon>
         ) : (
