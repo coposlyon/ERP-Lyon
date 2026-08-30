@@ -84,7 +84,7 @@ virar cliente de verdade.
  * @param telas  [{ label, path }] — o menu real do usuário
  * @param ctx    { tela_atual, nome, cargo }
  */
-function instrucao(telas, ctx = {}) {
+function instrucao(telas, ctx = {}, contextoTela = null) {
   // O GRUPO VAI JUNTO porque a resposta cita o caminho do menu. Sem
   // ele o modelo chuta o grupo: mandou "Cadastros > Formação de Preço"
   // quando a tela mora em "Engenharia de Custos". O usuário procura
@@ -108,6 +108,17 @@ COMO RESPONDER
 - Se você NÃO SOUBER, diga que não sabe e sugira quem procurar. Não
   invente nome de tela, de botão nem de campo.
 - Se mandarem um print, leia o que está na tela e responda sobre aquilo.
+- OLHE PRIMEIRO O QUE ESTÁ NA TELA (a seção mais abaixo). Se o que a
+  pessoa procura está lá, responda o nome EXATO do botão ou do campo,
+  entre aspas, e acabou. "Clique em + Adicionar filho" resolve; "confira
+  se está na aba certa" não resolve nada.
+- NUNCA mande recarregar a página, sair e entrar, ou procurar o suporte
+  técnico como primeira resposta. Isso é o que se diz quando não se
+  olhou. Só sugira algo assim depois de dizer o que dá para fazer na
+  tela, e apenas se de fato não houver caminho.
+- Não invente diagnóstico de erro ("pode ser problema de vínculo no
+  banco"). Se a tela mostra "Nenhum filho cadastrado", isso não é um
+  erro: é uma lista vazia esperando o primeiro cadastro.
 
 ABRIR TELA
 Quando a resposta for mais útil com a tela aberta, termine a mensagem
@@ -123,6 +134,15 @@ TELAS QUE ESTE USUÁRIO PODE ABRIR
 ${lista || '(nenhuma — não ofereça abrir tela)'}
 
 ${ctx.tela_atual ? `A pessoa está agora na tela: ${ctx.tela_atual}` : ''}
+${contextoTela ? `
+O QUE ESTÁ NA TELA AGORA
+Isto foi lido da própria página que a pessoa está vendo, neste instante.
+São os títulos, botões, abas e rótulos de campo — os VALORES digitados
+não vêm, por privacidade. Use isto antes de qualquer suposição: se o
+botão que resolve a dúvida está nesta lista, é ele a resposta.
+
+${contextoTela}
+` : ''}
 
 COMO O SISTEMA FUNCIONA
 ${COMO_FUNCIONA}`;
@@ -166,7 +186,7 @@ function separarAcao(texto, telas) {
  * @param telas      [{ label, path }] permitidas
  * @param ctx        { tela_atual }
  */
-async function responder({ pergunta, imagem, historico = [], telas = [], ctx = {} }) {
+async function responder({ pergunta, imagem, historico = [], telas = [], ctx = {}, contextoTela = null }) {
   const anteriores = (Array.isArray(historico) ? historico : [])
     .slice(-MAX_HISTORICO)
     .filter(h => h && h.text && (h.role === 'user' || h.role === 'assistant'))
@@ -175,7 +195,7 @@ async function responder({ pergunta, imagem, historico = [], telas = [], ctx = {
     .map(h => ({ role: h.role, content: String(h.text).slice(0, 4000) }));
 
   const r = await askGroq({
-    system: instrucao(telas, ctx),
+    system: instrucao(telas, ctx, contextoTela),
     mensagens: [...anteriores, { role: 'user', content: conteudoDoUsuario(pergunta, imagem) }],
     max_tokens: 1200,
   });

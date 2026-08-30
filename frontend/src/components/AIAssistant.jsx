@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Sparkles, X, Send, Loader2, ImagePlus, ArrowRight, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 import { TELAS, telaDoCaminho } from '@/lib/menu';
+import { lerTela } from '@/lib/lerTela';
 import { useAuth } from '@/contexts/AuthContext';
 
 const SUGESTOES = [
@@ -91,6 +92,12 @@ export default function AIAssistant() {
       const res = await api.post('/ai/copiloto', {
         pergunta, imagem: anexo, telas,
         tela_atual: telaDoCaminho(location.pathname)?.label || null,
+        // O ESQUELETO DA TELA ABERTA - titulos, botoes, abas, rotulos.
+        // Sem isto ele responde sobre um sistema que nunca viu, e foi
+        // assim que "clique em + Adicionar filho" virou "recarregue a
+        // pagina e procure o suporte". Vao os ROTULOS, nunca os valores
+        // digitados: ver o cabecalho de lib/lerTela.js.
+        contexto_tela: lerTela(),
         // Só texto no histórico: reenviar os prints antigos a cada
         // pergunta multiplicaria o tamanho da requisição.
         historico: msgs.slice(-8).map(m => ({ role: m.role, text: m.text })),
@@ -117,7 +124,7 @@ export default function AIAssistant() {
       )}
 
       {open && (
-        <div className="fixed bottom-3 right-3 z-50 w-[92vw] max-w-sm h-[70vh] max-h-[560px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden">
+        <div data-copiloto className="fixed bottom-3 right-3 z-50 w-[92vw] max-w-sm h-[70vh] max-h-[560px] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white">
             <div className="flex items-center gap-2 font-semibold text-sm"><Sparkles size={16} /> Assistente do sistema</div>
             <div className="flex items-center gap-1">

@@ -35,6 +35,7 @@ router.post('/copiloto', async (req, res) => {
       imagem,
       historico: req.body?.historico,
       telas,
+      contextoTela: req.body?.contexto_tela ? String(req.body.contexto_tela).slice(0, 3000) : null,
       ctx: { tela_atual: req.body?.tela_atual ? String(req.body.tela_atual).slice(0, 80) : null },
     });
     if (!r.ok) return res.status(400).json({ error: r.error });
