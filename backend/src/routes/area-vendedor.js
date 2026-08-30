@@ -117,6 +117,24 @@ async function alertasAbertos(tenantId, saleIds) {
 }
 
 /**
+ * OS CAMPOS DO CLIENTE — a ficha inteira, porque a tela do pedido abre
+ * a ficha dele num cartão (o olho ao lado do nome). Antes vinha só o
+ * bastante para as seis linhas do bloco "Cliente"; o cartão pede o
+ * cadastro: documento, endereço completo, situação e observações.
+ *
+ * O que NÃO entra continua não entrando — custo, margem e rateio não
+ * são do cliente e nem passam por aqui.
+ */
+const CLIENTE_FICHA = `
+      id, display_id, name, type, nome_fantasia, cpf_cnpj, rg_ie,
+      phone, mobile, email, instagram, address, rating, credit_limit,
+      vendedor, birth_date, notes, is_active, blocked, block_reason, created_at
+    `;
+// A mesma ficha sem as colunas de migrações recentes: numa base que
+// ainda não migrou, o pedido tem que abrir do mesmo jeito.
+const CLIENTE_BASICO = 'id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating, created_at';
+
+/**
  * Detalhe do pedido para o vendedor.
  *
  * Rota própria, e não a de Vendas, por dois motivos: o vendedor não tem
@@ -138,7 +156,7 @@ router.get('/pedidos/:id', async (req, res) => {
       payment_method, notes, delivery_mode, pickup_person, artwork_url, artwork_notes, receipt_url, user_id, carrier_id,
       art_file, production_photos,
       tracking_code, freight_quote, avisos, production_log, collect_date, transport_days,
-      CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating, created_at ),
+      CLIENTES ( ${CLIENTE_FICHA} ),
       USUARIOS ( id, name ),
       VENDA_ITENS ( id, product_name, quantity, unit_price, discount, total, customization,
                     PRODUTOS ( id, code, name, unit, ink_type ) )
@@ -151,7 +169,8 @@ router.get('/pedidos/:id', async (req, res) => {
         .replace(/\n      art_file, production_photos,/, '')
         .replace(/freight_quote, avisos, production_log, collect_date, transport_days,/, 'production_log,')
         .replace(/, delivery_mode, pickup_person/, '')
-        .replace(/, event_date/, '');
+        .replace(/, event_date/, '')
+        .replace(CLIENTE_FICHA, CLIENTE_BASICO);
       ({ data, error } = await supabase.from('VENDAS').select(basico)
         .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle());
     }

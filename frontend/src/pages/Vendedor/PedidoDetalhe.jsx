@@ -34,6 +34,7 @@ import { corStatus } from '@/lib/pedidoUi';
 import LogoOrigem from '@/components/UI/LogoOrigem';
 import SubstituirArteModal from '@/components/UI/SubstituirArteModal';
 import PainelFluxo from './PainelFluxo';
+import ClienteFichaModal from './ClienteFichaModal';
 
 /**
  * Os ícones da linha do tempo, um a um.
@@ -88,6 +89,7 @@ export default function PedidoDetalhe() {
   // curinga mandava quem clicou para o Dashboard.
   const documentoEm = noErp ? `/sales/${id}/documento` : `/vendedor/pedidos/${id}/documento`;
   const [verHistorico, setVerHistorico] = useState(false);
+  const [verCliente, setVerCliente] = useState(false);  // a ficha do cliente, pelo olho ao lado do nome
   const [enviando, setEnviando] = useState(null);   // 'arte' | 'comprovante'
   const [trocarArte, setTrocarArte] = useState(null); // pedido cuja arte se quer substituir
   const qc = useQueryClient();
@@ -298,6 +300,18 @@ export default function PedidoDetalhe() {
             <Bloco v={v} Icon={User} titulo="Cliente">
               <Campo v={v} rotulo="Nome" valor={
                 <span className="flex items-center gap-1.5 flex-wrap justify-end">
+                  {/* O OLHO ABRE A FICHA DO CLIENTE. O bloco tem seis
+                      linhas; o cadastro tem endereço inteiro, segundo
+                      telefone, observação e — o que muda a conversa —
+                      se o cliente está bloqueado. Cabia num cartão, não
+                      em mais seis linhas empurrando o pedido para baixo. */}
+                  <button type="button" onClick={() => setVerCliente(true)}
+                    title="Ver a ficha completa do cliente"
+                    aria-label="Ver a ficha completa do cliente"
+                    className="shrink-0 p-0.5 rounded-md transition-opacity hover:opacity-70"
+                    style={{ color: '#60a5fa' }}>
+                    <Eye size={15} />
+                  </button>
                   {cli.name || 'Consumidor final'}
                   {cli.rating >= 4 && (
                     <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full"
@@ -632,6 +646,17 @@ export default function PedidoDetalhe() {
         onClose={() => setTrocarArte(null)}
         onConfirmar={({ arquivo, email, senha }) => anexar('arte', arquivo, { email, senha })}
       />
+
+      {/* A ficha do cliente — só leitura. Quem edita cadastro é o
+          Administrativo, na tela do cliente. */}
+      {verCliente && (
+        <ClienteFichaModal
+          cliente={cli}
+          codigo={p.codigo_cliente}
+          resumo={p.resumo_cliente}
+          onClose={() => setVerCliente(false)}
+        />
+      )}
     </div>
   );
 }
