@@ -113,30 +113,100 @@ const TERMOS = [
 ];
 
 const dorme = ms => new Promise(r => setTimeout(r, ms));
-// O NOME DO JEITO QUE A VIACEP ACEITA.
+// O NOME DO JEITO QUE A VIACEP ACEITA — E NAO HA UM JEITO SO.
 //
-// Sem acento E SEM HIFEN. "Grao-Para" devolve zero rua; "Grao Para"
-// devolve as cinco que existem. O hifen custou o unico municipio de SC
-// que ficou de fora por motivo bobo, e o Brasil tem centenas deles
-// (Mogi-Mirim, Santa Barbara d'Oeste, Belem de Sao Francisco).
-const semAcento = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[-']/g, ' ').replace(/\s+/g, ' ').trim();
-const soDigitos = s => String(s || '').replace(/\D/g, '');
+// A primeira versao mandava o nome cru e perdia "Grao-Para" (que ela
+// so aceita como "Grao Para"). Troquei hifen e apostrofo por espaco...
+// e quebrei todo o resto, porque a ViaCEP QUER o hifen em "Ji-Parana",
+// "Xique-Xique", "Embu-Guacu" e "Arco-Iris", e QUER o apostrofo em
+// "Santa Barbara d'Oeste". Consertar um caso me custou catorze.
+//
+// Nao existe regra unica: cada uma destas funciona para um conjunto
+// diferente, e a unica saida honesta e TENTAR ate uma responder.
+//
+//   Ji-Parana              hifen mantido
+//   Olhos d'Agua           hifen vira espaco, apostrofo fica
+//   SantAna do Livramento  apostrofo some, sem espaco
+//   Grao Para              hifen vira espaco
+const semAcento = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-async function viacep(url) {
-  await dorme(PAUSA_MS);
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch { return null; }
+function variantesDoNome(nome) {
+  const a = semAcento(nome);
+  return [...new Set([
+    a,                                                    // hifen e apostrofo mantidos
+    a.replace(/-/g, ' ').replace(/\s+/g, ' ').trim(),     // hifen vira espaco
+    a.replace(/'/g, ''),                                  // apostrofo some, sem espaco
+    a.replace(/[-']/g, ' ').replace(/\s+/g, ' ').trim(),  // ambos viram espaco
+    nome,                                                 // como esta no IBGE
+  ])];
 }
 
-/** As ruas conhecidas da cidade, conferidas pelo código do IBGE. */
+// NOMES QUE A VIACEP CONHECE POR OUTRO NOME.
+//
+// Nao e grafia: e o municipio ter sido renomeado e os Correios terem
+// ficado com o nome antigo. Sem este mapa, "Januario Cicco" devolve
+// zero para sempre, por mais variante que se tente.
+// Cada linha foi CONFERIDA: a busca devolveu ruas com este exato codigo
+// do IBGE. Nao ha aqui nenhum palpite de "deve ser assim".
+const APELIDOS = {
+  2400208: ['Acu'],                        // RN  Assu
+  2405306: ['Boa Saude'],                  // RN  Januario Cicco (nome antigo)
+  3102506: ['Amparo da Serra'],            // MG  Amparo do Serra
+  3105509: ['Barao de Monte Alto'],        // MG  Barao do Monte Alto
+  3165206: ['Sao Thome das Letras'],       // MG  Sao Tome das Letras
+  5107800: ['Santo Antonio do Leverger'],  // MT  Santo Antonio de Leverger
+  2608503: ['Lagoa do Itaenga'],           // PE  Lagoa de Itaenga
+  2922250: ['Muquem de Sao Francisco'],    // BA  Muquem do Sao Francisco
+  2928505: ['Santa Teresinha'],            // BA  Santa Terezinha
+  2800100: ['Amparo de Sao Francisco'],    // SE  Amparo do Sao Francisco
+};
+const soDigitos = s => String(s || '').replace(/\D/g, '');
+
+/**
+ * Chamada com REPETICAO.
+ *
+ * Sem ela, uma falha passageira de rede era indistinguivel de "cidade
+ * nao existe": o script anotava "0 ruas" e seguia. Foi o que aconteceu
+ * com Presidente Figueiredo (AM), que a ViaCEP conhece com 50 ruas e o
+ * IBGE batendo — ela caiu num soluco e ficou sem CEP por isso.
+ */
+async function viacep(url, tentativas = 3) {
+  for (let i = 1; i <= tentativas; i++) {
+    await dorme(PAUSA_MS * i);
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      if (r.status === 429 || r.status >= 500) continue;   // passageiro: repete
+      if (!r.ok) return null;                              // 400/404: e resposta, nao falha
+      return await r.json();
+    } catch { /* rede caiu: repete */ }
+  }
+  return null;
+}
+
+/**
+ * As ruas conhecidas da cidade, conferidas pelo código do IBGE.
+ *
+ * Descobre primeiro QUAL grafia esta ViaCEP aceita para este município,
+ * e so entao gasta os vinte termos. Sem isso, uma cidade com hifen
+ * gastava vinte buscas para receber vinte nadas.
+ */
 async function ruasDaCidade(uf, nome, ibge) {
   const ceps = new Set();
   let forasteiras = 0;
+
+  const candidatos = [...(APELIDOS[ibge] || []), ...variantesDoNome(nome)];
+  let grafia = null;
+  for (const c of candidatos) {
+    const j = await viacep(`https://viacep.com.br/ws/${uf}/${encodeURIComponent(c)}/${encodeURIComponent(TERMOS[0])}/json/`);
+    if (Array.isArray(j) && j.length) { grafia = c; break; }
+  }
+  // Nenhuma grafia respondeu ao primeiro termo: ainda vale tentar o
+  // resto com a forma mais comum — ha cidade sem nenhuma "Rua" e com
+  // Avenidas.
+  if (!grafia) grafia = candidatos[0];
+
   for (const termo of TERMOS) {
-    const j = await viacep(`https://viacep.com.br/ws/${uf}/${encodeURIComponent(semAcento(nome))}/${encodeURIComponent(termo)}/json/`);
+    const j = await viacep(`https://viacep.com.br/ws/${uf}/${encodeURIComponent(grafia)}/${encodeURIComponent(termo)}/json/`);
     if (!Array.isArray(j)) continue;
     for (const x of j) {
       if (!x.cep) continue;
@@ -145,7 +215,7 @@ async function ruasDaCidade(uf, nome, ibge) {
       ceps.add(soDigitos(x.cep));
     }
   }
-  return { ceps, forasteiras };
+  return { ceps, forasteiras, grafia };
 }
 
 /**
@@ -206,6 +276,21 @@ async function main() {
     // PROVA 1: amostra. Poucas ruas nao reprova de saida — reprova la
     // embaixo, se as bordas tambem nao fecharem.
     const amostraFraca = ceps.size < MIN_RUAS;
+
+    // ZERO RUA NAO PASSA, NEM NO PERMISSIVO.
+    //
+    // O permissivo tirou a trava de amostra minima e eu nao mantive a
+    // checagem obvia: com o conjunto vazio, `prefixos` fica vazio, min
+    // e max viram undefined, e o script GRAVOU "undefined-000 a
+    // undefined-999" em dez municipios. Sair do rigor demais para o
+    // rigor de menos produziu exatamente o lixo silencioso que este
+    // script existe para evitar.
+    //
+    // Nenhum prefixo confirmado = nada a gravar. Sem excecao de modo.
+    if (ceps.size < 1) {
+      recusas.push(`${m.uf} ${m.name}: a ViaCEP nao conhece nenhuma rua desta cidade`);
+      pulados++; continue;
+    }
     if (!PERMISSIVO && ceps.size < 3) {
       recusas.push(`${m.uf} ${m.name}: so ${ceps.size} ruas - nao da para desenhar bloco nenhum`);
       pulados++; continue;
@@ -269,8 +354,14 @@ async function main() {
       pulados++; continue;
     }
 
-    const cepStart = `${minFinal}-000`;
-    const cepEnd   = `${maxFinal}-999`;
+    // O ZERO A ESQUERDA. Os prefixos viram Number para poder somar e
+    // comparar, e Number('06900') e 6900 - o zero morre ali. Sem este
+    // padStart, Sao Paulo capital foi gravada como "1001-000" em vez de
+    // "01001-000", e com ela os 31 municipios da regiao metropolitana:
+    // CEP de Sao Paulo, Guarulhos, Osasco e Santo Andre comeca com zero.
+    const cep5 = n => String(n).padStart(5, '0');
+    const cepStart = `${cep5(minFinal)}-000`;
+    const cepEnd   = `${cep5(maxFinal)}-999`;
 
     console.log(`${m.uf} ${m.name.padEnd(28)} ${cepStart} a ${cepEnd}  (${ceps.size} ruas, ${prefixos.length}/${span} prefixos vistos, densidade ${(densidade*100).toFixed(0)}%${forasteiras ? `, ${forasteiras} de fora descartadas` : ''})`);
     console.log(`     bordas: ${minFinal - 1} ${bAbaixo} | ${maxFinal + 1} ${bAcima}${(minFinal !== min || maxFinal !== max) ? `  [estendido de ${min}-${max}]` : ''}${buracos.length ? `  ${buracos.length} buracos, ${Math.min(8,buracos.length)} sondados` : ''}`);
