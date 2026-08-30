@@ -25,7 +25,7 @@ import {
   Monitor, ClipboardList, Palette, Tag,
   Building2, Percent, PenLine, Briefcase, X, MapPin,
   RotateCcw, FlaskConical, Target, UserCog,
-  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, ShieldCheck,
+  Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Factory, ShieldCheck,
   Calculator, PieChart, Home, Landmark, Star, Trophy,
   MessageSquare, LogOut, LayoutGrid, Globe, CloudUpload, UserPlus, UserMinus,
 } from 'lucide-react';
@@ -209,20 +209,20 @@ export const menuItems = [
       { label: 'Compras',  path: '/purchases', icon: ShoppingCart, module: 'purchases' },
     ],
   },
-  // PRODUÇÃO SAIU DO MENU (Ordens de Produção). A Lyon não vai usar por
-  // enquanto. Sumiu o caminho e a caixinha de permissão (lib/setores.js);
-  // a tela, a rota /production e as rotas do servidor continuam de pé.
-  //
-  // DEVOLUÇÕES FICOU, e por isso voltou a ser item solto. Ela morava
-  // dentro deste grupo porque a peça devolvida vai parar na fábrica —
-  // mas Devoluções é outro módulo (`returns`), que ninguém pediu para
-  // tirar. Deixá-la sozinha dentro de um grupo chamado "Produção" seria
-  // um menu prometendo uma seção que não existe mais.
   {
-    label: 'Devoluções',
-    icon: RotateCcw,
-    path: '/returns',
-    module: 'returns',
+    // A devolução é o pedido voltando para a fábrica: quem trata dela é
+    // quem produz. Como item solto no menu, ela ficava a doze linhas de
+    // distância da Produção, que é onde a peça devolvida vai parar.
+    //
+    // O grupo JÁ SAIU UMA VEZ, em 29/08/2026, e voltou no mesmo dia. Sai
+    // só o caminho quando isso acontece — a tela, a rota e as tabelas
+    // ficam —, e é por isso que devolver foi devolver duas linhas.
+    label: 'Produção',
+    icon: Factory,
+    children: [
+      { label: 'Ordens de Produção', path: '/production', icon: Factory, module: 'production' },
+      { label: 'Devoluções',         path: '/returns',    icon: RotateCcw, module: 'returns' },
+    ],
   },
 
   // Sites — um submenu por endereço público. A lista NÃO é escrita aqui:

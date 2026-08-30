@@ -29,6 +29,7 @@ const MODULOS = [
   { key: 'returns',        label: 'Devoluções' },
   { key: 'quality',        label: 'Qualidade' },
   { key: 'crm',            label: 'CRM' },
+  { key: 'production',     label: 'Produção' },
   { key: 'hr',             label: 'RH' },
 ];
 
