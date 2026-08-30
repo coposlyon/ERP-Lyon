@@ -71,6 +71,22 @@ export const menuItems = [
       { label: 'Plano de Metas', path: '/vendedor/config', icon: Trophy, adminOnly: true },
     ],
   },
+  // PRODUÇÃO VEM LOGO DEPOIS DO COMERCIAL, e não lá embaixo com o
+  // Estoque. É a ordem em que o pedido acontece: vende-se, produz-se. Quem
+  // trabalha no dia a dia salta de Pedidos de Venda para Ordens de
+  // Produção o tempo todo, e cada salto passava por oito grupos de menu.
+  //
+  // DEVOLUÇÕES vem junto: a devolução é o pedido voltando para a fábrica,
+  // e quem trata dela é quem produz.
+  {
+    label: 'Produção',
+    icon: Factory,
+    children: [
+      { label: 'Ordens de Produção', path: '/production', icon: Factory, module: 'production' },
+      { label: 'Devoluções',         path: '/returns',    icon: RotateCcw, module: 'returns' },
+    ],
+  },
+
   // MARKETING SAIU DO MENU, pelo mesmo caminho que CRM e Qualidade: a
   // Lyon não vai usar por enquanto, e item de menu que ninguém abre é
   // uma linha que todo mundo lê todo dia para pular.
@@ -207,21 +223,6 @@ export const menuItems = [
     children: [
       { label: 'Estoque',  path: '/stock',     icon: Boxes,        module: 'stock' },
       { label: 'Compras',  path: '/purchases', icon: ShoppingCart, module: 'purchases' },
-    ],
-  },
-  {
-    // A devolução é o pedido voltando para a fábrica: quem trata dela é
-    // quem produz. Como item solto no menu, ela ficava a doze linhas de
-    // distância da Produção, que é onde a peça devolvida vai parar.
-    //
-    // O grupo JÁ SAIU UMA VEZ, em 29/08/2026, e voltou no mesmo dia. Sai
-    // só o caminho quando isso acontece — a tela, a rota e as tabelas
-    // ficam —, e é por isso que devolver foi devolver duas linhas.
-    label: 'Produção',
-    icon: Factory,
-    children: [
-      { label: 'Ordens de Produção', path: '/production', icon: Factory, module: 'production' },
-      { label: 'Devoluções',         path: '/returns',    icon: RotateCcw, module: 'returns' },
     ],
   },
 
