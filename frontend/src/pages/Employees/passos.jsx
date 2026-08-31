@@ -29,7 +29,19 @@ import {
 
 // ── 1. Dados pessoais ───────────────────────────────────────
 export function DadosPessoais({ f, set, setEndereco, buscandoCep, buscarCep }) {
-  const casado = /casad|uni/i.test(f.estado_civil || '');
+  // TEM CONJUGE? — pergunta explicita, como "Possui filhos?" e "Possui
+  // CNH?" logo abaixo.
+  //
+  // Antes isso era DEDUZIDO do Estado civil, e a deducao falhava nos
+  // dois sentidos: quem vive em uniao estavel e marca "Solteiro(a)"
+  // nunca via os campos do conjuge, e quem ainda nao escolheu o estado
+  // civil tambem nao. O padrao continua vindo do Estado civil (quem
+  // marca "Casado(a)" nao precisa responder duas vezes), mas agora da
+  // para dizer o contrario — e a resposta explicita vence.
+  const casadoPeloEstado = /casad|uni/i.test(f.estado_civil || '');
+  const casado = f.possui_conjuge === undefined || f.possui_conjuge === null
+    ? casadoPeloEstado
+    : !!f.possui_conjuge;
   const filhos = Array.isArray(f.filhos) ? f.filhos : [];
 
   const editarFilho = (i, campo, valor) =>
@@ -107,6 +119,19 @@ export function DadosPessoais({ f, set, setEndereco, buscandoCep, buscarCep }) {
       </Secao>
 
       {/* O cônjuge só é perguntado a quem tem cônjuge. */}
+      <div className="card"><div className="card-body">
+        <SimNao label="É casado(a) ou tem união estável?" valor={casado}
+          aoMudar={v => {
+            set('possui_conjuge', v);
+            // Marcar «não» limpa o que foi digitado: deixar o nome de um
+            // ex-cônjuge guardado num campo escondido é pior do que não
+            // ter campo nenhum — ele volta no dia em que alguém marcar
+            // «sim» de novo, sem ninguém entender de onde veio.
+            if (!v) { set('conjuge_nome', ''); set('conjuge_cpf', ''); set('conjuge_nascimento', ''); set('conjuge_telefone', ''); }
+          }}
+          dica="Marcar «não» limpa os dados do cônjuge." />
+      </div></div>
+
       {casado && (
         <Secao icone={Users} titulo="Dados do cônjuge" descricao="Entram no imposto de renda e nos benefícios com dependente.">
           <Campo label="Nome do cônjuge" col={2}>

@@ -231,6 +231,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
     customer_id, type, items, notes, discount, delivery_date,
     artwork_url, artwork_notes, payment_method, installments, first_due_date,
     operation_date, event_date, ship_date, max_delivery_date, order_key, freight, payment_adjustment, carrier_id,
+    delivery_mode, // entrega ou retirada — decide se o pedido passa por Em Trânsito
     billing_company_id, receiving_account_id, // Contábil: empresa faturadora + conta de destino (migração 043)
     origin, // de onde veio o cliente (Shopee, WhatsApp, Site...) — migração 067
   } = req.body;
@@ -283,6 +284,15 @@ router.post('/', validate(saleSchema), async (req, res) => {
       if (max_delivery_date) patch.max_delivery_date = max_delivery_date;
       if (order_key) patch.order_key = order_key;
       if (carrier_id) patch.carrier_id = carrier_id;
+      // ENTREGA OU RETIRADA, JA NA CRIACAO.
+      //
+      // So havia como gravar isto DEPOIS, pela rota de logistica
+      // (PATCH /:id/entrega). O PDV entao marcava retirada escrevendo
+      // uma observacao em texto e zerando a transportadora — e o pedido
+      // nascia sem `delivery_mode`, que e a coluna que lib/atencao.js le
+      // para decidir se pula "Em Transito". Retirada criada no PDV
+      // seguia a rota de entrega, esperando uma coleta que nao existia.
+      if (delivery_mode) patch.delivery_mode = delivery_mode === 'retirada' ? 'retirada' : 'entrega';
       // De onde veio o cliente. Fora do vocabulário vira null em vez de
       // entrar torta — "ML", "mercado livre" e "Mercado Livre" não
       // agrupariam em relatório nenhum.

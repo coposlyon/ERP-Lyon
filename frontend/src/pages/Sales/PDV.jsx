@@ -114,8 +114,8 @@ function palpiteBorda(product, variantName) {
   return hay.includes('borda') ? 'Com borda' : 'Sem borda';
 }
 
-// Opção fixa do seletor de transportadora: o cliente retira na loja.
-const RETIRADA = '__retirada__';
+// O rotulo da retirada. A constante RETIRADA ('__retirada__') saiu com
+// a opcao falsa que morava no seletor de transportadora.
 const RETIRADA_LABEL = 'Retirar em mãos';
 
 // mode: 'sale' (pedido de venda) | 'quote' (orçamento — salva e gera a foto PNG)
@@ -135,6 +135,17 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [coupon, setCoupon] = useState(null); // { coupon_id, code, discount_type, discount_value }
   const [frete, setFrete] = useState(null); // { price, days, weightKg, uf }
   const [carrierId, setCarrierId] = useState(''); // transportadora desta venda
+  // ENTREGA OU RETIRADA — E UMA PERGUNTA, NAO UMA TRANSPORTADORA.
+  //
+  // "Retirar em maos" era uma OPCAO DENTRO do seletor de transportadora,
+  // e isso escondia dois problemas. O menor: retirada nao e uma
+  // transportadora, e ocupava lugar na lista de quem transporta. O
+  // maior: escolher aquela opcao gravava so uma OBSERVACAO em texto
+  // ("Entrega: Retirar em maos") e nunca gravava `delivery_mode` - que
+  // e exatamente a coluna que lib/atencao.js le para decidir se o
+  // pedido pula "Em Transito". Ou seja: pedido de retirada criado aqui
+  // seguia a rota de entrega, esperando uma coleta que nunca vinha.
+  const [modoEntrega, setModoEntrega] = useState('entrega');
   const [freightInput, setFreightInput] = useState(''); // valor do frete (R$) — editável
   const [quoteNumber, setQuoteNumber] = useState(''); // nº da cotação do frete na transportadora
 
@@ -307,7 +318,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const carrierSel = (carriers?.data || []).find(c => c.id === carrierId) || null;
   // "Retirar em mãos" é uma opção fixa da lista, não uma transportadora
   // cadastrada: o pedido fica sem carrier_id e a informação vai na observação.
-  const isRetirada = carrierId === RETIRADA;
+  const isRetirada = modoEntrega === 'retirada';
   const carrierLabel = isRetirada ? RETIRADA_LABEL : (carrierSel ? (carrierSel.trade_name || carrierSel.name) : '');
 
   // Tipos (categorias) de produto — para o filtro do painel de produtos
@@ -825,6 +836,8 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       coupon_code: coupon?.code || null,
       freight: freteValue,
       carrier_id: isRetirada ? null : (carrierId || null),
+      // A COLUNA que o fluxo le para pular "Em Transito" (migracao 090).
+      delivery_mode: modoEntrega,
       payment_adjustment: paymentAdj,
       ...(() => {
         const noteParts = [];
@@ -980,17 +993,14 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             </div>
             {!isQuote && (
               <div>
-                {/* Sem isto a coluna Origem nasce vazia. É a pergunta que
-                    responde "de onde vieram nossas vendas" — e a mesma
-                    que a integração do Mercado Livre vai preencher
-                    sozinha quando entrar.
-
-                    O seletor mostra o selo da marca, não emoji: é o
-                    mesmo LogoOrigem que a lista de Vendas já pinta, para
-                    o canal ser o mesmo desenho na hora de gravar e na
-                    hora de conferir. */}
-                <label className="text-xs font-medium text-gray-500 block mb-1">Origem da venda</label>
-                <SeletorOrigem origens={origens} value={origem} onChange={setOrigem} />
+                {/* A pergunta que decide a ROTA do pedido. Ficava
+                    escondida dentro do seletor de transportadora. */}
+                <label className="text-xs font-medium text-gray-500 block mb-1">Entrega</label>
+                <select className="input text-sm w-full" value={modoEntrega}
+                  onChange={e => { setModoEntrega(e.target.value); if (e.target.value === 'retirada') { setCarrierId(''); setShowSched(false); } }}>
+                  <option value="entrega">Transportadora</option>
+                  <option value="retirada">{RETIRADA_LABEL}</option>
+                </select>
               </div>
             )}
           </div>
@@ -1057,12 +1067,11 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             )}
           </div>
 
-          {/* Transportadora */}
-          <div className="min-w-0">
+          {/* Transportadora — some na retirada: nao ha quem transporte. */}
+          <div className={`min-w-0 ${isRetirada ? 'hidden' : ''}`}>
             <label className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><Truck size={12} /> Transportadora</label>
             <select className="input text-sm w-full" value={carrierId} onChange={e => { setCarrierId(e.target.value); setShowSched(false); }}>
               <option value="">— selecione —</option>
-              <option value={RETIRADA}>{RETIRADA_LABEL}</option>
               {(carriers?.data || []).map(c => <option key={c.id} value={c.id}>{c.trade_name || c.name}</option>)}
             </select>
             {carrierId && !isRetirada && (
@@ -1074,7 +1083,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           </div>
 
           {/* Valor do frete */}
-          <div>
+          <div className={isRetirada ? 'hidden' : ''}>
             <label className="text-xs font-medium text-gray-500 block mb-1">Valor do frete (R$)</label>
             <input type="text" inputMode="decimal" className="input text-sm w-full" value={freightInput}
               onChange={e => setFreightInput(e.target.value.replace(/[^\d.,]/g, ''))}
@@ -1083,7 +1092,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           </div>
 
           {/* Nº da cotação do frete */}
-          <div>
+          <div className={isRetirada ? 'hidden' : ''}>
             <label className="text-xs font-medium text-gray-500 block mb-1">Número da Cotação</label>
             <input type="text" className="input text-sm w-full" value={quoteNumber}
               onChange={e => setQuoteNumber(e.target.value)} placeholder="ex.: 12345" />
@@ -1097,7 +1106,16 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             sai e QUANDO cada coisa acontece. Subindo, some um cartao e o
             comeco do pedido passa a caber numa tela so. */}
         {!isQuote && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-[repeat(3,minmax(0,1fr))_auto] gap-3 items-end mt-3 pt-3 border-t border-gray-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_auto] gap-3 items-end mt-3 pt-3 border-t border-gray-100">
+            {/* ORIGEM ABRE A LINHA DOS PRAZOS, a pedido de quem usa:
+                origem, data do evento, data de saida e previsao de
+                entrega sao as quatro respostas que se dao de uma vez ao
+                abrir o pedido. Ela morava empilhada sob a Data da
+                operacao, longe das tres. */}
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-1">Origem da venda</label>
+              <SeletorOrigem origens={origens} value={origem} onChange={setOrigem} />
+            </div>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Data do evento *</label>
               <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => changeEventDate(e.target.value)}
@@ -1113,7 +1131,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               <input type="date" className="input w-full text-sm" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)}
                 onBlur={() => setDeliveryDate(d => forwardDate(d))} />
             </div>
-            <div className="flex sm:justify-end items-center sm:col-span-3 xl:col-span-1 xl:pb-1.5">
+            <div className="flex sm:justify-end items-center sm:col-span-2 xl:col-span-1 xl:pb-1.5">
               <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 rounded px-2 py-0.5 whitespace-nowrap"
                 title="Chave do pedido (gerada automaticamente)">🔑 #{orderKey}</span>
             </div>

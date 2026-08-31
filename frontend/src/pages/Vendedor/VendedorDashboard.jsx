@@ -101,6 +101,28 @@ export default function VendedorDashboard() {
   // escolher um vendedor no seletor devolve o mapa ao territorio dele,
   // que e o que se quer olhar quando se esta olhando UMA pessoa.
   const cobertura = data?.seller?.cobertura || null;
+
+  // O QUE O CHIP DE REGIAO DIZ.
+  //
+  // No "Meu painel" de um gestor, o painel ja mostra o pais inteiro
+  // dividido entre a equipe — e o chip continuava anunciando "Regiao
+  // atendida: REGIAO SUL", que e o territorio pessoal de quem esta
+  // logado. Duas afirmacoes contraditorias na mesma tela, e a de cima
+  // e a errada: olhando o painel do gestor, a regiao atendida e a da
+  // EQUIPE, nao a dele.
+  //
+  // Com um vendedor escolhido no seletor, volta a ser o territorio
+  // daquela pessoa — que e o que se quer ler ao olhar para ela.
+  const regiaoDoTopo = useMemo(() => {
+    if (cobertura) {
+      const ufs = Object.keys(cobertura).filter(uf => (cobertura[uf] || []).length).sort();
+      if (ufs.length) return `Regiões da equipe: ${ufs.length} estado${ufs.length > 1 ? 's' : ''} — ${ufs.join(' ')}`;
+      return 'Nenhum estado com vendedor';
+    }
+    const propria = data?.seller?.region_label
+      || (territorio.length ? territorio.join(' / ') : null);
+    return `Região atendida: ${propria || 'não definida'}`;
+  }, [cobertura, data?.seller?.region_label, territorio]);
   const coresVend = useMemo(() => coresDosVendedores(cobertura), [cobertura]);
 
   // A legenda que o mapa colorido exige para ser lido: quem e cada cor e
@@ -206,7 +228,7 @@ export default function VendedorDashboard() {
             style={{ background: v.control.background, border: v.control.border }}>
             <MapPin size={14} style={{ color: v.textMuted }} />
             <span className="text-sm" style={{ color: v.textPrimary }}>
-              Região atendida: {data?.seller?.region_label || (territorio.length ? territorio.join(' / ') : 'não definida')}
+              {regiaoDoTopo}
             </span>
           </div>
           <div className="flex items-center gap-2">
