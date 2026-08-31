@@ -15,6 +15,103 @@ import { useAuth } from '@/contexts/AuthContext';
 const fmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 const fmtDate = d => { try { return format(parseISO(d), 'dd/MM/yy HH:mm', { locale: ptBR }); } catch { return d || '—'; } };
 
+/**
+ * ═══ O PERÍODO — "hoje, semana, mês" ═══════════════════════
+ *
+ * As duas abas de nota respondem à mesma pergunta em recortes
+ * diferentes de tempo: quanto entrou hoje, quanto saiu no mês, o que
+ * apareceu na semana. Antes a tela mostrava sempre TUDO, e para saber
+ * o mês a pessoa somava linha por linha na página — ou exportava para
+ * o Excel, que é como se descobre que o sistema não responde.
+ *
+ * O padrão é TUDO, de propósito. Abrir já filtrado por mês esconderia
+ * as notas antigas de quem só quer conferir se elas chegaram — e "cadê
+ * minha nota?" é uma pergunta pior que "como filtro?".
+ *
+ * As contas são em data LOCAL, não UTC: `toISOString()` num horário
+ * antes das 21h em Brasília devolve o dia SEGUINTE, e "hoje" traria as
+ * notas de amanhã.
+ */
+const PERIODOS = [
+  { key: 'tudo',    label: 'Tudo' },
+  { key: 'hoje',    label: 'Hoje' },
+  { key: 'semana',  label: '7 dias' },
+  { key: 'mes',     label: 'Este mês' },
+  { key: 'mes_ant', label: 'Mês passado' },
+  { key: 'ano',     label: 'Este ano' },
+  { key: 'custom',  label: 'Escolher…' },
+];
+
+const diaISO = d =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+function intervaloDe(periodo, custom) {
+  const hoje = new Date();
+  const em = (a, m, d) => new Date(a, m, d);
+
+  switch (periodo) {
+    case 'hoje':
+      return { start: diaISO(hoje), end: diaISO(hoje) };
+    case 'semana': {
+      const inicio = new Date(hoje); inicio.setDate(hoje.getDate() - 6);
+      return { start: diaISO(inicio), end: diaISO(hoje) };
+    }
+    case 'mes':
+      return { start: diaISO(em(hoje.getFullYear(), hoje.getMonth(), 1)), end: diaISO(hoje) };
+    case 'mes_ant': {
+      const ini = em(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+      // Dia 0 do mês atual é o último dia do mês anterior — e acerta
+      // fevereiro e ano bissexto sem tabela de dias.
+      const fim = em(hoje.getFullYear(), hoje.getMonth(), 0);
+      return { start: diaISO(ini), end: diaISO(fim) };
+    }
+    case 'ano':
+      return { start: diaISO(em(hoje.getFullYear(), 0, 1)), end: diaISO(hoje) };
+    case 'custom':
+      return { start: custom?.start || null, end: custom?.end || null };
+    default:
+      return { start: null, end: null };
+  }
+}
+
+/** O estado do filtro, pronto para virar query string. */
+function usePeriodo(inicial = 'tudo') {
+  const [periodo, setPeriodo] = useState(inicial);
+  const [custom, setCustom] = useState({ start: '', end: '' });
+  const { start, end } = intervaloDe(periodo, custom);
+  const qs = `${start ? `&start_date=${start}` : ''}${end ? `&end_date=${end}` : ''}`;
+  const rotulo = PERIODOS.find(p => p.key === periodo)?.label || 'Tudo';
+  return { periodo, setPeriodo, custom, setCustom, start, end, qs, rotulo };
+}
+
+/** Os botões do período — os mesmos nas duas abas. */
+function FiltroPeriodo({ f, onMudar }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {PERIODOS.map(p => (
+        <button key={p.key} type="button"
+          onClick={() => { f.setPeriodo(p.key); onMudar?.(); }}
+          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            f.periodo === p.key
+              ? 'bg-gray-900 text-white'
+              : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+          {p.label}
+        </button>
+      ))}
+
+      {f.periodo === 'custom' && (
+        <span className="flex items-center gap-1.5">
+          <input type="date" className="input py-1.5 text-xs w-auto" value={f.custom.start}
+            onChange={e => { f.setCustom(c => ({ ...c, start: e.target.value })); onMudar?.(); }} />
+          <span className="text-xs text-gray-400">até</span>
+          <input type="date" className="input py-1.5 text-xs w-auto" value={f.custom.end}
+            onChange={e => { f.setCustom(c => ({ ...c, end: e.target.value })); onMudar?.(); }} />
+        </span>
+      )}
+    </div>
+  );
+}
+
 const STATUS = {
   processando_autorizacao: { l: 'Processando',  cls: 'bg-blue-100   text-blue-700'  },
   autorizado:              { l: 'Autorizada',   cls: 'bg-green-100  text-green-700' },
@@ -31,9 +128,11 @@ function TabNotas() {
   const [cancelNota, setCancelNota] = useState(null);
   const [justificativa, setJustificativa] = useState('');
 
+  const f = usePeriodo();
+
   const { data, isLoading } = useQuery({
-    queryKey: ['invoices', page],
-    queryFn: () => api.get(`/fiscal/invoices?page=${page}&limit=20`),
+    queryKey: ['invoices', page, f.start, f.end],
+    queryFn: () => api.get(`/fiscal/invoices?page=${page}&limit=20${f.qs}`),
   });
 
   const { data: pendingSales = [] } = useQuery({
@@ -85,17 +184,19 @@ function TabNotas() {
         </button>
       </div>
 
+      <FiltroPeriodo f={f} onMudar={() => setPage(1)} />
+
       {/* O QUE ENTROU, EM DINHEIRO. A lista dizia quantas notas
           existiam e nao quanto elas somavam — e a pergunta que se faz a
           um modulo fiscal e a segunda. So nota AUTORIZADA conta:
           cancelada, rejeitada ou em processamento nao e faturamento. */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="card p-4">
-          <p className="text-xs text-gray-500">Faturado (notas autorizadas)</p>
+          <p className="text-xs text-gray-500">Faturado · {f.rotulo}</p>
           <p className="text-xl font-bold text-green-700 mt-1">{fmt(data?.resumo?.faturado)}</p>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-gray-500">Notas autorizadas</p>
+          <p className="text-xs text-gray-500">Notas autorizadas · {f.rotulo}</p>
           <p className="text-xl font-bold text-gray-900 mt-1">{data?.resumo?.autorizadas ?? 0}</p>
         </div>
         <div className={`card p-4 ${data?.resumo?.pendentes > 0 ? 'border-amber-300 bg-amber-50' : ''}`}>
@@ -401,9 +502,11 @@ function TabCompras() {
   const [manifestando, setManifestando] = useState(null);   // { nota, tipo }
   const [justificativa, setJustificativa] = useState('');
 
+  const f = usePeriodo();
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['nfe-recebidas', page, pendentes, buscaAtiva],
-    queryFn: () => api.get(`/fiscal/recebidas?page=${page}&limit=30${pendentes ? '&pendentes=1' : ''}${buscaAtiva ? `&search=${encodeURIComponent(buscaAtiva)}` : ''}`),
+    queryKey: ['nfe-recebidas', page, pendentes, buscaAtiva, f.start, f.end],
+    queryFn: () => api.get(`/fiscal/recebidas?page=${page}&limit=30${pendentes ? '&pendentes=1' : ''}${buscaAtiva ? `&search=${encodeURIComponent(buscaAtiva)}` : ''}${f.qs}`),
     retry: false,
   });
 
@@ -468,16 +571,18 @@ function TabCompras() {
         </div>
       )}
 
+      <FiltroPeriodo f={f} onMudar={() => setPage(1)} />
+
       {/* O RESUMO E DO FILTRO INTEIRO, nao da pagina: "quanto a Lyon
           comprou" nao e a soma das trinta linhas visiveis. */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="card p-4">
-          <p className="text-xs text-gray-500">Total comprado</p>
+          <p className="text-xs text-gray-500">Total comprado · {f.rotulo}</p>
           <p className="text-xl font-bold text-gray-900 mt-1">{fmt(resumo.valor_total)}</p>
           <p className="text-[11px] text-gray-400 mt-0.5">notas canceladas fora da conta</p>
         </div>
         <div className="card p-4">
-          <p className="text-xs text-gray-500">Notas no CNPJ</p>
+          <p className="text-xs text-gray-500">Notas no CNPJ · {f.rotulo}</p>
           <p className="text-xl font-bold text-gray-900 mt-1">{data?.total ?? 0}</p>
         </div>
         <div className={`card p-4 ${resumo.pendentes_manifestacao > 0 ? 'border-amber-300 bg-amber-50' : ''}`}>
