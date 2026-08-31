@@ -30,14 +30,27 @@ function idadeAnos(iso) {
   } catch { return null; }
 }
 
-const saleStatusLabel = {
+// O ROTULO DO STATUS VEM DO SERVIDOR (status_label).
+//
+// Aqui havia um mapa proprio com os SEIS status do fluxo antigo. O
+// pedido tem quinze fases desde entao, e nenhuma delas estava neste
+// mapa: o historico do cliente mostrava "aguardando_revelacao" cru,
+// nome de coluna do banco na tela de quem atende.
+//
+// Estes dois mapas ficam so como rede para venda antiga, que ainda tem
+// esses status gravados.
+const LEGADO_LABEL = {
   open: 'Aberto', confirmed: 'Confirmado', in_production: 'Em Produção',
   ready: 'Pronto', delivered: 'Entregue', cancelled: 'Cancelado',
 };
-const saleStatusClass = {
-  open: 'badge-yellow', confirmed: 'badge-green', in_production: 'badge-blue',
-  ready: 'badge-purple', delivered: 'badge-gray', cancelled: 'badge-red',
+const CLASSE_POR_COR = {
+  verde: 'badge-green', vermelho: 'badge-red', amarelo: 'badge-yellow',
+  azul: 'badge-blue', roxo: 'badge-purple', rosa: 'badge-purple',
+  ciano: 'badge-blue', laranja: 'badge-yellow', cinza: 'badge-gray',
 };
+const rotuloVenda = v => v.status_label || LEGADO_LABEL[v.status] || v.status || '—';
+const classeVenda = v => CLASSE_POR_COR[v.status_cor]
+  || (v.status === 'cancelled' ? 'badge-red' : 'badge-gray');
 const finStatusLabel = { pending: 'Pendente', partial: 'Parcial', paid: 'Pago', overdue: 'Vencido' };
 const finStatusClass = { pending: 'badge-yellow', partial: 'badge-blue', paid: 'badge-green', overdue: 'badge-red' };
 
@@ -442,7 +455,7 @@ export default function CustomerDetail() {
                   <tr key={s.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/sales/${s.id}`)}>
                     <td className="font-mono font-semibold">#{String(s.number).padStart(4, '0')}</td>
                     <td>{s.created_at ? fmtDateBR(s.created_at) : '—'}</td>
-                    <td><span className={`badge text-xs ${saleStatusClass[s.status] || 'badge-gray'}`}>{saleStatusLabel[s.status] || s.status}</span></td>
+                    <td><span className={`badge text-xs ${classeVenda(s)}`}>{rotuloVenda(s)}</span></td>
                     <td className="text-sm text-gray-500">{s.delivery_date ? fmtDateBR(s.delivery_date) : '—'}</td>
                     <td className="text-sm text-gray-500">{s.payment_method || '—'}</td>
                     <td className="text-right font-semibold">{fmt(s.total)}</td>

@@ -243,6 +243,7 @@ const EM_PROCESSO = {
   revelacao_processo:   'revelacao',
   pintura_processo:     'pintura',
   borda_processo:       'borda',
+  metalizacao_processo: 'producao',   // acabamento dentro da fase de producao
   producao_processo:    'producao',
   embalando_pedido:     'embalagem',
   conferencia_processo: 'qualidade',

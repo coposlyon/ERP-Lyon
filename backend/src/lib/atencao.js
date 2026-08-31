@@ -62,6 +62,15 @@ const STATUS = {
   gravacao_processo:     { label: 'Gravação em processo',        area: 'producao',   aguardando: false, cor: 'ciano' },
   gravacao_finalizada:   { label: 'Gravação finalizada',         area: 'producao',   aguardando: false, cor: 'ciano' },
 
+  // METALIZACAO E ACABAMENTO DENTRO DA PRODUCAO.
+  //
+  // Ela e uma das cinco etapas do quadro da fabrica, mas nao e uma fase
+  // da regua do pedido - por isso nao tem `passo`. Existe aqui so para
+  // o pedido PODER DIZER "em metalizacao" enquanto esta nela: antes, a
+  // fabrica via "Em Metalizacao" no quadro e o comercial e o cliente
+  // continuavam lendo "Aguardando producao", que ja nao era verdade.
+  metalizacao_processo:  { label: 'Em metalização',              area: 'producao',   aguardando: false, cor: 'ciano' },
+
   aguardando_producao:   { label: 'Aguardando produção',         area: 'producao',   aguardando: true,  cor: 'azul',    passo: 16, icone: 'Settings' },
   producao_processo:     { label: 'Produção em processo',        area: 'producao',   aguardando: false, cor: 'azul' },
   producao_finalizada:   { label: 'Produção finalizada',         area: 'producao',   aguardando: false, cor: 'azul',    passo: 17, icone: 'Settings' },

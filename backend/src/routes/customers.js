@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const supabase = require('../config/supabase');
+const A = require('../lib/atencao');   // catalogo unico de status do pedido
 const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { pendenciasDoCadastro, mensagemDePendencias } = require('../lib/colaborador');
@@ -563,6 +564,17 @@ router.get('/:id/history', async (req, res) => {
 
     if (custError || !customer) return res.status(404).json({ error: 'Cliente não encontrado' });
 
+    // O ROTULO VAI PRONTO DAQUI.
+    //
+    // Esta rota devolvia so `status` cru, e a tela do cliente tinha um
+    // mapa proprio com SEIS rotulos do fluxo antigo (open, confirmed,
+    // in_production...). Resultado: toda venda de hoje aparecia no
+    // historico como "aguardando_revelacao", com sublinhado e tudo -
+    // nome de coluna do banco na cara de quem atende o cliente.
+    //
+    // O catalogo de status e um so (lib/atencao.js); quem quiser
+    // mostrar status le dele, e nao mantem a propria lista.
+
     const [
       { data: sales },
       { data: quotes },
@@ -580,7 +592,10 @@ router.get('/:id/history', async (req, res) => {
 
     res.json({
       customer,
-      sales: sales || [],
+      sales: (sales || []).map(v => {
+        const i = A.infoStatus(v.status);
+        return { ...v, status_label: i.label, status_cor: i.cor };
+      }),
       quotes: quotes || [],
       receivables: receivables || [],
       customizations: customizations || [],

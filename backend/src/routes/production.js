@@ -39,6 +39,19 @@ const STAGE_FIELDS = {
 const FASE_DA_ETAPA = {
   revelacao: { fase: 'revelacao', processo: 'revelacao_processo' },
   pintura:   { fase: 'pintura',   processo: 'pintura_processo' },
+
+  // METALIZACAO MUDA O QUE A TELA DIZ, MAS NAO AVANCA A REGUA.
+  //
+  // Ela e etapa do quadro da fabrica e nao fase do pedido: mora DENTRO
+  // da producao. Ficava fora deste mapa, e o efeito era o comercial e o
+  // cliente lendo "Aguardando producao" enquanto a peca estava na
+  // metalizadora.
+  //
+  // `avancaAoTerminar: false` e o que impede o estrago inverso:
+  // terminar a metalizacao NAO e terminar a producao, e sem esta trava
+  // o pedido pularia a fase inteira ao fechar um acabamento.
+  metalizacao: { fase: 'producao', processo: 'metalizacao_processo', avancaAoTerminar: false },
+
   producao:  { fase: 'producao',  processo: 'producao_processo' },
   embalagem: { fase: 'embalagem', processo: 'embalando_pedido' },
 };
@@ -404,7 +417,7 @@ router.post('/:id/stage', async (req, res) => {
         // dita de outro jeito, e a linha do tempo continua apontando pra cá.
         patch.status = mapa.processo;
         log.push({ stage: 'status', action: mapa.processo, at: now, user_id: req.user?.id || null, user: actor });
-      } else if (action === 'finish' && naFase) {
+      } else if (action === 'finish' && naFase && mapa.avancaAoTerminar !== false) {
         // Terminar a etapa É concluir a fase. Quem trabalha na produção
         // não deveria ter que abrir o pedido depois para avançar de novo.
         //
