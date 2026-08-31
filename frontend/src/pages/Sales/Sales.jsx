@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Eye, CheckCircle2, Siren, RotateCcw, Wrench, Maximize2, Minimize2, Wallet } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -431,7 +432,7 @@ export default function Sales() {
                     </span>
                   </span>
                   <span className="w-16 shrink-0 flex justify-center">
-                    <SinalAtencao atencao={atencao} />
+                    <SinalAtencao atencao={atencao} row={row} info={info} />
                   </span>
                   {/* Comprovante e envio ao cliente moram na tela do
                       pedido, onde se vê o que está sendo mandado. Aqui
@@ -609,7 +610,7 @@ function CartaoPedido({ v, row, info, atencao, podeExcluir, onAbrir, onFicha, on
           {info?.label || saleStatusLabel(row.status)}
         </span>
         <span className="ml-auto flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-          <SinalAtencao atencao={atencao} />
+          <SinalAtencao atencao={atencao} row={row} info={info} />
           {podeExcluir && (
             <Acao titulo="Excluir pedido (pede sua senha)" cor="#ef4444" Icon={Trash2} onClick={onExcluir} />
           )}
@@ -705,20 +706,117 @@ function calcularAtencao(row, info) {
   return { level: 'normal', dias, prazo, motivo };
 }
 
-function SinalAtencao({ atencao }) {
+/**
+ * O SINAL DE ATENCAO, E O CARD QUE EXPLICA O SINAL.
+ *
+ * A explicacao existia so como `title` do HTML: era preciso PARAR o
+ * mouse em cima de um icone de 22px e esperar o navegador decidir
+ * mostrar. Some no celular, some para quem usa teclado, e o texto vem
+ * numa linha so, sem hierarquia — "Critico — menos de 24h com pendencia
+ * em aberto — Parado em arte · atrasado 2 dia(s)" e muita coisa dita de
+ * uma vez para um balaozinho cinza.
+ *
+ * Agora clicar abre um card: o que o sinal quer dizer, por que ESTE
+ * pedido esta assim, e quem esta segurando. O `title` continua para
+ * quem so passa o mouse.
+ */
+const dataBR = d => {
+  if (!d) return null;
+  const p = String(d).slice(0, 10).split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : String(d);
+};
+
+const EXPLICA = {
+  normal:  'Este pedido não está esperando ninguém, ou ainda tem folga até a data de saída.',
+  atencao: 'Faltam 2 dias para a data de saída e o pedido está parado esperando alguém resolver.',
+  critico: 'A saída é em menos de 24 horas — ou já passou — e o pedido continua parado.',
+};
+
+function SinalAtencao({ atencao, row, info }) {
+  const [aberto, setAberto] = useState(false);
   const nivel = atencao?.level || 'normal';
   const cfg = NIVEL_ATENCAO[nivel];
   const titulo = `${cfg.titulo}${atencao?.motivo ? ` — ${atencao.motivo}` : ''}`;
+
+  const Icone = nivel === 'critico' ? Siren : nivel === 'atencao' ? AlertTriangle : CheckCircle2;
+  const anima = nivel === 'critico' ? 'atencaoSirene 1.1s linear infinite'
+              : nivel === 'atencao' ? 'atencaoPisca 1s ease-in-out infinite' : undefined;
+
   return (
-    <span title={titulo} className="p-1 inline-flex">
-      {nivel === 'normal' && <CheckCircle2 size={22} style={{ color: cfg.cor }} />}
-      {nivel === 'atencao' && (
-        <AlertTriangle size={22} style={{ color: cfg.cor, animation: 'atencaoPisca 1s ease-in-out infinite' }} />
+    <>
+      {/* stopPropagation porque a linha inteira abre o PEDIDO — sem
+          isso, um clique no sinal faria as duas coisas. */}
+      <button type="button" title={titulo}
+        onClick={e => { e.stopPropagation(); setAberto(true); }}
+        className="p-1 inline-flex rounded-lg hover:bg-white/10 transition-colors"
+        aria-label={titulo}>
+        <Icone size={22} style={{ color: cfg.cor, animation: anima }} />
+      </button>
+
+      {aberto && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          onClick={() => setAberto(false)}>
+          <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
+          <div onClick={e => e.stopPropagation()}
+            className="relative w-full max-w-md rounded-2xl overflow-hidden shadow-2xl"
+            style={{ background: '#0f172a', border: `1px solid ${cfg.cor}55` }}>
+
+            <div className="flex items-start gap-3 px-5 py-4"
+              style={{ background: `${cfg.cor}18`, borderBottom: `1px solid ${cfg.cor}33` }}>
+              <Icone size={26} style={{ color: cfg.cor }} className="shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="font-bold" style={{ color: cfg.cor }}>{cfg.titulo}</p>
+                <p className="text-xs text-white/60">
+                  {codigoPedido(row?.number)} · {row?.CLIENTES?.name || 'Consumidor Final'}
+                </p>
+              </div>
+              <button onClick={() => setAberto(false)}
+                className="ml-auto shrink-0 p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10">
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-sm text-white/85">{EXPLICA[nivel]}</p>
+
+              <div className="rounded-xl px-3 py-2.5 space-y-1.5" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <Linha rotulo="Situação agora" valor={info?.label || row?.status} />
+                <Linha rotulo="Quem está com ele" valor={info?.area ? info.area.toUpperCase() : null} />
+                <Linha rotulo="Data de saída" valor={dataBR(atencao?.prazo)} />
+                {typeof atencao?.dias === 'number' && (
+                  <Linha rotulo="Prazo"
+                    valor={atencao.dias < 0
+                      ? `atrasado ${Math.abs(atencao.dias)} dia(s)`
+                      : `${atencao.dias} dia(s) até a saída`} />
+                )}
+              </div>
+
+              {nivel === 'normal' ? (
+                <p className="text-xs text-white/45">
+                  Nada a fazer por enquanto. O sinal muda sozinho quando o prazo apertar.
+                </p>
+              ) : (
+                <p className="text-xs text-white/60">
+                  O sinal só apaga quando a etapa atual for concluída — ou quando a data
+                  de saída for remarcada, se o prazo mudou de verdade.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
-      {nivel === 'critico' && (
-        <Siren size={22} style={{ color: cfg.cor, animation: 'atencaoSirene 1.1s linear infinite' }} />
-      )}
-    </span>
+    </>
+  );
+}
+
+function Linha({ rotulo, valor }) {
+  if (!valor) return null;
+  return (
+    <div className="flex gap-2 text-sm">
+      <span className="text-white/45 w-36 shrink-0">{rotulo}</span>
+      <span className="text-white font-medium break-words">{valor}</span>
+    </div>
   );
 }
 

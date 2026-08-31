@@ -86,6 +86,20 @@ export const menuItems = [
       { label: 'Devoluções',         path: '/returns',    icon: RotateCcw, module: 'returns' },
     ],
   },
+  {
+    label: 'Financeiro',
+    icon: Wallet,
+    children: [
+      { label: 'Central de Contas', path: '/contas', icon: CalendarDays, module: 'financial' },
+      { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet, module: 'financial' },
+      { label: 'Config. Financeira', path: '/financial-config', icon: Building2, module: 'financial' },
+      // Nota fiscal e contabilidade são o mesmo assunto do dinheiro:
+      // dois grupos separados obrigavam quem fecha o mês a passear pelo
+      // menu inteiro para juntar o que sempre foi uma coisa só.
+      { label: 'Fiscal / NF-e', path: '/fiscal', icon: Receipt, module: 'fiscal' },
+      { label: 'Contábil / Fiscal', path: '/contabil', icon: Landmark, module: 'financial' },
+    ],
+  },
 
   // MARKETING SAIU DO MENU, pelo mesmo caminho que CRM e Qualidade: a
   // Lyon não vai usar por enquanto, e item de menu que ninguém abre é
@@ -115,20 +129,6 @@ export const menuItems = [
     icon: MapPin,
     children: [
       { label: 'Transportadoras', path: '/logistics', icon: Truck, module: 'logistics' },
-    ],
-  },
-  {
-    label: 'Financeiro',
-    icon: Wallet,
-    children: [
-      { label: 'Central de Contas', path: '/contas', icon: CalendarDays, module: 'financial' },
-      { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet, module: 'financial' },
-      { label: 'Config. Financeira', path: '/financial-config', icon: Building2, module: 'financial' },
-      // Nota fiscal e contabilidade são o mesmo assunto do dinheiro:
-      // dois grupos separados obrigavam quem fecha o mês a passear pelo
-      // menu inteiro para juntar o que sempre foi uma coisa só.
-      { label: 'Fiscal / NF-e', path: '/fiscal', icon: Receipt, module: 'fiscal' },
-      { label: 'Contábil / Fiscal', path: '/contabil', icon: Landmark, module: 'financial' },
     ],
   },
   // PREÇO E CUSTO VIRARAM UM GRUPO SÓ.
