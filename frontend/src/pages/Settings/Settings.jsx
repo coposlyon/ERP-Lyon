@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Loader2, Plus, Edit2 } from 'lucide-react';
+import { Save, Loader2, Plus, Edit2, Receipt } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -643,51 +644,48 @@ export default function Settings() {
 
         {tab === 'fiscal' && (
           <div className="card-body">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-5">
-              <p className="text-sm font-medium text-blue-900">Configuração de NF-e</p>
-              <p className="text-sm text-blue-700 mt-1">
-                Para emitir NF-e, você precisa configurar o certificado digital A1 (.pfx) e o ambiente (homologação ou produção).
-                Essas configurações ficam armazenadas com segurança no servidor.
+            {/* ═══ ESTA ABA ERA UMA MAQUETE ═══════════════════════
+                Ambiente, série, último número, regime, certificado e
+                senha: seis campos sem `value`, sem `onChange`, e um
+                botão "Salvar" sem `onClick`. Nada era lido, nada era
+                gravado — clicar em salvar não fazia absolutamente nada,
+                e a tela ainda dizia que as configurações ficavam
+                "armazenadas com segurança no servidor".
+
+                O pior não era o botão morto: era pedir o CERTIFICADO A1
+                e a SENHA num formulário que descartava os dois. Quem
+                preenchesse estaria entregando a chave privada da
+                empresa a um campo que não leva a lugar nenhum — e sairia
+                da tela achando que tinha configurado a emissão.
+
+                A configuração fiscal DE VERDADE mora em
+                Financeiro → Fiscal / NF-e → Configuração, e é outra
+                coisa: o ERP não guarda certificado nem assina XML (ver
+                backend/src/routes/fiscal.js). Em vez de duplicar aquela
+                tela aqui — duas telas para o mesmo dado é o caminho
+                garantido para as duas discordarem —, esta aponta para
+                lá. */}
+            <div className="max-w-xl">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm font-medium text-blue-900">A configuração da NF-e mudou de lugar</p>
+                <p className="text-sm text-blue-700 mt-1 leading-relaxed">
+                  Ela agora fica em <b>Financeiro → Fiscal / NF-e</b>, na aba <b>Configuração</b> —
+                  junto das notas emitidas e das notas recebidas da SEFAZ, que é onde ela é usada.
+                </p>
+              </div>
+
+              <div className="mt-4">
+                <Link to="/fiscal" className="btn-primary">
+                  <Receipt size={15} /> Abrir Fiscal / NF-e
+                </Link>
+              </div>
+
+              <p className="text-xs text-gray-500 mt-4 leading-relaxed">
+                O certificado digital <b>não</b> é enviado ao ERP. Quem assina o XML e conversa com a
+                SEFAZ é o gateway fiscal contratado — o certificado é cadastrado no painel dele, e o
+                ERP guarda apenas o token de acesso.
               </p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="label">Ambiente</label>
-                <select className="input" disabled={!isAdmin}>
-                  <option value="1">Produção</option>
-                  <option value="2">Homologação (Testes)</option>
-                </select>
-              </div>
-              <div>
-                <label className="label">Série NF-e</label>
-                <input type="number" className="input" placeholder="1" disabled={!isAdmin} />
-              </div>
-              <div>
-                <label className="label">Último número NF-e</label>
-                <input type="number" className="input" placeholder="0" disabled={!isAdmin} />
-              </div>
-              <div>
-                <label className="label">Regime Tributário</label>
-                <select className="input" disabled={!isAdmin}>
-                  <option value="1">Simples Nacional</option>
-                  <option value="2">Simples Nacional — Excesso</option>
-                  <option value="3">Regime Normal</option>
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className="label">Certificado Digital A1 (.pfx)</label>
-                <input type="file" accept=".pfx,.p12" className="input" disabled={!isAdmin} />
-              </div>
-              <div>
-                <label className="label">Senha do Certificado</label>
-                <input type="password" className="input" disabled={!isAdmin} />
-              </div>
-            </div>
-            {isAdmin && (
-              <div className="flex justify-end mt-4">
-                <button className="btn-primary"><Save size={15} /> Salvar Configurações Fiscais</button>
-              </div>
-            )}
           </div>
         )}
       </div>
