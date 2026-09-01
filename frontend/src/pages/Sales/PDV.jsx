@@ -174,15 +174,34 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [shipDate, setShipDate] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
 
-  // Data retroativa em relação à operação pula para o próximo ano:
-  // operação 02/07/2026 + saída 01/07 → 01/07/2027
-  function forwardDate(v) {
-    if (!v || !operationDate || v >= operationDate) return v;
-    const y = parseInt(v.slice(0, 4), 10);
-    if (!Number.isFinite(y)) return v;
-    const bumped = `${y + 1}${v.slice(4)}`;
-    return bumped >= operationDate ? bumped : v;
-  }
+  // NENHUMA DATA DO PEDIDO E ANTERIOR A DATA DA OPERACAO.
+  //
+  // Aqui havia o contrario: uma data retroativa era EMPURRADA em
+  // silencio para o ano seguinte (operacao 01/09/2026 + evento 29/07
+  // virava 29/07/2027). A intencao era boa e o efeito era pessimo — a
+  // pessoa digitava uma data, via outra aparecer, e nao havia como
+  // saber por que. Corrigir sozinho o que se entendeu errado e a forma
+  // mais cara de errar.
+  //
+  // Agora o sistema NAO corrige: ele avisa e nao deixa salvar. O pedido
+  // e feito antes do evento, da saida e da entrega — nunca depois.
+  const dataBR = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
+
+  const errosDeData = (() => {
+    const e = {};
+    if (operationDate && eventDate && eventDate < operationDate) {
+      e.evento = `O evento não pode ser antes da data da operação (${dataBR(operationDate)}) — o pedido é feito antes do evento, não depois.`;
+    }
+    if (operationDate && shipDate && shipDate < operationDate) {
+      e.saida = `A saída não pode ser antes da data da operação (${dataBR(operationDate)}).`;
+    }
+    if (shipDate && deliveryDate && deliveryDate < shipDate) {
+      e.entrega = `A entrega não pode ser antes da saída (${dataBR(shipDate)}).`;
+    } else if (operationDate && deliveryDate && deliveryDate < operationDate) {
+      e.entrega = `A entrega não pode ser antes da data da operação (${dataBR(operationDate)}).`;
+    }
+    return e;
+  })();
 
   // Mudou a data da operação → replica o ano dela nas outras datas
   function changeOperationDate(v) {
@@ -784,6 +803,10 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     if (!eventDate) { toast.error('Informe a Data do evento'); return; }
     if (!shipDate) { toast.error('Informe a Data da saída'); return; }
     if (!deliveryDate) { toast.error('Informe a Previsão de entrega'); return; }
+    // O aviso ja esta embaixo do campo; o toast e para quem clicou em
+    // Finalizar sem olhar para cima.
+    const primeiroErro = errosDeData.evento || errosDeData.saida || errosDeData.entrega;
+    if (primeiroErro) { toast.error(primeiroErro); return; }
     if (paymentMethod === 'cash' && received > 0 && received < total) {
       toast.error(`Valor insuficiente! Faltam ${fmt(total - received)}`);
       return;
@@ -808,19 +831,14 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
         }
       } catch { /* módulo contábil indisponível → não trava a venda */ }
     }
-    // garante a regra do ano: data retroativa à operação vira o ano seguinte
-    const evD = forwardDate(eventDate), shD = forwardDate(shipDate), dlD = forwardDate(deliveryDate);
-    if (evD !== eventDate) setEventDate(evD);
-    if (shD !== shipDate) setShipDate(shD);
-    if (dlD !== deliveryDate) setDeliveryDate(dlD);
     saleMutation.mutate({
       customer_id: selectedCustomer.id,
       type: 'sale',
       operation_date: operationDate || null,
       origin: origem || null,
-      event_date: evD || null,
-      ship_date: shD || null,
-      delivery_date: dlD || null,
+      event_date: eventDate || null,
+      ship_date: shipDate || null,
+      delivery_date: deliveryDate || null,
       items: items.map(i => ({
         product_id: i.product_id,
         quantity: i.quantity,
@@ -1112,18 +1130,18 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                   perdia o que escreveu. Aqui o ano corrente entra sozinho
                   ao sair do campo. */}
               <label className="text-xs font-medium text-gray-500 block mb-1">Data do evento *</label>
-              <CampoData className="input w-full text-sm" value={eventDate} onChange={changeEventDate}
-                onBlur={() => setEventDate(d => forwardDate(d))} />
+              <CampoData className="input w-full text-sm" value={eventDate} onChange={changeEventDate} />
+              {errosDeData.evento && <p className="text-[11px] text-red-600 mt-1">{errosDeData.evento}</p>}
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Data da saída *</label>
-              <CampoData className="input w-full text-sm" value={shipDate} onChange={setShipDate}
-                onBlur={() => setShipDate(d => forwardDate(d))} />
+              <CampoData className="input w-full text-sm" value={shipDate} onChange={setShipDate} />
+              {errosDeData.saida && <p className="text-[11px] text-red-600 mt-1">{errosDeData.saida}</p>}
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Previsão de entrega *</label>
-              <CampoData className="input w-full text-sm" value={deliveryDate} onChange={setDeliveryDate}
-                onBlur={() => setDeliveryDate(d => forwardDate(d))} />
+              <CampoData className="input w-full text-sm" value={deliveryDate} onChange={setDeliveryDate} />
+              {errosDeData.entrega && <p className="text-[11px] text-red-600 mt-1">{errosDeData.entrega}</p>}
             </div>
           </div>
         )}
