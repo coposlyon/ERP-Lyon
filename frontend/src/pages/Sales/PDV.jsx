@@ -4,6 +4,7 @@ import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, Che
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import SeletorOrigem from '@/components/UI/SeletorOrigem';
+import CampoData from '@/components/UI/CampoData';
 import { generateQuotePng, buildQuoteNotes, downloadPng } from '@/lib/quotePng';
 import toast from 'react-hot-toast';
 import { expandVariants, expandVariantsWithCode } from '@/pages/Products/ProductVariantsModal';
@@ -1109,18 +1110,23 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               <SeletorOrigem origens={origens} value={origem} onChange={setOrigem} />
             </div>
             <div>
+              {/* CampoData e nao `input type=date`: o campo nativo nao
+                  entrega valor nenhum enquanto o ano estiver vazio, entao
+                  quem digitava "31/09" e pulava para o proximo campo
+                  perdia o que escreveu. Aqui o ano corrente entra sozinho
+                  ao sair do campo. */}
               <label className="text-xs font-medium text-gray-500 block mb-1">Data do evento *</label>
-              <input type="date" className="input w-full text-sm" value={eventDate} onChange={e => changeEventDate(e.target.value)}
+              <CampoData className="input w-full text-sm" value={eventDate} onChange={changeEventDate}
                 onBlur={() => setEventDate(d => forwardDate(d))} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Data da saída *</label>
-              <input type="date" className="input w-full text-sm" value={shipDate} onChange={e => setShipDate(e.target.value)}
+              <CampoData className="input w-full text-sm" value={shipDate} onChange={setShipDate}
                 onBlur={() => setShipDate(d => forwardDate(d))} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Previsão de entrega *</label>
-              <input type="date" className="input w-full text-sm" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)}
+              <CampoData className="input w-full text-sm" value={deliveryDate} onChange={setDeliveryDate}
                 onBlur={() => setDeliveryDate(d => forwardDate(d))} />
             </div>
             <div className="flex sm:justify-end items-center sm:col-span-2 xl:col-span-1 xl:pb-1.5">

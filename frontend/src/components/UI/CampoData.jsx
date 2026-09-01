@@ -81,6 +81,34 @@ export default function CampoData({
     if (br.length === 10 || br.length === 9) e.target.value = br;
   }
 
+  /**
+   * SAIU DO CAMPO COM "31/09" — O ANO E O DESTE ANO.
+   *
+   * Digitar dia e mes e pular o ano e o jeito normal de escrever data
+   * de um pedido: quase tudo acontece no ano corrente, e repetir "2026"
+   * a cada campo e trabalho que a maquina faz melhor. Antes, sair assim
+   * deixava o campo vazio — a data digitada simplesmente sumia, porque
+   * meia data nao vira valor.
+   *
+   * So completa quando FALTA APENAS o ano. "3" ou "31/" continuam
+   * incompletos e continuam sem valor: adivinhar mes tambem seria
+   * inventar.
+   */
+  function completarAno(e) {
+    const br = digitado.current || '';
+    const m = /^(\d{2})\/(\d{2})\/?$/.exec(br);
+    if (m) {
+      const cheio = `${m[1]}/${m[2]}/${new Date().getFullYear()}`;
+      digitado.current = cheio;
+      e.target.value = cheio;
+      const iso = paraISO(cheio);
+      // Data que nao existe (31/09) continua sem valor, e o aviso
+      // abaixo do campo aparece — completar o ano nao e validar.
+      if (iso) onChange(iso);
+    }
+    props.onBlur?.(e);
+  }
+
   function abrirCalendario() {
     const el = escondido.current;
     if (!el) return;
@@ -104,6 +132,7 @@ export default function CampoData({
           defaultValue={texto}
           key={texto}
           onChange={digitar}
+          onBlur={completarAno}
         />
 
         <button type="button" onClick={abrirCalendario} tabIndex={-1}
