@@ -16,6 +16,9 @@ const { autorizar, excluirVenda } = require('../lib/excluirVenda');
 const F = require('../lib/fluxoPedido');
 const { etapasDosItens, caracteristicasDoItem } = require('../lib/itensPedido');
 const C = require('../lib/comprovante');
+// A cobranca PIX da chave da propria loja (Nubank). Sem gateway: o
+// dinheiro cai direto na conta, e por isso a baixa e manual.
+const { gerarCobrancaPix } = require('../lib/pixCobranca');
 
 const saleSchema = Joi.object({
   items: Joi.array().min(1).items(
@@ -524,6 +527,50 @@ async function vendaDoComprovante(req) {
     .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
   return data || null;
 }
+
+/**
+ * A COBRANCA PIX DO PEDIDO.
+ *
+ * Gerada DEPOIS que o pedido nasce, e nao antes, porque o txid da
+ * cobranca e o id do pedido: e por ele que o financeiro reconhece o
+ * dinheiro que caiu na conta. Cobranca sem pedido seria um PIX que
+ * ninguem sabe de quem e.
+ *
+ * Nao ha gateway (decisao da Lyon: taxa zero). O BR Code aponta para a
+ * chave da propria loja, entao o banco nao avisa o sistema quando o
+ * PIX cai — quem da a baixa e o financeiro, na mao. A tela avisa isso.
+ */
+router.post('/:id/pix', async (req, res) => {
+  try {
+    const { data: venda } = await supabase.from('VENDAS')
+      .select('id, number, total, payment_method, status')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!venda) return res.status(404).json({ error: 'Pedido nao encontrado' });
+
+    const valor = Number(venda.total) || 0;
+    if (valor <= 0) return res.status(400).json({ error: 'Pedido sem valor a cobrar' });
+
+    const cobranca = await gerarCobrancaPix({ tenantId: req.tenantId, amount: valor, txid: venda.id });
+    // Sem chave cadastrada nao ha o que gerar — e dizer isso e melhor do
+    // que devolver um QR que nao leva a conta nenhuma.
+    if (!cobranca) {
+      return res.status(400).json({
+        error: 'Chave PIX nao configurada. Cadastre em Configuracoes > Empresa > PIX.',
+      });
+    }
+
+    audit(req, 'pix', 'sale', venda.id, { amount: valor, provider: 'static' });
+    res.json({
+      number: venda.number,
+      amount: valor,
+      qr_code_base64: cobranca.qr_base64,
+      copy_paste: cobranca.copy_paste,
+      txid: cobranca.txid,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // As parcelas do pedido, com o que ja foi anexado em cada uma.
 router.get('/:id/parcelas', async (req, res) => {

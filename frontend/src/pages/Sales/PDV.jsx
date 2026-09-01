@@ -186,6 +186,14 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [validityDays, setValidityDays] = useState('3'); // validade do orçamento (dias corridos)
   const [png, setPng] = useState(null); // { dataUrl, number } — foto gerada
   const [payTerm, setPayTerm] = useState(null); // condição de pagamento { label, percent }
+  // A SEGUNDA TELA. O pagamento nao e mais um card no meio da
+  // montagem do pedido: ele abre no Confirmar pedido, ja com o total
+  // fechado. Antes o operador escolhia a forma de pagamento antes de
+  // saber quanto ia dar.
+  const [pagOpen, setPagOpen] = useState(false);
+  // A cobranca PIX depois que o pedido nasce — { copy_paste, qr, ... }
+  const [pixGerado, setPixGerado] = useState(null);
+
   const [paymentMethod, setPaymentMethod] = useState('cash');
   // Contábil: empresa faturadora + conta de destino (migração 043)
   const [billingCompanyId, setBillingCompanyId] = useState('');
@@ -442,7 +450,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
 
   const saleMutation = useMutation({
     mutationFn: (data) => api.post('/sales', data),
-    onSuccess: async (sale) => {
+    onSuccess: async (sale, enviado) => {
       // Consome o cupom (1 uso) vinculado a esta venda
       if (coupon?.coupon_id) {
         await api.post('/coupons/redeem', {
@@ -450,22 +458,55 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           sale_id: sale?.id || null, discount: couponDiscount,
         }).catch(() => {});
       }
-      toast.success('Venda finalizada com sucesso!');
-      setItems([]);
-      setSelectedCustomer(null);
-      setShowCustomerInfo(false);
-      setDiscount('');
-      setCoupon(null); setCouponInput('');
-      setFrete(null);
-      setCarrierId(''); setFreightInput(''); setQuoteNumber('');
-      setPayTerm(null);
-      setReceivedAmount('');
-      setEventDate(''); setShipDate(''); setDeliveryDate('');
+      toast.success('Pedido confirmado!');
+
+      // PIX: o pedido ja existe, e agora ele ganha a cobranca. E DEPOIS
+      // de criado de proposito — o txid da cobranca e o id do pedido, e
+      // e por ele que o financeiro vai reconhecer o dinheiro que cair.
+      // A tela do pagamento fica aberta mostrando o QR; quem fecha e o
+      // operador, depois de mandar o codigo para o cliente.
+      let ficouAberto = false;
+      if (enviado?.payment_method === 'pix') {
+        try {
+          const cob = await api.post(`/sales/${sale.id}/pix`);
+          setPixGerado({ ...cob, number: sale.number });
+          ficouAberto = true;
+        } catch (e) {
+          toast.error(`Pedido salvo, mas o PIX não foi gerado: ${e.error || e.message || ''}`);
+        }
+      }
+
+      limparVenda();
+      if (ficouAberto) return;          // a segunda tela continua, com o QR
+      setPagOpen(false);
       if (inModal) { onDone(); return; } // fecha o card e atualiza a lista
       setTimeout(() => searchRef.current?.focus(), 100);
     },
     onError: (err) => toast.error(err.error || 'Erro ao finalizar venda'),
   });
+
+  // O que o pedido confirmado deixa para tras. Fora do onSuccess porque
+  // o PIX precisa limpar a venda SEM fechar a tela do pagamento.
+  function limparVenda() {
+    setItems([]);
+    setSelectedCustomer(null);
+    setShowCustomerInfo(false);
+    setDiscount('');
+    setCoupon(null); setCouponInput('');
+    setFrete(null);
+    setCarrierId(''); setFreightInput(''); setQuoteNumber('');
+    setPayTerm(null);
+    setReceivedAmount('');
+    setEventDate(''); setShipDate(''); setDeliveryDate('');
+  }
+
+  // Fechar a tela do PIX: aí sim a venda acabou.
+  function fecharPix() {
+    setPixGerado(null);
+    setPagOpen(false);
+    if (inModal) { onDone(); return; }
+    setTimeout(() => searchRef.current?.focus(), 100);
+  }
 
   // Salva o ORÇAMENTO e gera a foto PNG padronizada
   const quoteMutation = useMutation({
@@ -864,9 +905,51 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const payPercent = payTerm ? (Number(payTerm.percent) || 0) : 0;
   const paymentAdj = payTerm ? Math.round(goodsBase * payPercent) / 100 : 0; // − desconto / + juros
   const total = Math.max(0, goodsBase + paymentAdj + freteValue);
+  /**
+   * CARTAO SO EXISTE COM A MAQUININHA NA FRENTE.
+   *
+   * Debito e credito passam na maquininha da loja, que exige o cartao
+   * presente. Numa venda online nao ha maquininha — quem escolhia
+   * "Crédito" ali estava, na pratica, dizendo "combino depois", e a
+   * venda entrava no financeiro como recebida.
+   *
+   * A origem da venda e quem responde isso, e ela ja e obrigatoria.
+   */
+  const presencial = origem === 'Venda Presencial';
+
+  // Trocar a origem para online com o cartao escolhido deixaria um
+  // botao marcado E desabilitado. O PIX e o que sobra para quem compra
+  // de longe sem prazo.
+  useEffect(() => {
+    if (!presencial && (paymentMethod === 'card_debit' || paymentMethod === 'card_credit')) {
+      setPaymentMethod('pix');
+    }
+  }, [presencial, paymentMethod]);
+
   const received = parseMoney(receivedAmount);
   const change = paymentMethod === 'cash' && received > 0 ? received - total : 0;
 
+  /**
+   * PASSO 1 — o pedido esta de pe?
+   *
+   * Tudo o que nao e pagamento se confere ANTES de abrir a segunda
+   * tela. Perguntar como o cliente vai pagar para so entao dizer que
+   * falta a data do evento e fazer a pessoa voltar duas telas.
+   */
+  function abrirPagamento() {
+    if (items.length === 0) { toast.error('Adicione ao menos um produto'); return; }
+    if (!selectedCustomer) { toast.error('Selecione o cliente (obrigatório)'); return; }
+    if (!origem) { toast.error('Informe a Origem da venda — ela decide as formas de pagamento'); return; }
+    if (!operationDate) { toast.error('Informe a Data da operação'); return; }
+    if (!eventDate) { toast.error('Informe a Data do evento'); return; }
+    if (!shipDate) { toast.error('Informe a Data da saída'); return; }
+    if (!deliveryDate) { toast.error('Informe a Previsão de entrega'); return; }
+    const erro = errosDeData.evento || errosDeData.saida || errosDeData.entrega;
+    if (erro) { toast.error(erro); return; }
+    setPagOpen(true);
+  }
+
+  // PASSO 2 — como vai ser pago, e aí sim o pedido nasce.
   async function finalizeSale() {
     if (items.length === 0) { toast.error('Adicione ao menos um produto'); return; }
     if (!selectedCustomer) { toast.error('Selecione o cliente (obrigatório)'); return; }
@@ -1395,103 +1478,10 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
         </div>
         </div>
 
-        {/* Pagamento + Totais lado a lado (menos rolagem) */}
-        <div className={`grid ${isQuote ? '' : 'lg:grid-cols-2'} gap-3 items-start`}>
-        {/* Forma de pagamento (só no pedido de venda) */}
-        {!isQuote && (
-        <div className="card p-4">
-          <p className="text-sm font-semibold text-gray-700 mb-2">Pagamento</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {[
-              { value: 'cash', label: '💵 Dinheiro' },
-              { value: 'pix', label: '📱 Pix' },
-              { value: 'card_debit', label: '💳 Débito' },
-              { value: 'card_credit', label: '💳 Crédito' },
-              { value: 'transfer', label: '🏦 Transf.' },
-              { value: 'a_prazo', label: '🧾 A prazo' },
-            ].map(pm => (
-              <button key={pm.value}
-                onClick={() => { setPaymentMethod(pm.value); setReceivedAmount(''); }}
-                className={`py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
-                  paymentMethod === pm.value
-                    ? 'bg-primary-600 text-white border-primary-600'
-                    : 'bg-white text-gray-700 border-gray-200 hover:border-primary-300'
-                }`}>
-                {pm.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Empresa Faturadora + Conta de Destino (módulo Contábil/Fiscal) */}
-          {companiesOk.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs text-gray-500 mb-0.5">Empresa Faturadora</label>
-                <select className="input text-sm w-full" value={billingCompanyId}
-                  onChange={e => { setBillingCompanyId(e.target.value); setReceivingAccountId(''); }}>
-                  {companiesOk.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome_fantasia || c.razao_social}{Number(c.pct) > 0 ? ` · ${Number(c.pct).toFixed(0)}% do limite` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-0.5">Conta de Destino</label>
-                <select className="input text-sm w-full" value={receivingAccountId}
-                  onChange={e => setReceivingAccountId(e.target.value)}>
-                  <option value="">— Selecionar —</option>
-                  {companyAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              </div>
-            </div>
-          )}
-
-          {paymentMethod === 'cash' && (
-            <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-gray-700">Valor recebido</span>
-                <input type="text" inputMode="decimal"
-                  value={receivedAmount} onChange={e => setReceivedAmount(e.target.value.replace(/[^\d.,]/g, ''))}
-                  onBlur={() => { if (receivedAmount.trim() !== '') setReceivedAmount(maskMoney(parseMoney(receivedAmount))); }}
-                  className="input text-right w-28 text-sm font-semibold" placeholder="0,00" />
-              </div>
-              {received > 0 && (
-                <div className={`flex justify-between items-center p-3 rounded-xl font-bold ${
-                  change >= 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
-                }`}>
-                  <span>{change >= 0 ? '💰 Troco' : '⚠️ Faltam'}</span>
-                  <span>{fmt(Math.abs(change))}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {paymentMethod === 'a_prazo' && (
-            <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-              {!selectedCustomer && (
-                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5">
-                  ⚠️ Selecione o cliente — a prazo gera conta a receber no nome dele.
-                </p>
-              )}
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-gray-700">Parcelas</span>
-                <select className="input w-32 text-sm" value={installments}
-                  onChange={e => setInstallments(parseInt(e.target.value))}>
-                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
-                    <option key={n} value={n}>{n}x de {fmt(total / n)}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-gray-700">1º vencimento</span>
-                <CampoData className="input w-40 text-sm" value={firstDueDate} onChange={setFirstDueDate} />
-              </div>
-            </div>
-          )}
-        </div>
-        )}
-
+        {/* O pagamento saiu daqui: virou a segunda tela, a que abre
+            no Confirmar pedido. Os totais ficam, porque sao o que se
+            confere ENQUANTO se monta o pedido. */}
+        <div className="space-y-3">
         {/* Totais */}
         <div className="card p-4 space-y-2">
           <div className="flex justify-between text-sm text-gray-600">
@@ -1588,9 +1578,11 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
         </div>
         </div>
 
-        {/* Finalizar */}
+        {/* CONFIRMAR PEDIDO — o botao nao fecha mais a venda: ele
+            abre a segunda tela, a do pagamento. O nome mudou junto,
+            porque "Finalizar" prometia que acabava aqui. */}
         <button
-          onClick={isQuote ? finalizeQuote : finalizeSale}
+          onClick={isQuote ? finalizeQuote : abrirPagamento}
           disabled={items.length === 0 || saleMutation.isPending || quoteMutation.isPending}
           className="btn-primary w-full py-4 text-base"
         >
@@ -1598,7 +1590,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             ? <><Loader2 size={18} className="animate-spin" /> Processando...</>
             : isQuote
               ? <><Download size={18} /> Salvar e Gerar Foto do Orçamento — {fmt(total)}</>
-              : <><Check size={18} /> Finalizar — {fmt(total)}</>
+              : <><Check size={18} /> Confirmar pedido — {fmt(total)}</>
           }
         </button>
 
@@ -1854,6 +1846,194 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               </div>
             </div>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ══ SEGUNDA TELA: COMO O PEDIDO VAI SER PAGO ══════════════
+          Escolher a forma de pagamento no meio da montagem do pedido
+          era escolher antes de saber o total. Aqui o total ja esta
+          fechado, e e a ultima coisa que se responde. */}
+      <Modal isOpen={pagOpen}
+        onClose={() => { if (saleMutation.isPending) return; if (pixGerado) fecharPix(); else setPagOpen(false); }}
+        title={pixGerado ? `PIX DO PEDIDO Nº ${pixGerado.number ?? ''}` : 'PAGAMENTO DO PEDIDO'} size="lg"
+        footer={pixGerado ? (
+          <button type="button" onClick={fecharPix} className="btn-primary">
+            <Check size={15} /> Concluir
+          </button>
+        ) : (
+          <>
+            <button type="button" onClick={() => setPagOpen(false)} className="btn-secondary"
+              disabled={saleMutation.isPending}>
+              <X size={15} /> Voltar ao pedido
+            </button>
+            <button type="button" onClick={finalizeSale} className="btn-primary"
+              disabled={saleMutation.isPending}>
+              {saleMutation.isPending
+                ? <><Loader2 size={15} className="animate-spin" /> Confirmando…</>
+                : <><Check size={15} /> Confirmar pedido — {fmt(total)}</>}
+            </button>
+          </>
+        )}>
+
+        {pixGerado ? (
+          /* O PIX E ESTATICO, DA CHAVE DA PROPRIA LOJA: o dinheiro cai
+             direto na conta, sem taxa e sem intermediario. O preco disso
+             e que o banco nao avisa ninguem quando cai — a baixa e
+             manual, e a tela diz isso em vez de deixar parecer que o
+             sistema vai perceber sozinho. */
+          <div className="text-center space-y-3">
+            {pixGerado.qr_code_base64 ? (
+              <img src={`data:image/png;base64,${pixGerado.qr_code_base64}`}
+                alt="QR Code do PIX" className="mx-auto rounded-xl border border-gray-200"
+                style={{ width: 240, height: 240 }} />
+            ) : (
+              <p className="text-sm text-gray-400 py-6">
+                Não consegui desenhar o QR — use o código abaixo.
+              </p>
+            )}
+
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-1 text-left">PIX copia e cola</p>
+              <textarea readOnly value={pixGerado.copy_paste || ''} rows={3}
+                onFocus={e => e.target.select()}
+                className="input w-full text-[11px] font-mono leading-snug resize-none" />
+            </div>
+
+            <button type="button" className="btn-secondary w-full"
+              onClick={() => {
+                navigator.clipboard?.writeText(pixGerado.copy_paste || '')
+                  .then(() => toast.success('Código PIX copiado'))
+                  .catch(() => toast.error('Não consegui copiar — selecione e copie à mão'));
+              }}>
+              Copiar código PIX
+            </button>
+
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-left">
+              O banco não avisa o sistema quando o PIX cai. Depois que o cliente
+              pagar, confirme o recebimento no <b>Financeiro</b> — é isso que
+              libera o pedido para a produção.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* A tabela de itens fica atras do card: sem este resumo, a
+                pessoa decide o pagamento sem ver o que esta pagando. */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+              <div className="flex justify-between text-gray-600">
+                <span>{selectedCustomer?.name || 'Sem cliente'}</span>
+                <span>{items.length} iten{items.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="flex justify-between items-baseline mt-1 pt-1 border-t border-gray-200">
+                <span className="font-semibold text-gray-700">Total a pagar</span>
+                <span className="text-xl font-bold text-primary-600">{fmt(total)}</span>
+              </div>
+            </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {[
+              { value: 'cash', label: '💵 Dinheiro' },
+              { value: 'pix', label: '📱 Pix' },
+              { value: 'card_debit', label: '💳 Débito', maquininha: true },
+              { value: 'card_credit', label: '💳 Crédito', maquininha: true },
+              { value: 'transfer', label: '🏦 Transf.' },
+              { value: 'a_prazo', label: '🧾 A prazo' },
+            ].map(pm => {
+              const bloqueado = pm.maquininha && !presencial;
+              return (
+              <button key={pm.value} type="button" disabled={bloqueado}
+                title={bloqueado ? 'Cartão passa na maquininha: só em Venda Presencial' : undefined}
+                onClick={() => { setPaymentMethod(pm.value); setReceivedAmount(''); }}
+                className={`py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                  bloqueado
+                    ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
+                    : paymentMethod === pm.value
+                    ? 'bg-primary-600 text-white border-primary-600'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-primary-300'
+                }`}>
+                {pm.label}
+              </button>
+              );
+            })}
+          </div>
+
+          {/* Sem isto o operador ve dois botoes cinzas e nao sabe o que
+              fez de errado — e o que ele fez foi escolher a origem. */}
+          {!presencial && (
+            <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 mt-2">
+              Débito e Crédito passam na maquininha da loja, com o cartão na mão.
+              Esta venda está como <b>{origem || 'sem origem'}</b> — para cobrar no cartão,
+              mude a Origem da venda para <b>Venda Presencial</b>.
+            </p>
+          )}
+
+          {/* Empresa Faturadora + Conta de Destino (módulo Contábil/Fiscal) */}
+          {companiesOk.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">Empresa Faturadora</label>
+                <select className="input text-sm w-full" value={billingCompanyId}
+                  onChange={e => { setBillingCompanyId(e.target.value); setReceivingAccountId(''); }}>
+                  {companiesOk.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome_fantasia || c.razao_social}{Number(c.pct) > 0 ? ` · ${Number(c.pct).toFixed(0)}% do limite` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-0.5">Conta de Destino</label>
+                <select className="input text-sm w-full" value={receivingAccountId}
+                  onChange={e => setReceivingAccountId(e.target.value)}>
+                  <option value="">— Selecionar —</option>
+                  {companyAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {paymentMethod === 'cash' && (
+            <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-gray-700">Valor recebido</span>
+                <input type="text" inputMode="decimal"
+                  value={receivedAmount} onChange={e => setReceivedAmount(e.target.value.replace(/[^\d.,]/g, ''))}
+                  onBlur={() => { if (receivedAmount.trim() !== '') setReceivedAmount(maskMoney(parseMoney(receivedAmount))); }}
+                  className="input text-right w-28 text-sm font-semibold" placeholder="0,00" />
+              </div>
+              {received > 0 && (
+                <div className={`flex justify-between items-center p-3 rounded-xl font-bold ${
+                  change >= 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+                }`}>
+                  <span>{change >= 0 ? '💰 Troco' : '⚠️ Faltam'}</span>
+                  <span>{fmt(Math.abs(change))}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {paymentMethod === 'a_prazo' && (
+            <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+              {!selectedCustomer && (
+                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5">
+                  ⚠️ Selecione o cliente — a prazo gera conta a receber no nome dele.
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-gray-700">Parcelas</span>
+                <select className="input w-32 text-sm" value={installments}
+                  onChange={e => setInstallments(parseInt(e.target.value))}>
+                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
+                    <option key={n} value={n}>{n}x de {fmt(total / n)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-gray-700">1º vencimento</span>
+                <CampoData className="input w-40 text-sm" value={firstDueDate} onChange={setFirstDueDate} />
+              </div>
+            </div>
+          )}
           </div>
         )}
       </Modal>
