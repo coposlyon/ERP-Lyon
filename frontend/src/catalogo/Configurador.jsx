@@ -119,7 +119,6 @@ export default function Configurador() {
     const alvo = pedido
       || cfg.acabamentos.find(a => a.id === estado.acabamento_id)
       || cfg.acabamentos[0];
-    if (alvo.id === estado.acabamento_id) return;
 
     // Troca limpando o que não vale mais: vindo de Degradê para Bicolor,
     // a cor da boca continua sendo a mesma pergunta e é grosseria pedir
@@ -132,6 +131,7 @@ export default function Configurador() {
     // ja escolheu a cor — abrir o configurador na cor errada e pedir a
     // mesma coisa duas vezes. O nome vem do cadastro do produto e as
     // opcoes de CONFIG_CORES, entao a comparacao ignora acento e caixa.
+    let corMudou = false;
     const corDoLink = params.get('cor');
     if (corDoLink) {
       const chave = txt => String(txt || '').normalize('NFD')
@@ -140,9 +140,19 @@ export default function Configurador() {
       const campoBase = (alvo.campos || []).find(c => c.key === 'cor_base' || c.key === 'cor_produto');
       if (campoBase) {
         const achada = (cfg?.cores?.[campoBase.grupo] || []).find(c => chave(c.name) === alvoCor);
-        if (achada) restante[campoBase.key] = achada.id;
+        if (achada && restante[campoBase.key] !== achada.id) {
+          restante[campoBase.key] = achada.id;
+          corMudou = true;
+        }
       }
     }
+
+    // A SAÍDA ANTECIPADA FICAVA ANTES DA COR, e por isso o clique no
+    // card amarelo abria a tela na cor Pérola: o rascunho da visita
+    // anterior já tinha o acabamento Tradicional, `alvo.id` batia com
+    // ele, e a função voltava sem nunca chegar na cor. Agora ela só
+    // desiste quando NÃO HÁ NADA a aplicar — nem acabamento, nem cor.
+    if (alvo.id === estado.acabamento_id && !corMudou) return;
 
     mudar({ acabamento_id: alvo.id, campos: restante });
   }, [cfg, params, estado.acabamento_id, estado.campos, mudar]);

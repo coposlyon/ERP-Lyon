@@ -124,19 +124,24 @@ function partesDoNome(nome) {
 /**
  * O nome de vitrine da categoria — O MESMO DO CADASTRO.
  *
- * O Administrativo pode dar um nome comercial próprio
- * (`nome_catalogo`), e aí é ele que vale: é o cadastro falando.
- * Sem isso, vai o nome da categoria como está lá.
+ * É o nome da CATEGORIA, sem tradução.
  *
- * Já foi derivado: uma regex tirava a última palavra quando ela era
- * um acabamento, e "CANECA TRADICIONAL" virava "Caneca" na vitrine.
- * A intenção era um nome comercial mais limpo; o efeito era o
- * catálogo chamando de "Caneca" o que o resto do sistema — cadastro,
- * pedido, estoque, relatório — chama de "CANECA TRADICIONAL". Duas
- * palavras para a mesma coisa, e ninguém sabendo que eram a mesma.
+ * Passou por dois desvios, e os dois davam no mesmo lugar. Primeiro
+ * uma regex tirava a última palavra quando ela era um acabamento, e
+ * "CANECA TRADICIONAL" virava "Caneca". Tirada a regex, sobrou
+ * `nome_catalogo` — um campo que guardava exatamente o resultado
+ * daquela derivação ("Long Drink"), e continuava impondo o apelido.
+ *
+ * O efeito era o catálogo chamando de "Long Drink" o que o cadastro, o
+ * pedido, o estoque e o relatório chamam de "LONG DRINK TRADICIONAL":
+ * duas palavras para a mesma coisa, e ninguém sabendo que eram a
+ * mesma. Uma vitrine com nome próprio é uma segunda verdade.
+ *
+ * Se um dia a Lyon quiser mesmo um nome comercial diferente do
+ * técnico, `nome_catalogo` volta a valer aqui — mas aí como decisão
+ * dita, e não como sobra de uma derivação automática.
  */
 function nomeDaCategoria(categoria) {
-  if (categoria?.nome_catalogo) return categoria.nome_catalogo;
   return String(categoria?.name || '').trim();
 }
 
