@@ -18,6 +18,9 @@ const { caracteristicasDoItem, etapasDosItens } = require('../lib/itensPedido');
 // A ficha de fluxo (onde o pedido esta, o que falta, qual e o botao) sai
 // do mesmo motor que o modulo de Vendas usa para mover o pedido.
 const F = require('../lib/fluxoPedido');
+// Quem sabe se os comprovantes ja cobrem o pedido — a resposta que
+// libera a etapa de Pagamento.
+const C = require('../lib/comprovante');
 const { uploadDataUrl, uploadPrivado, linkAssinado } = require('../lib/storage');
 
 const isManager = req => ['admin', 'manager'].includes(req.userProfile?.role);
@@ -228,8 +231,13 @@ router.get('/pedidos/:id', async (req, res) => {
       // pedido chegava em "Aguardando financeiro" e morava la. A ficha
       // diz em que fase ele esta, o que ainda falta, se QUEM ESTA OLHANDO
       // pode dar o passo e para onde ele vai.
+      // `comprovante_quitado` PRECISA VIR JUNTO: e ele que cumpre o
+      // requisito da etapa de Pagamento. Sem ele esta tela mostrava
+      // "Confirmar o pagamento" apagado com o comprovante anexado e
+      // quitado logo acima — o painel do fluxo acertava, esta nao,
+      // porque cada uma carrega a venda do seu jeito.
       fluxo: F.fichaDeFluxo(
-        { ...data, itens_qtd: itens.length },
+        { ...data, itens_qtd: itens.length, comprovante_quitado: await C.estaQuitada(req.tenantId, data) },
         etapasDosItens(itens),
         { acesso: req.acesso, perfil: req.userProfile },
       ),

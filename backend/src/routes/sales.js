@@ -483,15 +483,8 @@ async function carregarParaFluxo(tenantId, id) {
 
   // OS COMPROVANTES ENTRAM NA FICHA porque agora sao eles que liberam a
   // etapa de pagamento. Uma consulta a mais por leitura do fluxo — que
-  // e a tela de detalhe de UM pedido, aberta por uma pessoa de cada vez.
-  // Se a leitura falhar, o pedido abre do mesmo jeito: fica sem o
-  // requisito cumprido, e nao sem a tela.
-  let comprovante_quitado = false;
-  try {
-    const parcelas = await C.parcelasDaVenda(tenantId, data);
-    const aberto = parcelas.reduce((soma, x) => soma + (x.falta || 0), 0);
-    comprovante_quitado = parcelas.length > 0 && aberto <= 0.005;
-  } catch { /* sem parcelas legiveis: o requisito segue por cumprir */ }
+  // e a tela de UM pedido, aberta por uma pessoa de cada vez.
+  const comprovante_quitado = await C.estaQuitada(tenantId, data);
 
   return {
     venda: { ...data, itens_qtd: itens.length, comprovante_quitado },

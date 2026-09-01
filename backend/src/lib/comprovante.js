@@ -316,7 +316,32 @@ async function conferir(tenantId, parcelaId, { status, nota, req }) {
   return { ok: true, parcela: enriquecer(data) };
 }
 
+/**
+ * O PEDIDO ESTA PAGO? — a soma dos comprovantes cobre o total?
+ *
+ * E esta resposta que libera a etapa de Pagamento no fluxo. Ela mora
+ * AQUI, e nao na rota, porque duas telas diferentes montam a ficha do
+ * pedido — o painel do fluxo e a tela de detalhe do pedido — e cada
+ * uma carrega a venda do seu jeito. Quando o calculo ficou dentro de
+ * uma delas, a outra abriu com o requisito eternamente por cumprir:
+ * comprovante anexado, quitado na tela, e "Confirmar o pagamento"
+ * apagado do mesmo jeito.
+ *
+ * Erro de leitura devolve `false`: a etapa fica parada, que e melhor
+ * do que dar por pago o que ninguem conseguiu conferir.
+ */
+async function estaQuitada(tenantId, venda) {
+  try {
+    const parcelas = await parcelasDaVenda(tenantId, venda);
+    if (!parcelas.length) return false;
+    const aberto = parcelas.reduce((soma, x) => soma + (Number(x.falta) || 0), 0);
+    return aberto <= 0.005;
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   parcelasDaVenda, anexarComprovante, lerComprovante, conferir,
-  linkDoComprovante, enriquecer,
+  linkDoComprovante, enriquecer, estaQuitada,
 };
