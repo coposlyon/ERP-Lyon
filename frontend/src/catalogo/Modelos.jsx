@@ -6,11 +6,14 @@
 // código. Uma página por família seria dez páginas para consertar
 // quando o botão mudar de lugar.
 //
-// CADA CARD É BASE × ACABAMENTO. "Long Drink Tradicional 350 ml",
-// "Long Drink Degradê 350 ml", "Long Drink Degradê com Borda 350 ml" —
-// treze cards saindo de um par de linhas do cadastro. É assim de
-// propósito: quem procura degradê procura degradê, e não "Long Drink,
-// e depois mexa nas opções".
+// CADA CARD É UM MODELO DO CADASTRO. "Long Drink Tradicional 350 ml"
+// é um card porque existe uma linha dele em Produtos.
+//
+// Já foi base × acabamento: treze cards saindo de um par de linhas do
+// cadastro, com nomes — "Long Drink Degradê 350 ml" — que não existiam
+// em lugar nenhum do sistema. Quem abria Produtos atrás de "Degradê"
+// não achava nada, e com razão: degradê é ACABAMENTO, e se aplica na
+// peça. Ele agora é escolhido dentro do configurador, junto com a cor.
 // ============================================================
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -138,8 +141,15 @@ export default function Modelos() {
                   {m.nome}
                 </span>
 
+                {/* O número de acabamentos entra aqui porque some da
+                     grade: a vitrine encolheu de catorze cards para um,
+                     e sem esta linha o cliente não fica sabendo que
+                     degradê, jateado e bicolor continuam existindo —
+                     agora dentro do configurador. */}
                 <span className="block text-[11px] mt-1" style={{ color: NEON.fraco }}>
-                  {[m.capacidade, `${m.cores} cores`].filter(Boolean).join(' · ')}
+                  {[m.capacidade, `${m.cores} cores`,
+                    m.acabamentos > 1 ? `${m.acabamentos} acabamentos` : null]
+                    .filter(Boolean).join(' · ')}
                 </span>
 
                 <span className="mt-auto pt-3 flex items-baseline justify-between gap-2">

@@ -312,43 +312,42 @@ async function modelosDaFamilia(tenantId, slug) {
     const base = nomeDaCategoria(cat);
     const acabs = acabPorCategoria[g.categoryId] || [];
     const precoBase = Math.min(...g.produtos.map(p => precoDe(p)).filter(v => v > 0), Infinity);
-    // AS FOTOS SÃO AS DO CADASTRO, uma por COR.
-    //
-    // Não existe foto por acabamento: o cadastro tem
-    // "CANECA TRADICIONAL - PRETO - 450 ML", "- PINK OPACO -", uma linha
-    // e uma foto por cor. Os 14 acabamentos (Bicolor, Degradê, Jateado)
-    // nascem da matriz de compatibilidade, não do cadastro.
-    //
-    // Antes o card pegava a PRIMEIRA foto do grupo e repetia nos 14
-    // acabamentos — a grade virava a mesma caneca preta quatorze vezes,
-    // e parecia foto aleatória. Agora cada card leva as fotos das cores
-    // reais daquele modelo e alterna entre elas, como a /loja faz.
+    // AS FOTOS SÃO AS DO CADASTRO, uma por COR. O cadastro tem
+    // "CANECA TRADICIONAL - PRETO - 450 ML", "- PINK OPACO -": uma linha
+    // e uma foto por cor. O card alterna entre elas, como a /loja faz.
     const fotos = [...new Set(g.produtos.map(primeiraFoto).filter(Boolean))];
-    const imagem = fotos[0] || null;
 
-    // Sem acabamento cadastrado o modelo ainda existe — sai um card só,
-    // do produto como ele é. Melhor que sumir da vitrine.
-    const variantes = acabs.length ? acabs : [null];
-    variantes.forEach((a, iAcab) => {
-      // Cada acabamento começa numa COR diferente. Sem isso os catorze
-      // cards abrem todos na mesma caneca preta — tecnicamente certo,
-      // visualmente uma grade quebrada.
-      const giradas = fotos.length
-        ? fotos.map((_, k) => fotos[(k + iAcab) % fotos.length])
-        : [];
-      modelos.push({
-        chave: g.chave,
-        acabamento_id: a?.id || null,
-        nome: nomeComercial(base, a, g.capacidade),
-        base, capacidade: g.capacidade,
-        acabamento: a ? nomeDoAcabamento(a) : null,
-        categoria: cat?.name || null,
-        cores: g.produtos.length,
-        imagem: giradas[0] || imagem,
-        imagens: giradas.slice(0, 8),
-        preco_de: Number.isFinite(precoBase) ? precoBase + Number(a?.preco_adicional || 0) : null,
-        qtd_minima: Math.max(...g.produtos.map(p => p.min_order_qty || 1)),
-      });
+    // UM CARD POR MODELO CADASTRADO — e não um por acabamento.
+    //
+    // Era o contrário: cada acabamento da matriz virava um card, e a
+    // vitrine mostrava "Caneca Degradê 450 ml", "Caneca Bicolor 450 ml",
+    // "Caneca Jateado 450 ml" — catorze produtos que não existem no
+    // cadastro, saindo de UM que existe. Quem abria o cadastro de
+    // Produtos e procurava "Degradê" não achava nada, e com razão:
+    // degradê é um ACABAMENTO que se aplica na caneca, não uma caneca.
+    //
+    // Agora a vitrine mostra o que a Lyon cadastrou, e o acabamento é
+    // escolhido dentro do configurador — que é onde ele sempre foi
+    // decidido de verdade, junto com a cor e a personalização.
+    modelos.push({
+      chave: g.chave,
+      // Sem acabamento no card: quem escolhe é o configurador. Ele já
+      // abre no primeiro da lista quando ninguém manda um.
+      acabamento_id: null,
+      nome: nomeComercial(base, null, g.capacidade),
+      base, capacidade: g.capacidade,
+      acabamento: null,
+      categoria: cat?.name || null,
+      cores: g.produtos.length,
+      // Quantos acabamentos dão para escolher lá dentro. O número vai
+      // para o card porque some da grade: sem ele, a vitrine encolheu
+      // de catorze cards para um e o cliente não fica sabendo que os
+      // acabamentos continuam existindo.
+      acabamentos: acabs.length,
+      imagem: fotos[0] || null,
+      imagens: fotos.slice(0, 8),
+      preco_de: Number.isFinite(precoBase) ? precoBase : null,
+      qtd_minima: Math.max(...g.produtos.map(p => p.min_order_qty || 1)),
     });
   }
 
