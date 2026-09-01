@@ -20,12 +20,39 @@
 import { useRef, useId } from 'react';
 import { CalendarDays } from 'lucide-react';
 
-/** "15031978" ou "15/03/1978" → "15/03/1978", enquanto digita. */
-export const mascaraData = v => String(v || '')
-  .replace(/\D/g, '')
-  .slice(0, 8)
-  .replace(/(\d{2})(\d)/, '$1/$2')
-  .replace(/(\d{2})\/(\d{2})(\d)/, '$1/$2/$3');
+/**
+ * "15031978" ou "15/03/1978" → "15/03/1978", enquanto digita.
+ *
+ * A versao anterior era so um encaixe de barras e deixava passar
+ * "129/09" e "99/99/9999". Duas coisas faltavam:
+ *
+ *   1. DIA E MES COM TETO. Dia nao passa de 31 e mes nao passa de 12.
+ *      Mostrar 99 na tela e so reclamar no fim e deixar a pessoa
+ *      digitar o campo inteiro para depois dizer que nao servia.
+ *
+ *   2. O ZERO QUE SE COMPLETA SOZINHO. Digito inicial acima de 3 so
+ *      pode ser dia 04..09 — nao existe dia 9X. Entao "9" vira "09" na
+ *      hora, em vez de esperar um segundo digito que nunca faz sentido.
+ *      Idem para o mes acima de 1. Assim "9/9/2026" sai de "992026".
+ */
+export const mascaraData = v => {
+  let d = String(v || '').replace(/\D/g, '').slice(0, 8);
+  if (!d) return '';
+
+  let dia;
+  if (d[0] > '3') { dia = '0' + d[0]; d = d.slice(1); }
+  else            { dia = d.slice(0, 2); d = d.slice(2); }
+  if (dia.length === 2 && +dia > 31) dia = '31';
+
+  let mes = '';
+  if (d.length) {
+    if (d[0] > '1') { mes = '0' + d[0]; d = d.slice(1); }
+    else            { mes = d.slice(0, 2); d = d.slice(2); }
+    if (mes.length === 2 && +mes > 12) mes = '12';
+  }
+
+  return [dia, mes, d.slice(0, 4)].filter(Boolean).join('/');
+};
 
 /**
  * "15/03/1978" → "1978-03-15". Devolve null se a data não existir.
@@ -73,12 +100,18 @@ export default function CampoData({
   function digitar(e) {
     const br = mascaraData(e.target.value);
     digitado.current = br;
-    const iso = paraISO(br);
+
+    // A MASCARA SE APLICA SEMPRE.
+    //
+    // Antes ela so era escrita de volta quando o texto ja tinha 9 ou 10
+    // caracteres. Em todo o resto do caminho o campo guardava o que foi
+    // digitado, CRU — e era por isso que "129/09" aparecia na tela: a
+    // mascara tinha calculado "12/90/9" e nao escrevia.
+    e.target.value = br;
+
     // Manda '' enquanto não fechar uma data válida: meia data gravada é
     // pior que nenhuma.
-    onChange(iso || '');
-    // Redesenha para o aviso aparecer/sumir.
-    if (br.length === 10 || br.length === 9) e.target.value = br;
+    onChange(paraISO(br) || '');
   }
 
   /**

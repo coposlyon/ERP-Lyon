@@ -17,21 +17,44 @@
 // desenha o seu. O desenho de cada canal mora no frontend, em
 // components/UI/LogoOrigem.jsx, com a cor da marca. O servidor manda o
 // vocabulário; quem pinta é a tela.
+// DUAS ORIGENS, A PEDIDO DA LYON.
+//
+// Eram treze: Site, WhatsApp, Instagram, Facebook, TikTok, quatro
+// marketplaces, Presencial, Telefone, Indicação e Outro. A empresa
+// separa a venda em duas e so duas — quem veio a loja e quem comprou de
+// longe —, e treze caixas para uma pergunta de duas respostas viram
+// treze relatorios que ninguem soma.
 const ORIGENS = [
-  { key: 'Site',           grupo: 'Próprio' },
-  { key: 'WhatsApp',       grupo: 'Atendimento' },
-  { key: 'Instagram',      grupo: 'Redes' },
-  { key: 'Facebook',       grupo: 'Redes' },
-  { key: 'TikTok',         grupo: 'Redes' },
-  { key: 'Shopee',         grupo: 'Marketplace' },
-  { key: 'Mercado Livre',  grupo: 'Marketplace' },
-  { key: 'Amazon',         grupo: 'Marketplace' },
-  { key: 'Magalu',         grupo: 'Marketplace' },
-  { key: 'Presencial',     grupo: 'Atendimento' },
-  { key: 'Telefone',       grupo: 'Atendimento' },
-  { key: 'Indicação',      grupo: 'Atendimento' },
-  { key: 'Outro',          grupo: 'Outros' },
+  { key: 'Venda Presencial', grupo: 'Venda' },
+  { key: 'Venda Online',     grupo: 'Venda' },
 ];
+
+/**
+ * O VOCABULARIO ANTIGO NAO VIRA LIXO.
+ *
+ * Vendas gravadas antes desta mudanca (e a loja, que grava a origem
+ * sozinha) trazem as chaves de antes. Sem este mapa elas virariam null
+ * na primeira releitura e o relatorio perderia a origem de tudo o que
+ * ja aconteceu.
+ *
+ * Telefone e Indicacao caem em Online por eliminacao: nao sao venda no
+ * balcao. Se a Lyon entender que telefone e presencial, e uma linha
+ * aqui.
+ */
+const DE_PARA = {
+  'presencial':     'Venda Presencial',
+  'site':           'Venda Online',
+  'whatsapp':       'Venda Online',
+  'instagram':      'Venda Online',
+  'facebook':       'Venda Online',
+  'tiktok':         'Venda Online',
+  'shopee':         'Venda Online',
+  'mercado livre':  'Venda Online',
+  'amazon':         'Venda Online',
+  'magalu':         'Venda Online',
+  'telefone':       'Venda Online',
+  'indicacao':      'Venda Online',
+};
 
 const CHAVES = new Set(ORIGENS.map(o => o.key));
 
@@ -50,7 +73,7 @@ function normalizarOrigem(valor) {
 
   const limpo = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   const alvo = limpo(bruto);
-  return ORIGENS.find(o => limpo(o.key) === alvo)?.key || null;
+  return ORIGENS.find(o => limpo(o.key) === alvo)?.key || DE_PARA[alvo] || null;
 }
 
 module.exports = { ORIGENS, normalizarOrigem };

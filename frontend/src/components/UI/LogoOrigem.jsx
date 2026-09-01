@@ -107,6 +107,13 @@ function GlifoMagalu({ size }) {
  * o degradê — em cor chapada ele vira um quadrado rosa qualquer.
  */
 const MARCAS = {
+  // AS DUAS QUE A LYON USA HOJE. O resto do mapa fica para as vendas
+  // gravadas antes de o vocabulario ser reduzido a duas origens — a
+  // coluna delas continua com "Shopee", "Instagram" e companhia, e sem
+  // estas linhas o historico perderia o desenho.
+  'Venda Presencial': { fundo: '#64748b', tinta: '#ffffff', Glifo: Store },
+  'Venda Online':     { fundo: '#2563eb', tinta: '#ffffff', Glifo: Globe },
+
   'Site':          { fundo: '#2563eb', tinta: '#ffffff', Glifo: Globe },
   'WhatsApp':      { fundo: '#25D366', tinta: '#ffffff', Glifo: GlifoWhatsApp },
   'Instagram':     { tinta: '#ffffff', Glifo: Instagram,
