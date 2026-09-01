@@ -114,8 +114,19 @@ function palpiteBorda(product, variantName) {
   return hay.includes('borda') ? 'Com borda' : 'Sem borda';
 }
 
-// O rotulo da retirada. A constante RETIRADA ('__retirada__') saiu com
-// a opcao falsa que morava no seletor de transportadora.
+// "Retirar em maos" e uma opcao DO SELETOR DE TRANSPORTADORA.
+//
+// Ela ja morou aqui, saiu para um campo "Entrega" separado, e voltou:
+// dois campos para a mesma pergunta ("quem leva?") faziam o operador
+// escolher transportadora e ainda ter que dizer que era entrega. Uma
+// pergunta, um campo.
+//
+// O QUE NAO VOLTA e o bug que a separacao expos: escolher retirada
+// gravava so uma observacao em texto e nunca `delivery_mode`, a coluna
+// que lib/atencao.js le para pular "Em Transito". Pedido de retirada
+// seguia a rota de entrega esperando uma coleta que nao vinha. Agora a
+// opcao mora aqui E grava a coluna.
+const RETIRADA = '__retirada__';
 const RETIRADA_LABEL = 'Retirar em mãos';
 
 // mode: 'sale' (pedido de venda) | 'quote' (orçamento — salva e gera a foto PNG)
@@ -135,17 +146,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [coupon, setCoupon] = useState(null); // { coupon_id, code, discount_type, discount_value }
   const [frete, setFrete] = useState(null); // { price, days, weightKg, uf }
   const [carrierId, setCarrierId] = useState(''); // transportadora desta venda
-  // ENTREGA OU RETIRADA — E UMA PERGUNTA, NAO UMA TRANSPORTADORA.
-  //
-  // "Retirar em maos" era uma OPCAO DENTRO do seletor de transportadora,
-  // e isso escondia dois problemas. O menor: retirada nao e uma
-  // transportadora, e ocupava lugar na lista de quem transporta. O
-  // maior: escolher aquela opcao gravava so uma OBSERVACAO em texto
-  // ("Entrega: Retirar em maos") e nunca gravava `delivery_mode` - que
-  // e exatamente a coluna que lib/atencao.js le para decidir se o
-  // pedido pula "Em Transito". Ou seja: pedido de retirada criado aqui
-  // seguia a rota de entrega, esperando uma coleta que nunca vinha.
-  const [modoEntrega, setModoEntrega] = useState('entrega');
   const [freightInput, setFreightInput] = useState(''); // valor do frete (R$) — editável
   const [quoteNumber, setQuoteNumber] = useState(''); // nº da cotação do frete na transportadora
 
@@ -318,7 +318,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const carrierSel = (carriers?.data || []).find(c => c.id === carrierId) || null;
   // "Retirar em mãos" é uma opção fixa da lista, não uma transportadora
   // cadastrada: o pedido fica sem carrier_id e a informação vai na observação.
-  const isRetirada = modoEntrega === 'retirada';
+  const isRetirada = carrierId === RETIRADA;
   const carrierLabel = isRetirada ? RETIRADA_LABEL : (carrierSel ? (carrierSel.trade_name || carrierSel.name) : '');
 
   // Tipos (categorias) de produto — para o filtro do painel de produtos
@@ -837,7 +837,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       freight: freteValue,
       carrier_id: isRetirada ? null : (carrierId || null),
       // A COLUNA que o fluxo le para pular "Em Transito" (migracao 090).
-      delivery_mode: modoEntrega,
+      delivery_mode: isRetirada ? 'retirada' : 'entrega',
       payment_adjustment: paymentAdj,
       ...(() => {
         const noteParts = [];
@@ -985,24 +985,13 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       {/* Linha compacta — data da operação, cliente, transportadora e frete */}
       <div className="card p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[170px_minmax(0,1.1fr)_minmax(0,0.8fr)_130px_minmax(0,0.7fr)] gap-3 items-start">
-          {/* Data da operação / do orçamento + de onde veio o cliente */}
-          <div className="space-y-2">
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">{isQuote ? 'Data do orçamento *' : 'Data da operação *'}</label>
-              <input type="date" className="input text-sm w-full" value={operationDate} onChange={e => changeOperationDate(e.target.value)} />
-            </div>
-            {!isQuote && (
-              <div>
-                {/* A pergunta que decide a ROTA do pedido. Ficava
-                    escondida dentro do seletor de transportadora. */}
-                <label className="text-xs font-medium text-gray-500 block mb-1">Entrega</label>
-                <select className="input text-sm w-full" value={modoEntrega}
-                  onChange={e => { setModoEntrega(e.target.value); if (e.target.value === 'retirada') { setCarrierId(''); setShowSched(false); } }}>
-                  <option value="entrega">Transportadora</option>
-                  <option value="retirada">{RETIRADA_LABEL}</option>
-                </select>
-              </div>
-            )}
+          {/* Data da operação / do orçamento. A Origem da venda ficava
+              empilhada aqui embaixo e desceu para a linha dos prazos, ao
+              lado das tres datas — e as quatro respostas que se dao de
+              uma vez ao abrir o pedido. */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 block mb-1">{isQuote ? 'Data do orçamento *' : 'Data da operação *'}</label>
+            <input type="date" className="input text-sm w-full" value={operationDate} onChange={e => changeOperationDate(e.target.value)} />
           </div>
 
           {/* Cliente */}
@@ -1067,11 +1056,14 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             )}
           </div>
 
-          {/* Transportadora — some na retirada: nao ha quem transporte. */}
-          <div className={`min-w-0 ${isRetirada ? 'hidden' : ''}`}>
+          {/* Transportadora — e aqui que se diz tambem que o cliente
+              retira. Frete e cotacao e que somem, porque nao existem
+              quando ninguem transporta. */}
+          <div className="min-w-0">
             <label className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><Truck size={12} /> Transportadora</label>
             <select className="input text-sm w-full" value={carrierId} onChange={e => { setCarrierId(e.target.value); setShowSched(false); }}>
               <option value="">— selecione —</option>
+              <option value={RETIRADA}>{RETIRADA_LABEL}</option>
               {(carriers?.data || []).map(c => <option key={c.id} value={c.id}>{c.trade_name || c.name}</option>)}
             </select>
             {carrierId && !isRetirada && (
