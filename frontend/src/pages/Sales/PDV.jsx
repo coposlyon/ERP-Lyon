@@ -1624,7 +1624,12 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
 
       {/* O CARD DO ITEM — o unico. A busca do produto e a primeira
           etapa dele, e nao uma tela separada por cima. */}
-      <Modal isOpen={!!launch} onClose={() => setLaunch(null)}
+      {/* O X do canto fecha O PASSO, e nao o card. Estando na lista,
+          ele desiste da escolha do produto e devolve a ficha — que e o
+          que o ESC e o Voltar ja faziam. Fechar tudo por ali apagava a
+          ficha inteira de quem so queria sair da lista. */}
+      <Modal isOpen={!!launch}
+        onClose={() => { if (launch?.buscando) fecharBusca(); else setLaunch(null); }}
         title={launch?.buscando ? 'ESCOLHER O PRODUTO'
           : Number.isInteger(launch?.editIndex) ? 'EDITAR ITEM DO PEDIDO'
           : 'LANÇAMENTO DE PRODUTO'} size="xl"
