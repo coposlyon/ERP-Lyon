@@ -601,7 +601,10 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   useEffect(() => {
     if (!launch) return;
     const onKey = (e) => {
-      if (e.key === 'F2')      { e.preventDefault(); e.stopPropagation(); commitLaunch(); }
+      // Dentro da lista não há ficha para lançar: F2 e F3 ali
+      // confirmariam o produto de antes da troca.
+      if (e.key === 'F2')      { e.preventDefault(); e.stopPropagation(); if (!launch.buscando) commitLaunch(false); }
+      else if (e.key === 'F3') { e.preventDefault(); e.stopPropagation(); if (!launch.buscando && !Number.isInteger(launch.editIndex)) commitLaunch(true); }
       // Na lista, o ESC desiste da TROCA e não do item — fechar o card
       // inteiro aqui apagaria o que já estava preenchido nele.
       else if (e.key === 'Escape') {
@@ -826,10 +829,15 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     });
   }
 
-  // Confirmar (F2) guarda o item e fecha o card. Para lançar outro,
-  // o operador clica em ADICIONAR PRODUTO de novo — um caminho só,
-  // em vez de dois botões que faziam quase a mesma coisa.
-  function commitLaunch() {
+  /**
+   * Confirmar (F2) guarda o item e fecha o card.
+   * Acumular  (F3) guarda o item e MANTÉM o card aberto, em branco.
+   *
+   * Pedido de dez produtos diferentes eram dez idas e vindas: confirma,
+   * o card fecha, clica em ADICIONAR PRODUTO, o card abre. O F3 corta
+   * as duas pontas e deixa a mão no teclado.
+   */
+  function commitLaunch(continuar) {
     if (!launch?.product) return;
     const l = launch;
     if (!String(l.color || '').trim()) {
@@ -852,8 +860,13 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     const color = String(l.color || '').trim();
     pushLaunchItem(l, q, price, disc, color, !!l.priceTouched);
     toast.success(`${l.variantName || l.product.name} ${Number.isInteger(l.editIndex) ? 'atualizado' : 'adicionado'}`, { duration: 1200 });
-    setLaunch(null);
     setProductSearch('');
+
+    // Acumular ZERA A FICHA INTEIRA, o produto junto — é a mesma ficha
+    // em branco de quando o card abre. Guardar o produto anterior faria
+    // o lançamento seguinte nascer com escolhas que ninguém pediu.
+    if (continuar) { setLaunch(lancamentoZerado(null)); return; }
+    setLaunch(null);
   }
 
   // Enter NÃO adiciona mais nada automaticamente — o operador escolhe clicando no produto
@@ -1626,9 +1639,17 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             <button type="button" onClick={() => setLaunch(null)} className="btn-secondary">
               <X size={15} /> Cancelar <span className="text-gray-400 ml-1">ESC</span>
             </button>
-            {/* Sem produto escolhido nao ha o que confirmar. */}
+            {/* Sem produto escolhido nao ha o que confirmar. E na
+                edicao nao ha o que acumular: "lanca e continua" com um
+                item ja lancado criaria uma copia dele a cada F3. */}
+            {!!launch?.product && !Number.isInteger(launch?.editIndex) && (
+              <button type="button" onClick={() => commitLaunch(true)} className="btn-secondary"
+                title="Lança este item e mantém o card aberto para o próximo">
+                <Plus size={15} /> Acumular <span className="text-gray-400 ml-1">F3</span>
+              </button>
+            )}
             {!!launch?.product && (
-              <button type="button" onClick={() => commitLaunch()} className="btn-primary">
+              <button type="button" onClick={() => commitLaunch(false)} className="btn-primary">
                 <Check size={15} />
                 {Number.isInteger(launch?.editIndex) ? 'Salvar alterações' : 'Confirmar'}
                 <span className="text-white/60 ml-1">F2</span>
