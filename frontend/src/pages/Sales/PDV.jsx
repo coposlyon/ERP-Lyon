@@ -1005,8 +1005,13 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               lado das tres datas — e as quatro respostas que se dao de
               uma vez ao abrir o pedido. */}
           <div>
+            {/* CampoData tambem aqui. Este campo tinha ficado para tras
+                na conversao e continuava sendo o `input type=date`
+                nativo — aquele que mostra "31/08/aaaa" e aceita sair do
+                campo sem o ano, porque para ele uma data incompleta
+                simplesmente nao existe. */}
             <label className="text-xs font-medium text-gray-500 block mb-1">{isQuote ? 'Data do orçamento *' : 'Data da operação *'}</label>
-            <input type="date" className="input text-sm w-full" value={operationDate} onChange={e => changeOperationDate(e.target.value)} />
+            <CampoData className="input text-sm w-full" value={operationDate} onChange={changeOperationDate} />
           </div>
 
           {/* Cliente */}
@@ -1213,7 +1218,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Data da cotação</label>
-              <input type="date" className="input w-full text-sm" value={quoteDate} onChange={e => setQuoteDate(e.target.value)} />
+              <CampoData className="input w-full text-sm" value={quoteDate} onChange={setQuoteDate} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Validade da cotação (dias)</label>
@@ -1443,8 +1448,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium text-gray-700">1º vencimento</span>
-                <input type="date" className="input w-40 text-sm" value={firstDueDate}
-                  onChange={e => setFirstDueDate(e.target.value)} />
+                <CampoData className="input w-40 text-sm" value={firstDueDate} onChange={setFirstDueDate} />
               </div>
             </div>
           )}

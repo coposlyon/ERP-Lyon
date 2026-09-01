@@ -17,7 +17,7 @@
 // porque data errada em cadastro é o tipo de erro que só aparece meses
 // depois, quando alguém tenta usar.
 // ============================================================
-import { useRef, useId } from 'react';
+import { useRef, useId, useState } from 'react';
 import { CalendarDays } from 'lucide-react';
 
 /**
@@ -91,11 +91,23 @@ export default function CampoData({
   const texto = paraBR(value);
   const hoje = new Date().toISOString().slice(0, 10);
 
-  // Só avisa quando a pessoa terminou de digitar: reclamar de "15/0"
-  // enquanto ela escreve é ruído.
+  // O AVISO E ESTADO, NAO CALCULO DE REF.
+  //
+  // Antes ele so aparecia quando o texto tinha exatamente 10
+  // caracteres, e era derivado de um ref — que nao redesenha. Data pela
+  // metade ("06/02/6") nao tinha 10 caracteres, entao ficava na tela
+  // sem valor gravado e sem uma palavra de explicacao.
   const digitado = useRef('');
-  const completo = digitado.current.length === 10;
-  const invalido = completo && !paraISO(digitado.current);
+  const [aviso, setAviso] = useState('');
+
+  /** O que falta para este texto ser uma data. '' = esta boa. */
+  function oQueFalta(br) {
+    const n = br.replace(/\D/g, '').length;
+    if (n === 0) return '';
+    if (n < 4) return 'Data incompleta — escreva dia, mês e ano.';
+    if (n < 8) return 'Falta o ano — escreva os quatro dígitos.';
+    return paraISO(br) ? '' : 'Essa data não existe. Confira o dia e o mês.';
+  }
 
   function digitar(e) {
     const br = mascaraData(e.target.value);
@@ -108,6 +120,10 @@ export default function CampoData({
     // digitado, CRU — e era por isso que "129/09" aparecia na tela: a
     // mascara tinha calculado "12/90/9" e nao escrevia.
     e.target.value = br;
+
+    // Enquanto digita, o aviso so SOME (nunca aparece): reclamar de
+    // "15/0" no meio da digitacao e ruido. Quem cobra e o blur.
+    if (aviso) setAviso('');
 
     // Manda '' enquanto não fechar uma data válida: meia data gravada é
     // pior que nenhuma.
@@ -140,17 +156,34 @@ export default function CampoData({
    * calendario, onde o ano foi uma decisao e nao um preenchimento.
    */
   function completarAno(e) {
-    const br = digitado.current || '';
-    const m = /^(\d{2})\/(\d{2})\/?$/.exec(br);
-    if (m) {
-      const cheio = `${m[1]}/${m[2]}/${new Date().getFullYear()}`;
-      digitado.current = cheio;
-      e.target.value = cheio;
-      const iso = paraISO(cheio);
-      // Data que nao existe (31/09) continua sem valor, e o aviso
-      // abaixo do campo aparece — completar o ano nao e validar.
-      if (iso) { onChange(iso); return; }
+    let br = digitado.current || '';
+    const n = br.replace(/\D/g, '');
+    let completou = false;
+
+    // Dia e mes, sem ano: entra o ano corrente.
+    if (n.length === 4) {
+      br = `${n.slice(0, 2)}/${n.slice(2, 4)}/${new Date().getFullYear()}`;
+      completou = true;
     }
+    // ANO DE DOIS DIGITOS vira 20xx. "06/02/26" e o jeito que meio
+    // mundo escreve data, e recusar isso seria implicancia; o que nao
+    // pode e o campo GUARDAR "06/02/26" como se fosse ano 26.
+    else if (n.length === 6) {
+      br = `${n.slice(0, 2)}/${n.slice(2, 4)}/20${n.slice(4, 6)}`;
+      completou = true;
+    }
+
+    if (completou) {
+      digitado.current = br;
+      e.target.value = br;
+      const iso = paraISO(br);
+      if (iso) { setAviso(''); onChange(iso); return; }
+    }
+
+    // NADA DE METADE NA TELA. Ao sair do campo, ou ha uma data
+    // completa e possivel, ou ha um aviso dizendo o que falta — nunca
+    // um "06/02/6" parado ali, sem valor gravado e sem explicacao.
+    setAviso(oQueFalta(br));
     props.onBlur?.(e);
   }
 
@@ -203,10 +236,8 @@ export default function CampoData({
         />
       </div>
 
-      {invalido && (
-        <p className="text-[11px] mt-1" style={{ color: '#f87171' }}>
-          Essa data não existe. Confira o dia e o mês.
-        </p>
+      {aviso && (
+        <p className="text-[11px] mt-1" style={{ color: '#f87171' }}>{aviso}</p>
       )}
     </div>
   );
