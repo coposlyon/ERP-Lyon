@@ -1150,8 +1150,23 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               <>
                 <div className="relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  {/* CAMPO DE BUSCA, E NAO CAMPO DE TELEFONE.
+                      O Chrome le o rotulo e o placeholder para adivinhar
+                      o que o campo quer: "telefone" ali dentro fazia ele
+                      abrir a lista de telefones salvos POR CIMA dos
+                      clientes encontrados — a sugestao do navegador
+                      tapando a resposta do sistema.
+                      `type="search"` tira o campo do autofill de
+                      endereco/telefone (busca nao e dado pessoal do
+                      dono do navegador), e os `data-*` calam os
+                      gerenciadores de senha. */}
                   <input
-                    type="text"
+                    type="search"
+                    name="busca_cliente"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore
+                    data-form-type="other"
                     placeholder="Nome, ID ou telefone..."
                     value={customerSearch}
                     onChange={e => setCustomerSearch(e.target.value)}
@@ -1717,7 +1732,12 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 ref={searchRef}
-                type="text"
+                type="search"
+                name="busca_produto"
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore
+                data-form-type="other"
                 placeholder="Buscar produto por nome ou código…"
                 value={productSearch}
                 onChange={e => setProductSearch(e.target.value)}
