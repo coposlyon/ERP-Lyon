@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Search, Trash2, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star, Plus, MoreHorizontal, MessageCircle, Download } from 'lucide-react';
+import { Search, Trash2, Pencil, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star, Plus, MoreHorizontal, MessageCircle, Download } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import SeletorOrigem from '@/components/UI/SeletorOrigem';
@@ -625,7 +625,35 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     const acab = [...acabList].sort().join('|');
     const lineKey = i => [i.product_id, i.variant || '', i.print_color || '', i.borda || '', i.ink_type || '', [...(i.acabamentos || [])].sort().join('|')].join('__');
     const key = [product.id, l.variantName || '', color || '', bordaStr || '', l.ink || '', acab].join('__');
+    const novo = {
+      product_id: product.id,
+      variant: l.variantName || null,
+      variant_code: l.variantCode || null,
+      name: l.variantName || product.name,
+      unit: product.unit,
+      sale_price: product.sale_price,
+      price_tiers: product.price_tiers || [],
+      unit_price: price,
+      quantity: q,
+      discount: disc,
+      print_color: color || null,
+      borda: bordaStr || null,
+      ink_type: l.ink || null,
+      acabamentos: acabList,
+      priceTouched,
+    };
+
     setItems(prev => {
+      // EDICAO SUBSTITUI, E VEM ANTES DA FUSAO.
+      //
+      // A fusao existe para lancar duas vezes a mesma combinacao e cair
+      // numa linha so. Na edicao ela e veneno: a linha editada casa com
+      // ela mesma, e corrigir "100 para 80" somaria 80 nas 100. Por isso
+      // a substituicao e a primeira coisa, e sai por aqui.
+      if (Number.isInteger(l.editIndex)) {
+        return prev.map((x, i) => (i === l.editIndex ? novo : x));
+      }
+
       const existing = prev.find(i => lineKey(i) === key);
       if (existing) {
         return prev.map(i => {
@@ -633,23 +661,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           return { ...i, quantity: i.quantity + q, unit_price: price, discount: (i.discount || 0) + disc, priceTouched };
         });
       }
-      return [...prev, {
-        product_id: product.id,
-        variant: l.variantName || null,
-        variant_code: l.variantCode || null,
-        name: l.variantName || product.name,
-        unit: product.unit,
-        sale_price: product.sale_price,
-        price_tiers: product.price_tiers || [],
-        unit_price: price,
-        quantity: q,
-        discount: disc,
-        print_color: color || null,
-        borda: bordaStr || null,
-        ink_type: l.ink || null,
-        acabamentos: acabList,
-        priceTouched,
-      }];
+      return [...prev, novo];
     });
   }
 
@@ -677,7 +689,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     const disc = Math.min(gross, parseMoney(l.discStr));
     const color = String(l.color || '').trim();
     pushLaunchItem(l, q, price, disc, color, !!l.priceTouched);
-    toast.success(`${l.variantName || l.product.name} adicionado`, { duration: 1200 });
+    toast.success(`${l.variantName || l.product.name} ${Number.isInteger(l.editIndex) ? 'atualizado' : 'adicionado'}`, { duration: 1200 });
     if (keepOpen) {
       // mantém borda e tinta (são do copo) e limpa o resto para o próximo lançamento
       setLaunch(cur => cur && { ...cur, qty: '1', discPercent: '0', discStr: maskMoney(0), color: '', acab: [] });
@@ -700,37 +712,52 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     if (e.key === 'Enter') e.preventDefault();
   }
 
-  function setQty(idx, val) {
-    const q = parseFloat(val);
-    if (isNaN(q) || q <= 0) return;
-    setItems(prev => prev.map((item, i) => {
-      if (i !== idx) return item;
-      return {
-        ...item,
-        quantity: q,
-        // reaplica a faixa de preço automaticamente, a menos que o
-        // operador tenha editado o preço manualmente
-        unit_price: item.priceTouched ? item.unit_price : tierPrice(item.price_tiers, item.sale_price, q),
-      };
-    }));
+  /**
+   * O LAPIS REABRE O LANCAMENTO COM O ITEM DENTRO.
+   *
+   * Reconstroi o rascunho a partir do que foi gravado na linha — e
+   * `editIndex` e o que faz o Confirmar SUBSTITUIR em vez de somar mais
+   * um. Sem ele, corrigir a quantidade de um item criaria um segundo.
+   *
+   * O produto do item pode nao estar mais na lista carregada (a busca
+   * traz uma pagina por vez), entao o essencial vem do proprio item.
+   */
+  function editarItem(idx) {
+    const it = items[idx];
+    if (!it) return;
+    const acab = (it.acabamentos || []).map(a => a.nome || a);
+    const acabCor = {};
+    for (const a of it.acabamentos || []) if (a && a.nome) acabCor[a.nome] = a.cor || '';
+    const bordaBruta = String(it.borda || '');
+
+    setLaunch({
+      editIndex: idx,
+      product: {
+        id: it.product_id, name: it.name, unit: it.unit,
+        sale_price: it.sale_price, price_tiers: it.price_tiers || [],
+        ink_type: it.ink_type || '',
+      },
+      variantName: it.variant || null,
+      variantCode: it.variant_code || null,
+      qty: String(it.quantity ?? 1),
+      priceStr: maskMoney(it.unit_price),
+      // Preco de item ja lancado nao pode ser "recalculado pela faixa"
+      // ao reabrir: o que esta na linha e o que foi combinado.
+      priceTouched: true,
+      discPercent: '0',
+      discStr: maskMoney(it.discount || 0),
+      color: it.print_color || '',
+      borda: /com borda/i.test(bordaBruta) ? 'Com borda' : 'Sem borda',
+      bordaTipo: (bordaBruta.split(':')[1] || '').trim(),
+      ink: it.ink_type || '',
+      acab,
+      acabCor,
+    });
+    setTimeout(() => qtyRef.current?.select(), 40);
   }
 
   function removeItem(idx) {
     setItems(prev => prev.filter((_, i) => i !== idx));
-  }
-
-  // Guarda o texto digitado (priceStr) e o número já convertido (unit_price)
-  function updatePrice(idx, str) {
-    setItems(prev => prev.map((item, i) =>
-      i === idx ? { ...item, priceStr: str, unit_price: parseMoney(str), priceTouched: true } : item
-    ));
-  }
-
-  // Ao sair do campo, formata com a pontuação (40 → 40,00)
-  function blurPrice(idx) {
-    setItems(prev => prev.map((item, i) =>
-      i === idx ? { ...item, priceStr: undefined } : item
-    ));
   }
 
   // O desconto do item (dado no lançamento) já sai do subtotal — é assim
@@ -1250,29 +1277,18 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                         return partes.length ? <p className="text-[11px] text-gray-400 mt-0.5">{partes.join(' · ')}</p> : null;
                       })()}
                     </td>
-                    <td className="px-4 py-2 text-center">
-                      {/* Os botoes -10 / +10 sairam: quem lanca pedido
-                          digita a quantidade, e as setinhas do proprio
-                          campo cobrem o ajuste de uma unidade. */}
-                      <div className="flex items-center justify-center">
-                        <input
-                          type="number"
-                          step="1"
-                          min="1"
-                          value={item.quantity}
-                          onChange={e => setQty(i, e.target.value)}
-                          className="input text-center w-20 text-sm font-bold py-1"
-                        />
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <input
-                        type="text" inputMode="decimal"
-                        value={item.priceStr ?? maskMoney(item.unit_price)}
-                        onChange={e => updatePrice(i, e.target.value.replace(/[^\d.,]/g, ''))}
-                        onBlur={() => blurPrice(i)}
-                        className="input text-right w-24 text-sm"
-                      />
+                    {/* A LINHA E LEITURA; QUEM EDITA E O LAPIS.
+                        Quantidade e preco eram editaveis aqui dentro, ao
+                        lado dos botoes de passo — tres formas de mexer no
+                        mesmo item, e nenhuma delas alcancava a cor, a
+                        borda ou o acabamento, que so existiam na janela
+                        de lancamento. Editar metade do item num lugar e a
+                        outra metade em outro e como o item acabava
+                        divergindo do que foi combinado.
+                        Agora o lapis reabre o lancamento inteiro. */}
+                    <td className="px-4 py-2 text-center font-bold text-sm">{item.quantity}</td>
+                    <td className="px-4 py-2 text-right text-sm">
+                      {fmt(item.unit_price)}
                       {item.price_tiers?.length > 0 && !item.priceTouched && (
                         <p className="text-[10px] text-blue-500 mt-0.5">faixa automática</p>
                       )}
@@ -1281,9 +1297,16 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                       {fmt(item.quantity * item.unit_price - (item.discount || 0))}
                     </td>
                     <td className="px-4 py-2">
-                      <button onClick={() => removeItem(i)} className="btn-ghost p-1 text-red-400 hover:text-red-600">
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => editarItem(i)} title="Editar este item"
+                          className="btn-ghost p-1 text-blue-400 hover:text-blue-600">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => removeItem(i)} title="Tirar do pedido"
+                          className="btn-ghost p-1 text-red-400 hover:text-red-600">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1514,18 +1537,25 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       </Modal>
 
       {/* Lançamento do produto: abre ao escolher o item na lista */}
-      <Modal isOpen={!!launch} onClose={() => setLaunch(null)} title="LANÇAMENTO DE PRODUTO" size="lg"
+      <Modal isOpen={!!launch} onClose={() => setLaunch(null)}
+        title={Number.isInteger(launch?.editIndex) ? 'EDITAR ITEM DO PEDIDO' : 'LANÇAMENTO DE PRODUTO'} size="lg"
         footer={
           <>
             <button type="button" onClick={() => setLaunch(null)} className="btn-secondary">
               <X size={15} /> Cancelar <span className="text-gray-400 ml-1">ESC</span>
             </button>
-            <button type="button" onClick={() => commitLaunch(true)} className="btn-secondary"
-              title="Lança este item e continua no mesmo produto, para outra cor ou quantidade">
-              <Plus size={15} /> Acumular <span className="text-gray-400 ml-1">F3</span>
-            </button>
+            {/* Acumular nao existe na edicao: "lanca e continua" com um
+                item ja lancado criaria uma copia dele a cada F3. */}
+            {!Number.isInteger(launch?.editIndex) && (
+              <button type="button" onClick={() => commitLaunch(true)} className="btn-secondary"
+                title="Lança este item e continua no mesmo produto, para outra cor ou quantidade">
+                <Plus size={15} /> Acumular <span className="text-gray-400 ml-1">F3</span>
+              </button>
+            )}
             <button type="button" onClick={() => commitLaunch(false)} className="btn-primary">
-              <Check size={15} /> Confirmar <span className="text-white/60 ml-1">F2</span>
+              <Check size={15} />
+              {Number.isInteger(launch?.editIndex) ? 'Salvar alterações' : 'Confirmar'}
+              <span className="text-white/60 ml-1">F2</span>
             </button>
           </>
         }>
