@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Search, Trash2, Pencil, ShoppingCart, User, Check, Loader2, X, ChevronLeft, ChevronRight, Truck, Star, Plus, MoreHorizontal, MessageCircle, Download } from 'lucide-react';
+import { Search, Trash2, Pencil, ShoppingCart, User, Check, Loader2, X, Truck, Star, Plus, MoreHorizontal, MessageCircle, Download } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import SeletorOrigem from '@/components/UI/SeletorOrigem';
@@ -8,7 +8,7 @@ import CampoData from '@/components/UI/CampoData';
 import { useAuth } from '@/contexts/AuthContext';
 import { generateQuotePng, buildQuoteNotes, downloadPng } from '@/lib/quotePng';
 import toast from 'react-hot-toast';
-import { expandVariants, expandVariantsWithCode } from '@/pages/Products/ProductVariantsModal';
+import { expandVariantsWithCode } from '@/pages/Products/ProductVariantsModal';
 
 function fmt(v) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -125,14 +125,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
 
   const isQuote = mode === 'quote';
   const [items, setItems] = useState([]);
-
-  // O contador dos itens ja lancados: aceso quando ha item, apagado
-  // quando nao ha. Depende de `items`, entao vem DEPOIS dele — const
-  // nao sobe, e ler antes derruba a tela inteira ("can't access
-  // lexical declaration before initialization"). Fica fora do JSX
-  // porque template literal la dentro e um convite a erro de aspas.
-  const itemsBadge = 'text-[11px] font-bold rounded-full px-2 py-0.5 '
-    + (items.length ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-400');
   const [productSearch, setProductSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState(''); // filtro por tipo (categoria) do produto
   const [volFilter, setVolFilter] = useState('');   // filtro por tamanho (ML), aparece após escolher o tipo
@@ -257,18 +249,43 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     queryFn: () => api.get('/products?limit=2000&is_active=true'),
   });
 
-  const productList = useMemo(() => {
+  /**
+   * TUDO O QUE DA PARA ESCOLHER, NUMA LISTA SO.
+   *
+   * Antes eram dois passos: escolher o modelo e, se ele tivesse
+   * variacoes, escolher a variacao numa segunda lista (o "drill"). Quem
+   * sabia que queria a AZUL BIC tinha de achar a CANECA SLIM primeiro e
+   * so entao a cor — e a busca por "azul bic" nao achava nada, porque
+   * so olhava o nome do modelo.
+   *
+   * Aqui cada variacao e uma linha, do mesmo tamanho das outras. O que
+   * o operador digita e o que ele ve.
+   */
+  const opcoesProduto = useMemo(() => {
     let arr = [...(allProducts?.data || [])].sort((a, b) =>
       (a.name || '').localeCompare(b.name || '', 'pt-BR'));
     // filtro por tipo (categoria): COM BORDA, DEGRADÊ, TRADICIONAL etc.
     if (typeFilter) arr = arr.filter(p => (p.CATEGORIAS?.name || '').trim().toUpperCase() === typeFilter);
     // tamanho: compara o número lido do NOME (o código tem número parecido)
     if (volFilter) arr = arr.filter(p => volumeML(p.name) === Number(volFilter));
+
+    const opcoes = [];
+    for (const p of arr) {
+      const vars = expandVariantsWithCode(p);
+      if (vars.length > 1) {
+        for (const v of vars) {
+          opcoes.push({ product: p, nome: v.name, codigo: v.code, variante: v.name, preco: p.sale_price, estoque: p.current_stock });
+        }
+      } else {
+        opcoes.push({ product: p, nome: p.name, codigo: p.code, variante: null, preco: p.sale_price, estoque: p.current_stock });
+      }
+    }
+
     const term = productSearch.trim().toLowerCase();
-    if (!term) return arr;
-    return arr.filter(p =>
-      (p.name || '').toLowerCase().includes(term) ||
-      String(p.code || '').toLowerCase().includes(term)
+    if (!term) return opcoes;
+    return opcoes.filter(o =>
+      (o.nome || '').toLowerCase().includes(term) ||
+      String(o.codigo || '').toLowerCase().includes(term)
     );
   }, [allProducts, productSearch, typeFilter, volFilter]);
 
@@ -491,11 +508,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     onError: (e) => { setCoupon(null); toast.error(e.error || 'Cupom inválido'); },
   });
 
-  // Modelo cujas variações estão sendo exibidas (drill-down). null = lista de modelos.
-  const [drill, setDrill] = useState(null);
-
-  // Card grande de produtos (abre pelo botão ADICIONAR PRODUTOS)
-  const [productsOpen, setProductsOpen] = useState(false);
   // Horários de coleta da transportadora (abrem pelo ⋯)
   const [showSched, setShowSched] = useState(false);
 
@@ -505,69 +517,40 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [launch, setLaunch] = useState(null);
   const qtyRef = useRef(null);
 
-  // ESC fecha primeiro o card de produtos (antes de fechar a tela toda).
-  // Com o lançamento aberto, o ESC é dele — não fecha os produtos por baixo.
-  useEffect(() => {
-    if (!productsOpen) return;
-    const onKey = (e) => {
-      if (e.key !== 'Escape' || launch) return;
-      e.stopPropagation();
-      setProductsOpen(false);
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [productsOpen, launch]);
-
-  // Atalhos do card de lançamento: F2 confirma, F3 acumula, ESC cancela.
+  // Atalhos do card de lançamento: F2 confirma, ESC cancela.
   useEffect(() => {
     if (!launch) return;
     const onKey = (e) => {
-      if (e.key === 'F2')      { e.preventDefault(); e.stopPropagation(); commitLaunch(false); }
-      else if (e.key === 'F3') { e.preventDefault(); e.stopPropagation(); commitLaunch(true); }
+      if (e.key === 'F2')      { e.preventDefault(); e.stopPropagation(); commitLaunch(); }
       else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setLaunch(null); }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   });
 
-  // Variações reais do modelo em drill (com código), filtradas pela busca
-  const variantList = useMemo(() => {
-    if (!drill) return [];
-    const all = expandVariantsWithCode(drill);
-    const term = productSearch.trim().toLowerCase();
-    if (!term) return all;
-    return all.filter(x => x.name.toLowerCase().includes(term) || x.code.toLowerCase().includes(term));
-  }, [drill, productSearch]);
-
-  // Clicou num modelo: se tem variações, abre a lista delas; senão adiciona direto.
-  function pickProduct(product) {
-    if (expandVariants(product).length > 1) {
-      setDrill(product);
-      setProductSearch('');
-      setTimeout(() => searchRef.current?.focus(), 30);
-      return;
-    }
-    addProduct(product);
+  // Escolheu a linha na busca: o card sai da busca e vira o formulário
+  // daquele produto, com o preço da tabela dele já sugerido.
+  function escolherProduto(op) {
+    setLaunch(lancamentoZerado(op.product, op.variante, op.codigo));
+    setProductSearch('');
+    setTimeout(() => qtyRef.current?.select(), 40);
   }
 
-  function addProduct(product) {
-    openLaunch(product, null, null);
-  }
-
-  // Escolheu a variação: abre o lançamento dela (o drill continua atrás).
-  function addVariant(variant) {
-    if (!drill) return;
-    openLaunch(drill, variant.name, variant.code);
+  // O "Trocar": volta o MESMO card para a busca, sem fechar nada.
+  function trocarProduto() {
+    setLaunch({ product: null });
+    setProductSearch('');
+    setTimeout(() => searchRef.current?.focus(), 40);
   }
 
   // ── Card de lançamento do item ──────────────────────────────────────
   // Abre com o preço sugerido da faixa e deixa ajustar antes de entrar
   // no pedido: quantidade, valor unitário, desconto (% ou R$) e a cor da
   // personalização.
-  // O card em branco. Uma funcao so porque DOIS caminhos precisam
-  // dele: abrir o produto e o Acumular. Enquanto o Acumular limpava a
-  // mao — uma lista de campos escrita a parte — todo campo novo do
-  // card nascia sujo, porque ninguem lembrava de acrescenta-lo la.
+  // O card em branco de um produto: e o que o operador ve ao escolher
+  // a linha na busca. Uma funcao, e nao um objeto escrito no meio do
+  // `setLaunch`, para que campo novo do card nasca limpo aqui e nao
+  // dependa de alguem lembrar de acrescenta-lo.
   function lancamentoZerado(product, variantName, variantCode) {
     return {
       product,
@@ -587,9 +570,16 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     };
   }
 
-  function openLaunch(product, variantName, variantCode) {
-    setLaunch(lancamentoZerado(product, variantName, variantCode));
-    setTimeout(() => qtyRef.current?.select(), 40);
+  // ADICIONAR PRODUTO abre o card VAZIO — a busca e o primeiro campo
+  // dele. Antes abria um card de produtos em cima da tela, e o
+  // lancamento vinha num terceiro card por cima daquele: tres camadas
+  // para lancar um copo.
+  function abrirLancamento() {
+    setLaunch({ product: null });
+    setProductSearch('');
+    setTypeFilter('');
+    setVolFilter('');
+    setTimeout(() => searchRef.current?.focus(), 60);
   }
 
   function toggleAcab(a) {
@@ -701,10 +691,11 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     });
   }
 
-  // Confirmar (F2) fecha o card. Acumular (F3) guarda o item e ZERA o
-  // card inteiro, no mesmo produto, para o próximo lançamento.
-  function commitLaunch(keepOpen) {
-    if (!launch) return;
+  // Confirmar (F2) guarda o item e fecha o card. Para lançar outro,
+  // o operador clica em ADICIONAR PRODUTO de novo — um caminho só,
+  // em vez de dois botões que faziam quase a mesma coisa.
+  function commitLaunch() {
+    if (!launch?.product) return;
     const l = launch;
     if (!String(l.color || '').trim()) {
       toast.error('Informe a cor da personalização');
@@ -726,31 +717,11 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     const color = String(l.color || '').trim();
     pushLaunchItem(l, q, price, disc, color, !!l.priceTouched);
     toast.success(`${l.variantName || l.product.name} ${Number.isInteger(l.editIndex) ? 'atualizado' : 'adicionado'}`, { duration: 1200 });
-    if (keepOpen) {
-      // ZERA TUDO. Antes guardava o preço digitado, a borda, o tipo de
-      // borda e a cor dos acabamentos — e o lançamento seguinte saía
-      // com o desconto do anterior sem ninguém notar. O card volta
-      // exatamente ao que era quando o produto foi aberto.
-      setLaunch(cur => cur && lancamentoZerado(cur.product, cur.variantName, cur.variantCode));
-      setTimeout(() => qtyRef.current?.select(), 30);
-    } else {
-      setLaunch(null);
-      setProductSearch('');
-      setTimeout(() => searchRef.current?.focus(), 50);
-    }
-  }
-
-  function backToModels() {
-    setDrill(null);
+    setLaunch(null);
     setProductSearch('');
-    setTimeout(() => searchRef.current?.focus(), 30);
   }
 
   // Enter NÃO adiciona mais nada automaticamente — o operador escolhe clicando no produto
-  function handleProductKeyDown(e) {
-    if (e.key === 'Enter') e.preventDefault();
-  }
-
   /**
    * O LAPIS REABRE O LANCAMENTO COM O ITEM DENTRO.
    *
@@ -923,100 +894,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     });
   }
 
-  // ── Painel de busca/lista de produtos (dentro do card ADICIONAR PRODUTOS) ──
-  const ProductPanel = (
-    <div className="flex flex-col overflow-hidden h-full border border-gray-100 rounded-xl">
-      <div className="p-3 border-b border-gray-100">
-        <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            ref={searchRef}
-            type="text"
-            placeholder={drill ? `Buscar variação de ${drill.name}...` : 'Buscar produto por nome ou código...'}
-            value={productSearch}
-            onChange={e => setProductSearch(e.target.value)}
-            onKeyDown={handleProductKeyDown}
-            className="input pl-9 text-base"
-            autoFocus
-          />
-        </div>
-        {/* Filtro por tipo: COM BORDA / DEGRADÊ / TRADICIONAL etc. */}
-        {!drill && (
-          <div className="flex gap-2 mt-2">
-            <select className="input text-sm flex-1 min-w-0" value={typeFilter}
-              onChange={e => { setTypeFilter(e.target.value); setVolFilter(''); }}>
-              <option value="">Todos os tipos</option>
-              {productTypes.map(t => (
-                <option key={t.id} value={String(t.name || '').trim().toUpperCase()}>
-                  {t.name}{t.product_count ? ` (${t.product_count})` : ''}
-                </option>
-              ))}
-            </select>
-            {/* Tamanho: só aparece depois de escolher o tipo, com os ML que aquele tipo tem */}
-            {typeFilter && volumeOptions.length > 0 && (
-              <select className="input text-sm w-36 shrink-0" value={volFilter}
-                onChange={e => setVolFilter(e.target.value)} title="Filtrar por tamanho">
-                <option value="">Todos os ML</option>
-                {volumeOptions.map(v => <option key={v} value={v}>{v} ML</option>)}
-              </select>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* a lista rola dentro do card */}
-      <div className="flex-1 overflow-y-auto min-h-[200px]">
-        {drill ? (
-          <>
-            <button type="button" onClick={backToModels}
-              className="w-full flex items-center justify-between px-4 py-2 bg-gray-50 sticky top-0 z-10 text-xs text-gray-600 hover:bg-gray-100 border-b border-gray-100">
-              <span className="flex items-center gap-1"><ChevronLeft size={13} /> Voltar — <b className="ml-0.5">{drill.name}</b></span>
-              <span>{variantList.length} variações</span>
-            </button>
-            {variantList.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">Nenhuma variação encontrada.</p>
-            ) : variantList.map((v, idx) => (
-              <button key={idx} type="button" onClick={() => addVariant(v)}
-                className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
-                <span className="flex items-center gap-2 min-w-0">
-                  <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{v.code}</span>
-                  <span className="produto-nome text-sm font-semibold leading-snug">{v.name}</span>
-                </span>
-                <span className="font-semibold text-primary-600 shrink-0">{fmt(drill.sale_price)}</span>
-              </button>
-            ))}
-          </>
-        ) : productList.length > 0 ? (
-          <>
-            <p className="text-[11px] text-gray-400 px-4 py-1.5 bg-gray-50 sticky top-0 z-10 flex justify-between">
-              <span>{productSearch.trim() ? `${productList.length} encontrado(s)` : 'Todos os produtos (A–Z)'}</span>
-              <span>{productList.length}</span>
-            </p>
-            {productList.map((p, idx) => {
-              const nv = expandVariants(p).length;
-              return (
-                <button key={p.id} type="button" onClick={() => pickProduct(p)}
-                  className={`w-full flex items-center justify-between px-4 py-3 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
-                  <div className="min-w-0">
-                    <p className="produto-nome font-semibold text-sm leading-snug">{p.name}</p>
-                    <p className="text-xs">
-                      <Estoque valor={p.current_stock} />
-                      {nv > 1 && <span className="ml-2 text-indigo-500 font-medium">{nv} variações</span>}
-                    </p>
-                  </div>
-                  {nv > 1
-                    ? <ChevronRight size={16} className="text-gray-300 shrink-0 ml-2" />
-                    : <span className="font-semibold text-primary-600 shrink-0 ml-2">{fmt(p.sale_price)}</span>}
-                </button>
-              );
-            })}
-          </>
-        ) : (
-          <p className="text-sm text-gray-400 text-center py-8">Nenhum produto encontrado.</p>
-        )}
-      </div>
-    </div>
-  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -1275,16 +1152,16 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
               <ShoppingCart size={15} /> Itens do pedido{items.length > 0 ? ` (${items.length})` : ''}
             </p>
-            <button type="button" onClick={() => setProductsOpen(true)} className="btn-primary text-sm">
-              <Plus size={15} /> ADICIONAR PRODUTOS
+            <button type="button" onClick={abrirLancamento} className="btn-primary text-sm">
+              <Plus size={15} /> ADICIONAR PRODUTO
             </button>
           </div>
           <div className="max-h-[42vh] overflow-y-auto">
           {items.length === 0 ? (
-            <button type="button" onClick={() => setProductsOpen(true)}
+            <button type="button" onClick={abrirLancamento}
               className="w-full flex flex-col items-center justify-center h-36 text-gray-400 hover:text-primary-600 transition-colors">
               <ShoppingCart size={30} className="mb-2 opacity-30" />
-              <p className="text-sm">Nenhum item — clique em ADICIONAR PRODUTOS</p>
+              <p className="text-sm">Nenhum item — clique em ADICIONAR PRODUTO</p>
             </button>
           ) : (
             // A TABELA GANHOU COLUNA PROPRIA PARA CADA COISA.
@@ -1587,115 +1464,109 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           }
         </button>
 
-      {/* Card grande para escolher os produtos do pedido */}
-      <Modal isOpen={productsOpen} onClose={() => setProductsOpen(false)} title="Adicionar produtos" size="full"
-        footer={
-          <button type="button" onClick={() => setProductsOpen(false)} className="btn-primary">
-            <Check size={15} /> Concluir{items.length > 0 ? ` — ${items.length} ite${items.length > 1 ? 'ns' : 'm'} no pedido` : ''}
-          </button>
-        }>
-        <div className="h-[65vh] flex flex-col">
-          {ProductPanel}
-        </div>
-      </Modal>
-
-      {/* Lançamento do produto: abre ao escolher o item na lista */}
+      {/* O CARD DO ITEM — o unico. A busca do produto e a primeira
+          etapa dele, e nao uma tela separada por cima. */}
       <Modal isOpen={!!launch} onClose={() => setLaunch(null)}
-        title={Number.isInteger(launch?.editIndex) ? 'EDITAR ITEM DO PEDIDO' : 'LANÇAMENTO DE PRODUTO'} size="xl"
+        title={Number.isInteger(launch?.editIndex) ? 'EDITAR ITEM DO PEDIDO'
+          : launch?.product ? 'LANÇAMENTO DE PRODUTO' : 'ADICIONAR PRODUTO'} size="xl"
         footer={
           <>
             <button type="button" onClick={() => setLaunch(null)} className="btn-secondary">
               <X size={15} /> Cancelar <span className="text-gray-400 ml-1">ESC</span>
             </button>
-            {/* Acumular nao existe na edicao: "lanca e continua" com um
-                item ja lancado criaria uma copia dele a cada F3. */}
-            {!Number.isInteger(launch?.editIndex) && (
-              <button type="button" onClick={() => commitLaunch(true)} className="btn-secondary"
-                title="Lança este item e continua no mesmo produto, para outra cor ou quantidade">
-                <Plus size={15} /> Acumular <span className="text-gray-400 ml-1">F3</span>
+            {/* Sem produto escolhido nao ha o que confirmar. */}
+            {!!launch?.product && (
+              <button type="button" onClick={() => commitLaunch()} className="btn-primary">
+                <Check size={15} />
+                {Number.isInteger(launch?.editIndex) ? 'Salvar alterações' : 'Confirmar'}
+                <span className="text-white/60 ml-1">F2</span>
               </button>
             )}
-            <button type="button" onClick={() => commitLaunch(false)} className="btn-primary">
-              <Check size={15} />
-              {Number.isInteger(launch?.editIndex) ? 'Salvar alterações' : 'Confirmar'}
-              <span className="text-white/60 ml-1">F2</span>
-            </button>
           </>
         }>
-        {launch && (
-          <div className="flex flex-col lg:flex-row gap-5">
+        {/* SEM PRODUTO: a busca ocupa o card. */}
+        {launch && !launch.product && (
+          <div className="flex flex-col" style={{ height: '58vh' }}>
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                ref={searchRef}
+                type="text"
+                placeholder="Buscar produto por nome ou código…"
+                value={productSearch}
+                onChange={e => setProductSearch(e.target.value)}
+                onKeyDown={e => {
+                  // Enter pega a primeira da lista: quem digita o codigo
+                  // inteiro nao deveria precisar tirar a mao do teclado.
+                  if (e.key !== 'Enter') return;
+                  e.preventDefault();
+                  if (opcoesProduto.length > 0) escolherProduto(opcoesProduto[0]);
+                }}
+                className="input pl-9 text-base"
+                autoFocus
+              />
+            </div>
 
-            {/* ITENS JA ADICIONADOS — um cartao, e nao uma coluna solta.
-                Acumular sempre guardou o item e limpou o formulario, mas
-                a unica prova disso era um toast de um segundo. Sem ver a
-                lista crescer, F3 parecia nao ter feito nada.
+            <div className="flex gap-2 mt-2">
+              <select className="input text-sm flex-1 min-w-0" value={typeFilter}
+                onChange={e => { setTypeFilter(e.target.value); setVolFilter(''); }}>
+                <option value="">Todos os tipos</option>
+                {productTypes.map(tp => (
+                  <option key={tp.id} value={String(tp.name || '').trim().toUpperCase()}>
+                    {tp.name}{tp.product_count ? ` (${tp.product_count})` : ''}
+                  </option>
+                ))}
+              </select>
+              {typeFilter && volumeOptions.length > 0 && (
+                <select className="input text-sm w-36 shrink-0" value={volFilter}
+                  onChange={e => setVolFilter(e.target.value)} title="Filtrar por tamanho">
+                  <option value="">Todos os ML</option>
+                  {volumeOptions.map(v => <option key={v} value={v}>{v} ML</option>)}
+                </select>
+              )}
+              {(productSearch.trim() || typeFilter || volFilter) && (
+                <button type="button" className="btn-secondary text-sm shrink-0"
+                  onClick={() => { setProductSearch(''); setTypeFilter(''); setVolFilter(''); searchRef.current?.focus(); }}>
+                  Ver todos
+                </button>
+              )}
+            </div>
 
-                A CAIXA ALTA NAO ENTRA AQUI. `lj-caixa-alta` estava no
-                invólucro dos dois lados e gritava ate o texto de ajuda
-                ("NENHUM ITEM AINDA. USE ACUMULAR..."). Ela existe para o
-                que o operador DIGITA, entao foi para o formulario. */}
-            <aside className="lg:w-[262px] shrink-0">
-              <div className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
-                <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-gray-200">
-                  <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
-                    Itens já adicionados
-                  </span>
-                  <span className={itemsBadge}>{items.length}</span>
-                </div>
-
-                {items.length === 0 ? (
-                  <p className="px-3 py-4 text-xs text-gray-500 leading-relaxed">
-                    Nenhum item ainda.<br />
-                    <b className="text-gray-700">Acumular (F3)</b> lança o item e zera o formulário para o próximo.<br />
-                    <b className="text-gray-700">Confirmar (F2)</b> lança e fecha.
+            <div className="flex-1 overflow-y-auto mt-2 border border-gray-100 rounded-xl">
+              {opcoesProduto.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-10">Nenhum produto encontrado.</p>
+              ) : (
+                <>
+                  <p className="text-[11px] text-gray-400 px-4 py-1.5 bg-gray-50 sticky top-0 z-10 flex justify-between">
+                    <span>{productSearch.trim() ? `${opcoesProduto.length} encontrado(s)` : 'Todos os produtos (A–Z)'}</span>
+                    <span>{opcoesProduto.length}</span>
                   </p>
-                ) : (
-                  <>
-                    <div className="p-2 space-y-1.5 overflow-y-auto" style={{ maxHeight: 340 }}>
-                      {items.map((it, i) => (
-                        <div key={i} className="rounded-lg px-2.5 py-2 bg-white border border-gray-200">
-                          <div className="flex items-start gap-1.5">
-                            <p className="text-[11px] font-semibold text-gray-800 leading-snug flex-1 min-w-0">
-                              {it.name}
-                            </p>
-                            <button type="button" onClick={() => removeItem(i)}
-                              title="Tirar do pedido"
-                              className="text-gray-300 hover:text-red-500 shrink-0">
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                          {/* O que diferencia dois lancamentos do MESMO
-                              copo e a cor e o acabamento — sem isso a
-                              lista vira quatro linhas iguais. */}
-                          {(it.print_color || it.borda || (it.acabamentos || []).length > 0) && (
-                            <p className="text-[10px] text-gray-500 leading-snug mt-0.5">
-                              {[it.print_color, it.borda, ...(it.acabamentos || []).map(a => a.nome || a)]
-                                .filter(Boolean).join(' · ')}
-                            </p>
+                  {opcoesProduto.map((op, idx) => (
+                    <button key={`${op.product.id}-${op.codigo || idx}`} type="button"
+                      onClick={() => escolherProduto(op)}
+                      className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-primary-50 text-left border-b border-gray-50 last:border-0 ${idx === 0 && productSearch.trim() ? 'bg-blue-50/40' : ''}`}>
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-2 min-w-0">
+                          {op.codigo && (
+                            <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{op.codigo}</span>
                           )}
-                          <div className="flex items-baseline justify-between mt-1 pt-1 border-t border-gray-100">
-                            <span className="text-[11px] text-gray-500">
-                              {it.quantity} × {fmt(it.unit_price)}
-                              {it.discount > 0 && <span className="text-amber-600"> − {fmt(it.discount)}</span>}
-                            </span>
-                            <b className="text-[11px] text-gray-800">
-                              {fmt(it.quantity * it.unit_price - (it.discount || 0))}
-                            </b>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                          <span className="produto-nome text-sm font-semibold leading-snug truncate">{op.nome}</span>
+                        </span>
+                        <span className="text-xs block"><Estoque valor={op.estoque} /></span>
+                      </span>
+                      <span className="font-semibold text-primary-600 shrink-0">{fmt(op.preco)}</span>
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
-                    <div className="flex items-baseline justify-between px-3 py-2 bg-white border-t border-gray-200">
-                      <span className="text-[11px] uppercase tracking-wide text-gray-500">Total dos itens</span>
-                      <span className="text-sm font-bold text-primary-700">{fmt(subtotal)}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </aside>
+        {/* COM PRODUTO: o formulário do item. */}
+        {launch?.product && (
+          <div className="flex flex-col gap-5">
 
-            {/* O formulario do lancamento */}
             <div className="space-y-4 flex-1 min-w-0 lj-caixa-alta">
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Produto</label>
@@ -1703,7 +1574,17 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 {launch.variantCode && (
                   <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{launch.variantCode}</span>
                 )}
-                <span className="font-medium text-gray-800 truncate">{launch.variantName || launch.product.name}</span>
+                <span className="font-medium text-gray-800 truncate flex-1">{launch.variantName || launch.product.name}</span>
+                {/* Escolheu errado: volta para a busca sem perder o card
+                    nem o que ja esta no pedido. Na edicao nao aparece —
+                    trocar o produto de um item ja lancado seria criar
+                    outro item, e para isso existe o lixo + adicionar. */}
+                {!Number.isInteger(launch.editIndex) && (
+                  <button type="button" onClick={trocarProduto}
+                    className="text-xs font-semibold text-primary-600 hover:underline shrink-0">
+                    Trocar
+                  </button>
+                )}
               </div>
             </div>
 
