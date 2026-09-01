@@ -33,22 +33,6 @@ function waLink(phone, name) {
   return `https://wa.me/${full}?text=${encodeURIComponent(`Olá ${name || ''}, tudo bem?`)}`;
 }
 
-// Botão que aplica o passo no clique e, segurando, repete bem rápido
-function HoldBtn({ onStep, title, children, className }) {
-  const t = useRef(null);
-  const iv = useRef(null);
-  const stop = () => { clearTimeout(t.current); clearInterval(iv.current); };
-  useEffect(() => stop, []);
-  return (
-    <button type="button" title={title} className={className}
-      onPointerDown={(e) => { e.preventDefault(); onStep(); t.current = setTimeout(() => { iv.current = setInterval(onStep, 110); }, 350); }}
-      onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}
-      onContextMenu={e => e.preventDefault()}>
-      {children}
-    </button>
-  );
-}
-
 // Preço oficial pela quantidade: faixa (price_tiers) ou preço de venda.
 // O backend recalcula do lado dele — isso aqui é para a UI mostrar certo.
 function tierPrice(tiers, salePrice, qty) {
@@ -731,19 +715,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     }));
   }
 
-  // Sobe/desce a quantidade em passos (ex.: ±10), sem deixar abaixo de 1
-  function stepQty(idx, delta) {
-    setItems(prev => prev.map((item, i) => {
-      if (i !== idx) return item;
-      const q = Math.max(1, (Number(item.quantity) || 0) + delta);
-      return {
-        ...item,
-        quantity: q,
-        unit_price: item.priceTouched ? item.unit_price : tierPrice(item.price_tiers, item.sale_price, q),
-      };
-    }));
-  }
-
   function removeItem(idx) {
     setItems(prev => prev.filter((_, i) => i !== idx));
   }
@@ -1280,23 +1251,18 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                       })()}
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <HoldBtn onStep={() => stepQty(i, -10)} title="Diminui 10 — segure para descer rápido"
-                          className="h-7 px-1.5 rounded-md border border-gray-200 text-[10px] font-bold text-red-500 hover:bg-red-50 select-none shrink-0">
-                          −10
-                        </HoldBtn>
+                      {/* Os botoes -10 / +10 sairam: quem lanca pedido
+                          digita a quantidade, e as setinhas do proprio
+                          campo cobrem o ajuste de uma unidade. */}
+                      <div className="flex items-center justify-center">
                         <input
                           type="number"
                           step="1"
                           min="1"
                           value={item.quantity}
                           onChange={e => setQty(i, e.target.value)}
-                          className="input text-center w-16 text-sm font-bold py-1"
+                          className="input text-center w-20 text-sm font-bold py-1"
                         />
-                        <HoldBtn onStep={() => stepQty(i, 10)} title="Aumenta 10 — segure para subir rápido"
-                          className="h-7 px-1.5 rounded-md border border-gray-200 text-[10px] font-bold text-green-600 hover:bg-green-50 select-none shrink-0">
-                          +10
-                        </HoldBtn>
                       </div>
                     </td>
                     <td className="px-4 py-2 text-right">
@@ -1564,7 +1530,73 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           </>
         }>
         {launch && (
-          <div className="space-y-4 lj-caixa-alta">
+          <div className="flex flex-col lg:flex-row gap-4 lj-caixa-alta">
+
+            {/* ITENS JA ADICIONADOS.
+                Acumular sempre guardou o item e limpou o formulario — mas
+                a unica prova disso era um toast de um segundo. Sem ver a
+                lista crescer, "Acumular" parecia nao ter feito nada, e a
+                unica forma de conferir o pedido era fechar a tela.
+                Agora a lista fica do lado, e cada F3 aparece nela. */}
+            <div className="lg:w-64 shrink-0 lg:border-r lg:pr-4 border-gray-100">
+              <div className="flex items-baseline justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500">
+                  Itens já adicionados
+                </p>
+                <span className="text-xs font-bold text-primary-700">{items.length}</span>
+              </div>
+
+              {items.length === 0 ? (
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  Nenhum item ainda. Use <b>Acumular (F3)</b> para lançar este
+                  e continuar no mesmo produto, ou <b>Confirmar (F2)</b> para
+                  lançar e fechar.
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-1.5 overflow-y-auto pr-1" style={{ maxHeight: 300 }}>
+                    {items.map((it, i) => (
+                      <div key={i} className="rounded-lg px-2 py-1.5 bg-gray-50 border border-gray-100">
+                        <div className="flex items-start gap-1.5">
+                          <p className="text-[11px] font-medium text-gray-800 leading-snug flex-1 min-w-0">
+                            {it.name}
+                          </p>
+                          <button type="button" onClick={() => removeItem(i)}
+                            title="Tirar do pedido"
+                            className="text-gray-300 hover:text-red-500 shrink-0">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                        {/* O que diferencia dois lancamentos do MESMO copo
+                            e a cor e o acabamento — sem isso a lista vira
+                            quatro linhas iguais. */}
+                        {(it.print_color || it.borda || (it.acabamentos || []).length > 0) && (
+                          <p className="text-[10px] text-gray-500 leading-snug">
+                            {[it.print_color, it.borda, ...(it.acabamentos || []).map(a => a.nome || a)]
+                              .filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-gray-600 mt-0.5">
+                          {it.quantity} × {fmt(it.unit_price)}
+                          {it.discount > 0 && <span className="text-amber-600"> − {fmt(it.discount)}</span>}
+                          <b className="text-gray-800 float-right">
+                            {fmt(it.quantity * it.unit_price - (it.discount || 0))}
+                          </b>
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-baseline justify-between mt-2 pt-2 border-t border-gray-100">
+                    <span className="text-xs text-gray-500">Total dos itens</span>
+                    <span className="text-sm font-bold text-primary-700">{fmt(subtotal)}</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* O formulario do lancamento */}
+            <div className="space-y-4 flex-1 min-w-0">
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Produto</label>
               <div className="input bg-gray-50 flex items-center gap-2 text-sm">
@@ -1701,6 +1733,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               <div className="text-lg font-bold text-gray-900">
                 Total líquido do item: <span className="text-primary-600">{fmt(lNet)}</span>
               </div>
+            </div>
             </div>
           </div>
         )}
