@@ -38,7 +38,7 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     name: '', code: '', ean: '', category_id: '',
-    cost_price: '', current_stock: '',
+    cost_price: '', sale_price: '', current_stock: '',
     pricing_sheet_id: '',
     ncm: '', cst: '', cfop: '', is_active: true,
     show_in_store: true, show_in_catalogo: false, ink_type: '',
@@ -77,6 +77,16 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
   const isProdutoAcabado = catName === 'PRODUTO ACABADO';
   const isImpresso = catName === 'IMPRESSOS';
 
+  // A margem existe para o custo e o preco pararem de ser dois numeros
+  // sem relacao na mesma tela: 2,11 e 4,53 nao dizem nada juntos, "115%"
+  // diz. Null quando falta um dos dois — dividir por zero nao informa.
+  const margem = (() => {
+    const c = parseFloat(String(form.cost_price).replace(',', '.'));
+    const p = parseFloat(String(form.sale_price).replace(',', '.'));
+    if (!Number.isFinite(c) || !Number.isFinite(p) || c <= 0 || p <= 0) return null;
+    return ((p - c) / c) * 100;
+  })();
+
   useEffect(() => {
     if (product) {
       setForm({
@@ -85,6 +95,7 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
         ean: product.ean || '',
         category_id: product.category_id || '',
         cost_price: product.cost_price || '',
+        sale_price: product.sale_price ?? '',
         current_stock: product.current_stock ?? '',
         pricing_sheet_id: product.pricing_sheet_id || '',
         ncm: product.ncm || '',
@@ -162,12 +173,23 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
 
     setLoading(true);
     try {
-      // Preço (venda/faixas/impressão) fica por conta da Precificação: o
-      // cadastro não os envia, então os valores atuais são preservados.
+      // FAIXAS E IMPRESSAO ficam por conta da Precificacao: o cadastro
+      // nao os envia, entao os valores atuais sao preservados.
+      //
+      // O PRECO DE VENDA e diferente, e essa diferenca custou caro. A
+      // regra era "preco vem da Precificacao", so que produto SEM tabela
+      // ficava com um `sale_price` orfao — gravado numa importacao,
+      // usado pelo PDV, e invisivel em toda a interface. O cadastro
+      // mostrava "Custo de Compra 2,11", o pedido cobrava 4,53, e nao
+      // havia tela nenhuma onde os dois numeros se encontrassem.
+      //
+      // Agora o campo existe e so e enviado quando NAO ha tabela: com
+      // tabela, quem manda no preco continua sendo ela.
       const payload = {
         ...form,
         name: form.name.toUpperCase(),
         cost_price: parseFloat(form.cost_price) || 0,
+        ...(form.pricing_sheet_id ? {} : { sale_price: parseFloat(String(form.sale_price).replace(',', '.')) || 0 }),
         current_stock: parseInt(form.current_stock) || 0,
         category_id: form.category_id || null,
         supplier_id: form.supplier_id || null,
@@ -257,12 +279,36 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
         </div>
       </div>
 
-      {/* Custo e estoque — o preço de VENDA vem da Precificação */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* CUSTO, PRECO E ESTOQUE.
+          O preco de venda passou a aparecer aqui porque ele existia e
+          nao aparecia em lugar nenhum: quem abria o cadastro via so o
+          custo e concluia que era o preco. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label className="label">Custo de Compra (R$)</label>
           <input type="number" step="0.01" min="0" className="input"
             value={form.cost_price} onChange={e => set('cost_price', e.target.value)} placeholder="0,00" />
+          <p className="text-xs text-gray-400 mt-1">O que você paga. Não é o preço de venda.</p>
+        </div>
+        <div>
+          <label className="label">
+            Preço de venda (R$)
+            {form.pricing_sheet_id && <span className="text-xs font-normal text-gray-400"> — da tabela</span>}
+          </label>
+          <input type="number" step="0.01" min="0"
+            className={`input ${form.pricing_sheet_id ? 'bg-gray-100 text-gray-500' : ''}`}
+            value={form.sale_price} onChange={e => set('sale_price', e.target.value)}
+            disabled={!!form.pricing_sheet_id} placeholder="0,00" />
+          <p className="text-xs mt-1" style={{ color: form.pricing_sheet_id ? '#9ca3af' : '#2563eb' }}>
+            {form.pricing_sheet_id
+              ? 'Calculado pela Tabela de Precificação abaixo — para mudar, edite a tabela.'
+              : 'É este o valor que o pedido de venda vai cobrar.'}
+          </p>
+          {margem !== null && (
+            <p className="text-xs mt-0.5" style={{ color: margem < 0 ? '#dc2626' : '#6b7280' }}>
+              Margem sobre o custo: {margem.toFixed(1)}%
+            </p>
+          )}
         </div>
         <div>
           <label className="label">Estoque atual (un.)</label>
@@ -285,8 +331,11 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
           ))}
         </select>
         <p className="text-xs text-gray-400 mt-1">
-          O preço de venda é calculado por esta tabela (faixas de quantidade + impressão + margem).
-          Crie e edite as tabelas em <b>Precificação → Formação de Preço</b> (marque a ficha como “tabela mestre”).
+          {form.pricing_sheet_id
+            ? <>Com tabela, o preço de venda é <b>calculado</b> por ela (faixas de quantidade + impressão + margem)
+                e o campo acima fica travado. Edite em <b>Engenharia de Custos → Formação de Preço</b>.</>
+            : <>Sem tabela, vale o <b>Preço de venda</b> digitado acima. Escolher uma tabela passa o comando
+                para ela — crie em <b>Engenharia de Custos → Formação de Preço</b> (marque a ficha como “tabela mestre”).</>}
         </p>
       </div>
 
