@@ -394,10 +394,21 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     queryFn: () => api.get('/shipping/carriers'),
   });
   const carrierSel = (carriers?.data || []).find(c => c.id === carrierId) || null;
-  // "Retirar em mãos" é uma opção fixa da lista, não uma transportadora
-  // cadastrada: o pedido fica sem carrier_id e a informação vai na observação.
-  const isRetirada = !!carrierSel?.is_pickup;
-  const carrierLabel = carrierSel ? (carrierSel.trade_name || carrierSel.name) : '';
+
+  /**
+   * QUANDO A "TRANSPORTADORA" E O PROPRIO BALCAO.
+   *
+   * A resposta certa e a coluna `is_pickup` (migracao 097), marcada no
+   * cadastro da transportadora. Mas ela depende de alguem ter clicado
+   * naquele check — e quando ninguem clicou o sistema nao avisa: ele
+   * so continua pedindo frete e cotacao de um pedido que o cliente vem
+   * buscar, sem dizer por que.
+   *
+   * Entao o nome tambem vale como resposta. Uma transportadora chamada
+   * "RETIRAR NO LOCAL" e retirada, tenha marcado o check ou nao.
+   */
+  const carrierLabel = carrierSel ? String(carrierSel.trade_name || carrierSel.name || '').toUpperCase() : '';
+  const isRetirada = !!carrierSel && (carrierSel.is_pickup || /\bRETIRA(R|DA)\b/.test(carrierLabel));
 
   // Tipos (categorias) de produto — para o filtro do painel de produtos
   const { data: productTypes = [] } = useQuery({
@@ -1171,9 +1182,29 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               quando ninguem transporta. */}
           <div className="min-w-0">
             <label className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><Truck size={12} /> Transportadora</label>
-            <select className="input text-sm w-full" value={carrierId} onChange={e => { setCarrierId(e.target.value); setShowSched(false); }}>
+            {/* CAIXA ALTA NA TELA, e nao no cadastro. Quem digitar
+                "Retirar no local" na Logistica ve "RETIRAR NO LOCAL"
+                aqui — a grafia do pedido nao fica refem de como o nome
+                foi datilografado. */}
+            <select className="input text-sm w-full uppercase" value={carrierId}
+              onChange={e => {
+                setCarrierId(e.target.value);
+                setShowSched(false);
+                // Escondido com valor dentro, o frete continuaria
+                // entrando no total sem ninguem conseguir ve-lo para
+                // tirar. Some zerado.
+                const c = (carriers?.data || []).find(x => x.id === e.target.value);
+                const nome = String(c?.trade_name || c?.name || '').toUpperCase();
+                if (c && (c.is_pickup || /\bRETIRA(R|DA)\b/.test(nome))) {
+                  setFreightInput(''); setQuoteNumber(''); setFrete(null);
+                }
+              }}>
               <option value="">— selecione —</option>
-              {(carriers?.data || []).map(c => <option key={c.id} value={c.id}>{c.trade_name || c.name}</option>)}
+              {(carriers?.data || []).map(c => (
+                <option key={c.id} value={c.id} className="uppercase">
+                  {String(c.trade_name || c.name || '').toUpperCase()}
+                </option>
+              ))}
             </select>
             {carrierId && !isRetirada && (
               <button type="button" onClick={() => setShowSched(v => !v)} title="Horários de coleta"
@@ -1183,7 +1214,10 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             )}
           </div>
 
-          {/* Valor do frete */}
+          {/* Frete e cotacao SOMEM na retirada — nao existe frete de
+              quem vem buscar. E somem zerados: escondido com valor
+              dentro, o frete continuaria entrando no total sem ninguem
+              conseguir ve-lo para tirar. */}
           <div className={isRetirada ? 'hidden' : ''}>
             <label className="text-xs font-medium text-gray-500 block mb-1">Valor do frete (R$)</label>
             <input type="text" inputMode="decimal" className="input text-sm w-full" value={freightInput}
