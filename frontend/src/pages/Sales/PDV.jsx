@@ -133,21 +133,21 @@ function palpiteBorda(product, variantName) {
   return hay.includes('borda') ? 'Com borda' : 'Sem borda';
 }
 
-// A RETIRADA E UMA TRANSPORTADORA CADASTRADA, E NAO UMA OPCAO FALSA.
+// A RETIRADA E UMA OPCAO DO SELETOR, E NAO UMA TRANSPORTADORA.
 //
-// "Retirar em maos" ja foi um item fixo deste seletor: aparecia na
-// lista, nao era transportadora nenhuma, e existia so para o operador
-// conseguir dizer que o cliente ia buscar.
+// Ja tentei o contrario: tirar "retirar em maos" da lista e esperar que
+// uma transportadora cadastrada significasse retirada. Nao ha essa
+// linha sobrando. A Lyon ENTREGA com o proprio nome — "LYON COPOS" e
+// transportadora de verdade, com frete e cotacao —, entao trata-la
+// como balcao fazia as entregas proprias pularem "Em Transito".
 //
-// A Lyon resolveu melhor: cadastrou "RETIRAR NO LOCAL" como
-// transportadora de verdade, com o proprio CNPJ e horario de balcao. O
-// seletor entao mostrava as tres cadastradas MAIS a opcao falsa — duas
-// formas de dizer a mesma coisa, e o operador adivinhando qual delas o
-// sistema entende. Sobrou a de verdade.
+// Retirada e a AUSENCIA de transporte. O pedido sai sem carrier_id e
+// com `delivery_mode = retirada` (migracao 090), que e o que
+// lib/atencao.js le para pular a fase.
 //
-// Quem diz que aquela linha e retirada e a coluna `is_pickup` da
-// transportadora (migracao 097) — e e dela que sai o `delivery_mode`,
-// que lib/atencao.js le para pular "Em Transito".
+// A coluna `is_pickup` (migracao 097) continua valendo em paralelo:
+// marcar uma transportadora como retirada no cadastro faz ela se
+// comportar igual a opcao fixa.
 
 // mode: 'sale' (pedido de venda) | 'quote' (orçamento — salva e gera a foto PNG)
 // customerId: abre já com este cliente escolhido (a carteira do vendedor
@@ -393,34 +393,28 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     queryKey: ['carriers'],
     queryFn: () => api.get('/shipping/carriers'),
   });
+  /**
+   * RETIRAR NO LOCAL É UMA OPÇÃO DO SELETOR, E NÃO UMA TRANSPORTADORA.
+   *
+   * Tentei fazer dela uma linha do cadastro e estava errado: a Lyon
+   * ENTREGA com o próprio nome — "LYON COPOS" é transportadora de
+   * verdade —, então não há linha cadastrada sobrando para significar
+   * "o cliente vem buscar". Ela é a ausência de transporte, e por isso
+   * mora aqui, ao lado das transportadoras e não entre elas.
+   *
+   * O pedido sai sem `carrier_id` e com `delivery_mode = retirada`, que
+   * é o que faz o fluxo pular a fase "Em Trânsito" (migração 090).
+   */
+  const RETIRADA = '__retirada';
+
   const carrierSel = (carriers?.data || []).find(c => c.id === carrierId) || null;
   const nomeCarrier = c => String(c?.trade_name || c?.name || '').toUpperCase();
 
-  /**
-   * QUANDO A "TRANSPORTADORA" E O PROPRIO BALCAO.
-   *
-   * A resposta e a coluna `is_pickup` (migracao 097) — que so agora
-   * chega aqui: a rota /shipping/carriers nao a selecionava, entao
-   * marcar "o cliente retira no local" no cadastro nao mudava nada no
-   * pedido. O nome fica como segunda resposta, para o caso de alguem
-   * cadastrar a retirada sem marcar o check.
-   */
-  const ehRetirada = c => !!c && (c.is_pickup || /\bRETIRA(R|DA)\b/.test(nomeCarrier(c)));
-
-  /**
-   * A LINHA DA RETIRADA SE CHAMA "RETIRAR NO LOCAL".
-   *
-   * Ela esta cadastrada como "LYON COPOS" porque tem o CNPJ da propria
-   * Lyon — correto para a nota, e inutil no seletor: entre BRASPRESS e
-   * VRUM, "LYON COPOS" nao se le como "o cliente vem buscar". O nome
-   * de verdade continua no cadastro; aqui vai o que a pessoa procura.
-   */
-  const rotuloCarrier = c => (ehRetirada(c)
-    ? `RETIRAR NO LOCAL — ${nomeCarrier(c)}`
-    : nomeCarrier(c));
-
-  const carrierLabel = carrierSel ? rotuloCarrier(carrierSel) : '';
-  const isRetirada = ehRetirada(carrierSel);
+  // O check "o cliente retira no local" do cadastro (migração 097)
+  // continua valendo: se alguém marcar uma transportadora como
+  // retirada, ela se comporta como a opção fixa.
+  const isRetirada = carrierId === RETIRADA || !!carrierSel?.is_pickup;
+  const carrierLabel = carrierId === RETIRADA ? 'RETIRAR NO LOCAL' : nomeCarrier(carrierSel);
 
   // Tipos (categorias) de produto — para o filtro do painel de produtos
   const { data: productTypes = [] } = useQuery({
@@ -1057,7 +1051,10 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       freight: freteValue,
       // A retirada TEM transportadora (a linha do proprio balcao), e
       // zera-la apagaria de qual ponto o cliente vai retirar.
-      carrier_id: carrierId || null,
+      // RETIRADA e uma opcao da tela, nao uma linha de TRANSPORTADORAS:
+      // mandar o sentinela como id quebraria a chave estrangeira. O que
+      // conta para o fluxo e o `delivery_mode` logo abaixo.
+      carrier_id: (carrierId && carrierId !== RETIRADA) ? carrierId : null,
       // A COLUNA que o fluxo le para pular "Em Transito" (migracao 090).
       delivery_mode: isRetirada ? 'retirada' : 'entrega',
       payment_adjustment: paymentAdj,
@@ -1205,15 +1202,24 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 // Escondido com valor dentro, o frete continuaria
                 // entrando no total sem ninguem conseguir ve-lo para
                 // tirar. Some zerado.
-                if (ehRetirada((carriers?.data || []).find(x => x.id === e.target.value))) {
+                const c = (carriers?.data || []).find(x => x.id === e.target.value);
+                if (e.target.value === RETIRADA || c?.is_pickup) {
                   setFreightInput(''); setQuoteNumber(''); setFrete(null);
                 }
               }}>
               <option value="">— selecione —</option>
               {(carriers?.data || []).map(c => (
-                <option key={c.id} value={c.id} className="uppercase">{rotuloCarrier(c)}</option>
+                <option key={c.id} value={c.id} className="uppercase">{nomeCarrier(c)}</option>
               ))}
+              <option value={RETIRADA}>RETIRAR NO LOCAL</option>
             </select>
+            {/* O horário existe porque "retira no local" sem hora vira
+                cliente na porta fora do expediente. */}
+            {carrierId === RETIRADA && (
+              <p className="mt-1 text-[11px] text-gray-500 leading-snug">
+                Segunda a sexta, das <b>08:00 às 11:00</b> e das <b>14:00 às 16:00</b>.
+              </p>
+            )}
             {carrierId && !isRetirada && (
               <button type="button" onClick={() => setShowSched(v => !v)} title="Horários de coleta"
                 className="mt-1 text-gray-400 hover:text-primary-600 flex items-center gap-1 text-xs">

@@ -5,60 +5,25 @@ const { audit } = require('../lib/audit');
 const { cotar, getFreteConfig, ufFromCep } = require('../lib/shipping');
 const { braspressTracking, bpReady } = require('../lib/braspress');
 
-// ============================================================
-// TRANSPORTADORAS ATIVAS — e qual delas é "o cliente vem buscar".
+// Transportadoras ativas (para escolher no pedido) — acessível ao módulo de vendas
 //
 // `is_pickup` (migração 097) PRECISA vir aqui. A coluna existia e o
 // cadastro em Logística sabia gravá-la, mas esta rota — a única que o
-// pedido de venda consulta — não a selecionava. Marcar "o cliente
-// retira no local" não mudava nada no pedido. Campo que decide
+// pedido de venda consulta — não a selecionava. Campo que decide
 // comportamento e não viaja é campo que não existe.
 //
-// E A COLUNA SOZINHA NÃO BASTA, porque ela nasceu FALSE para todas as
-// linhas já cadastradas: quem registrou a retirada antes da migração
-// continua com ela desmarcada, e não tem por que saber que precisa
-// voltar lá. Então o servidor deduz, por dois sinais que não dependem
-// de ninguém clicar em nada:
-//
-//   • MESMO CNPJ DA EMPRESA. Uma "transportadora" com o CNPJ da
-//     própria Lyon não transporta nada — é o balcão dela.
-//   • MESMO NOME DA EMPRESA. O cadastro da retirada costuma sair com
-//     o nome da loja ("LYON COPOS"), que é o que a torna irreconhecível
-//     no seletor, entre BRASPRESS e VRUM.
-//
-// A coluna continua sendo a resposta certa; isto é a rede embaixo dela.
-// Marcar o check no cadastro segue valendo e ganha de tudo.
-// ============================================================
-
-const soDigitos = v => String(v || '').replace(/\D/g, '');
-const chaveNome = v => String(v || '')
-  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-
-// Um nome contém o outro (e não é um pedaço curto demais para valer).
-function mesmoNome(a, b) {
-  const x = chaveNome(a), y = chaveNome(b);
-  if (x.length < 4 || y.length < 4) return false;
-  return x.includes(y) || y.includes(x);
-}
-
+// O servidor NÃO tenta adivinhar qual linha é a retirada. Tentei
+// deduzir por CNPJ e nome iguais aos da empresa, e estava errado: a
+// Lyon entrega com o próprio nome, e a dedução transformava as
+// entregas próprias em retirada — que pularia a fase "Em Trânsito"
+// sem ninguém pedir. Quem responde isso é o check no cadastro, e a
+// opção fixa "RETIRAR NO LOCAL" do seletor.
 router.get('/carriers', async (req, res) => {
   try {
-    const [{ data }, { data: empresa }] = await Promise.all([
-      supabase.from('TRANSPORTADORAS')
-        .select('id, name, trade_name, cnpj, whatsapp, phone, pickup_schedule, is_pickup')
-        .eq('tenant_id', req.tenantId).eq('is_active', true).order('name'),
-      supabase.from('EMPRESAS').select('name, cnpj').eq('id', req.tenantId).maybeSingle(),
-    ]);
-
-    const cnpjEmpresa = soDigitos(empresa?.cnpj);
-    const lista = (data || []).map(c => ({
-      ...c,
-      is_pickup: !!c.is_pickup
-        || (!!cnpjEmpresa && soDigitos(c.cnpj) === cnpjEmpresa)
-        || mesmoNome(c.trade_name || c.name, empresa?.name),
-    }));
-    res.json({ data: lista });
+    const { data } = await supabase.from('TRANSPORTADORAS')
+      .select('id, name, trade_name, whatsapp, phone, pickup_schedule, is_pickup')
+      .eq('tenant_id', req.tenantId).eq('is_active', true).order('name');
+    res.json({ data: data || [] });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
