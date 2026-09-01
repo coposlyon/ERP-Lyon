@@ -564,8 +564,12 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   // Abre com o preço sugerido da faixa e deixa ajustar antes de entrar
   // no pedido: quantidade, valor unitário, desconto (% ou R$) e a cor da
   // personalização.
-  function openLaunch(product, variantName, variantCode) {
-    setLaunch({
+  // O card em branco. Uma funcao so porque DOIS caminhos precisam
+  // dele: abrir o produto e o Acumular. Enquanto o Acumular limpava a
+  // mao — uma lista de campos escrita a parte — todo campo novo do
+  // card nascia sujo, porque ninguem lembrava de acrescenta-lo la.
+  function lancamentoZerado(product, variantName, variantCode) {
+    return {
       product,
       variantName: variantName || null,
       variantCode: variantCode || null,
@@ -580,7 +584,11 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       ink: product.ink_type || '',
       acab: [],
       acabCor: {},                // { 'Cor degradê': 'AZUL/ROSA', ... }
-    });
+    };
+  }
+
+  function openLaunch(product, variantName, variantCode) {
+    setLaunch(lancamentoZerado(product, variantName, variantCode));
     setTimeout(() => qtyRef.current?.select(), 40);
   }
 
@@ -693,8 +701,8 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     });
   }
 
-  // Confirmar (F2) fecha o card. Acumular (F3) mantém aberto no mesmo
-  // produto, com a quantidade zerada, para lançar outra cor/quantidade.
+  // Confirmar (F2) fecha o card. Acumular (F3) guarda o item e ZERA o
+  // card inteiro, no mesmo produto, para o próximo lançamento.
   function commitLaunch(keepOpen) {
     if (!launch) return;
     const l = launch;
@@ -719,8 +727,11 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     pushLaunchItem(l, q, price, disc, color, !!l.priceTouched);
     toast.success(`${l.variantName || l.product.name} ${Number.isInteger(l.editIndex) ? 'atualizado' : 'adicionado'}`, { duration: 1200 });
     if (keepOpen) {
-      // mantém borda e tinta (são do copo) e limpa o resto para o próximo lançamento
-      setLaunch(cur => cur && { ...cur, qty: '1', discPercent: '0', discStr: maskMoney(0), color: '', acab: [] });
+      // ZERA TUDO. Antes guardava o preço digitado, a borda, o tipo de
+      // borda e a cor dos acabamentos — e o lançamento seguinte saía
+      // com o desconto do anterior sem ninguém notar. O card volta
+      // exatamente ao que era quando o produto foi aberto.
+      setLaunch(cur => cur && lancamentoZerado(cur.product, cur.variantName, cur.variantCode));
       setTimeout(() => qtyRef.current?.select(), 30);
     } else {
       setLaunch(null);
@@ -1635,7 +1646,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 {items.length === 0 ? (
                   <p className="px-3 py-4 text-xs text-gray-500 leading-relaxed">
                     Nenhum item ainda.<br />
-                    <b className="text-gray-700">Acumular (F3)</b> lança este e continua no mesmo produto.<br />
+                    <b className="text-gray-700">Acumular (F3)</b> lança o item e zera o formulário para o próximo.<br />
                     <b className="text-gray-700">Confirmar (F2)</b> lança e fecha.
                   </p>
                 ) : (
