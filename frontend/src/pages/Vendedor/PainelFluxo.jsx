@@ -93,6 +93,9 @@ export default function PainelFluxo({ v, id, fluxo }) {
 
   const { fase_atual: fase, acao, requisitos = [], pagamento, voltar: recuo } = fluxo;
   const producao = fluxo.producao || {};
+  // A lista de parcelas so faz sentido na fase do pagamento — e agora e
+  // ela que destrava a etapa, entao e a primeira coisa a aparecer ali.
+  const naFaseDoPagamento = fase?.key === 'pagamento';
   const ocupado = avancar.isPending || voltar.isPending || enviarProducao.isPending;
 
   /**
