@@ -731,12 +731,24 @@ router.get('/config/:userId', async (req, res) => {
  * ACRESCENTA. Para deixar um dono so, remove-se o outro — que e uma
  * decisao, e por isso um clique proprio.
  */
+/**
+ * ATRIBUIR OU TIRAR ESTADOS DE UM VENDEDOR.
+ *
+ * Aceita `uf` (um) ou `ufs` (uma lista), e a lista existe por um motivo
+ * concreto: esta rota faz LER-ALTERAR-GRAVAR no array `territory`.
+ * Mandar vinte estados como vinte requisicoes faz as vinte lerem o
+ * mesmo array antigo e gravarem por cima umas das outras — sobra UMA.
+ * Com a lista, e uma leitura e uma gravacao, e os vinte entram.
+ */
 router.post('/territorio', requireManager, async (req, res) => {
-  const uf = String(req.body?.uf || '').toUpperCase().trim();
+  const brutos = Array.isArray(req.body?.ufs) ? req.body.ufs : [req.body?.uf];
+  const ufs = [...new Set(brutos.map(x => String(x || '').toUpperCase().trim()).filter(Boolean))];
   const userId = String(req.body?.user_id || '').trim();
   const remover = req.body?.acao === 'remover';
 
-  if (!V.ehUf(uf)) return res.status(400).json({ error: `"${uf}" nao e um estado brasileiro.` });
+  if (!ufs.length) return res.status(400).json({ error: 'Informe ao menos um estado.' });
+  const invalido = ufs.find(uf => !V.ehUf(uf));
+  if (invalido) return res.status(400).json({ error: `"${invalido}" nao e um estado brasileiro.` });
   if (!userId) return res.status(400).json({ error: 'Escolha o vendedor' });
 
   try {
@@ -746,9 +758,10 @@ router.post('/territorio', requireManager, async (req, res) => {
 
     const base = (Array.isArray(atual?.territory) ? atual.territory : [])
       .map(x => String(x).toUpperCase());
+    const alvo = new Set(ufs);
     const territory = remover
-      ? base.filter(x => x !== uf)
-      : [...new Set([...base, uf])].sort();
+      ? base.filter(x => !alvo.has(x))
+      : [...new Set([...base, ...ufs])].sort();
 
     // Vendedor que ainda nao tem linha em VENDEDORES ganha uma com os
     // mesmos padroes do PUT — atribuir um estado nao pode ser a porta
@@ -765,8 +778,8 @@ router.post('/territorio', requireManager, async (req, res) => {
     }, { onConflict: 'user_id' }).select().single();
     if (error) throw error;
 
-    audit(req, 'update', 'vendedor', userId, { territorio: remover ? 'remover' : 'atribuir', uf, territory });
-    res.json({ ok: true, user_id: userId, territory: data.territory || territory });
+    audit(req, 'update', 'vendedor', userId, { territorio: remover ? 'remover' : 'atribuir', ufs, territory });
+    res.json({ ok: true, user_id: userId, ufs, territory: data.territory || territory });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

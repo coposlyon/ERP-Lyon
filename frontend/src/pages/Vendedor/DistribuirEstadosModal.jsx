@@ -21,7 +21,7 @@
 // ============================================================
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, MapPin, UserPlus, Loader2, Check } from 'lucide-react';
+import { X, MapPin, Loader2, Check } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { useVend, UF_NOME, coresDosVendedores } from './ui';
@@ -30,7 +30,6 @@ import { UF_LIST } from './BrasilMap';
 export default function DistribuirEstadosModal({ aberto, onClose, cobertura }) {
   const v = useVend();
   const qc = useQueryClient();
-  const [escolha, setEscolha] = useState({});   // { UF: user_id } — o select de cada linha
 
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedor-lista'],
@@ -41,11 +40,15 @@ export default function DistribuirEstadosModal({ aberto, onClose, cobertura }) {
   const cores = coresDosVendedores(cobertura);
 
   const mexer = useMutation({
-    mutationFn: ({ uf, user_id, acao }) => api.post('/vendedor/territorio', { uf, user_id, acao }),
+    // `ufs` (lista) e nao `uf`: atribuir vinte estados como vinte
+    // requisicoes fazia as vinte lerem o mesmo territorio antigo e
+    // gravarem por cima umas das outras — sobrava um.
+    mutationFn: ({ ufs, user_id, acao }) => api.post('/vendedor/territorio', { ufs, user_id, acao }),
     onSuccess: (_, vars) => {
+      const n = vars.ufs.length;
       toast.success(vars.acao === 'remover'
-        ? `${vars.uf} devolvido — sem vendedor`
-        : `${vars.uf} atribuído`);
+        ? `${vars.ufs.join(' ')} devolvido — sem vendedor`
+        : n === 1 ? `${vars.ufs[0]} atribuído` : `${n} estados atribuídos`);
       qc.invalidateQueries({ queryKey: ['vendedor-dashboard'] });
       qc.invalidateQueries({ queryKey: ['vendedor-lista'] });
     },
@@ -113,7 +116,7 @@ export default function DistribuirEstadosModal({ aberto, onClose, cobertura }) {
                         style={{ background: `${cor}26`, color: cor }}>
                         {d.name}
                         <button
-                          onClick={() => mexer.mutate({ uf, user_id: d.user_id, acao: 'remover' })}
+                          onClick={() => mexer.mutate({ ufs: [uf], user_id: d.user_id, acao: 'remover' })}
                           disabled={mexer.isPending}
                           title={`Tirar ${uf} de ${d.name}`}
                           className="opacity-70 hover:opacity-100 disabled:opacity-30">
@@ -124,38 +127,69 @@ export default function DistribuirEstadosModal({ aberto, onClose, cobertura }) {
                   })}
                 </span>
 
+                {/* ESCOLHER JA SALVA.
+                    Antes o seletor so guardava a escolha na memoria da
+                    tela e era preciso clicar num botao azul de 20px ao
+                    lado para gravar. Quem escolhia o vendedor de varios
+                    estados e clicava em "Concluir" — que tem um ✓ e
+                    parece Salvar, mas so fechava a janela — perdia tudo
+                    e via a tela igualzinha. O X ao lado do nome ja
+                    removia na hora; escolher agora atribui na hora,
+                    pela mesma logica. */}
                 <span className="flex items-center gap-1.5 shrink-0">
+                  {ocupado && <Loader2 size={13} className="animate-spin" style={{ color: '#60a5fa' }} />}
                   <select
-                    value={escolha[uf] || ''}
-                    onChange={e => setEscolha(x => ({ ...x, [uf]: e.target.value }))}
+                    value=""
+                    onChange={e => {
+                      const id = e.target.value;
+                      if (id) mexer.mutate({ ufs: [uf], user_id: id, acao: 'atribuir' });
+                    }}
                     style={{ ...v.control, padding: '0.3rem 0.5rem', fontSize: '0.75rem', maxWidth: 170 }}
-                    disabled={!livres.length}>
+                    disabled={!livres.length || mexer.isPending}>
                     <option value="">{livres.length ? '— atribuir a —' : 'todos já atendem'}</option>
                     {livres.map(s => <option key={s.user_id} value={s.user_id}>{s.name}</option>)}
                   </select>
-                  <button
-                    onClick={() => mexer.mutate({ uf, user_id: escolha[uf], acao: 'atribuir' })}
-                    disabled={!escolha[uf] || mexer.isPending}
-                    title="Atribuir este estado"
-                    className="btn btn-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{ background: '#2563eb', color: 'white', padding: '0.3rem 0.55rem' }}>
-                    {ocupado ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
-                  </button>
                 </span>
               </div>
             );
           })}
         </div>
 
-        <div className="px-5 py-3 flex flex-wrap items-center justify-between gap-2"
-          style={{ borderTop: `1px solid ${v.divider}` }}>
-          <p className="text-[11px]" style={{ color: v.textSubtle }}>
-            Atribuir <b>acrescenta</b>: um estado pode ter mais de um vendedor. Para deixar um só,
-            tire o outro no X ao lado do nome.
-          </p>
-          <button onClick={onClose} className="btn-secondary btn-sm">
-            <Check size={14} /> Concluir
-          </button>
+        <div className="px-5 py-3 space-y-2" style={{ borderTop: `1px solid ${v.divider}` }}>
+          {/* DAR TODOS DE UMA VEZ.
+              Era o que se estava tentando fazer estado por estado, e a
+              rota aceita a lista inteira numa requisicao so. */}
+          {semDono > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs" style={{ color: v.textPrimary }}>
+                Atribuir os <b style={{ color: '#fbbf24' }}>{semDono}</b> sem vendedor a:
+              </span>
+              <select
+                value=""
+                onChange={e => {
+                  const id = e.target.value;
+                  if (!id) return;
+                  const orfaos = UF_LIST.filter(uf => !(cobertura?.[uf] || []).length);
+                  if (orfaos.length) mexer.mutate({ ufs: orfaos, user_id: id, acao: 'atribuir' });
+                }}
+                style={{ ...v.control, padding: '0.3rem 0.5rem', fontSize: '0.75rem', maxWidth: 200 }}
+                disabled={mexer.isPending}>
+                <option value="">— escolher vendedor —</option>
+                {(vendedores || []).map(s => <option key={s.user_id} value={s.user_id}>{s.name}</option>)}
+              </select>
+              {mexer.isPending && <Loader2 size={14} className="animate-spin" style={{ color: '#60a5fa' }} />}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px]" style={{ color: v.textSubtle }}>
+              Escolher o vendedor <b>já salva</b>. Atribuir <b>acrescenta</b>: um estado pode ter mais
+              de um vendedor. Para deixar um só, tire o outro no X ao lado do nome.
+            </p>
+            <button onClick={onClose} className="btn-secondary btn-sm">
+              <Check size={14} /> Fechar
+            </button>
+          </div>
         </div>
       </div>
     </div>

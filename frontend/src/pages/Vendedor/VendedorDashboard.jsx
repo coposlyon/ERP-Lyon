@@ -23,7 +23,7 @@ import {
 import { Link } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { useVend, Panel, Kpi, MigracaoPendente, corUf, coresDosVendedores, Trofeu, fmtBRL, fmtUn, fmtPct, MESES, UF_NOME } from './ui';
+import { useVend, Panel, Kpi, MigracaoPendente, corUf, coresDosVendedores, Trofeu, fmtBRL, fmtUn, fmtPct, MESES, UF_NOME, regioesDasUfs } from './ui';
 import BrasilMap, { UF_LIST } from './BrasilMap';
 import RankingProdutosModal from './RankingProdutosModal';
 import CarteiraClientesModal from './CarteiraClientesModal';
@@ -102,6 +102,13 @@ export default function VendedorDashboard() {
   // que e o que se quer olhar quando se esta olhando UMA pessoa.
   const cobertura = data?.seller?.cobertura || null;
 
+  // QUEM ESTA SENDO OLHADO AGORA. Sem isto a legenda do territorio
+  // mostrava o PRIMEIRO responsavel do estado — abrindo o painel da
+  // Renata, o Rio Grande do Sul aparecia com o rosto e o nome do
+  // Administrador, que tambem atende RS. A pessoa procurava a si mesma
+  // na propria tela e achava outro.
+  const focoId = sellerId || user?.id || null;
+
   // O QUE O CHIP DE REGIAO DIZ.
   //
   // No "Meu painel" de um gestor, o painel ja mostra o pais inteiro
@@ -114,13 +121,30 @@ export default function VendedorDashboard() {
   // Com um vendedor escolhido no seletor, volta a ser o territorio
   // daquela pessoa — que e o que se quer ler ao olhar para ela.
   const regiaoDoTopo = useMemo(() => {
+    // O CHIP FALA EM REGIAO, NAO EM SIGLA NEM EM CONTAGEM.
+    //
+    // Ja disse "Regiao atendida: RIO GRANDE DO SUL" e ja disse "Regioes
+    // da equipe: 4 estados — PR RS SE TO". A segunda ainda fazia o
+    // leitor contar as etiquetas do painel ao lado e achar CINCO: RS
+    // aparece duas vezes la, uma por vendedor que atende. Dois numeros
+    // certos contando coisas diferentes e a pior especie de numero
+    // errado.
+    //
+    // Quem atende Rio Grande do Sul e Bahia atende "Sul e Nordeste", e
+    // e assim que se fala disso na empresa. Sigla e contagem vivem no
+    // painel de cobertura logo abaixo, que e o lugar delas.
     if (cobertura) {
-      const ufs = Object.keys(cobertura).filter(uf => (cobertura[uf] || []).length).sort();
-      if (ufs.length) return `Regiões da equipe: ${ufs.length} estado${ufs.length > 1 ? 's' : ''} — ${ufs.join(' ')}`;
-      return 'Nenhum estado com vendedor';
+      const ufs = Object.keys(cobertura).filter(uf => (cobertura[uf] || []).length);
+      const regioes = regioesDasUfs(ufs);
+      return regioes.length
+        ? `Regiões da equipe: ${regioes.join(' · ')}`
+        : 'Nenhum estado com vendedor';
     }
-    const propria = data?.seller?.region_label
-      || (territorio.length ? territorio.join(' / ') : null);
+    const regioes = regioesDasUfs(territorio);
+    // `region_label` e escrito a mao no cadastro e so vale quando nao ha
+    // territorio de onde deduzir — dado digitado envelhece, o territorio
+    // nao.
+    const propria = regioes.length ? regioes.join(' / ') : data?.seller?.region_label;
     return `Região atendida: ${propria || 'não definida'}`;
   }, [cobertura, data?.seller?.region_label, territorio]);
   const coresVend = useMemo(() => coresDosVendedores(cobertura), [cobertura]);
@@ -429,6 +453,7 @@ export default function VendedorDashboard() {
                   comprou={(compradores[uf] || 0) > 0}
                   compradores={compradores[uf] || 0}
                   responsaveis={data?.seller?.responsaveis?.[uf] || []}
+                  focoId={focoId}
                   onVerCidades={() => setCidadesUf(uf)} />
               ))}
             </div>
@@ -622,15 +647,22 @@ function LinhaDoVendedor({ p, v, cor, onVerCidades }) {
   );
 }
 
-function LinhaDoEstado({ uf, v, comprou, compradores, responsaveis, onVerCidades }) {
+function LinhaDoEstado({ uf, v, comprou, compradores, responsaveis, focoId, onVerCidades }) {
   const cor = corUf(uf, comprou);
   const nome = UF_NOME[uf] || uf;
-  const dono = responsaveis[0] || null;
-  const outros = responsaveis.length - 1;
+
+  // Quem voce esta olhando vem primeiro. Um estado pode ter mais de um
+  // responsavel, e mostrar o rosto do outro no painel de alguem e
+  // dizer que o territorio nao e dela.
+  const lista = focoId
+    ? [...responsaveis].sort((a, b) => (b.user_id === focoId) - (a.user_id === focoId))
+    : responsaveis;
+  const dono = lista[0] || null;
+  const outros = lista.length - 1;
 
   const legenda = comprou ? `${compradores} comprador(es) no período` : 'sem compras no período';
-  const quem = responsaveis.length
-    ? responsaveis.map(r => r.name).join(' · ')
+  const quem = lista.length
+    ? lista.map(r => r.name).join(' · ')
     : 'sem responsável definido';
 
   return (

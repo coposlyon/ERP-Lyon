@@ -51,6 +51,34 @@ export const UF_COR = {
  * escreve errado: bastava um "Espirito Santo" sem acento numa das copias
  * para a mesma UF aparecer de dois jeitos em duas telas vizinhas.
  */
+// ── As cinco regioes do IBGE ────────────────────────────────
+//
+// Quem atende Rio Grande do Sul e Bahia atende "Sul e Nordeste" — e e
+// assim que se fala do territorio no dia a dia, nao listando siglas.
+// A tela mostrava "RS BA" (ou pior, a contagem "2 estados"), e nenhuma
+// das duas e a resposta para "que regiao voce atende?".
+export const REGIAO_DA_UF = {
+  AC: 'Norte', AP: 'Norte', AM: 'Norte', PA: 'Norte', RO: 'Norte', RR: 'Norte', TO: 'Norte',
+  AL: 'Nordeste', BA: 'Nordeste', CE: 'Nordeste', MA: 'Nordeste', PB: 'Nordeste',
+  PE: 'Nordeste', PI: 'Nordeste', RN: 'Nordeste', SE: 'Nordeste',
+  DF: 'Centro-Oeste', GO: 'Centro-Oeste', MT: 'Centro-Oeste', MS: 'Centro-Oeste',
+  ES: 'Sudeste', MG: 'Sudeste', RJ: 'Sudeste', SP: 'Sudeste',
+  PR: 'Sul', RS: 'Sul', SC: 'Sul',
+};
+
+// Norte a Sul, e nao alfabetica: e a ordem em que o pais e falado.
+const ORDEM_REGIAO = ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'];
+
+/** As regioes de uma lista de UFs, sem repetir e na ordem do pais. */
+export function regioesDasUfs(ufs) {
+  const achadas = new Set();
+  for (const uf of ufs || []) {
+    const r = REGIAO_DA_UF[String(uf).toUpperCase()];
+    if (r) achadas.add(r);
+  }
+  return ORDEM_REGIAO.filter(r => achadas.has(r));
+}
+
 export const UF_NOME = {
   AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia',
   CE: 'Ceará', DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás',
