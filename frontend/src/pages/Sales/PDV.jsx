@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import SeletorOrigem from '@/components/UI/SeletorOrigem';
 import CampoData from '@/components/UI/CampoData';
+import { useAuth } from '@/contexts/AuthContext';
 import { generateQuotePng, buildQuoteNotes, downloadPng } from '@/lib/quotePng';
 import toast from 'react-hot-toast';
 import { expandVariants, expandVariantsWithCode } from '@/pages/Products/ProductVariantsModal';
@@ -119,6 +120,7 @@ const RETIRADA_LABEL = 'Retirar em mãos';
 // manda o cliente pela URL ao clicar na flecha de orçamento)
 export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const inModal = typeof onDone === 'function';
+  const { user } = useAuth();
   const isQuote = mode === 'quote';
   const [items, setItems] = useState([]);
   const [productSearch, setProductSearch] = useState('');
@@ -1240,34 +1242,48 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               <p className="text-sm">Nenhum item — clique em ADICIONAR PRODUTOS</p>
             </button>
           ) : (
-            <table className="w-full text-sm">
+            // A TABELA GANHOU COLUNA PROPRIA PARA CADA COISA.
+            // Codigo, cor e desconto viviam amontoados embaixo do nome,
+            // numa linha de texto cinza — dava para ler um item, nao
+            // para comparar dez. Com colunas, o olho desce a coluna.
+            // `overflow-x` porque oito colunas nao cabem num notebook
+            // pequeno, e cortar numero de dinheiro nao e opcao.
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[900px]">
               <thead>
                 <tr className="border-b border-gray-100">
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Produto</th>
-                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-500 uppercase w-44">Qtd</th>
-                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-28">Preço</th>
-                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-28">Total</th>
-                  <th className="w-8" />
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase w-28">Cód. Produto</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Nome do Produto</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase w-36">Cor da personalização</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500 uppercase w-24">Quantidade</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-32">Vr. Unitário Bruto</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-28">Vr. Desconto</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-32">Vr. Total Líquido</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase w-32">Vendedor</th>
+                  <th className="w-16" />
                 </tr>
               </thead>
               <tbody>
                 {items.map((item, i) => (
                   <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="px-4 py-2">
-                      <p className="font-medium text-sm flex items-center gap-2">
-                        {item.variant_code && <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{item.variant_code}</span>}
-                        <span>{item.name}</span>
-                      </p>
+                    <td className="px-3 py-2">
+                      {item.variant_code
+                        ? <span className="text-[11px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5">{item.variant_code}</span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2">
+                      <p className="font-medium text-sm">{item.name}</p>
+                      {/* Borda, tinta e acabamento continuam embaixo do
+                          nome: sao do COPO, e uma coluna para cada
+                          deixaria a tabela com treze. A cor subiu porque
+                          e a que se confere item a item. */}
                       {(() => {
-                        const partes = [
-                          item.print_color && `Personalização: ${item.print_color}`,
-                          item.borda,
-                          item.ink_type,
-                          item.acabamentos?.length && item.acabamentos.join(', '),
-                          item.discount > 0 && `Desconto: ${fmt(item.discount)}`,
-                        ].filter(Boolean);
+                        const partes = [item.borda, item.ink_type, item.acabamentos?.length && item.acabamentos.join(', ')].filter(Boolean);
                         return partes.length ? <p className="text-[11px] text-gray-400 mt-0.5">{partes.join(' · ')}</p> : null;
                       })()}
+                    </td>
+                    <td className="px-3 py-2 text-sm">
+                      {item.print_color || <span className="text-gray-300">—</span>}
                     </td>
                     {/* A LINHA E LEITURA; QUEM EDITA E O LAPIS.
                         Quantidade e preco eram editaveis aqui dentro, ao
@@ -1278,17 +1294,27 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                         outra metade em outro e como o item acabava
                         divergindo do que foi combinado.
                         Agora o lapis reabre o lancamento inteiro. */}
-                    <td className="px-4 py-2 text-center font-bold text-sm">{item.quantity}</td>
-                    <td className="px-4 py-2 text-right text-sm">
+                    <td className="px-3 py-2 text-center font-bold text-sm">{item.quantity}</td>
+                    <td className="px-3 py-2 text-right text-sm">
                       {fmt(item.unit_price)}
                       {item.price_tiers?.length > 0 && !item.priceTouched && (
                         <p className="text-[10px] text-blue-500 mt-0.5">faixa automática</p>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-right font-semibold">
+                    <td className="px-3 py-2 text-right text-sm">
+                      {item.discount > 0
+                        ? <span className="text-amber-600">− {fmt(item.discount)}</span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold">
                       {fmt(item.quantity * item.unit_price - (item.discount || 0))}
                     </td>
-                    <td className="px-4 py-2">
+                    {/* NAO HA CODIGO DE VENDEDOR NO SISTEMA — nem em
+                        USUARIOS nem em VENDEDORES existe esse campo. Vai
+                        o nome de quem esta lancando, que e quem a venda
+                        vai registrar como vendedor. */}
+                    <td className="px-3 py-2 text-xs text-gray-500 truncate">{user?.name || '—'}</td>
+                    <td className="px-3 py-2">
                       <div className="flex items-center gap-1">
                         <button onClick={() => editarItem(i)} title="Editar este item"
                           className="btn-ghost p-1 text-blue-400 hover:text-blue-600">
@@ -1304,6 +1330,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
           </div>
         </div>
