@@ -602,25 +602,40 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     if (!launch) return;
     const onKey = (e) => {
       if (e.key === 'F2')      { e.preventDefault(); e.stopPropagation(); commitLaunch(); }
-      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setLaunch(null); }
+      // Na lista, o ESC desiste da TROCA e não do item — fechar o card
+      // inteiro aqui apagaria o que já estava preenchido nele.
+      else if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation();
+        if (launch.buscando) fecharBusca(); else setLaunch(null);
+      }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   });
 
-  // Escolheu a linha na busca: o card sai da busca e vira o formulário
-  // daquele produto, com o preço da tabela dele já sugerido.
+  // Escolheu a linha na lista: o card volta a ser o formulário, agora
+  // com o produto dentro e o preço da tabela dele já sugerido.
   function escolherProduto(op) {
     setLaunch(lancamentoZerado(op.product, op.variante, op.codigo));
     setProductSearch('');
     setTimeout(() => qtyRef.current?.select(), 40);
   }
 
-  // O "Trocar": volta o MESMO card para a busca, sem fechar nada.
-  function trocarProduto() {
-    setLaunch({ product: null });
+  // O "Adicionar" (e o "Trocar", que é o mesmo botão depois que já há
+  // um produto): mostra a lista NO LUGAR do formulário, sem fechar o
+  // card nem perder o que já está preenchido.
+  function abrirBusca() {
+    setLaunch(l => l && ({ ...l, buscando: true }));
     setProductSearch('');
-    setTimeout(() => searchRef.current?.focus(), 40);
+    setTypeFilter('');
+    setVolFilter('');
+    setTimeout(() => searchRef.current?.focus(), 60);
+  }
+
+  // Desistiu de trocar: volta ao formulário como ele estava.
+  function fecharBusca() {
+    setLaunch(l => l && ({ ...l, buscando: false }));
+    setProductSearch('');
   }
 
   // ── Card de lançamento do item ──────────────────────────────────────
@@ -633,33 +648,33 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   // dependa de alguem lembrar de acrescenta-lo.
   function lancamentoZerado(product, variantName, variantCode) {
     return {
-      product,
+      // `product` null e o card recem-aberto, antes de escolher o
+      // produto: o formulario ja aparece, so que apagado, e o campo
+      // Produto e quem convida a escolher.
+      product: product || null,
+      buscando: false,            // true = a lista de produtos no lugar do formulario
       variantName: variantName || null,
       variantCode: variantCode || null,
       qty: '1',
-      priceStr: maskMoney(tierPrice(product.price_tiers, product.sale_price, 1)),
+      priceStr: maskMoney(product ? tierPrice(product.price_tiers, product.sale_price, 1) : 0),
       priceTouched: false,
       discPercent: '0',
       discStr: maskMoney(0),
       color: '',
-      borda: palpiteBorda(product, variantName),
+      borda: product ? palpiteBorda(product, variantName) : '',
       bordaTipo: '',              // qual borda (do catálogo) quando "Com borda"
-      ink: product.ink_type || '',
+      ink: product?.ink_type || '',
       acab: [],
       acabCor: {},                // { 'Cor degradê': 'AZUL/ROSA', ... }
     };
   }
 
-  // ADICIONAR PRODUTO abre o card VAZIO — a busca e o primeiro campo
-  // dele. Antes abria um card de produtos em cima da tela, e o
-  // lancamento vinha num terceiro card por cima daquele: tres camadas
-  // para lancar um copo.
+  // ADICIONAR PRODUTO abre o CARD DO ITEM, e nao a lista de produtos.
+  // A lista e um passo dentro dele — quem chega ve a ficha que vai
+  // preencher, e nao 97 linhas de catalogo antes de saber para que.
   function abrirLancamento() {
-    setLaunch({ product: null });
+    setLaunch(lancamentoZerado(null));
     setProductSearch('');
-    setTypeFilter('');
-    setVolFilter('');
-    setTimeout(() => searchRef.current?.focus(), 60);
   }
 
   function toggleAcab(a) {
@@ -1597,9 +1612,16 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       {/* O CARD DO ITEM — o unico. A busca do produto e a primeira
           etapa dele, e nao uma tela separada por cima. */}
       <Modal isOpen={!!launch} onClose={() => setLaunch(null)}
-        title={Number.isInteger(launch?.editIndex) ? 'EDITAR ITEM DO PEDIDO'
-          : launch?.product ? 'LANÇAMENTO DE PRODUTO' : 'ADICIONAR PRODUTO'} size="xl"
-        footer={
+        title={launch?.buscando ? 'ESCOLHER O PRODUTO'
+          : Number.isInteger(launch?.editIndex) ? 'EDITAR ITEM DO PEDIDO'
+          : 'LANÇAMENTO DE PRODUTO'} size="xl"
+        footer={launch?.buscando ? (
+          // Na lista o rodape e um botao so: voltar para a ficha. Um
+          // "Confirmar" aqui confirmaria o produto de antes da troca.
+          <button type="button" onClick={fecharBusca} className="btn-secondary">
+            <X size={15} /> Voltar <span className="text-gray-400 ml-1">ESC</span>
+          </button>
+        ) : (
           <>
             <button type="button" onClick={() => setLaunch(null)} className="btn-secondary">
               <X size={15} /> Cancelar <span className="text-gray-400 ml-1">ESC</span>
@@ -1613,9 +1635,9 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               </button>
             )}
           </>
-        }>
-        {/* SEM PRODUTO: a busca ocupa o card. */}
-        {launch && !launch.product && (
+        )}>
+        {/* A LISTA — um passo dentro do card, e não a porta dele. */}
+        {launch?.buscando && (
           <div className="flex flex-col" style={{ height: '58vh' }}>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -1693,30 +1715,44 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
           </div>
         )}
 
-        {/* COM PRODUTO: o formulário do item. */}
-        {launch?.product && (
+        {/* A FICHA DO ITEM. É o que abre; o produto entra nela. */}
+        {launch && !launch.buscando && (
           <div className="flex flex-col gap-5">
 
             <div className="space-y-4 flex-1 min-w-0 lj-caixa-alta">
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1">Produto</label>
-              <div className="input bg-gray-50 flex items-center gap-2 text-sm">
+              <div className={`input flex items-center gap-2 text-sm ${launch.product ? 'bg-gray-50' : 'bg-white border-primary-200'}`}>
                 {launch.variantCode && (
                   <span className="text-[10px] font-mono font-semibold text-indigo-600 bg-indigo-50 rounded px-1.5 py-0.5 shrink-0">{launch.variantCode}</span>
                 )}
-                <span className="font-medium text-gray-800 truncate flex-1">{launch.variantName || launch.product.name}</span>
-                {/* Escolheu errado: volta para a busca sem perder o card
-                    nem o que ja esta no pedido. Na edicao nao aparece —
+                <span className={`truncate flex-1 ${launch.product ? 'font-medium text-gray-800' : 'text-gray-400 normal-case'}`}>
+                  {launch.product ? (launch.variantName || launch.product.name) : 'Nenhum produto escolhido'}
+                </span>
+                {/* O MESMO BOTAO, DOIS NOMES. Vazio ele e "Adicionar" e
+                    e a unica coisa acesa da ficha; cheio ele e "Trocar",
+                    para quem clicou na linha errada. Na edicao some:
                     trocar o produto de um item ja lancado seria criar
                     outro item, e para isso existe o lixo + adicionar. */}
                 {!Number.isInteger(launch.editIndex) && (
-                  <button type="button" onClick={trocarProduto}
-                    className="text-xs font-semibold text-primary-600 hover:underline shrink-0">
-                    Trocar
+                  <button type="button" onClick={abrirBusca}
+                    className={`shrink-0 text-xs font-semibold ${launch.product
+                      ? 'text-primary-600 hover:underline'
+                      : 'btn-primary py-1 px-3'}`}>
+                    {launch.product ? 'Trocar' : <><Plus size={13} /> Adicionar</>}
                   </button>
                 )}
               </div>
             </div>
+
+            {/* SEM PRODUTO NAO HA O QUE PREENCHER. O `fieldset`
+                desabilita tudo o que esta dentro dele de uma vez — e
+                assim campo novo do card ja nasce protegido, sem
+                depender de alguem lembrar de por o `disabled`.
+                Digitar a quantidade antes de escolher o produto seria
+                perder o que digitou, porque escolher o produto refaz a
+                ficha com o preco da tabela dele. */}
+            <fieldset disabled={!launch.product} className={`space-y-4 ${launch.product ? '' : 'opacity-40'}`}>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
@@ -1730,7 +1766,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                   value={launch.priceStr}
                   onChange={e => setLaunch(l => ({ ...l, priceStr: e.target.value.replace(/[^\d.,]/g, ''), priceTouched: true }))}
                   onBlur={() => setLaunch(l => ({ ...l, priceStr: maskMoney(parseMoney(l.priceStr)) }))} />
-                {launch.product.price_tiers?.length > 0 && !launch.priceTouched && (
+                {launch.product?.price_tiers?.length > 0 && !launch.priceTouched && (
                   <p className="text-[10px] text-blue-500 mt-0.5">faixa automática</p>
                 )}
               </div>
@@ -1845,6 +1881,8 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 Total líquido do item: <span className="text-primary-600">{fmt(lNet)}</span>
               </div>
             </div>
+
+            </fieldset>
             </div>
           </div>
         )}
