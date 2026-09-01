@@ -123,13 +123,16 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const inModal = typeof onDone === 'function';
   const { user } = useAuth();
 
-  // O contador dos itens ja lancados: aceso quando ha item, apagado
-  // quando nao ha. Fica aqui fora porque template literal dentro do
-  // JSX do modal e um convite a erro de aspas.
-  const itemsBadge = 'text-[11px] font-bold rounded-full px-2 py-0.5 '
-    + (items.length ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-400');
   const isQuote = mode === 'quote';
   const [items, setItems] = useState([]);
+
+  // O contador dos itens ja lancados: aceso quando ha item, apagado
+  // quando nao ha. Depende de `items`, entao vem DEPOIS dele — const
+  // nao sobe, e ler antes derruba a tela inteira ("can't access
+  // lexical declaration before initialization"). Fica fora do JSX
+  // porque template literal la dentro e um convite a erro de aspas.
+  const itemsBadge = 'text-[11px] font-bold rounded-full px-2 py-0.5 '
+    + (items.length ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-400');
   const [productSearch, setProductSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState(''); // filtro por tipo (categoria) do produto
   const [volFilter, setVolFilter] = useState('');   // filtro por tamanho (ML), aparece após escolher o tipo
