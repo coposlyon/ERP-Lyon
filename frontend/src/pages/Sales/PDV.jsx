@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Search, Trash2, Pencil, ShoppingCart, User, Check, Loader2, X, Truck, Star, Plus, MoreHorizontal, MessageCircle, Download } from 'lucide-react';
+import { Search, Trash2, Pencil, ShoppingCart, User, Check, Loader2, X, Truck, Star, Plus, MoreHorizontal, MessageCircle, Download, Filter, ChevronUp, ChevronDown } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import SeletorOrigem from '@/components/UI/SeletorOrigem';
@@ -89,6 +89,39 @@ function Estoque({ valor }) {
 }
 
 // Acabamentos e técnicas marcáveis no lançamento do item. Todos opcionais.
+/**
+ * AS COLUNAS DA TABELA DE ITENS.
+ *
+ * Estavam escritas duas vezes — uma no `<thead>`, outra no `<td>` — e
+ * ordenar ou filtrar por elas exigiria uma terceira copia. Aqui cada
+ * coluna diz de uma vez o titulo, o alinhamento, a largura e COMO SE
+ * LE O VALOR dela num item. O cabecalho, o filtro e a ordenacao saem
+ * todos desta lista.
+ *
+ * `texto` e o que o filtro procura e o que a ordenacao alfabetica
+ * compara. `numero` existe so nas colunas de numero, porque ordenar
+ * "R$ 1.000,00" como texto poe o mil antes do nove.
+ */
+const COLUNAS_ITENS = [
+  { key: 'codigo', titulo: 'Cód. Produto', al: 'left', w: 'w-28',
+    texto: it => it.variant_code || '' },
+  { key: 'nome', titulo: 'Nome do Produto', al: 'left', w: '',
+    texto: it => it.name || '' },
+  { key: 'cor', titulo: 'Cor da personalização', al: 'left', w: 'w-36',
+    texto: it => it.print_color || '' },
+  { key: 'qtd', titulo: 'Quantidade', al: 'center', w: 'w-24',
+    texto: it => String(it.quantity ?? ''), numero: it => Number(it.quantity) || 0 },
+  { key: 'unit', titulo: 'Vr. Unitário Bruto', al: 'right', w: 'w-32',
+    texto: it => fmt(it.unit_price), numero: it => Number(it.unit_price) || 0 },
+  { key: 'desc', titulo: 'Vr. Desconto', al: 'right', w: 'w-28',
+    texto: it => (it.discount > 0 ? fmt(it.discount) : ''), numero: it => Number(it.discount) || 0 },
+  { key: 'total', titulo: 'Vr. Total Líquido', al: 'right', w: 'w-32',
+    texto: it => fmt((Number(it.quantity) || 0) * (Number(it.unit_price) || 0) - (Number(it.discount) || 0)),
+    numero: it => (Number(it.quantity) || 0) * (Number(it.unit_price) || 0) - (Number(it.discount) || 0) },
+  { key: 'vendedor', titulo: 'Vendedor', al: 'left', w: 'w-32',
+    texto: (it, ctx) => it.seller_name || ctx.vendedor || '' },
+];
+
 const ACABAMENTOS = ['Cor degradê', 'Cor bicolor', 'Jateado', 'Borda metalizada', 'Pintura', 'Laser', 'Transfer', 'DTF'];
 
 // O produto tem borda? Lê da variação escolhida e, se não disser, das
@@ -125,6 +158,12 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
 
   const isQuote = mode === 'quote';
   const [items, setItems] = useState([]);
+  // Ordenação e filtro da tabela de itens. `ordemItens.col` null = a
+  // ordem em que foram lançados, que é a ordem que o pedido guarda.
+  const [ordemItens, setOrdemItens] = useState({ col: null, dir: 'asc' });
+  const [filtrosItens, setFiltrosItens] = useState({});   // { coluna: texto }
+  const [mostrarFiltros, setMostrarFiltros] = useState(false);
+
   const [productSearch, setProductSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState(''); // filtro por tipo (categoria) do produto
   const [volFilter, setVolFilter] = useState('');   // filtro por tamanho (ML), aparece após escolher o tipo
@@ -691,6 +730,46 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     });
   }
 
+  /**
+   * AS LINHAS COMO A TABELA AS MOSTRA — filtradas e ordenadas.
+   *
+   * Carrega o INDICE ORIGINAL junto (`i`). O lápis e a lixeira mexem
+   * no item pela posição dele em `items`; se a tabela ordenasse e as
+   * ações usassem a posição na tela, ordenar por valor faria a lixeira
+   * apagar o item errado.
+   */
+  const linhasItens = useMemo(() => {
+    const ctx = { vendedor: user?.name || '' };
+    let linhas = items.map((it, i) => ({ it, i }));
+
+    for (const col of COLUNAS_ITENS) {
+      const alvo = String(filtrosItens[col.key] || '').trim().toLowerCase();
+      if (!alvo) continue;
+      linhas = linhas.filter(l => String(col.texto(l.it, ctx)).toLowerCase().includes(alvo));
+    }
+
+    const col = COLUNAS_ITENS.find(c => c.key === ordemItens.col);
+    if (col) {
+      const sinal = ordemItens.dir === 'asc' ? 1 : -1;
+      linhas = [...linhas].sort((a, b) => sinal * (col.numero
+        ? col.numero(a.it) - col.numero(b.it)
+        : String(col.texto(a.it, ctx)).localeCompare(String(col.texto(b.it, ctx)), 'pt-BR')));
+    }
+    return linhas;
+  }, [items, filtrosItens, ordemItens, user]);
+
+  const filtrosAtivos = Object.values(filtrosItens).filter(v => String(v || '').trim()).length;
+
+  // Clicar no título: primeira vez ordena crescente, a segunda inverte,
+  // a terceira devolve a ordem de lançamento.
+  function ordenarPor(key) {
+    setOrdemItens(o => {
+      if (o.col !== key) return { col: key, dir: 'asc' };
+      if (o.dir === 'asc') return { col: key, dir: 'desc' };
+      return { col: null, dir: 'asc' };
+    });
+  }
+
   // Confirmar (F2) guarda o item e fecha o card. Para lançar outro,
   // o operador clica em ADICIONAR PRODUTO de novo — um caminho só,
   // em vez de dois botões que faziam quase a mesma coisa.
@@ -1146,17 +1225,32 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
         </div>
         )}
 
-        {/* Itens do pedido + botão ADICIONAR PRODUTOS */}
-        <div className="card">
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
-            <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-              <ShoppingCart size={15} /> Itens do pedido{items.length > 0 ? ` (${items.length})` : ''}
-            </p>
+        {/* ITENS DO PEDIDO.
+            O botão de adicionar ficava DENTRO do card, na mesma faixa
+            do título: um botão azul cheio encostado na borda de cima da
+            tabela, que era o que deixava o bloco torto. Ele é a ação da
+            seção, não uma linha da tabela — então subiu para a barra
+            acima do card, e o card voltou a ser só a tabela. */}
+        <div>
+        <div className="flex items-center justify-between mb-2 gap-2">
+          <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+            <ShoppingCart size={15} /> Itens do pedido{items.length > 0 ? ` (${items.length})` : ''}
+          </p>
+          <div className="flex items-center gap-2">
+            {items.length > 0 && (
+              <button type="button" onClick={() => setMostrarFiltros(v => !v)}
+                title="Filtrar as linhas por coluna"
+                className={`btn-secondary text-sm ${mostrarFiltros || filtrosAtivos ? 'text-primary-600 border-primary-300' : ''}`}>
+                <Filter size={15} /> Filtrar{filtrosAtivos ? ` (${filtrosAtivos})` : ''}
+              </button>
+            )}
             <button type="button" onClick={abrirLancamento} className="btn-primary text-sm">
               <Plus size={15} /> ADICIONAR PRODUTO
             </button>
           </div>
-          <div className="max-h-[42vh] overflow-y-auto">
+        </div>
+        <div className="card">
+          <div>
           {items.length === 0 ? (
             <button type="button" onClick={abrirLancamento}
               className="w-full flex flex-col items-center justify-center h-36 text-gray-400 hover:text-primary-600 transition-colors">
@@ -1173,20 +1267,63 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[900px]">
               <thead>
+                {/* O TÍTULO É O BOTÃO DE ORDENAR. A seta só aparece na
+                    coluna que está ordenando — mostrar oito setas
+                    apagadas seria oito coisas para o olho descartar. */}
                 <tr className="border-b border-gray-100">
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase w-28">Cód. Produto</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Nome do Produto</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase w-36">Cor da personalização</th>
-                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500 uppercase w-24">Quantidade</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-32">Vr. Unitário Bruto</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-28">Vr. Desconto</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase w-32">Vr. Total Líquido</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase w-32">Vendedor</th>
+                  {COLUNAS_ITENS.map(col => (
+                    <th key={col.key} className={`px-3 py-2 text-${col.al} text-xs font-semibold text-gray-500 uppercase ${col.w}`}>
+                      <button type="button" onClick={() => ordenarPor(col.key)}
+                        title={`Ordenar por ${col.titulo}`}
+                        className={`inline-flex items-center gap-1 hover:text-primary-600 ${ordemItens.col === col.key ? 'text-primary-600' : ''}`}>
+                        <span>{col.titulo}</span>
+                        {ordemItens.col === col.key && (
+                          ordemItens.dir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                        )}
+                      </button>
+                    </th>
+                  ))}
                   <th className="w-16" />
                 </tr>
+
+                {/* A LINHA DE FILTRO É UMA LINHA DA TABELA, e não um
+                    balão flutuante: a tabela rola dentro de um container
+                    com `overflow`, e qualquer coisa flutuante presa ao
+                    cabeçalho seria cortada por ele. Aqui cada caixa fica
+                    exatamente sob a coluna que filtra. */}
+                {mostrarFiltros && (
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    {COLUNAS_ITENS.map(col => (
+                      <th key={col.key} className="px-2 py-1.5">
+                        <input
+                          value={filtrosItens[col.key] || ''}
+                          onChange={e => setFiltrosItens(f => ({ ...f, [col.key]: e.target.value }))}
+                          placeholder="Filtrar…"
+                          className={`w-full text-xs font-normal border border-gray-200 rounded-md px-2 py-1 bg-white text-${col.al} placeholder:text-gray-300 focus:border-primary-400 focus:outline-none`}
+                        />
+                      </th>
+                    ))}
+                    <th className="px-2 py-1.5">
+                      {filtrosAtivos > 0 && (
+                        <button type="button" onClick={() => setFiltrosItens({})}
+                          title="Limpar todos os filtros"
+                          className="text-xs text-gray-400 hover:text-red-500 font-normal">
+                          Limpar
+                        </button>
+                      )}
+                    </th>
+                  </tr>
+                )}
               </thead>
               <tbody>
-                {items.map((item, i) => (
+                {linhasItens.length === 0 && (
+                  <tr>
+                    <td colSpan={COLUNAS_ITENS.length + 1} className="px-3 py-6 text-center text-sm text-gray-400">
+                      Nenhum item bate com o filtro. Os {items.length} itens continuam no pedido.
+                    </td>
+                  </tr>
+                )}
+                {linhasItens.map(({ it: item, i }) => (
                   <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="px-3 py-2">
                       {item.variant_code
@@ -1255,6 +1392,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             </div>
           )}
           </div>
+        </div>
         </div>
 
         {/* Pagamento + Totais lado a lado (menos rolagem) */}
