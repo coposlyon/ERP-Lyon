@@ -93,6 +93,18 @@ export default function CampoData({
    * So completa quando FALTA APENAS o ano. "3" ou "31/" continuam
    * incompletos e continuam sem valor: adivinhar mes tambem seria
    * inventar.
+   *
+   * E QUANDO COMPLETA, O onBlur DE FORA NAO RODA.
+   *
+   * O PDV usa o blur para empurrar para o ano seguinte qualquer data
+   * anterior a data da operacao. As duas regras se atropelaram: com a
+   * operacao em 01/09/2026, digitar "31/08" virava 31/08/2026 e o blur
+   * de fora bumpava para 2027 — o ano automatico existia por um
+   * instante e era desfeito antes de aparecer.
+   *
+   * Quem acabou de digitar dia e mes quer ESTE ano. A regra de empurrar
+   * continua valendo para data escrita por inteiro ou escolhida no
+   * calendario, onde o ano foi uma decisao e nao um preenchimento.
    */
   function completarAno(e) {
     const br = digitado.current || '';
@@ -104,7 +116,7 @@ export default function CampoData({
       const iso = paraISO(cheio);
       // Data que nao existe (31/09) continua sem valor, e o aviso
       // abaixo do campo aparece — completar o ano nao e validar.
-      if (iso) onChange(iso);
+      if (iso) { onChange(iso); return; }
     }
     props.onBlur?.(e);
   }
