@@ -122,19 +122,22 @@ function partesDoNome(nome) {
 }
 
 /**
- * O nome de vitrine da categoria.
+ * O nome de vitrine da categoria — O MESMO DO CADASTRO.
  *
- * O Administrativo manda (`nome_catalogo`). Sem isso, deriva do nome
- * técnico tirando a palavra do acabamento que vem colada:
- * "CANECA SLIM TRADICIONAL" → "Caneca Slim". A derivação é para o
- * catálogo nunca nascer vazio, não para substituir o cadastro.
+ * O Administrativo pode dar um nome comercial próprio
+ * (`nome_catalogo`), e aí é ele que vale: é o cadastro falando.
+ * Sem isso, vai o nome da categoria como está lá.
+ *
+ * Já foi derivado: uma regex tirava a última palavra quando ela era
+ * um acabamento, e "CANECA TRADICIONAL" virava "Caneca" na vitrine.
+ * A intenção era um nome comercial mais limpo; o efeito era o
+ * catálogo chamando de "Caneca" o que o resto do sistema — cadastro,
+ * pedido, estoque, relatório — chama de "CANECA TRADICIONAL". Duas
+ * palavras para a mesma coisa, e ninguém sabendo que eram a mesma.
  */
-const PALAVRAS_ACABAMENTO = /\s+(TRADICIONAL|LISO|DEGRAD[EÊ]|JATEADO|BICOLOR|TRICOLOR|PRETO FOSCO)$/i;
-
 function nomeDaCategoria(categoria) {
   if (categoria?.nome_catalogo) return categoria.nome_catalogo;
-  const limpo = String(categoria?.name || '').replace(PALAVRAS_ACABAMENTO, '').trim();
-  return capitalizar(limpo || categoria?.name || '');
+  return String(categoria?.name || '').trim();
 }
 
 /** "Degradê + Borda" → "Degradê com Borda". */
@@ -317,38 +320,46 @@ async function modelosDaFamilia(tenantId, slug) {
     // e uma foto por cor. O card alterna entre elas, como a /loja faz.
     const fotos = [...new Set(g.produtos.map(primeiraFoto).filter(Boolean))];
 
-    // UM CARD POR MODELO CADASTRADO — e não um por acabamento.
+    // UM CARD POR PRODUTO CADASTRADO — uma cor, uma linha do cadastro.
     //
-    // Era o contrário: cada acabamento da matriz virava um card, e a
-    // vitrine mostrava "Caneca Degradê 450 ml", "Caneca Bicolor 450 ml",
-    // "Caneca Jateado 450 ml" — catorze produtos que não existem no
-    // cadastro, saindo de UM que existe. Quem abria o cadastro de
-    // Produtos e procurava "Degradê" não achava nada, e com razão:
-    // degradê é um ACABAMENTO que se aplica na caneca, não uma caneca.
+    // Esta tela já foi base × acabamento: cada acabamento da matriz
+    // virava um card, e a vitrine anunciava "Caneca Degradê 450 ml",
+    // "Caneca Bicolor 450 ml" — catorze produtos que não existem em
+    // Produtos, saindo de UM que existe.
     //
-    // Agora a vitrine mostra o que a Lyon cadastrou, e o acabamento é
-    // escolhido dentro do configurador — que é onde ele sempre foi
-    // decidido de verdade, junto com a cor e a personalização.
-    modelos.push({
-      chave: g.chave,
-      // Sem acabamento no card: quem escolhe é o configurador. Ele já
-      // abre no primeiro da lista quando ninguém manda um.
-      acabamento_id: null,
-      nome: nomeComercial(base, null, g.capacidade),
-      base, capacidade: g.capacidade,
-      acabamento: null,
-      categoria: cat?.name || null,
-      cores: g.produtos.length,
-      // Quantos acabamentos dão para escolher lá dentro. O número vai
-      // para o card porque some da grade: sem ele, a vitrine encolheu
-      // de catorze cards para um e o cliente não fica sabendo que os
-      // acabamentos continuam existindo.
-      acabamentos: acabs.length,
-      imagem: fotos[0] || null,
-      imagens: fotos.slice(0, 8),
-      preco_de: Number.isFinite(precoBase) ? precoBase : null,
-      qtd_minima: Math.max(...g.produtos.map(p => p.min_order_qty || 1)),
-    });
+    // Depois virou um card por MODELO, e sobrou o problema oposto: a
+    // Caneca Tradicional tem catorze cores cadastradas, cada uma com
+    // sua foto e seu código, e a vitrine mostrava um card só. Quem
+    // queria a AZUL TRANSLÚCIDO tinha de entrar no configurador para
+    // descobrir que ela existia.
+    //
+    // O cadastro é a resposta nos dois casos: cor é produto (tem
+    // linha, código e foto), acabamento não é (é aplicado na peça, e
+    // se escolhe no configurador).
+    for (const p of g.produtos) {
+      const foto = primeiraFoto(p);
+      const cor = partesDoNome(p.name).cor || null;
+      modelos.push({
+        chave: g.chave,
+        produto_id: p.id,
+        codigo: p.code || null,
+        // A cor vai no endereço para o configurador já abrir nela.
+        cor,
+        acabamento_id: null,
+        // O NOME DO CADASTRO, inteiro. É por ele que o cliente pergunta
+        // no WhatsApp e é ele que o vendedor vai procurar no pedido.
+        nome: p.name,
+        base, capacidade: g.capacidade,
+        acabamento: null,
+        categoria: cat?.name || null,
+        cores: g.produtos.length,
+        acabamentos: acabs.length,
+        imagem: foto,
+        imagens: foto ? [foto] : [],
+        preco_de: precoDe(p) || (Number.isFinite(precoBase) ? precoBase : null),
+        qtd_minima: p.min_order_qty || 1,
+      });
+    }
   }
 
   modelos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));

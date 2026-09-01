@@ -127,6 +127,23 @@ export default function Configurador() {
     const validos = new Set((alvo.campos || []).map(c => c.key));
     const restante = {};
     for (const [k, v] of Object.entries(estado.campos || {})) if (validos.has(k)) restante[k] = v;
+
+    // A COR TAMBEM VEM DO LINK. Quem clicou no card da AZUL TRANSLUCIDO
+    // ja escolheu a cor — abrir o configurador na cor errada e pedir a
+    // mesma coisa duas vezes. O nome vem do cadastro do produto e as
+    // opcoes de CONFIG_CORES, entao a comparacao ignora acento e caixa.
+    const corDoLink = params.get('cor');
+    if (corDoLink) {
+      const chave = txt => String(txt || '').normalize('NFD')
+        .replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+      const alvoCor = chave(corDoLink);
+      const campoBase = (alvo.campos || []).find(c => c.key === 'cor_base' || c.key === 'cor_produto');
+      if (campoBase) {
+        const achada = (cfg?.cores?.[campoBase.grupo] || []).find(c => chave(c.name) === alvoCor);
+        if (achada) restante[campoBase.key] = achada.id;
+      }
+    }
+
     mudar({ acabamento_id: alvo.id, campos: restante });
   }, [cfg, params, estado.acabamento_id, estado.campos, mudar]);
 

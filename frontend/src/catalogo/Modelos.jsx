@@ -6,14 +6,15 @@
 // código. Uma página por família seria dez páginas para consertar
 // quando o botão mudar de lugar.
 //
-// CADA CARD É UM MODELO DO CADASTRO. "Long Drink Tradicional 350 ml"
-// é um card porque existe uma linha dele em Produtos.
+// CADA CARD É UM PRODUTO DO CADASTRO — uma cor, uma linha de Produtos,
+// com o nome que está lá: "CANECA TRADICIONAL - AZUL TRANSLUCIDO -
+// 450 ML".
 //
-// Já foi base × acabamento: treze cards saindo de um par de linhas do
-// cadastro, com nomes — "Long Drink Degradê 350 ml" — que não existiam
-// em lugar nenhum do sistema. Quem abria Produtos atrás de "Degradê"
-// não achava nada, e com razão: degradê é ACABAMENTO, e se aplica na
-// peça. Ele agora é escolhido dentro do configurador, junto com a cor.
+// Já foi base × acabamento (treze cards com nomes que não existiam em
+// lugar nenhum do sistema), e depois um card por modelo (e as catorze
+// cores da caneca sumiam atrás de um card só). O cadastro resolve os
+// dois: cor é produto — tem linha, código e foto —, acabamento não é,
+// e continua sendo escolhido dentro do configurador.
 // ============================================================
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -76,7 +77,13 @@ export default function Modelos() {
   }, [modelos, busca]);
 
   function abrir(m) {
-    const query = m.acabamento_id ? `?acabamento=${m.acabamento_id}` : '';
+    // A cor vai no endereço para o configurador abrir já nela — quem
+    // clicou na AZUL TRANSLÚCIDO pediu a azul, e não "a caneca, e
+    // agora escolha a cor de novo".
+    const q = new URLSearchParams();
+    if (m.acabamento_id) q.set('acabamento', m.acabamento_id);
+    if (m.cor) q.set('cor', m.cor);
+    const query = q.toString() ? `?${q}` : '';
     navigate(`/personalizados/configurar/${m.chave}${query}`);
   }
 
@@ -124,7 +131,7 @@ export default function Modelos() {
             const espectro = [NEON.ciano, NEON.azul, NEON.roxo, NEON.magenta];
             const cor = espectro[i % espectro.length];
             return (
-              <button key={`${m.chave}-${m.acabamento_id || 'base'}`} type="button" onClick={() => abrir(m)}
+              <button key={m.produto_id || `${m.chave}-${m.acabamento_id || 'base'}`} type="button" onClick={() => abrir(m)}
                 className="text-left p-3.5 flex flex-col transition-transform active:scale-[0.985] hover:-translate-y-0.5"
                 style={bordaNeon(cor)}>
 
@@ -146,9 +153,12 @@ export default function Modelos() {
                      e sem esta linha o cliente não fica sabendo que
                      degradê, jateado e bicolor continuam existindo —
                      agora dentro do configurador. */}
+                {/* O card agora É uma cor, então contar cores aqui não
+                     diz nada. O que ele precisa dizer é o código — que é
+                     como o produto é chamado no pedido e no estoque — e
+                     quantos acabamentos esperam lá dentro. */}
                 <span className="block text-[11px] mt-1" style={{ color: NEON.fraco }}>
-                  {[m.capacidade, `${m.cores} cores`,
-                    m.acabamentos > 1 ? `${m.acabamentos} acabamentos` : null]
+                  {[m.codigo, m.acabamentos > 1 ? `${m.acabamentos} acabamentos` : null]
                     .filter(Boolean).join(' · ')}
                 </span>
 
