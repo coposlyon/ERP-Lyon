@@ -1074,24 +1074,33 @@ export default function Stock() {
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between p-4 bg-red-50 border border-red-200 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <PackageX size={20} className="text-red-600" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-red-800">
-                        {negativeProducts.length} produto{negativeProducts.length > 1 ? 's' : ''} com estoque negativo
+                {/* A COR VIRA ACENTO, E NAO FUNDO.
+                    Era um painel vermelho inteiro, com um quadrado
+                    vermelho dentro dele e o texto em tres tons de
+                    vermelho — e logo abaixo vinha uma faixa amarela
+                    berrante, e um cabecalho ambar. Tres blocos
+                    preenchidos empilhados: nada se destacava porque
+                    tudo gritava junto.
+                    Agora a superficie e neutra, como a do resto do
+                    sistema, e o vermelho aparece so onde carrega
+                    informacao: o icone e o numero. */}
+                <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-gray-200">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <PackageX size={17} className="text-red-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-800">
+                        <span className="text-red-600">{negativeProducts.length}</span>
+                        {' '}produto{negativeProducts.length > 1 ? 's' : ''} com estoque negativo
                       </p>
-                      <p className="text-sm text-red-600">
+                      <p className="text-xs text-gray-500 mt-0.5">
                         {supplierGroups.filter(g => g.id).length} fornecedor{supplierGroups.filter(g=>g.id).length !== 1 ? 'es' : ''} · clique abaixo para gerar os pedidos
                       </p>
                     </div>
                   </div>
                   <button
                     onClick={() => setReplenishModal(true)}
-                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm">
-                    <FileText size={16} />
+                    className="btn-primary text-sm shrink-0">
+                    <FileText size={15} />
                     Solicitar Reposição Geral
                   </button>
                 </div>
@@ -1099,24 +1108,28 @@ export default function Stock() {
                 {supplierGroups.map(group => {
                   const pendingOrder = group.id ? pendingOrdersBySupplier[group.id] : null;
                   return (
+                    // Pedido ja feito se marca por um fio ambar na
+                    // lateral — dois pixels bastam para diferenciar dois
+                    // cartoes lado a lado, e nao competem com o texto.
                     <div key={group.id || '__none__'}
-                      className={`rounded-xl overflow-hidden border ${pendingOrder ? 'border-amber-300' : 'border-gray-200'}`}>
+                      className={`rounded-xl overflow-hidden border border-gray-200 ${pendingOrder ? 'border-l-2 border-l-amber-400' : ''}`}>
+                      {/* Era uma tarja amarela com texto branco em
+                          CAIXA ALTA e peso 900 — do tamanho de um aviso
+                          de perigo, para dizer "ja pedimos, esta a
+                          caminho". E uma informacao de estado, e agora
+                          se le como uma. */}
                       {pendingOrder && (
-                        <div className="bg-amber-400 text-white text-xs font-black py-2 px-4 flex items-center justify-center gap-3 tracking-wide uppercase">
-                          <CheckCircle2 size={13} />
-                          <span>ESTOQUE JÁ SOLICITADO — AGUARDANDO RECEBIMENTO</span>
+                        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 text-xs text-gray-500">
+                          <CheckCircle2 size={13} className="text-amber-500 shrink-0" />
+                          <span>Reposição solicitada — aguardando recebimento</span>
                           {pendingOrder.protocol_number && (
-                            <span className="bg-white text-amber-600 px-2 py-0.5 rounded font-black text-xs">
-                              CONTROLE: {pendingOrder.protocol_number}
+                            <span className="ml-auto font-mono text-[11px] text-gray-400 shrink-0">
+                              controle {pendingOrder.protocol_number}
                             </span>
                           )}
                         </div>
                       )}
-                      <div className={`flex items-center justify-between px-4 py-3 ${
-                        !group.id ? 'bg-gray-50 border-b border-gray-100'
-                        : pendingOrder ? 'bg-amber-50 border-b border-amber-200'
-                        : 'bg-amber-50 border-b border-amber-100'
-                      }`}>
+                      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100">
                         <div className="min-w-0">
                           <p className="font-semibold text-gray-900 text-sm break-words">{group.name}</p>
                           <p className="text-xs text-gray-500 mt-0.5">
@@ -1214,8 +1227,8 @@ export default function Stock() {
             const pendingOrder = pendingOrdersBySupplier[group.id];
             return (
               <div key={group.id}
-                className={`flex items-center justify-between border rounded-xl p-4 transition-colors ${
-                  pendingOrder ? 'border-amber-200 bg-amber-50' : 'border-gray-200 hover:bg-amber-50 hover:border-amber-200'
+                className={`flex items-center justify-between gap-3 border border-gray-200 rounded-xl p-4 transition-colors hover:border-primary-300 ${
+                  pendingOrder ? 'border-l-2 border-l-amber-400' : ''
                 }`}>
                 <div className="min-w-0">
                   {/* NOME E ETIQUETA EM LINHAS QUE QUEBRAM. Eram uma
@@ -1227,8 +1240,8 @@ export default function Stock() {
                   <div className="flex items-start flex-wrap gap-x-2 gap-y-1">
                     <p className="font-semibold text-gray-900 break-words min-w-0">{group.name}</p>
                     {pendingOrder && (
-                      <span className="text-xs bg-amber-400 text-white px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap">
-                        🕐 Pendente
+                      <span className="text-[11px] text-amber-600 border border-amber-300 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap">
+                        pendente
                       </span>
                     )}
                   </div>
@@ -1279,12 +1292,15 @@ export default function Stock() {
         title="Atualizar Estoque — Confirmar Recebimento" size="md">
         {confirmCompleteOrder && (
           <div className="space-y-4">
-            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex items-center gap-4">
-              <div className="bg-amber-400 text-white rounded-lg px-4 py-2 text-center flex-shrink-0">
-                <p className="text-xs font-bold uppercase tracking-wider opacity-80">Controle</p>
-                <p className="text-2xl font-black tracking-widest">{confirmCompleteOrder.protocol_number || '—'}</p>
+            {/* Mesma regra do resto da tela: superficie neutra, e o
+                numero de controle em destaque por ser NUMERO GRANDE, e
+                nao por estar dentro de um retangulo colorido. */}
+            <div className="border border-gray-200 rounded-xl p-4 flex items-center gap-4">
+              <div className="text-center flex-shrink-0 pr-4 border-r border-gray-200">
+                <p className="text-[10px] uppercase tracking-wider text-gray-400">Controle</p>
+                <p className="text-2xl font-bold tracking-wider text-gray-800">{confirmCompleteOrder.protocol_number || '—'}</p>
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="font-semibold text-gray-800 text-sm">{confirmCompleteOrder.supplier_name}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {confirmCompleteOrder.products.length} produto(s) ·{' '}
