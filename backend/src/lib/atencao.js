@@ -525,9 +525,35 @@ function calcularAtencao(venda, agora = new Date(), alertaAberto = null) {
   return base;
 }
 
+/**
+ * O PEDIDO JA PASSOU PELO FINANCEIRO?
+ *
+ * A lista e a das etapas ANTERIORES ao pagamento, e nao a das
+ * posteriores: depois do financeiro vem estoque, arte, vegetal,
+ * revelacao, pintura, borda, producao, qualidade, embalagem, foto,
+ * coleta, transito, entrega — e as de "em processo" que nem entram na
+ * regua. Listar essas seria uma lista que envelhece a cada etapa nova;
+ * antes do pagamento so existem duas, e nao vao aumentar.
+ *
+ * `confirmed` e o padrao antigo da coluna, de antes deste fluxo
+ * existir. Esses pedidos CONTAM: sao vendas concluidas na epoca em que
+ * o sistema nao tinha etapa de financeiro, e nao contá-las apagaria o
+ * historico do vendedor de uma vez.
+ */
+const ANTES_DO_PAGAMENTO = new Set([
+  '',                     // etapa em branco: nao e prova de pagamento
+  'open',                 // pedido ainda sendo montado
+  'pending',              // aguardando confirmacao
+  'iniciando_pedido',     // nasceu agora, ninguem olhou
+  'aguardando_financeiro' // esta na fila do financeiro
+]);
+
+const passouPeloPagamento = status => !ANTES_DO_PAGAMENTO.has(String(status || '').trim());
+
 module.exports = {
   STATUS, AREAS, PASSOS, FASES,
   infoStatus, listaStatus, finalizado, prazoSaida, calcularAtencao,
   linhaDoTempo, fasesDoPedido, fasesVisiveis, visitasDoPedido,
   historicoPedido, ehRetirada,
+  ANTES_DO_PAGAMENTO, passouPeloPagamento,
 };

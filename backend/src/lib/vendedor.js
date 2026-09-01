@@ -15,6 +15,9 @@
 //    lançado dia 2 referente ao dia 30 pertence ao mês 30.
 // ============================================================
 const supabase = require('../config/supabase');
+// Quem sabe em que etapa o pedido esta — a mesma fonte que a linha
+// do tempo do pedido e a producao leem.
+const A = require('../lib/atencao');
 
 // FORMATO x EXISTENCIA sao duas perguntas.
 //
@@ -93,6 +96,15 @@ function shiftDate(iso, days) {
  * pode apontar para trás ou para a frente, e o PostgREST não sabe
  * filtrar por COALESCE. O recorte fino sai aqui, em JS.
  *
+ * SÓ ENTRA O QUE JÁ PASSOU PELO FINANCEIRO. Um pedido recém-digitado
+ * contava unidade na hora — e com ela vinham a meta batida, o excedente
+ * e a comissão sobre um dinheiro que ainda não entrou. Pedido que o
+ * financeiro recusa depois some do painel e leva a comissão junto, o
+ * que é pior do que nunca ter aparecido.
+ *
+ * A regra é a mesma de `lib/atencao`, para o painel do vendedor e a
+ * linha do tempo do pedido nunca discordarem sobre o que é "pago".
+ *
  * userId null = todos os vendedores (visão do gestor).
  */
 async function fetchSales(tenantId, userId, fromDate, toDate) {
@@ -101,6 +113,10 @@ async function fetchSales(tenantId, userId, fromDate, toDate) {
     .select(SALE_SELECT)
     .eq('tenant_id', tenantId)
     .neq('status', 'cancelled')
+    // A etapa nao da para filtrar aqui em cima: `not.in` com a lista
+    // toda deixaria a regra escrita em dois lugares. Sai no filtro
+    // abaixo, junto com o recorte de data.
+
     .in('type', SALE_TYPES)
     .gte('created_at', shiftDate(fromDate, -75))
     .lte('created_at', `${shiftDate(toDate, 75)}T23:59:59`)
@@ -112,6 +128,7 @@ async function fetchSales(tenantId, userId, fromDate, toDate) {
   if (error) throw error;
 
   return (data || []).filter(s => {
+    if (!A.passouPeloPagamento(s.status)) return false;
     const d = effectiveDate(s);
     return d >= fromDate && d <= toDate;
   });

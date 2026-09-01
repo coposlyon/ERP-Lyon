@@ -278,7 +278,7 @@ export default function VendedorDashboard() {
           hint="Definida pelo Administrativo no plano de metas do vendedor. O vendedor não digita este número." />
         <Kpi title="Vendido no mês" Icon={ShoppingCart} color="#22c55e" iconBg="rgba(34,197,94,0.15)"
           value={fmtUn(k.units)} unit="un"
-          hint="Soma das unidades dos pedidos válidos do vendedor no mês. Orçamento que ainda não virou venda não entra." />
+          hint="Unidades dos pedidos que JÁ PASSARAM pelo financeiro. Pedido recém-digitado ainda não conta — meta, excedente e comissão seguem a mesma régua, para não pagar comissão sobre dinheiro que não entrou. Orçamento nunca entra." />
         <Kpi title="Preço médio (un.)" Icon={DollarSign} color="#22d3ee" iconBg="rgba(34,211,238,0.15)"
           value={fmtBRL(k.avg_price)}
           hint="Faturamento dos produtos ÷ unidades vendidas. O frete fica de fora para não distorcer o preço do produto." />
