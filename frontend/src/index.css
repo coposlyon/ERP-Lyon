@@ -122,6 +122,15 @@
     @apply bg-gray-50;
   }
 
+  /* INSTANTANEO. O realce da linha e a resposta do sistema a "estou
+     aqui" — 150ms de esmaecimento em cima disso viram lentidao,
+     ainda mais numa tabela onde o mouse atravessa dez linhas. A regra
+     mora aqui, e nao no componente, para valer em toda tabela. */
+  .table-auto tr,
+  .table-auto td {
+    transition: none !important;
+  }
+
   .sidebar-item {
     @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-indigo-200
            hover:bg-sidebar-hover hover:text-white transition-all duration-150 cursor-pointer;
@@ -647,8 +656,15 @@ html.dark .table-auto td {
   border-color: #0a1130 !important;
   color: #ffffff;
 }
+/* O HOVER TEM DE SER VISIVEL, E NA HORA.
+   Era `#0a1130` — a MESMA cor de fundo do card no escuro. Passar o
+   mouse na linha nao mudava nada: o unico azul claro que aparecia era
+   o da linha selecionada, no clique. Daí a impressao de demora.
+   Agora e o mesmo azul da selecao, mais fraco (0.12 contra 0.26), para
+   que passar o mouse e ter escolhido continuem sendo duas coisas
+   diferentes. */
 html.dark .table-auto tr:hover td {
-  background-color: #0a1130 !important;
+  background-color: rgba(47,107,255,0.12) !important;
 }
 
 /* ── Badges ─────────────────────────────────────────────────── */

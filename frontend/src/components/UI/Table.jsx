@@ -82,7 +82,7 @@ export function Table({ columns, data, loading, emptyMessage = 'Nenhum registro 
         <tbody>
           {sortedData.map((row, i) => (
             <tr key={row.id || i}
-              className={`${onRowClick ? 'cursor-pointer hover:bg-gray-50 transition-colors' : 'cursor-pointer'} ${rowClassName ? rowClassName(row) : ''}`}
+              className={`${onRowClick ? 'cursor-pointer hover:bg-gray-50' : 'cursor-pointer'} ${rowClassName ? rowClassName(row) : ''}`}
               onClick={onRowClick ? () => onRowClick(row) : undefined}>
               {columns.map(col => (
                 <td key={col.key}>
