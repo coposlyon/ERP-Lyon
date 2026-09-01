@@ -1117,8 +1117,8 @@ export default function Stock() {
                         : pendingOrder ? 'bg-amber-50 border-b border-amber-200'
                         : 'bg-amber-50 border-b border-amber-100'
                       }`}>
-                        <div>
-                          <p className="font-semibold text-gray-900 text-sm">{group.name}</p>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 text-sm break-words">{group.name}</p>
                           <p className="text-xs text-gray-500 mt-0.5">
                             {group.products.length} produto{group.products.length > 1 ? 's' : ''} a repor
                             {group.phone
@@ -1217,11 +1217,21 @@ export default function Stock() {
                 className={`flex items-center justify-between border rounded-xl p-4 transition-colors ${
                   pendingOrder ? 'border-amber-200 bg-amber-50' : 'border-gray-200 hover:bg-amber-50 hover:border-amber-200'
                 }`}>
-                <div>
-                  <p className="font-semibold text-gray-900 flex items-center gap-2">
-                    {group.name}
-                    {pendingOrder && <span className="text-xs bg-amber-400 text-white px-2 py-0.5 rounded-full">🕐 Pendente</span>}
-                  </p>
+                <div className="min-w-0">
+                  {/* NOME E ETIQUETA EM LINHAS QUE QUEBRAM. Eram uma
+                      linha flex só: "S ANTONIO SIFUENTE BOSSI —
+                      ARTEFATOS ACRÍLICOS" quebrava em duas, e a
+                      etiqueta, centralizada na linha, ia parar no meio
+                      do nome. `flex-wrap` + `items-start` põem cada uma
+                      no seu lugar. */}
+                  <div className="flex items-start flex-wrap gap-x-2 gap-y-1">
+                    <p className="font-semibold text-gray-900 break-words min-w-0">{group.name}</p>
+                    {pendingOrder && (
+                      <span className="text-xs bg-amber-400 text-white px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap">
+                        🕐 Pendente
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-gray-500">{group.products.length} produto{group.products.length > 1 ? 's' : ''} a repor</p>
                   {group.phone
                     ? <p className="text-xs text-green-600 mt-0.5">📱 {group.phone} — vai receber no WhatsApp</p>
