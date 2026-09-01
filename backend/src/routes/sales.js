@@ -454,8 +454,12 @@ async function legacyCreateSale(req, res) {
 // Tudo que o motor precisa saber sobre o pedido para decidir. Os itens
 // entram porque são eles que dizem se este pedido passa por pintura e
 // por borda — isso não se pergunta ao status.
+// `total` entra por causa do comprovante: quando o pedido ainda nao tem
+// parcela no contas a receber, a parcela e virtual e o valor dela E o
+// total do pedido. (E uma lista do PostgREST, nao SQL: sem comentario
+// dentro.)
 const CAMPOS_FLUXO = `
-  id, number, status, production_log, delivery_mode, notes, created_at,
+  id, number, status, total, production_log, delivery_mode, notes, created_at,
   artwork_url, art_file, receipt_url, production_photos, carrier_id, tracking_code,
   VENDA_ITENS ( id, product_name, quantity, unit_price, discount, total, customization,
                 PRODUTOS ( id, code, name, unit, ink_type ) )
@@ -476,8 +480,21 @@ async function carregarParaFluxo(tenantId, id) {
   if (!data) return null;
 
   const itens = (data.VENDA_ITENS || []).map(i => caracteristicasDoItem(i));
+
+  // OS COMPROVANTES ENTRAM NA FICHA porque agora sao eles que liberam a
+  // etapa de pagamento. Uma consulta a mais por leitura do fluxo — que
+  // e a tela de detalhe de UM pedido, aberta por uma pessoa de cada vez.
+  // Se a leitura falhar, o pedido abre do mesmo jeito: fica sem o
+  // requisito cumprido, e nao sem a tela.
+  let comprovante_quitado = false;
+  try {
+    const parcelas = await C.parcelasDaVenda(tenantId, data);
+    const aberto = parcelas.reduce((soma, x) => soma + (x.falta || 0), 0);
+    comprovante_quitado = parcelas.length > 0 && aberto <= 0.005;
+  } catch { /* sem parcelas legiveis: o requisito segue por cumprir */ }
+
   return {
-    venda: { ...data, itens_qtd: itens.length },
+    venda: { ...data, itens_qtd: itens.length, comprovante_quitado },
     aplicaveis: etapasDosItens(itens),
   };
 }

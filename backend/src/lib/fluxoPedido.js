@@ -98,14 +98,28 @@ const REQUISITOS = {
       como: 'Um pedido sem item não tem o que produzir. Inclua os produtos antes de seguir.' },
   ],
 
+  /**
+   * QUEM LIBERA O PAGAMENTO É O COMPROVANTE.
+   *
+   * Era o contrário: o requisito que travava chamava-se "Pagamento
+   * liberado" e só um clique no botão "Liberar pagamento" o cumpria; o
+   * comprovante entrava como aviso, marcado "não trava". Dava a cena
+   * absurda de um pedido com o comprovante anexado, conferido e
+   * quitado, com "Confirmar o pagamento" apagado — e a única saída
+   * sendo um botão chamado "Liberar sem comprovante".
+   *
+   * Agora o papel é a prova. Quitado o valor do pedido pelos
+   * comprovantes das parcelas, a etapa anda.
+   *
+   * `pagamento.liberado` continua valendo como cumprimento, e não como
+   * caminho: pedidos liberados à mão ANTES desta mudança ficariam
+   * presos numa exigência que não existia quando passaram por aqui.
+   */
   pagamento: v => [
-    { chave: 'liberado', label: 'Pagamento liberado',
-      ok: !!v.pagamento?.liberado,
-      como: 'A baixa automática chega pelo banco. Enquanto a integração não estiver ligada, '
-          + 'use "Liberar pagamento" aqui e registre quem liberou.' },
-    { chave: 'comprovante', label: 'Comprovante anexado', obrigatorio: false,
-      ok: !!v.receipt_url,
-      como: 'Sem comprovante o financeiro fica sem lastro do que entrou.' },
+    { chave: 'comprovante', label: 'Comprovante do pagamento anexado',
+      ok: !!v.comprovante_quitado || !!v.pagamento?.liberado,
+      como: 'Anexe o comprovante na parcela, aqui em cima. Enquanto o valor do pedido '
+          + 'não estiver coberto, o financeiro não tem lastro do que entrou.' },
   ],
 
   arte: v => [

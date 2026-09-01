@@ -89,35 +89,20 @@ export default function PainelFluxo({ v, id, fluxo }) {
     onError: e => toast.error(e.error || 'Não foi possível voltar a etapa'),
   });
 
-  const liberar = useMutation({
-    mutationFn: motivo => api.post(`/sales/${id}/pagamento/liberar`, { modo: 'manual', motivo }),
-    onSuccess: r => {
-      toast.success(r.avancou
-        ? 'Pagamento liberado — o pedido seguiu para a próxima etapa'
-        : 'Pagamento liberado');
-      fechar(); recarregar();
-    },
-    onError: e => toast.error(e.error || 'Não foi possível liberar o pagamento'),
-  });
-
   if (!fluxo) return null;
 
   const { fase_atual: fase, acao, requisitos = [], pagamento, voltar: recuo } = fluxo;
   const producao = fluxo.producao || {};
-  const naFaseDoPagamento = fase?.key === 'pagamento';
-  const ocupado = avancar.isPending || voltar.isPending || liberar.isPending || enviarProducao.isPending;
-  const mostrarLiberar = naFaseDoPagamento && !pagamento?.liberado;
+  const ocupado = avancar.isPending || voltar.isPending || enviarProducao.isPending;
 
   /**
    * QUAL BOTÃO A SETA CHAMA.
    *
-   * Ela não mora num botão: mora na AÇÃO DO MOMENTO. Presa ao botão de
-   * avançar, ela sumia justamente onde mais precisava aparecer — na fase
-   * de Pagamento, onde "Confirmar o pagamento" está travado de
-   * propósito e quem destrava é o "Liberar pagamento" ao lado.
+   * Ela não mora num botão: mora na AÇÃO DO MOMENTO.
    *
-   * A ordem é a da leitura: se há um pagamento a liberar, é esse o
-   * próximo passo; senão, é avançar a etapa.
+   * Na fase de Pagamento ela some enquanto o comprovante não estiver
+   * anexado — e isso é o certo: o próximo passo ali não é um botão
+   * deste painel, é subir o comprovante na parcela, logo acima.
    *
    * "Voltar etapa" nunca recebe a seta. Ele está sempre disponível e
    * nunca é o caminho para a frente — chamar para ele seria convidar a
@@ -129,7 +114,6 @@ export default function PainelFluxo({ v, id, fluxo }) {
    */
   const chamada = (ocupado || caixa) ? null
     : producao.pode_enviar ? 'producao'
-    : mostrarLiberar ? 'liberar'
     : acao?.pode ? 'avancar'
     : null;
 
@@ -268,20 +252,11 @@ export default function PainelFluxo({ v, id, fluxo }) {
 
         {/* ── O que fazer ─────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2">
-          {mostrarLiberar && (
-            <span className="inline-flex items-center gap-1">
-              {chamada === 'liberar' && <Seta cor={v.isDark ? '#4ade80' : '#16a34a'} />}
-              {/* A EXCEÇÃO, e não a regra. O caminho normal é anexar o
-                  comprovante da parcela ali em cima; este botão é para
-                  quando o dinheiro caiu e ninguém tem o papel. */}
-              <button onClick={() => setCaixa('pagamento')} disabled={ocupado}
-                className="btn btn-sm disabled:opacity-50"
-                style={{ background: 'transparent', color: '#4ade80', border: '1px solid rgba(74,222,128,0.45)' }}
-                title="Sem comprovante em mãos: o Financeiro assume a liberação">
-                <Wallet size={14} /> Liberar sem comprovante
-              </button>
-            </span>
-          )}
+          {/* NAO EXISTE MAIS "LIBERAR SEM COMPROVANTE". Ele era a
+              saida para quando o dinheiro caiu e ninguem tinha o papel
+              — e virou o caminho normal, porque era o unico botao
+              aceso na fase. O que libera o pagamento agora e o
+              comprovante da parcela, ali em cima. */}
 
           {producao.precisa && (
             <span className="inline-flex items-center gap-1">
@@ -338,19 +313,6 @@ export default function PainelFluxo({ v, id, fluxo }) {
       </div>
 
       {/* ── As duas caixas que pedem justificativa ───────── */}
-      {caixa === 'pagamento' && (
-        <CaixaDeMotivo
-          v={v} texto={texto} setTexto={setTexto} ocupado={ocupado}
-          titulo="Liberar o pagamento à mão"
-          dica={'Quando a integração com o banco estiver ligada, a baixa chega sozinha e o pedido anda '
-              + 'sem ninguém clicar. Até lá, diga como você confirmou a entrada — fica no histórico.'}
-          exemplo="Ex.: Pix conferido no extrato às 14h20"
-          rotulo="Liberar pagamento"
-          onCancelar={fechar}
-          onConfirmar={() => liberar.mutate(texto)}
-        />
-      )}
-
       {caixa === 'voltar' && (
         <CaixaDeMotivo
           v={v} texto={texto} setTexto={setTexto} ocupado={ocupado}
