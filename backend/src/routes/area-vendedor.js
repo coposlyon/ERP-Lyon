@@ -35,7 +35,7 @@ router.get('/origens', (req, res) => res.json(ORIGENS));
 // TELA 1 — Pedidos de Venda da carteira
 // ============================================================
 const PEDIDO_SELECT = `
-  id, number, order_key, status, origin, source, total, freight, discount,
+  id, number, status, origin, source, total, freight, discount,
   created_at, operation_date, ship_date, delivery_date, max_delivery_date,
   customer_id, user_id,
   CLIENTES ( id, display_id, name, phone, mobile, address )

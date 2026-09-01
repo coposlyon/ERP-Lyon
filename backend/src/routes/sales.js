@@ -230,7 +230,7 @@ router.post('/', validate(saleSchema), async (req, res) => {
   const {
     customer_id, type, items, notes, discount, delivery_date,
     artwork_url, artwork_notes, payment_method, installments, first_due_date,
-    operation_date, event_date, ship_date, max_delivery_date, order_key, freight, payment_adjustment, carrier_id,
+    operation_date, event_date, ship_date, max_delivery_date, freight, payment_adjustment, carrier_id,
     delivery_mode, // entrega ou retirada — decide se o pedido passa por Em Trânsito
     billing_company_id, receiving_account_id, // Contábil: empresa faturadora + conta de destino (migração 043)
     origin, // de onde veio o cliente (Shopee, WhatsApp, Site...) — migração 067
@@ -282,7 +282,6 @@ router.post('/', validate(saleSchema), async (req, res) => {
       if (ship_date) patch.ship_date = ship_date;
       if (delivery_date) patch.delivery_date = delivery_date;
       if (max_delivery_date) patch.max_delivery_date = max_delivery_date;
-      if (order_key) patch.order_key = order_key;
       if (carrier_id) patch.carrier_id = carrier_id;
       // ENTREGA OU RETIRADA, JA NA CRIACAO.
       //

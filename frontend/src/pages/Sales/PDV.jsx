@@ -213,8 +213,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
 
   const [showCustomerInfo, setShowCustomerInfo] = useState(false);
   // Chave aleatória de até 5 dígitos para o pedido
-  const genKey = () => String(Math.floor(Math.random() * 100000)).padStart(5, '0');
-  const [orderKey, setOrderKey] = useState(genKey);
   const [firstDueDate, setFirstDueDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 30);
     return d.toISOString().split('T')[0];
@@ -376,7 +374,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       setPayTerm(null);
       setReceivedAmount('');
       setEventDate(''); setShipDate(''); setDeliveryDate('');
-      setOrderKey(genKey());
       if (inModal) { onDone(); return; } // fecha o card e atualiza a lista
       setTimeout(() => searchRef.current?.focus(), 100);
     },
@@ -822,7 +819,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       event_date: evD || null,
       ship_date: shD || null,
       delivery_date: dlD || null,
-      order_key: orderKey,
       items: items.map(i => ({
         product_id: i.product_id,
         quantity: i.quantity,
@@ -1097,7 +1093,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             sai e QUANDO cada coisa acontece. Subindo, some um cartao e o
             comeco do pedido passa a caber numa tela so. */}
         {!isQuote && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_auto] gap-3 items-end mt-3 pt-3 border-t border-gray-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 items-end mt-3 pt-3 border-t border-gray-100">
             {/* ORIGEM ABRE A LINHA DOS PRAZOS, a pedido de quem usa:
                 origem, data do evento, data de saida e previsao de
                 entrega sao as quatro respostas que se dao de uma vez ao
@@ -1126,10 +1122,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               <label className="text-xs font-medium text-gray-500 block mb-1">Previsão de entrega *</label>
               <CampoData className="input w-full text-sm" value={deliveryDate} onChange={setDeliveryDate}
                 onBlur={() => setDeliveryDate(d => forwardDate(d))} />
-            </div>
-            <div className="flex sm:justify-end items-center sm:col-span-2 xl:col-span-1 xl:pb-1.5">
-              <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 rounded px-2 py-0.5 whitespace-nowrap"
-                title="Chave do pedido (gerada automaticamente)">🔑 #{orderKey}</span>
             </div>
           </div>
         )}
