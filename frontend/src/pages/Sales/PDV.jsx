@@ -394,21 +394,33 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     queryFn: () => api.get('/shipping/carriers'),
   });
   const carrierSel = (carriers?.data || []).find(c => c.id === carrierId) || null;
+  const nomeCarrier = c => String(c?.trade_name || c?.name || '').toUpperCase();
 
   /**
    * QUANDO A "TRANSPORTADORA" E O PROPRIO BALCAO.
    *
-   * A resposta certa e a coluna `is_pickup` (migracao 097), marcada no
-   * cadastro da transportadora. Mas ela depende de alguem ter clicado
-   * naquele check — e quando ninguem clicou o sistema nao avisa: ele
-   * so continua pedindo frete e cotacao de um pedido que o cliente vem
-   * buscar, sem dizer por que.
-   *
-   * Entao o nome tambem vale como resposta. Uma transportadora chamada
-   * "RETIRAR NO LOCAL" e retirada, tenha marcado o check ou nao.
+   * A resposta e a coluna `is_pickup` (migracao 097) — que so agora
+   * chega aqui: a rota /shipping/carriers nao a selecionava, entao
+   * marcar "o cliente retira no local" no cadastro nao mudava nada no
+   * pedido. O nome fica como segunda resposta, para o caso de alguem
+   * cadastrar a retirada sem marcar o check.
    */
-  const carrierLabel = carrierSel ? String(carrierSel.trade_name || carrierSel.name || '').toUpperCase() : '';
-  const isRetirada = !!carrierSel && (carrierSel.is_pickup || /\bRETIRA(R|DA)\b/.test(carrierLabel));
+  const ehRetirada = c => !!c && (c.is_pickup || /\bRETIRA(R|DA)\b/.test(nomeCarrier(c)));
+
+  /**
+   * A LINHA DA RETIRADA SE CHAMA "RETIRAR NO LOCAL".
+   *
+   * Ela esta cadastrada como "LYON COPOS" porque tem o CNPJ da propria
+   * Lyon — correto para a nota, e inutil no seletor: entre BRASPRESS e
+   * VRUM, "LYON COPOS" nao se le como "o cliente vem buscar". O nome
+   * de verdade continua no cadastro; aqui vai o que a pessoa procura.
+   */
+  const rotuloCarrier = c => (ehRetirada(c)
+    ? `RETIRAR NO LOCAL — ${nomeCarrier(c)}`
+    : nomeCarrier(c));
+
+  const carrierLabel = carrierSel ? rotuloCarrier(carrierSel) : '';
+  const isRetirada = ehRetirada(carrierSel);
 
   // Tipos (categorias) de produto — para o filtro do painel de produtos
   const { data: productTypes = [] } = useQuery({
@@ -1193,17 +1205,13 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 // Escondido com valor dentro, o frete continuaria
                 // entrando no total sem ninguem conseguir ve-lo para
                 // tirar. Some zerado.
-                const c = (carriers?.data || []).find(x => x.id === e.target.value);
-                const nome = String(c?.trade_name || c?.name || '').toUpperCase();
-                if (c && (c.is_pickup || /\bRETIRA(R|DA)\b/.test(nome))) {
+                if (ehRetirada((carriers?.data || []).find(x => x.id === e.target.value))) {
                   setFreightInput(''); setQuoteNumber(''); setFrete(null);
                 }
               }}>
               <option value="">— selecione —</option>
               {(carriers?.data || []).map(c => (
-                <option key={c.id} value={c.id} className="uppercase">
-                  {String(c.trade_name || c.name || '').toUpperCase()}
-                </option>
+                <option key={c.id} value={c.id} className="uppercase">{rotuloCarrier(c)}</option>
               ))}
             </select>
             {carrierId && !isRetirada && (

@@ -6,10 +6,17 @@ const { cotar, getFreteConfig, ufFromCep } = require('../lib/shipping');
 const { braspressTracking, bpReady } = require('../lib/braspress');
 
 // Transportadoras ativas (para escolher no pedido) — acessível ao módulo de vendas
+//
+// `is_pickup` (migração 097) PRECISA vir aqui. Ele existia na tabela e
+// o cadastro em Logística sabia gravá-lo, mas esta rota — a única que o
+// pedido de venda consulta — não o selecionava. Resultado: marcar "o
+// cliente retira no local" não mudava nada no pedido, porque a tela
+// nunca recebia a marca. Campo que decide comportamento e não viaja é
+// campo que não existe.
 router.get('/carriers', async (req, res) => {
   try {
     const { data } = await supabase.from('TRANSPORTADORAS')
-      .select('id, name, trade_name, whatsapp, phone, pickup_schedule')
+      .select('id, name, trade_name, whatsapp, phone, pickup_schedule, is_pickup')
       .eq('tenant_id', req.tenantId).eq('is_active', true).order('name');
     res.json({ data: data || [] });
   } catch (err) { res.status(500).json({ error: err.message }); }
