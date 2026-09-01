@@ -76,7 +76,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   const {
     name, trade_name, cnpj, ie, email, phone, whatsapp,
-    contact_name, pickup_schedule, address, is_active,
+    contact_name, pickup_schedule, address, is_active, is_pickup,
   } = req.body;
 
   if (!name) return res.status(400).json({ error: 'Razão Social é obrigatória' });
@@ -89,6 +89,7 @@ router.post('/', async (req, res) => {
         name, trade_name, cnpj, ie, email, phone, whatsapp,
         contact_name,
         pickup_schedule: pickup_schedule || [],
+        is_pickup: !!is_pickup,
         address: address || {},
         is_active: is_active !== false,
       })
@@ -106,7 +107,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const {
     name, trade_name, cnpj, ie, email, phone, whatsapp,
-    contact_name, pickup_schedule, address, is_active,
+    contact_name, pickup_schedule, address, is_active, is_pickup,
   } = req.body;
 
   try {
@@ -114,7 +115,7 @@ router.put('/:id', async (req, res) => {
       .from('TRANSPORTADORAS')
       .update({
         name, trade_name, cnpj, ie, email, phone, whatsapp,
-        contact_name, pickup_schedule, address, is_active,
+        contact_name, pickup_schedule, address, is_active, is_pickup,
         updated_at: new Date().toISOString(),
       })
       .eq('id', req.params.id)

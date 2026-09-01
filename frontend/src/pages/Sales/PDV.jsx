@@ -100,20 +100,21 @@ function palpiteBorda(product, variantName) {
   return hay.includes('borda') ? 'Com borda' : 'Sem borda';
 }
 
-// "Retirar em maos" e uma opcao DO SELETOR DE TRANSPORTADORA.
+// A RETIRADA E UMA TRANSPORTADORA CADASTRADA, E NAO UMA OPCAO FALSA.
 //
-// Ela ja morou aqui, saiu para um campo "Entrega" separado, e voltou:
-// dois campos para a mesma pergunta ("quem leva?") faziam o operador
-// escolher transportadora e ainda ter que dizer que era entrega. Uma
-// pergunta, um campo.
+// "Retirar em maos" ja foi um item fixo deste seletor: aparecia na
+// lista, nao era transportadora nenhuma, e existia so para o operador
+// conseguir dizer que o cliente ia buscar.
 //
-// O QUE NAO VOLTA e o bug que a separacao expos: escolher retirada
-// gravava so uma observacao em texto e nunca `delivery_mode`, a coluna
-// que lib/atencao.js le para pular "Em Transito". Pedido de retirada
-// seguia a rota de entrega esperando uma coleta que nao vinha. Agora a
-// opcao mora aqui E grava a coluna.
-const RETIRADA = '__retirada__';
-const RETIRADA_LABEL = 'Retirar em mãos';
+// A Lyon resolveu melhor: cadastrou "RETIRAR NO LOCAL" como
+// transportadora de verdade, com o proprio CNPJ e horario de balcao. O
+// seletor entao mostrava as tres cadastradas MAIS a opcao falsa — duas
+// formas de dizer a mesma coisa, e o operador adivinhando qual delas o
+// sistema entende. Sobrou a de verdade.
+//
+// Quem diz que aquela linha e retirada e a coluna `is_pickup` da
+// transportadora (migracao 097) — e e dela que sai o `delivery_mode`,
+// que lib/atencao.js le para pular "Em Transito".
 
 // mode: 'sale' (pedido de venda) | 'quote' (orçamento — salva e gera a foto PNG)
 // customerId: abre já com este cliente escolhido (a carteira do vendedor
@@ -322,8 +323,8 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const carrierSel = (carriers?.data || []).find(c => c.id === carrierId) || null;
   // "Retirar em mãos" é uma opção fixa da lista, não uma transportadora
   // cadastrada: o pedido fica sem carrier_id e a informação vai na observação.
-  const isRetirada = carrierId === RETIRADA;
-  const carrierLabel = isRetirada ? RETIRADA_LABEL : (carrierSel ? (carrierSel.trade_name || carrierSel.name) : '');
+  const isRetirada = !!carrierSel?.is_pickup;
+  const carrierLabel = carrierSel ? (carrierSel.trade_name || carrierSel.name) : '';
 
   // Tipos (categorias) de produto — para o filtro do painel de produtos
   const { data: productTypes = [] } = useQuery({
@@ -850,14 +851,16 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       discount: discountValue + couponDiscount,
       coupon_code: coupon?.code || null,
       freight: freteValue,
-      carrier_id: isRetirada ? null : (carrierId || null),
+      // A retirada TEM transportadora (a linha do proprio balcao), e
+      // zera-la apagaria de qual ponto o cliente vai retirar.
+      carrier_id: carrierId || null,
       // A COLUNA que o fluxo le para pular "Em Transito" (migracao 090).
       delivery_mode: isRetirada ? 'retirada' : 'entrega',
       payment_adjustment: paymentAdj,
       ...(() => {
         const noteParts = [];
         if (payTerm) noteParts.push(`Pagamento: ${payTerm.label}${payPercent ? ` (${payPercent > 0 ? '+' : ''}${payPercent}%)` : ''}`);
-        if (isRetirada) noteParts.push(`Entrega: ${RETIRADA_LABEL}`);
+        if (isRetirada) noteParts.push(`Entrega: ${carrierLabel}`);
         if (quoteNumber.trim()) noteParts.push(`Cotação do frete: ${quoteNumber.trim()}`);
         return noteParts.length ? { notes: noteParts.join(' · ') } : {};
       })(),
@@ -1083,7 +1086,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             <label className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1"><Truck size={12} /> Transportadora</label>
             <select className="input text-sm w-full" value={carrierId} onChange={e => { setCarrierId(e.target.value); setShowSched(false); }}>
               <option value="">— selecione —</option>
-              <option value={RETIRADA}>{RETIRADA_LABEL}</option>
               {(carriers?.data || []).map(c => <option key={c.id} value={c.id}>{c.trade_name || c.name}</option>)}
             </select>
             {carrierId && !isRetirada && (

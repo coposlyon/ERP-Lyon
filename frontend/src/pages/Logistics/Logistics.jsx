@@ -72,7 +72,7 @@ const emptySlot = () => ({ days: [], time: '08:00' });
 const emptyForm = {
   name: '', trade_name: '', cnpj: '', ie: '', email: '',
   phone: '', whatsapp: '', contact_name: '',
-  pickup_schedule: [], is_active: true,
+  pickup_schedule: [], is_active: true, is_pickup: false,
   address: { street: '', number: '', complement: '', neighborhood: '', city: '', state: '', zip: '' },
 };
 
@@ -83,6 +83,7 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
     pickup_schedule:  carrier?.pickup_schedule  || [],
     address: { ...emptyForm.address, ...(carrier?.address || {}) },
     is_active: carrier?.is_active !== false,
+    is_pickup: !!carrier?.is_pickup,
   });
   const [loading,      setLoading]      = useState(false);
   const [cnpjLoading,  setCnpjLoading]  = useState(false);
@@ -443,6 +444,23 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
         <span className="text-sm text-gray-700">Transportadora ativa</span>
       </label>
 
+      {/* O QUE ESTA CAIXA DECIDE, ALEM DO ROTULO.
+          Pedido com uma transportadora marcada assim nasce como
+          retirada e NAO passa pela fase "Em Transito" — nao ha coleta
+          nem viagem quando o cliente vem buscar. Antes isso era uma
+          opcao falsa dentro do seletor do pedido; agora e o cadastro
+          que responde. */}
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input type="checkbox" checked={form.is_pickup}
+          onChange={e => set('is_pickup', e.target.checked)} className="rounded mt-0.5" />
+        <span className="text-sm text-gray-700">
+          O cliente retira no local
+          <span className="block text-xs text-gray-400">
+            Marque na linha que representa o seu próprio balcão. O pedido pula a etapa de trânsito.
+          </span>
+        </span>
+      </label>
+
       {/* Documentos obrigatórios + responsável */}
       <div className="border border-indigo-200 rounded-lg bg-indigo-50/30 p-4 space-y-3">
         <p className="text-sm font-semibold text-indigo-800 flex items-center gap-1.5">
@@ -662,6 +680,7 @@ export default function Logistics() {
           { label: 'CNPJ',          value: detail.cnpj },
           { label: 'Inscrição Estadual', value: detail.ie },
           { label: 'Status',        value: detail.is_active ? 'Ativa' : 'Inativa' },
+          { label: 'Tipo',          value: detail.is_pickup ? 'Retirada no local' : 'Entrega' },
           { label: 'Contato',       value: detail.contact_name },
           { label: 'Telefone',      value: detail.phone },
           { label: 'WhatsApp',      value: detail.whatsapp },
