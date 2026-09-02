@@ -439,6 +439,109 @@ router.post('/replenishment-orders', async (req, res) => {
 });
 
 // POST /stock/replenishment-orders/:id/log-resend — loga reenvio de WA sem criar novo pedido
+/**
+ * EDITAR A SOLICITACAO — mexer no que foi pedido.
+ *
+ * Aceita so a QUANTIDADE de cada item e a remocao de linhas. Trocar o
+ * fornecedor nao entra: seria outro pedido, com outro protocolo e
+ * outro link — e o fornecedor antigo continuaria com um endereco vivo
+ * para uma lista que nao e mais dele.
+ *
+ * SE O FORNECEDOR JA TINHA RESPONDIDO, a resposta cai junto. Ele
+ * respondeu sobre uma lista que acabou de mudar: manter o "tenho 10"
+ * de um item cuja quantidade virou 40 e guardar uma resposta que
+ * ninguem deu. O pedido volta para "aguardando" e o link — que
+ * continua o mesmo — mostra a lista nova.
+ */
+router.put('/replenishment-orders/:id', async (req, res) => {
+  const { itens } = req.body || {};
+  if (!Array.isArray(itens)) return res.status(400).json({ error: 'Informe os itens' });
+
+  try {
+    const { data: order } = await supabase.from('PEDIDOS_REPOSICAO')
+      .select('*').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!order) return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+    if (order.status === 'completed') {
+      return res.status(400).json({ error: 'Esta solicitacao ja foi concluida — o estoque ja entrou.' });
+    }
+    if (order.status === 'cancelled') {
+      return res.status(400).json({ error: 'Esta solicitacao foi cancelada.' });
+    }
+
+    // A quantidade nova entra por POSICAO na lista original: o corpo da
+    // requisicao nao pode inventar produto que nao estava no pedido.
+    const originais = order.products || [];
+    const porLinha = new Map(itens.map(i => [Number(i.linha), i]));
+    const novos = originais
+      .map((p, i) => {
+        const pedido = porLinha.get(i);
+        if (!pedido || pedido.remover) return null;
+        const qtd = Math.max(0, Math.round(Number(pedido.qtd)) || 0);
+        return qtd > 0 ? { ...p, qty_to_replenish: qtd } : null;
+      })
+      .filter(Boolean);
+
+    if (!novos.length) {
+      return res.status(400).json({ error: 'A solicitacao ficaria sem nenhum item. Para isso, cancele.' });
+    }
+
+    const { data, error } = await supabase.from('PEDIDOS_REPOSICAO')
+      .update({
+        products: novos,
+        // A resposta antiga era sobre outra lista.
+        resposta: null, respondido_em: null, status: 'pending',
+      })
+      .eq('id', order.id).eq('tenant_id', req.tenantId)
+      .select('*').single();
+    if (error) throw error;
+
+    audit(req, 'update', 'reposicao', order.id, {
+      fornecedor: order.supplier_name,
+      de: originais.length, para: novos.length,
+      resposta_descartada: !!order.respondido_em,
+    });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * CANCELAR A SOLICITACAO.
+ *
+ * Nao apaga: o pedido fica no historico com status `cancelled`. Sumir
+ * com ele deixaria o fornecedor com um link vivo e ninguem deste lado
+ * sabendo que ele existiu.
+ *
+ * O TOKEN MORRE JUNTO. O link ja saiu no WhatsApp e ninguem
+ * desencaminha mensagem — se o endereco continuasse valendo, o
+ * fornecedor responderia a um pedido que a Lyon desistiu de fazer.
+ */
+router.post('/replenishment-orders/:id/cancel', async (req, res) => {
+  try {
+    const { data: order } = await supabase.from('PEDIDOS_REPOSICAO')
+      .select('id, status, supplier_name').eq('id', req.params.id)
+      .eq('tenant_id', req.tenantId).maybeSingle();
+    if (!order) return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+    if (order.status === 'completed') {
+      return res.status(400).json({ error: 'Ja concluida: o estoque entrou. Cancelar aqui nao o tiraria.' });
+    }
+
+    const { error } = await supabase.from('PEDIDOS_REPOSICAO')
+      .update({
+        status: 'cancelled',
+        public_token: null, token_expira_em: null,
+      })
+      .eq('id', order.id).eq('tenant_id', req.tenantId);
+    if (error) throw error;
+
+    audit(req, 'cancel', 'reposicao', order.id, { fornecedor: order.supplier_name });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/replenishment-orders/:id/log-resend', async (req, res) => {
   const { id } = req.params;
   try {

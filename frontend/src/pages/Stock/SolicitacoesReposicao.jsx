@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   Link2, Copy, CheckCircle2, Loader2, Paperclip, Clock, PackageCheck, Inbox,
+  Pencil, Trash2, X, Ban,
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -31,11 +32,15 @@ const ESTADOS = {
   respondido: { ordem: 0, rotulo: 'Fornecedor respondeu', cor: 'text-green-600',  Icone: PackageCheck, dica: 'Confira e dê baixa' },
   pending:    { ordem: 1, rotulo: 'Aguardando fornecedor', cor: 'text-amber-600', Icone: Clock,        dica: 'Mande o link para ele' },
   completed:  { ordem: 2, rotulo: 'Concluída',             cor: 'text-gray-400',  Icone: CheckCircle2, dica: 'Estoque já atualizado' },
+  cancelled:  { ordem: 3, rotulo: 'Cancelada',             cor: 'text-gray-400',  Icone: Ban,          dica: 'O link parou de funcionar' },
 };
 
 export default function SolicitacoesReposicao() {
   const qc = useQueryClient();
   const [linkDe, setLinkDe] = useState(null);   // { id, url }
+  // Edição de UMA solicitação por vez: { id, qtds: { linha: texto } }.
+  // Abrir várias ao mesmo tempo é convite para salvar a errada.
+  const [editando, setEditando] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['reposicao-solicitacoes'],
@@ -64,6 +69,51 @@ export default function SolicitacoesReposicao() {
     },
     onError: e => toast.error(e.error || 'Não consegui gerar o link'),
   });
+
+  const salvarEdicao = useMutation({
+    mutationFn: ({ id, itens }) => api.put(`/stock/replenishment-orders/${id}`, { itens }),
+    onSuccess: () => {
+      toast.success('Solicitação atualizada');
+      setEditando(null);
+      qc.invalidateQueries({ queryKey: ['reposicao-solicitacoes'] });
+      qc.invalidateQueries({ queryKey: ['replenishment-orders-pending'] });
+    },
+    onError: e => toast.error(e.error || 'Não consegui salvar'),
+  });
+
+  const cancelar = useMutation({
+    mutationFn: id => api.post(`/stock/replenishment-orders/${id}/cancel`),
+    onSuccess: () => {
+      toast.success('Solicitação cancelada — o link do fornecedor parou de funcionar');
+      qc.invalidateQueries({ queryKey: ['reposicao-solicitacoes'] });
+      qc.invalidateQueries({ queryKey: ['replenishment-orders-pending'] });
+    },
+    onError: e => toast.error(e.error || 'Não consegui cancelar'),
+  });
+
+  /**
+   * Abrir a edição já com as quantidades atuais dentro.
+   *
+   * O caso comum é mexer em UM número; começar com os campos vazios
+   * obrigaria a redigitar a lista inteira para mudar uma linha.
+   */
+  function abrirEdicao(p) {
+    const qtds = {};
+    (p.products || []).forEach((x, i) => {
+      qtds[i] = String(Math.abs(Number(x.qty_to_replenish ?? 0)) || 0);
+    });
+    setEditando({ id: p.id, qtds });
+  }
+
+  function confirmarCancelamento(p) {
+    const aviso = p.respondido_em
+      ? `Cancelar a solicitação para ${p.supplier_name}?\n\nO fornecedor JÁ RESPONDEU esta solicitação. `
+        + 'Cancelar descarta a resposta dele e mata o link.'
+      : `Cancelar a solicitação para ${p.supplier_name}?\n\n`
+        + 'O link que você mandou para ele para de funcionar.';
+    // eslint-disable-next-line no-alert
+    if (window.confirm(aviso)) cancelar.mutate(p.id);
+  }
 
   const darBaixa = useMutation({
     mutationFn: id => api.post(`/stock/replenishment-orders/${id}/complete`),
@@ -132,13 +182,30 @@ export default function SolicitacoesReposicao() {
                     <Paperclip size={13} /> Cotação
                   </a>
                 )}
-                {p.status !== 'completed' && (
-                  <button type="button" onClick={() => gerarLink.mutate(p.id)}
-                    disabled={gerarLink.isPending}
-                    title="Gera o endereço para o fornecedor responder"
-                    className="btn-secondary text-xs">
-                    <Link2 size={13} /> {p.public_token ? 'Novo link' : 'Gerar link'}
-                  </button>
+                {/* Concluída e cancelada não se editam: numa o estoque
+                    já entrou, na outra o link já morreu. */}
+                {p.status !== 'completed' && p.status !== 'cancelled' && (
+                  <>
+                    <button type="button" onClick={() => gerarLink.mutate(p.id)}
+                      disabled={gerarLink.isPending}
+                      title="Gera o endereço para o fornecedor responder"
+                      className="btn-secondary text-xs">
+                      <Link2 size={13} /> {p.public_token ? 'Novo link' : 'Gerar link'}
+                    </button>
+                    <button type="button"
+                      onClick={() => (editando?.id === p.id ? setEditando(null) : abrirEdicao(p))}
+                      title="Mudar as quantidades ou tirar itens"
+                      className="btn-secondary text-xs">
+                      {editando?.id === p.id ? <X size={13} /> : <Pencil size={13} />}
+                      {editando?.id === p.id ? 'Fechar' : 'Editar'}
+                    </button>
+                    <button type="button" onClick={() => confirmarCancelamento(p)}
+                      disabled={cancelar.isPending}
+                      title="Cancela a solicitação e derruba o link do fornecedor"
+                      className="btn-secondary text-xs text-red-500 hover:border-red-300">
+                      <Ban size={13} /> Cancelar
+                    </button>
+                  </>
                 )}
                 {respondeu && p.status !== 'completed' && (
                   <button type="button" onClick={() => darBaixa.mutate(p.id)}
@@ -186,9 +253,34 @@ export default function SolicitacoesReposicao() {
                         <p className="text-sm text-gray-800 break-words">{l.nome}</p>
                         {l.codigo && <p className="text-[11px] text-gray-400">{l.codigo}</p>}
                       </td>
-                      <td className="px-4 py-2 text-center text-sm text-gray-500">{l.pedido}</td>
                       <td className="px-4 py-2 text-center">
-                        {l.tem == null
+                        {editando?.id === p.id ? (
+                          <input type="number" min="0" inputMode="numeric"
+                            className="w-20 rounded-lg border border-gray-300 px-2 py-1 text-center text-sm focus:border-primary-400 focus:outline-none"
+                            value={editando.qtds[i] ?? ''}
+                            onChange={e => setEditando(ed => ({
+                              ...ed, qtds: { ...ed.qtds, [i]: e.target.value },
+                            }))} />
+                        ) : (
+                          <span className="text-sm text-gray-500">{l.pedido}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {/* Em edição, o lugar do "ele tem" é o botão de
+                            tirar a linha: zerar a quantidade some com o
+                            item, e o lixo diz isso sem precisar
+                            adivinhar. */}
+                        {editando?.id === p.id
+                          ? (
+                            <button type="button" title="Tirar este item da solicitação"
+                              onClick={() => setEditando(ed => ({
+                                ...ed, qtds: { ...ed.qtds, [i]: '0' },
+                              }))}
+                              className="text-gray-300 hover:text-red-500">
+                              <Trash2 size={14} />
+                            </button>
+                          )
+                          : l.tem == null
                           ? <span className="text-gray-300">—</span>
                           /* ZERO EM VERMELHO. "Não tenho" é a informação
                              mais importante desta tela: é ela que impede
@@ -214,6 +306,36 @@ export default function SolicitacoesReposicao() {
                 )}
               </table>
             </div>
+
+            {editando?.id === p.id && (
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-gray-100 bg-gray-50">
+                <p className="text-xs text-gray-500">
+                  Item com quantidade <b>0</b> sai da solicitação.
+                  {p.respondido_em && (
+                    <> O fornecedor já respondeu — salvar <b>descarta a resposta</b> e
+                      volta o pedido para “aguardando”.</>
+                  )}
+                </p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button type="button" onClick={() => setEditando(null)} className="btn-secondary text-xs">
+                    <X size={13} /> Descartar
+                  </button>
+                  <button type="button" disabled={salvarEdicao.isPending}
+                    onClick={() => salvarEdicao.mutate({
+                      id: p.id,
+                      itens: Object.entries(editando.qtds).map(([linha, qtd]) => ({
+                        linha: Number(linha), qtd: Number(qtd) || 0,
+                      })),
+                    })}
+                    className="btn-primary text-xs">
+                    {salvarEdicao.isPending
+                      ? <Loader2 size={13} className="animate-spin" />
+                      : <CheckCircle2 size={13} />}
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}

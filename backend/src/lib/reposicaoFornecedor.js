@@ -87,6 +87,10 @@ async function porToken(token) {
 function porQueNaoAbre(pedido) {
   if (!pedido) return 'Link não encontrado.';
   if (pedido.status === 'completed') return 'Esta solicitação já foi concluída.';
+  // Cancelada tambem nao abre. O cancelamento ja limpa o token, entao
+  // isto e cinto e suspensorio — mas um pedido cancelado que responde
+  // "nao encontrado" e melhor do que um que aceita resposta.
+  if (pedido.status === 'cancelled') return 'Esta solicitação foi cancelada pela Lyon.';
   if (pedido.tentativas >= MAX_TENTATIVAS) return 'Link bloqueado por tentativas.';
   if (pedido.token_expira_em && new Date(pedido.token_expira_em) < new Date()) {
     return 'O prazo deste link venceu.';
