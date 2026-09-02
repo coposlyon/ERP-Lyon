@@ -4,6 +4,10 @@ const Joi = require('joi');
 const supabase = require('../config/supabase');
 const { makeClient } = require('../config/supabase');
 const { audit } = require('../lib/audit');
+// A porta unica do preco de venda. Aqui ela serve para RECUSAR:
+// gravar em silencio o que outra tela deveria gravar e como o preco
+// do cadastro passou a discordar do preco do pedido.
+const P = require('../lib/preco');
 const { validate } = require('../middleware/validate');
 const { uploadDataUrl } = require('../lib/storage');
 const { parseName, extractColorNames, stripAccents } = require('../lib/cupImage');
@@ -837,7 +841,11 @@ router.post('/', validate(productSchema), async (req, res) => {
       code, ean, description, category_id,
       ...(tipo_id !== undefined ? { tipo_id: tipo_id || null } : {}),
       cost_price: cost_price || 0,
-      sale_price: sale_price || 0,
+      // PRODUTO NOVO NASCE SEM PRECO, e isso e de proposito: quem
+      // define preco e a Precificacao (lib/preco.js diz por que).
+      // Zero aqui nao e "de graca", e "ainda nao precificado" — e o
+      // pedido recusa item sem preco antes de virar venda.
+      sale_price: 0,
       min_stock: min_stock || 0,
       current_stock: Math.max(0, Math.round(Number(current_stock) || 0)),
       ncm, cst, cfop,
@@ -917,7 +925,8 @@ router.put('/:id', async (req, res) => {
     if (category_id !== undefined) payload.category_id = category_id || null;
     if (tipo_id !== undefined) payload.tipo_id = tipo_id || null;
     if (cost_price !== undefined) payload.cost_price = cost_price;
-    if (sale_price !== undefined) payload.sale_price = sale_price;
+    // `sale_price` NAO entra por aqui. A tela de produto mostra o
+    // preco; quem grava e a Precificacao. Ver lib/preco.js.
     if (min_stock !== undefined) payload.min_stock = min_stock;
     if (ncm !== undefined) payload.ncm = ncm;
     if (cst !== undefined) payload.cst = cst;

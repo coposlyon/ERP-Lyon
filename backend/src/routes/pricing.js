@@ -2,6 +2,7 @@ const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
+const P = require('../lib/preco');
 
 // Precificação: calcula o custo REAL de cada produto (custo direto +
 // rateio das despesas fixas + percentuais de venda) e sugere o preço
@@ -161,21 +162,17 @@ router.get('/overview', async (req, res) => {
 });
 
 // ── Aplicar preço sugerido (ou manual) ao produto ─────────
+//
+// ESTA É A ÚNICA ROTA QUE GRAVA PREÇO DE VENDA no sistema. O cadastro
+// de produto, a edição em massa e o ajuste de vitrine mostram o preço
+// e mandam para cá — quatro telas gravando o mesmo campo era o que
+// fazia o cadastro dizer R$ 2,11 e o pedido puxar outro número.
+// A conta e o registro moram em lib/preco.js.
 router.put('/products/:id', async (req, res) => {
-  const price = Number(req.body.sale_price);
-  if (!(price > 0)) return res.status(400).json({ error: 'Preço inválido' });
   try {
-    const { data: cur } = await supabase.from('PRODUTOS').select('id, name, sale_price')
-      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
-    if (!cur) return res.status(404).json({ error: 'Produto não encontrado' });
-
-    const { data, error } = await supabase.from('PRODUTOS')
-      .update({ sale_price: price })
-      .eq('id', req.params.id).eq('tenant_id', req.tenantId)
-      .select('id, name, sale_price').single();
-    if (error) throw error;
-    audit(req, 'price', 'product', data.id, { name: cur.name, de: cur.sale_price, para: price });
-    res.json(data);
+    const r = await P.definirPreco(req, req.params.id, req.body.sale_price);
+    if (r.erro) return res.status(r.http || 400).json({ error: r.erro });
+    res.json(r.produto);
   } catch (err) {
     console.error('[pricing/apply]', err.message);
     res.status(500).json({ error: 'Erro ao aplicar preço' });

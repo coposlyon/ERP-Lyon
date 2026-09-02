@@ -94,7 +94,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
   // Vazio não é zero: campo em branco aqui devolve o produto ao preço do
   // cadastro naquela vitrine. Por isso só entram os preenchidos.
   const camposAmbiente = {};
-  if (ambPreco !== '') camposAmbiente.sale_price = ambPreco;
+  // Preco nao entra na edicao em massa — Precificacao e a unica porta.
   if (ambMinimo !== '') camposAmbiente.min_order_qty = ambMinimo;
   const temVitrine = !!ambiente && Object.keys(camposAmbiente).length > 0;
 
@@ -338,9 +338,10 @@ export default function BulkEditModal({ isOpen, onClose }) {
               <option value="loja">Loja de copos lisos (/loja)</option>
               <option value="catalogo">Catálogo personalizado (/catalogo)</option>
             </select>
-            <input className="input" type="number" step="0.01" min="0" disabled={!ambiente}
-              value={ambPreco} onChange={e => setAmbPreco(e.target.value)}
-              placeholder="Preço nesta vitrine" />
+            {/* O preço saiu daqui: mudar o preço de trinta produtos
+                de uma vez, numa tela que serve para outra coisa, era a
+                forma mais rápida de o preço divergir do cadastro sem
+                ninguém notar. Preço se define em Precificação. */}
             <input className="input" type="number" min="1" disabled={!ambiente}
               value={ambMinimo} onChange={e => setAmbMinimo(e.target.value)}
               placeholder="Qtd. mínima nesta vitrine" />

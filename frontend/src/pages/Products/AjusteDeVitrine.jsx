@@ -28,8 +28,12 @@ import toast from 'react-hot-toast';
 const brl = v => (v == null || v === '' ? '—'
   : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0));
 
+// O PREÇO NÃO ESTÁ NESTA LISTA, e é o único campo que saiu dela.
+// Vitrine ajusta o que é DA VITRINE — foto, descrição, quantidade
+// mínima. Preço é do produto, e o produto tem um lugar só onde ele se
+// define: Precificação. Ter o preço aqui criava um segundo valor para
+// o mesmo item, e o pedido não sabia qual dos dois obedecer.
 const CAMPOS = [
-  { chave: 'sale_price',    rotulo: 'Preço de venda',   tipo: 'moeda' },
   { chave: 'min_order_qty', rotulo: 'Quantidade mínima', tipo: 'inteiro' },
   { chave: 'image_url',     rotulo: 'Foto (endereço)',  tipo: 'texto', largo: true },
   { chave: 'description',   rotulo: 'Descrição',        tipo: 'texto', largo: true },

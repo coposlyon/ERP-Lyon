@@ -189,7 +189,8 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
         ...form,
         name: form.name.toUpperCase(),
         cost_price: parseFloat(form.cost_price) || 0,
-        ...(form.pricing_sheet_id ? {} : { sale_price: parseFloat(String(form.sale_price).replace(',', '.')) || 0 }),
+        // `sale_price` NAO vai no corpo: o servidor recusa preco por
+        // esta rota, e de proposito. Ver backend/src/lib/preco.js.
         current_stock: parseInt(form.current_stock) || 0,
         category_id: form.category_id || null,
         supplier_id: form.supplier_id || null,
@@ -290,19 +291,22 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
             value={form.cost_price} onChange={e => set('cost_price', e.target.value)} placeholder="0,00" />
           <p className="text-xs text-gray-400 mt-1">O que você paga. Não é o preço de venda.</p>
         </div>
+        {/* O PREÇO SE LÊ AQUI E SE DEFINE EM PRECIFICAÇÃO.
+            Este campo já foi editável, e era uma das QUATRO telas que
+            gravavam o mesmo `sale_price` — junto com Precificação, a
+            edição em massa e o ajuste de vitrine. Quatro portas para o
+            mesmo número é o mesmo que não ter cadastro: o último que
+            salvou ganha, e foi assim que o cadastro passou a dizer
+            R$ 2,11 enquanto o pedido cobrava outro valor. */}
         <div>
-          <label className="label">
-            Preço de venda (R$)
-            {form.pricing_sheet_id && <span className="text-xs font-normal text-gray-400"> — da tabela</span>}
-          </label>
-          <input type="number" step="0.01" min="0"
-            className={`input ${form.pricing_sheet_id ? 'bg-gray-100 text-gray-500' : ''}`}
-            value={form.sale_price} onChange={e => set('sale_price', e.target.value)}
-            disabled={!!form.pricing_sheet_id} placeholder="0,00" />
-          <p className="text-xs mt-1" style={{ color: form.pricing_sheet_id ? '#9ca3af' : '#2563eb' }}>
-            {form.pricing_sheet_id
-              ? 'Calculado pela Tabela de Precificação abaixo — para mudar, edite a tabela.'
-              : 'É este o valor que o pedido de venda vai cobrar.'}
+          <label className="label">Preço de venda (R$)</label>
+          <input type="text" className="input bg-gray-100 text-gray-500" readOnly
+            value={form.sale_price === '' || form.sale_price == null
+              ? '—'
+              : Number(form.sale_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} />
+          <p className="text-xs mt-1 text-gray-400">
+            Definido em <b className="text-gray-500">Precificação</b> — é lá que o custo
+            vira preço, e é de lá que o pedido de venda puxa.
           </p>
           {margem !== null && (
             <p className="text-xs mt-0.5" style={{ color: margem < 0 ? '#dc2626' : '#6b7280' }}>
