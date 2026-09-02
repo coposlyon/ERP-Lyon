@@ -8,6 +8,7 @@ import {
   Edit2, Check, Plus, Minus, Search,
 } from 'lucide-react';
 import api from '@/lib/api';
+import SolicitacoesReposicao from './SolicitacoesReposicao';
 import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
@@ -896,6 +897,7 @@ export default function Stock() {
   const TABS = [
     { key: 'position',      label: 'Lista Completa'  },
     { key: 'replenishment', label: '📦 Reposição'    },
+    { key: 'solicitacoes',  label: '📨 Solicitações'  },
     { key: 'suggestion',    label: '🛒 Sugestão de Compra' },
     { key: 'inventory',     label: '📋 Inventário'   },
     { key: 'movements',     label: 'Movimentações'   },
@@ -1062,6 +1064,12 @@ export default function Stock() {
         {tab === 'inventory' && <InventoryCount />}
 
         {/* ── Aba: Reposição ────────────────────────────────────── */}
+        {/* AS SOLICITAÇÕES JÁ MANDADAS, e o que o fornecedor
+            respondeu em cada uma. É onde se gera o link dele e onde se
+            dá a baixa — do que ele confirmou ter, e não da lista
+            inteira que saiu daqui. */}
+        {tab === 'solicitacoes' && <SolicitacoesReposicao />}
+
         {tab === 'replenishment' && (
           <div className="space-y-4 p-4">
             {negativeProducts.length === 0 ? (

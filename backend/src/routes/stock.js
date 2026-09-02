@@ -4,6 +4,8 @@ const multer  = require('multer');
 const { randomUUID: uuidv4 } = require('crypto');
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
+// O lado do fornecedor na reposicao: link, identidade e resposta.
+const R = require('../lib/reposicaoFornecedor');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -476,6 +478,37 @@ router.post('/replenishment-orders/:id/log-resend', async (req, res) => {
 });
 
 // POST /stock/replenishment-orders/:id/complete — confirma recebimento e atualiza estoque
+/**
+ * O ENDERECO DO FORNECEDOR PARA ESTE PEDIDO.
+ *
+ * Devolve a URL inteira, pronta para colar no WhatsApp. Renova o token
+ * quando ja existe um, em vez de criar outro: dois enderecos vivos para
+ * a mesma reposicao e o fornecedor respondendo num e o estoque olhando
+ * o outro.
+ */
+router.post('/replenishment-orders/:id/link', async (req, res) => {
+  try {
+    const r = await R.gerarLink(req.tenantId, req.params.id);
+    if (!r) return res.status(404).json({ error: 'Pedido de reposicao nao encontrado' });
+
+    // A base vem do que o proprio navegador usou para chegar aqui — o
+    // ERP roda em lyoncopos.online e em localhost, e um endereco fixo
+    // no codigo mandaria o fornecedor para o lugar errado num deles.
+    const base = process.env.APP_URL
+      || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+
+    audit(req, 'link', 'reposicao', r.id, { fornecedor: r.supplier_name });
+    res.json({
+      url: `${base}/fornecedor/${r.public_token}`,
+      expira_em: r.token_expira_em,
+      protocolo: r.protocol_number,
+      fornecedor: r.supplier_name,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/replenishment-orders/:id/complete', async (req, res) => {
   const { id } = req.params;
 
@@ -488,16 +521,32 @@ router.post('/replenishment-orders/:id/complete', async (req, res) => {
       .single();
 
     if (orderErr || !order) return res.status(404).json({ error: 'Pedido não encontrado' });
-    if (order.status !== 'pending')
-      return res.status(400).json({ error: 'Pedido não está em status pendente' });
+    if (order.status === 'completed')
+      return res.status(400).json({ error: 'Este pedido já foi concluído' });
 
-    const products = order.products || [];
+    /**
+     * ENTRA O QUE O FORNECEDOR DISSE QUE TEM, e não o que foi pedido.
+     *
+     * Antes a baixa era da lista INTEIRA: pedimos 10 canecas slim, o
+     * fornecedor não tinha nenhuma, e o estoque passava a acreditar em
+     * dez caixas que nunca chegaram. Com a resposta dele em mãos, a
+     * quantidade que entra é a que ele confirmou.
+     *
+     * Sem resposta (pedido antigo, ou baixa feita sem passar pelo
+     * link), vale a lista pedida — é o comportamento de antes, e
+     * mudá-lo travaria a baixa de quem combina por telefone.
+     */
+    const respondeu = Array.isArray(order.resposta) && order.resposta.length > 0;
+    const products = respondeu
+      ? order.resposta.map(r => ({ id: r.product_id, qty_to_replenish: r.tem }))
+      : (order.products || []);
     const results  = [];
 
     // Adiciona estoque para cada produto via RPC
     for (const p of products) {
       const qty = Math.abs(Number(p.qty_to_replenish ?? p.current_stock_at_request ?? 0));
-      if (!qty) continue;
+      // Zero e resposta valida: "nao tenho" nao vira entrada nenhuma.
+      if (!qty || !p.id) continue;
       try {
         await supabase.rpc('atualizar_estoque', {
           p_tenant_id:      req.tenantId,

@@ -54,6 +54,10 @@ router.use('/webhooks', require('./webhooks')); // webhooks externos — sem aut
 // A ficha de admissao pelo link. Quem entra e alguem sendo contratado,
 // que ainda nao tem conta - a credencial e o token, e ele tem prazo.
 router.use('/admissao', require('./public-admissao')); // convite de admissao — sem auth
+// Portal do fornecedor: ele responde a reposicao pelo link. A
+// credencial e o token do endereco MAIS o CNPJ e o telefone do
+// cadastro — link encaminhado sozinho nao mostra nada.
+router.use('/fornecedor', require('./public-fornecedor')); // reposicao — sem auth
 
 router.use(authMiddleware);
 router.use(tenantMiddleware);
