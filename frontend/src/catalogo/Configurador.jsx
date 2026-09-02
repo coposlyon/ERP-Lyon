@@ -161,21 +161,6 @@ export default function Configurador() {
     () => (cfg?.acabamentos || []).find(a => a.id === estado.acabamento_id) || null,
     [cfg, estado.acabamento_id]);
 
-  /**
-   * Trocar de acabamento não pode apagar o que continua valendo.
-   *
-   * De "Degradê" para "Degradê com Borda", a cor base e a cor da boca
-   * seguem sendo as mesmas perguntas — só entrou a borda. Zerar tudo faria
-   * o cliente reescolher o que já tinha escolhido, e é o tipo de detalhe
-   * que decide se ele experimenta os acabamentos ou desiste no segundo.
-   */
-  function trocarAcabamento(novo) {
-    const validos = new Set((novo.campos || []).map(c => c.key));
-    const restante = {};
-    for (const [k, v] of Object.entries(estado.campos || {})) if (validos.has(k)) restante[k] = v;
-    mudar({ acabamento_id: novo.id, campos: restante });
-  }
-
   // As cores que o campo aceita. `apenas` restringe dentro do grupo —
   // a cor da boca sai do mesmo grupo «pintura» das dez tintas, mas só
   // Gelo e Transparente existem como acabamento de boca.
@@ -381,27 +366,25 @@ export default function Configurador() {
               </Nota>
             )}
 
-            <div className="mt-4">
-              <Rotulo>Categoria / Acabamento</Rotulo>
-              {/* Grade regular em vez de `flex-wrap`: catorze chips de larguras
-                  diferentes viravam quatro linhas desalinhadas. E sem ícone —
-                  o mesmo desenho repetido catorze vezes não distingue nada,
-                  só enche a linha e rouba espaço do nome. */}
-              <div className="grid gap-1.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-                {cfg.acabamentos.map(a => (
-                  <Opcao key={a.id} titulo={a.nome} cor={NEON.roxo} centralizado
-                    ativo={a.id === estado.acabamento_id}
-                    onClick={() => trocarAcabamento(a)}
-                    className="h-full" />
-                ))}
-              </div>
-            </div>
+            {/* O SELETOR DE ACABAMENTO SAIU DAQUI.
+                Eram catorze chips — Degradê, Bicolor, Tricolor, Jateado,
+                Efeito Gelo, Borda Metalizada e as versões "com Borda" —
+                logo abaixo do produto que o cliente acabou de escolher.
+                O pedido do catálogo é o copo cadastrado, e o acabamento
+                é combinado com a Lyon; oferecer catorze caminhos ali era
+                pedir uma decisão que não é do cliente e que a vitrine
+                nem promete cumprir.
 
-            {/* OS CAMPOS VARIÁVEIS. Vêm do acabamento, um a um. Nenhum
-                está escrito nesta tela — trocar o acabamento troca a
-                lista, e acabamento novo aparece sem deploy. */}
+                O acabamento CONTINUA existindo por baixo: o efeito de
+                abertura escolhe o primeiro da lista, e é dele que saem
+                os campos de cor, o preço e o item que vai para o
+                carrinho. O que saiu foi a pergunta, não o dado. */}
+
+            {/* OS CAMPOS DA PEÇA. Vêm do acabamento, um a um. Nenhum
+                está escrito nesta tela — acabamento novo no cadastro
+                muda a lista sem deploy. */}
             <div className="mt-4">
-              <Rotulo>Campos variáveis conforme acabamento selecionado</Rotulo>
+              <Rotulo>Cores e opções da peça</Rotulo>
               {acabamento?.campos?.length ? (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {acabamento.campos.map(campo => {
