@@ -56,6 +56,7 @@ const SimuladorMetas     = lazy(() => import('@/pages/Rateio/SimuladorMetas'));
 const HistoricoRateios   = lazy(() => import('@/pages/Rateio/HistoricoRateios'));
 const Rentabilidade      = lazy(() => import('@/pages/Rateio/Rentabilidade'));
 const Insumos            = lazy(() => import('@/pages/Insumos/Insumos'));
+const Itens              = lazy(() => import('@/pages/Itens/Itens'));
 const Fiscal             = lazy(() => import('@/pages/Fiscal/Fiscal'));
 const Contabil           = lazy(() => import('@/pages/Contabil/Contabil'));
 const Reports            = lazy(() => import('@/pages/Reports/Reports'));
@@ -298,6 +299,12 @@ function AppRoutes() {
         <Route path="rateio/historico" element={<Mod m={['financial','products','settings']}><HistoricoRateios /></Mod>} />
         <Route path="rateio/rentabilidade" element={<Mod m={['financial','products','settings']}><Rentabilidade /></Mod>} />
         <Route path="engenharia/insumos" element={<Mod m={['financial','products','settings','production']}><Insumos /></Mod>} />
+        {/* Cadastro de itens: a mesma tela travada por tipo. Quem entra
+            por Acessórios não vê tinta; quem entra por Itens vê tudo. */}
+        <Route path="cadastros/itens"      element={<Mod m={['products','financial','settings','production']}><Itens /></Mod>} />
+        <Route path="cadastros/acessorios" element={<Mod m={['products','financial','settings','production']}><Itens kind="acessorio" /></Mod>} />
+        <Route path="cadastros/bordas"     element={<Mod m={['products','financial','settings','production']}><Itens kind="borda" /></Mod>} />
+        <Route path="cadastros/tintas"     element={<Mod m={['products','financial','settings','production']}><Itens kind="tinta" /></Mod>} />
         {/* Fiscal */}
         <Route path="fiscal" element={<Mod m="fiscal"><Fiscal /></Mod>} />
         {/* Contábil / Fiscal */}

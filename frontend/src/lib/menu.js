@@ -28,6 +28,7 @@ import {
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Factory, ShieldCheck,
   Calculator, PieChart, Home, Landmark, Star, Trophy,
   MessageSquare, LogOut, LayoutGrid, Globe, CloudUpload, UserPlus, UserMinus,
+  Sparkles, Layers, Droplet,
 } from 'lucide-react';
 import { SITES } from '@/pages/Sites/registro';
 
@@ -122,6 +123,14 @@ export const menuItems = [
       { label: 'Aprovações de Cadastro', path: '/cadastro-aprovacoes', icon: ShieldCheck, adminOnly: true },
       { label: 'Fornecedores', path: '/suppliers', icon: Truck, module: 'suppliers' },
       { label: 'Tabelas de Preço', path: '/price-tables', icon: Percent, module: 'price-tables' },
+      // O QUE ENTRA NO COPO MORA AQUI, e não na Engenharia de Custos.
+      // Cadastrar canudo, borda e tinta é cadastro — quem faz isso é
+      // quem compra, não quem forma preço. A engenharia LÊ estes
+      // valores; ela não é mais o lugar de digitá-los.
+      { label: 'Acessórios', path: '/cadastros/acessorios', icon: Sparkles, module: 'products' },
+      { label: 'Bordas',     path: '/cadastros/bordas',     icon: Layers,   module: 'products' },
+      { label: 'Tintas',     path: '/cadastros/tintas',     icon: Droplet,  module: 'products' },
+      { label: 'Itens (todos)', path: '/cadastros/itens',   icon: Box,      module: 'products' },
     ],
   },
   {

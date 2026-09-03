@@ -96,6 +96,11 @@ router.use('/contas',    requireModules('financial'), require('./contas'));
 router.use('/pricing',   requireModules('financial','products','settings'), require('./pricing'));
 router.use('/rateio',    requireModules('financial','products','settings'), require('./rateio'));
 router.use('/insumos',   requireModules('financial','products','settings','production'), require('./insumos'));
+// O CADASTRO DE ITENS: canudo, tampa, borda metalizada, tinta,
+// embalagem. É onde mora o que a peça leva — e os DOIS valores de cada
+// coisa, o que se gasta e o que se cobra. Fica no mesmo recorte de
+// insumos porque é a mesma pessoa que mexe nos dois.
+router.use('/itens',     requireModules('financial','products','settings','production'), require('./itens'));
 router.use('/contabil',  requireModules('financial','fiscal','settings'), require('./contabil'));
 router.use('/fiscal',    requireModules('fiscal'), fiscalRoutes);
 router.use('/reports',   requireModules('reports'), reportsRoutes);
