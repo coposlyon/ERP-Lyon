@@ -361,12 +361,25 @@ export default function Products() {
     },
     // Onde o produto está publicado. Sem esta coluna, descobrir por que
     // um copo não aparece no site exige abrir o cadastro um por um.
+    //
+    // A COLUNA SEGUE A ABA. O mesmo copo é vendido liso na loja E
+    // personalizado no catálogo — é a mesma peça, e as duas marcas
+    // acesas em toda linha eram a verdade. Só que, dentro da aba
+    // "Produtos personalizados", "Loja liso" não é resposta para
+    // pergunta nenhuma: quem está ali quer saber se AQUELE copo está
+    // publicado NAQUELA vitrine, e o segundo selo só empurrava o olho
+    // para o lado errado.
+    //
+    // Em "Todos" as duas continuam aparecendo, porque ali a pergunta é
+    // justamente "onde este copo está?".
     { key: 'show_in_catalogo', label: 'Onde aparece', width: 150,
       render: (_, row) => {
         if (!row.is_active) return <span className="text-xs text-gray-400">—</span>;
         const portas = [
-          row.show_in_catalogo === true && { t: 'Catálogo', cls: 'bg-violet-100 text-violet-700' },
-          row.show_in_store !== false && { t: 'Loja liso', cls: 'bg-sky-100 text-sky-700' },
+          row.show_in_catalogo === true && catalogo !== 'liso'
+            && { t: 'Catálogo', cls: 'bg-violet-100 text-violet-700' },
+          row.show_in_store !== false && catalogo !== 'personalizado'
+            && { t: 'Loja liso', cls: 'bg-sky-100 text-sky-700' },
         ].filter(Boolean);
         if (!portas.length) {
           return <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Rascunho</span>;
