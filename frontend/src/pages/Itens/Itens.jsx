@@ -24,7 +24,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Loader2, Pencil, Trash2, Search, Package, Layers,
   Droplet, Box, Sparkles, Image as ImageIcon, Upload, X, AlertTriangle,
-  CheckSquare, Square, Tag,
+  CheckSquare, Square, Tag, Check, Images,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -403,6 +403,236 @@ function AplicarEmMassa({ itens, onClose, onOk }) {
 }
 
 // ════════════════════════════════════════════════════════════
+// ENVIO DE FOTOS EM MASSA — a pasta inteira de uma vez.
+//
+// Dezoito bordas são dezoito vezes: abrir, enviar, salvar, fechar. É o
+// tipo de tarefa que ninguém termina — para na sexta e as últimas
+// ficam sem foto para sempre. Aqui se escolhe a pasta e o sistema
+// adivinha, pelo nome do arquivo, a qual item cada foto pertence.
+//
+// MAS ADIVINHAR NÃO É DECIDIR. O palpite aparece numa lista, com a
+// miniatura ao lado do item escolhido e um seletor para corrigir o que
+// ficou errado. Subir dezoito fotos trocadas em silêncio seria pior do
+// que não subir nenhuma: a foto errada não parece erro, parece
+// catálogo.
+//
+// COMO O PALPITE FUNCIONA. "mosaico prata.jpg" tem que cair em Mosaico
+// Prata e não em Prata — e "prata.jpg" no contrário. Por isso a nota
+// olha os dois lados: quanto do nome do ITEM o arquivo cobre, e quanto
+// do ARQUIVO o item explica. Cobrir tudo dos dois lados ganha de
+// cobrir metade de um.
+// ════════════════════════════════════════════════════════════
+
+// Palavras que aparecem em todo arquivo e não distinguem nada. Sem
+// isto, "borda-metalizada-prata.jpg" casaria igualmente bem com as
+// dezoito, porque dezoito são "borda metalizada".
+const RUIDO = new Set([
+  'borda', 'bordas', 'metalizada', 'metalizado', 'metalica', 'copo', 'copos',
+  'foto', 'fotos', 'img', 'image', 'imagem', 'whatsapp', 'photo', 'jpg', 'jpeg',
+  'png', 'webp', 'final', 'novo', 'nova', 'editado', 'screenshot', 'captura',
+]);
+
+const semAcento = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/** Nome de arquivo → palavras que significam alguma coisa. */
+function palavras(texto, tirarRuido = false) {
+  return semAcento(texto)
+    .toLowerCase()
+    .replace(/\.[a-z0-9]{2,4}$/, '')        // a extensão
+    .split(/[^a-z0-9]+/)
+    .filter(p => p.length > 1 && !/^\d+$/.test(p))   // "01", "2" não dizem nada
+    .filter(p => !(tirarRuido && RUIDO.has(p)));
+}
+
+/**
+ * A nota de um item para um arquivo.
+ *
+ * Os dois lados pesam: `cobertura` é quanto do nome do item o arquivo
+ * contém (é o que faz "mosaico prata" ganhar de "prata" no arquivo
+ * "mosaico prata.jpg"), e `precisao` é quanto do arquivo o item
+ * explica (é o que faz "prata" ganhar em "prata.jpg"). Zero acerto é
+ * zero: sem nenhuma palavra em comum não há palpite, e é melhor pedir
+ * para a pessoa escolher do que chutar.
+ */
+function nota(item, doArquivo) {
+  const doItem = palavras(`${item.color_name || ''} ${item.name || ''}`, true);
+  if (!doItem.length || !doArquivo.length) return 0;
+  const acertos = doItem.filter(p => doArquivo.includes(p)).length;
+  if (!acertos) return 0;
+  const cobertura = acertos / doItem.length;
+  const precisao  = acertos / doArquivo.length;
+  return cobertura * 2 + precisao;
+}
+
+function melhorPalpite(nomeArquivo, itens) {
+  const doArquivo = palavras(nomeArquivo, true);
+  let melhor = null, melhorNota = 0, segundaNota = 0;
+  for (const i of itens) {
+    const n = nota(i, doArquivo);
+    if (n > melhorNota) { segundaNota = melhorNota; melhorNota = n; melhor = i; }
+    else if (n > segundaNota) segundaNota = n;
+  }
+  return {
+    item: melhorNota > 0 ? melhor : null,
+    // EMPATE NÃO É PALPITE. Duas notas iguais querem dizer que o nome
+    // do arquivo não decide — a pessoa decide.
+    duvidoso: melhorNota > 0 && melhorNota - segundaNota < 0.35,
+  };
+}
+
+function FotosEmMassa({ itens, onClose, onOk }) {
+  const [fila, setFila] = useState([]);      // { id, nome, dataUrl, itemId, duvidoso, estado }
+  const [enviando, setEnviando] = useState(false);
+  const [feitos, setFeitos] = useState(0);
+
+  async function escolherArquivos(e) {
+    const arquivos = [...(e.target.files || [])].filter(f => f.type.startsWith('image/'));
+    e.target.value = '';
+    if (!arquivos.length) { toast.error('Nenhuma imagem na seleção'); return; }
+    if (arquivos.length > 100) { toast.error('Máximo de 100 fotos por vez'); return; }
+
+    const usados = new Set();
+    const nova = [];
+    for (const f of arquivos) {
+      if (f.size > 5 * 1024 * 1024) {
+        nova.push({ id: `${f.name}-${f.size}`, nome: f.name, dataUrl: null, itemId: '', duvidoso: false, estado: 'grande' });
+        continue;
+      }
+      const palpite = melhorPalpite(f.name, itens);
+      // UM ITEM NÃO RECEBE DUAS FOTOS. Se o palpite já foi usado, a
+      // segunda foto fica sem dono em vez de sobrescrever a primeira.
+      const livre = palpite.item && !usados.has(palpite.item.id) ? palpite.item : null;
+      if (livre) usados.add(livre.id);
+      nova.push({
+        id: `${f.name}-${f.size}`,
+        nome: f.name,
+        dataUrl: await fileToDataUrl(f),
+        itemId: livre?.id || '',
+        duvidoso: palpite.duvidoso || (!!palpite.item && !livre),
+        estado: 'pendente',
+      });
+    }
+    setFila(nova);
+    setFeitos(0);
+  }
+
+  const prontos = fila.filter(f => f.itemId && f.estado !== 'grande');
+  const semDono = fila.filter(f => !f.itemId && f.estado !== 'grande').length;
+  const grandes = fila.filter(f => f.estado === 'grande').length;
+
+  async function enviar() {
+    if (!prontos.length) { toast.error('Nenhuma foto pronta para enviar'); return; }
+    setEnviando(true);
+    let ok = 0, erro = 0;
+    // UMA DE CADA VEZ, de propósito: dezoito uploads em paralelo
+    // derrubam o limite do servidor e voltam metade com erro — e aí
+    // ninguém sabe quais subiram.
+    for (const f of prontos) {
+      try {
+        await api.patch(`/itens/${f.itemId}/foto`, { photo_url: f.dataUrl });
+        ok++;
+        setFila(l => l.map(x => (x.id === f.id ? { ...x, estado: 'enviado' } : x)));
+      } catch {
+        erro++;
+        setFila(l => l.map(x => (x.id === f.id ? { ...x, estado: 'erro' } : x)));
+      }
+      setFeitos(n => n + 1);
+    }
+    setEnviando(false);
+    if (ok) toast.success(`${ok} foto${ok === 1 ? '' : 's'} no lugar!`);
+    if (erro) toast.error(`${erro} não subiu${erro === 1 ? '' : 'ram'} — tente de novo.`);
+    if (ok && !erro) onOk();
+    else if (ok) onOk({ manterAberto: true });
+  }
+
+  return (
+    <Modal isOpen onClose={onClose} size="xl" closeOnBackdrop={false}
+      title="Enviar fotos em massa"
+      footer={<>
+        <button className="btn-secondary" onClick={onClose}>{fila.length ? 'Fechar' : 'Cancelar'}</button>
+        <button className="btn-primary" onClick={enviar} disabled={enviando || !prontos.length}>
+          {enviando
+            ? <><Loader2 size={15} className="animate-spin" /> {feitos}/{prontos.length}</>
+            : `Enviar ${prontos.length || ''} foto${prontos.length === 1 ? '' : 's'}`}
+        </button>
+      </>}
+    >
+      <div className="space-y-4 text-sm">
+        <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center">
+          <Upload size={22} className="mx-auto mb-2 text-gray-400" />
+          <p className="text-gray-700 font-medium">Escolha a pasta inteira de uma vez</p>
+          <p className="text-xs text-gray-500 mt-0.5 mb-3">
+            Selecione todos os arquivos (Ctrl+A na pasta). O sistema adivinha de quem é cada
+            foto pelo nome do arquivo — e você confere antes de subir.
+          </p>
+          <label className="btn-primary cursor-pointer inline-flex">
+            <Upload size={15} /> Escolher fotos
+            <input type="file" accept="image/*" multiple className="hidden" onChange={escolherArquivos} />
+          </label>
+        </div>
+
+        {fila.length > 0 && (
+          <>
+            <div className="flex flex-wrap gap-3 text-xs">
+              <span className="text-gray-600"><b>{prontos.length}</b> prontas</span>
+              {semDono > 0 && <span className="text-amber-600"><b>{semDono}</b> sem item escolhido</span>}
+              {grandes > 0 && <span className="text-red-600"><b>{grandes}</b> acima de 5 MB</span>}
+            </div>
+
+            <div className="max-h-96 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
+              {fila.map(f => (
+                <div key={f.id} className="flex items-center gap-2.5 p-2.5">
+                  {f.dataUrl
+                    ? <img src={f.dataUrl} alt="" className="w-11 h-11 rounded-lg object-cover border border-gray-200 shrink-0" />
+                    : <span className="w-11 h-11 rounded-lg border border-dashed border-red-200 bg-red-50 grid place-items-center shrink-0 text-red-400"><X size={16} /></span>}
+
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-500 truncate">{f.nome}</p>
+                    {f.estado === 'grande' ? (
+                      <p className="text-xs text-red-600">Imagem acima de 5 MB — reduza e tente de novo.</p>
+                    ) : (
+                      <select
+                        className={`input text-sm mt-0.5 ${!f.itemId ? 'border-amber-300' : f.duvidoso ? 'border-amber-200' : ''}`}
+                        value={f.itemId}
+                        onChange={e => setFila(l => l.map(x => (x.id === f.id ? { ...x, itemId: e.target.value, duvidoso: false } : x)))}
+                        disabled={enviando || f.estado === 'enviado'}
+                      >
+                        <option value="">— escolha o item —</option>
+                        {itens.map(i => (
+                          <option key={i.id} value={i.id}>
+                            {i.color_name ? `${i.color_name} — ${i.name}` : i.name}
+                            {i.photo_url ? ' (já tem foto)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {f.duvidoso && f.estado === 'pendente' && (
+                      <p className="text-[11px] text-amber-600 mt-0.5">
+                        Palpite incerto — confira antes de enviar.
+                      </p>
+                    )}
+                  </div>
+
+                  <span className="shrink-0 w-6 text-center">
+                    {f.estado === 'enviado' && <Check size={16} className="text-green-600" />}
+                    {f.estado === 'erro' && <AlertTriangle size={16} className="text-red-500" />}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[11px] text-gray-400">
+              A foto substitui a que o item já tiver. Nada mais do cadastro é alterado — preço,
+              consumo e fornecedor ficam como estão.
+            </p>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
 // A TELA
 // ════════════════════════════════════════════════════════════
 export default function Itens({ kind = null }) {
@@ -412,6 +642,7 @@ export default function Itens({ kind = null }) {
   const [editando, setEditando] = useState(null); // objeto = editar; {} = novo
   const [marcados, setMarcados] = useState([]);
   const [aplicando, setAplicando] = useState(false);
+  const [enviandoFotos, setEnviandoFotos] = useState(false);
 
   const tipoAtual = kind || aba;
 
@@ -471,9 +702,17 @@ export default function Itens({ kind = null }) {
             {t ? t.dica : 'Tudo que entra num copo — com o que se gasta e o que se cobra.'}
           </p>
         </div>
-        <button className="btn-primary shrink-0" onClick={() => setEditando({})}>
-          <Plus size={16} /> Novo item
-        </button>
+        <div className="flex gap-2 shrink-0">
+          {/* A PASTA INTEIRA DE UMA VEZ. Dezoito bordas são dezoito
+              vezes abrir-enviar-salvar-fechar — o tipo de tarefa que
+              para na sexta e as últimas ficam sem foto para sempre. */}
+          <button className="btn-secondary" onClick={() => setEnviandoFotos(true)}>
+            <Images size={16} /> Enviar fotos
+          </button>
+          <button className="btn-primary" onClick={() => setEditando({})}>
+            <Plus size={16} /> Novo item
+          </button>
+        </div>
       </div>
 
       {/* ── abas por tipo (só quando a tela não vem travada) ── */}
@@ -602,6 +841,16 @@ export default function Itens({ kind = null }) {
           kindPadrao={tipoAtual}
           onClose={() => setEditando(null)}
           onSaved={() => { setEditando(null); qc.invalidateQueries({ queryKey: ['itens'] }); }}
+        />
+      )}
+      {enviandoFotos && (
+        <FotosEmMassa
+          itens={lista}
+          onClose={() => setEnviandoFotos(false)}
+          onOk={(op) => {
+            if (!op?.manterAberto) setEnviandoFotos(false);
+            qc.invalidateQueries({ queryKey: ['itens'] });
+          }}
         />
       )}
       {aplicando && (

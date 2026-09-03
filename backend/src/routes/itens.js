@@ -173,6 +173,32 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+/**
+ * SÓ A FOTO — sem passar pelo formulário inteiro.
+ *
+ * O PUT acima reescreve o item com o que a tela mandou, e é isso que
+ * ele deve fazer: é o formulário. Mas o envio em massa manda dezoito
+ * fotos e nada mais — se fosse pelo PUT, cada arquivo enviado zeraria
+ * preço, consumo e fornecedor de um item que ninguém abriu. Um
+ * endereço que muda uma coisa só não tem como apagar as outras.
+ */
+router.patch('/:id/foto', async (req, res) => {
+  try {
+    const foto = await processaFoto(req.body?.photo_url);
+    if (foto === undefined) return res.status(400).json({ error: 'Nenhuma imagem enviada.' });
+    const { data, error } = await supabase.from('ITENS')
+      .update({ photo_url: foto, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId)
+      .select('id, name, color_name, photo_url').single();
+    if (error) throw error;
+    audit(req, 'update', 'item', req.params.id, { foto: foto ? 'set' : 'removida' });
+    res.json(data);
+  } catch (err) {
+    if (faltaMigracao(res, err)) return;
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Apagar ───────────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   try {
