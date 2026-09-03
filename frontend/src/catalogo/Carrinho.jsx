@@ -141,6 +141,10 @@ export default function Carrinho() {
     quantidade: i.quantidade,
     posicao: i.posicao,
     projeto_id: i.projeto_id,
+    // OS IDS DO QUE ELA MARCOU, e só. O preço de cada adicional o
+    // servidor relê do cadastro no fechamento — mandar valor daqui
+    // seria deixar o navegador dizer quanto custa.
+    adicionais: i.adicionais || [],
   }));
 
   /**
@@ -589,6 +593,14 @@ function ItemDoCarrinho({ item, onQtd, onRemover }) {
         {resumo.length > 0 && (
           <p className="text-[11px] mt-1 leading-relaxed" style={{ color: NEON.suave }}>
             {resumo.map(([k, v]) => `${k}: ${v}`).join(' · ')}
+          </p>
+        )}
+        {/* O QUE ELA MARCOU A MAIS, escrito. Um item que sobe o preço
+            e não aparece no carrinho vira "por que deu esse valor?" na
+            hora de pagar — que é a hora em que a compra é abandonada. */}
+        {(item.adicionais_resumo || []).length > 0 && (
+          <p className="text-[11px] mt-1 leading-relaxed" style={{ color: NEON.ciano }}>
+            + {item.adicionais_resumo.join(' · ')}
           </p>
         )}
       </div>

@@ -52,6 +52,9 @@ const INICIAL = {
   retirar: false,
   pagamento: 'pix',
   projeto: null,
+  // Os adicionais que a cliente marcou — ids do cadastro. Aqui não
+  // mora preço nenhum: o valor é do servidor, sempre.
+  adicionais: [],
 };
 
 export default function Configurador() {
@@ -197,6 +200,7 @@ export default function Configurador() {
           quantidade: estado.quantidade,
           campos: estado.campos,
           tipo_pedido: estado.tipo_pedido,
+          adicionais: estado.adicionais,
         });
         if (vivo) setPreco(r);
       } catch (err) {
@@ -207,7 +211,24 @@ export default function Configurador() {
     }, 350);
     return () => { vivo = false; clearTimeout(t); };
   }, [cfg, chave, estado.acabamento_id, estado.processo_id, estado.quantidade,
-      estado.campos, estado.tipo_pedido, personalizado]);
+      estado.campos, estado.tipo_pedido, estado.adicionais, personalizado]);
+
+  /**
+   * O ADICIONAL QUE DEIXOU DE EXISTIR PARA ESTE COPO.
+   *
+   * Trocar a cor troca o PRODUTO, e com ele as regras: uma borda que
+   * valia para o azul pode não valer para o preto. O servidor já ignora
+   * o que não se aplica — mas deixar o quadradinho marcado na tela
+   * mostraria uma escolha que não está sendo cobrada, e a conta pareceria
+   * errada sem estar.
+   */
+  useEffect(() => {
+    const disponiveis = preco?.adicionais_disponiveis;
+    if (!disponiveis || !estado.adicionais.length) return;
+    const validos = new Set(disponiveis.map(a => a.item_id));
+    const restam = estado.adicionais.filter(id => validos.has(id));
+    if (restam.length !== estado.adicionais.length) mudar({ adicionais: restam });
+  }, [preco?.adicionais_disponiveis]); // eslint-disable-line
 
   const escolhaVisual = useMemo(() => {
     const campos = {};
@@ -252,6 +273,13 @@ export default function Configurador() {
       quantidade: preco?.quantidade || 0,
       quantidade_minima: preco?.quantidade_minima || 1,
       valor_unitario: preco?.valor_unitario || 0,
+      // IDS, não preços. O carrinho leva o que foi escolhido; quanto
+      // custa quem diz é o servidor, no checkout.
+      adicionais: estado.adicionais,
+      // Só para o carrinho conseguir escrever "Borda Prata" sem
+      // perguntar de novo.
+      adicionais_resumo: (preco?.adicionais_escolhidos || [])
+        .map(a => (a.cor ? `${a.nome} ${a.cor}` : a.nome)),
     };
   }
 
@@ -542,7 +570,75 @@ export default function Configurador() {
             </Painel>
           )}
 
-          <Painel titulo={personalizado ? '3. Entrega e Evento' : '2. Entrega e Evento'}
+          {/* ══ ADICIONAIS ═══════════════════════════════════════
+              A BORDA É O QUE MAIS SE VENDE JUNTO, e até aqui ela não
+              tinha onde ser escolhida: estava cadastrada, tinha preço,
+              e o catálogo não a oferecia. Cada item marcado sobe o
+              preço na hora — e o valor vem do servidor, não daqui: o
+              que a tela manda são ids.
+
+              Só aparecem os OPCIONAIS. O que está marcado como "já vem
+              no preço" (a tinta da serigrafia) já está dentro do valor
+              de tabela; mostrá-lo aqui sugeriria que é escolha, e
+              cobrá-lo seria cobrar duas vezes. */}
+          {(preco?.adicionais_disponiveis || []).length > 0 && (
+            <Painel titulo={`${personalizado ? 3 : 2}. Adicionais`} cor={NEON.ciano} icone={Sparkles}>
+              <p className="text-[11.5px] mb-3" style={{ color: NEON.suave }}>
+                Opcional. Marque o que quiser incluir — o preço se ajusta na hora.
+              </p>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {preco.adicionais_disponiveis.map(a => {
+                  const marcado = estado.adicionais.includes(a.item_id);
+                  return (
+                    <button key={a.item_id} type="button" aria-pressed={marcado}
+                      onClick={() => mudar({
+                        adicionais: marcado
+                          ? estado.adicionais.filter(x => x !== a.item_id)
+                          : [...estado.adicionais, a.item_id],
+                      })}
+                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all active:scale-[0.985]"
+                      style={{
+                        background: marcado ? corComAlfa(NEON.ciano, 0.16) : 'rgba(255,255,255,0.035)',
+                        border: `1px solid ${marcado ? corComAlfa(NEON.ciano, 0.85) : 'rgba(255,255,255,0.10)'}`,
+                        boxShadow: marcado ? `0 0 16px ${corComAlfa(NEON.ciano, 0.3)}` : 'none',
+                      }}>
+                      {/* A FOTO GANHA DA COR quando existe: numa borda
+                          mosaico a cor é aproximação e a foto é o
+                          produto. É no olho que a cliente escolhe. */}
+                      {a.foto ? (
+                        <img src={a.foto} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0"
+                          style={{ border: '1px solid rgba(255,255,255,0.15)' }} />
+                      ) : (
+                        <span className="w-10 h-10 rounded-lg shrink-0"
+                          style={{ background: a.cor_hex || 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }} />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[12.5px] font-medium leading-tight truncate"
+                          style={{ color: marcado ? NEON.texto : 'rgba(255,255,255,0.82)' }}>
+                          {a.cor ? `${a.nome} ${a.cor}` : a.nome}
+                        </span>
+                        <span className="block text-[10.5px] mt-0.5" style={{ color: NEON.fraco }}>
+                          {a.preco > 0 ? `+ ${brl(a.preco)} por peça` : 'sem custo adicional'}
+                        </span>
+                      </span>
+                      {marcado && <Check size={15} style={{ color: NEON.ciano, flexShrink: 0 }} />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {estado.adicionais.length > 0 && preco?.valor_adicionais > 0 && (
+                <Nota icone={Info} cor={NEON.ciano}>
+                  Adicionais: {brl(preco.valor_adicionais_unitario)} por peça ·{' '}
+                  <b>{brl(preco.valor_adicionais)}</b> nas {preco.quantidade} unidades. Já está no
+                  total ao lado.
+                </Nota>
+              )}
+            </Painel>
+          )}
+
+          <Painel titulo={`${(personalizado ? 3 : 2) + ((preco?.adicionais_disponiveis || []).length > 0 ? 1 : 0)}. Entrega e Evento`}
             cor={NEON.azul} icone={CalendarDays}>
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
@@ -679,10 +775,23 @@ export default function Configurador() {
                 <Linha rotulo="Arte" valor={estado.posicao === 'frente_verso' ? 'Frente e verso' : 'Frente'} />
               )}
               <Linha rotulo="Qtd" valor={preco?.quantidade ? `${preco.quantidade} un` : null} />
+              {(preco?.adicionais_escolhidos || []).length > 0 && (
+                <Linha rotulo="Adicionais"
+                  valor={preco.adicionais_escolhidos
+                    .map(a => (a.cor ? `${a.nome} ${a.cor}` : a.nome)).join(', ')} />
+              )}
             </dl>
 
+            {/* A SOMA ABERTA. "R$ 6,80" sem dizer que R$ 0,50 era a
+                borda é o número que vira pergunta na hora de pagar. */}
             <div className="mt-3 pt-3 space-y-1.5 text-[12.5px]"
               style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+              {preco?.valor_adicionais > 0 && (
+                <>
+                  <Valor rotulo="Copos" valor={(preco.valor_base_unitario || 0) * (preco.quantidade || 0)} />
+                  <Valor rotulo="Adicionais" valor={preco.valor_adicionais} />
+                </>
+              )}
               <Valor rotulo="Valor dos produtos" valor={preco?.valor_produtos} destaque />
               <Valor rotulo="Valor unitário" valor={preco?.valor_unitario} />
             </div>

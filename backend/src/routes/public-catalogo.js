@@ -33,6 +33,11 @@ const {
 // conferindo pagamento em dois lugares.
 const { pixConfig, gerarCobrancaPix } = require('../lib/pixCobranca');
 const { criarVendaDoPedido } = require('../lib/pedidoLoja');
+// Os adicionais do copo (borda, canudo, tampa). A MESMA biblioteca que
+// a Engenharia de Custos e o cadastro leem: se o catálogo somasse por
+// conta própria, o preço da tela deixaria de bater com o do pedido e a
+// diferença só apareceria no fechamento do mês.
+const { adicionaisDoProduto } = require('../lib/adicionais');
 
 // A loja pública serve UM tenant. Mesma origem do public-store.
 const STORE_TENANT = process.env.STORE_TENANT_ID || 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
@@ -92,7 +97,7 @@ router.get('/modelo/:chave', async (req, res) => {
  * regra, um lugar.
  */
 router.post('/preco', async (req, res) => {
-  const { modelo, acabamento_id, processo_id, quantidade, campos, tipo_pedido, cores_liso } = req.body || {};
+  const { modelo, acabamento_id, processo_id, quantidade, campos, tipo_pedido, cores_liso, adicionais } = req.body || {};
   try {
     const cfg = await configDoModelo(STORE_TENANT, String(modelo || ''));
     if (cfg.erro || cfg.config_ausente) return res.status(404).json({ error: 'Modelo não encontrado' });
@@ -110,7 +115,7 @@ router.post('/preco', async (req, res) => {
     const produtoId = produtoEscolhido(cfg, escolha) || cfg.modelo.produto_referencia;
 
     const { data: prod, error } = await supabase.from('PRODUTOS')
-      .select('id, name, code, sale_price, price_tiers, print_pricing, min_order_qty')
+      .select('id, name, code, category_id, sale_price, price_tiers, print_pricing, min_order_qty')
       .eq('tenant_id', STORE_TENANT).eq('id', produtoId).maybeSingle();
     if (error) throw error;
     if (!prod) return res.status(404).json({ error: 'Produto não encontrado' });
@@ -122,6 +127,11 @@ router.post('/preco', async (req, res) => {
     const qtd = Math.max(minimo, Number(quantidade) || minimo);
     const preco = precoDoItem({ produto: prod, quantidade: qtd, acabamento: acab, processo: proc });
 
+    // O QUE ESTE COPO OFERECE, e quanto sobe se a cliente marcar. Vem
+    // com o preço porque a tela recalcula a cada clique — e o total que
+    // ela mostra tem que ser o mesmo que o checkout vai cobrar.
+    const ad = await adicionaisDoPedido(prod.id, prod.category_id, adicionais);
+
     res.json({
       ok: check.ok,
       problemas: check.problemas,
@@ -130,11 +140,54 @@ router.post('/preco', async (req, res) => {
       nome: acab ? acab.nome_comercial : cfg.modelo.nome,
       quantidade: qtd,
       quantidade_minima: minimo,
-      valor_unitario: preco.unitario,
-      valor_produtos: preco.total,
+      // O copo sozinho, para a tela poder mostrar a soma aberta.
+      valor_base_unitario: preco.unitario,
+      valor_unitario: Math.round((preco.unitario + ad.unitario) * 100) / 100,
+      valor_produtos: Math.round((preco.unitario + ad.unitario) * qtd * 100) / 100,
+      adicionais_disponiveis: ad.disponiveis,
+      adicionais_escolhidos: ad.escolhidos,
+      valor_adicionais_unitario: ad.unitario,
+      valor_adicionais: Math.round(ad.unitario * qtd * 100) / 100,
     });
   } catch (err) { fail(res, err, 'preco'); }
 });
+
+/**
+ * OS ADICIONAIS DE UM COPO — o que se oferece e o que se cobra.
+ *
+ * O SERVIDOR NÃO ACREDITA NA TELA, e aqui isso é dinheiro: a requisição
+ * manda IDS de item, nunca preço. O valor é lido do cadastro na hora,
+ * então mexer no HTML só muda o que a pessoa vê, não o que ela paga.
+ *
+ * SÓ O QUE É OPCIONAL ENTRA NA CONTA. O item marcado como "já vem no
+ * preço" (a tinta da serigrafia) compõe o custo da peça e já está
+ * dentro do preço de tabela — cobrá-lo de novo aqui seria cobrar duas
+ * vezes pela mesma coisa.
+ */
+async function adicionaisDoPedido(produtoId, categoriaId, escolhidos) {
+  const todos = await adicionaisDoProduto(STORE_TENANT, produtoId, categoriaId || null);
+  const opcionais = todos.filter(a => !a.padrao);
+  const pedidos = new Set((Array.isArray(escolhidos) ? escolhidos : []).filter(Boolean).map(String));
+
+  // Campo a campo: o cliente não vê custo, consumo nem fornecedor.
+  const paraVitrine = a => ({
+    item_id: a.item.id,
+    nome: a.item.name,
+    cor: a.item.color_name || null,
+    cor_hex: a.item.color_hex || null,
+    foto: a.item.photo_url || null,
+    tipo: a.item.kind,
+    preco: a.preco,
+  });
+
+  const marcados = opcionais.filter(a => pedidos.has(String(a.item.id)));
+  return {
+    disponiveis: opcionais.map(paraVitrine),
+    escolhidos: marcados.map(paraVitrine),
+    // Por PEÇA. Multiplicar pela quantidade é de quem monta a linha.
+    unitario: Math.round(marcados.reduce((t, a) => t + Number(a.preco || 0), 0) * 100) / 100,
+  };
+}
 
 /**
  * Qual produto do cadastro a escolha aponta.
@@ -379,7 +432,7 @@ router.post('/orcamento', escritaLimiter, async (req, res) => {
         unit_price: l.unitario,
         discount: 0,
         total: l.total,
-        customization: { ...l.configuracao, arte: l.arte || null },
+        customization: { ...l.configuracao, arte: l.arte || null, adicionais: l.adicionais || [] },
       })));
     if (erroItens) throw erroItens;
 
@@ -413,7 +466,7 @@ async function montarItem(item) {
 
   const produtoId = produtoEscolhido(cfg, escolha) || cfg.modelo.produto_referencia;
   const { data: prod, error } = await supabase.from('PRODUTOS')
-    .select('id, name, code, sale_price, price_tiers, print_pricing')
+    .select('id, name, code, category_id, sale_price, price_tiers, print_pricing')
     .eq('tenant_id', STORE_TENANT).eq('id', produtoId).maybeSingle();
   if (error) throw error;
   if (!prod) return { erro: 'Um dos produtos do carrinho saiu do catálogo.' };
@@ -423,6 +476,13 @@ async function montarItem(item) {
   const minimo = minimoDoItem(cfg, escolha);
   const qtd = Math.max(minimo, escolha.quantidade);
   const preco = precoDoItem({ produto: prod, quantidade: qtd, acabamento: acab, processo: proc });
+
+  // OS ADICIONAIS, REFEITOS DO CADASTRO. O carrinho manda ids; o preço
+  // sai daqui. Um item que saiu do ar, foi desativado ou deixou de se
+  // aplicar a este copo simplesmente não entra — e não some dinheiro
+  // nenhum da conta, porque a conta é esta.
+  const ad = await adicionaisDoPedido(prod.id, prod.category_id, item.adicionais);
+  const unitario = Math.round((preco.unitario + ad.unitario) * 100) / 100;
 
   // A ARTE QUE VAI PARA A GRÁFICA. Sai do PROJETO gravado, nunca do que
   // o navegador mandou: o carrinho é do cliente, o projeto é nosso. E
@@ -449,8 +509,15 @@ async function montarItem(item) {
     product_id: prod.id,
     nome: acab.nome_comercial,
     quantidade: qtd,
-    unitario: preco.unitario,
-    total: preco.total,
+    unitario,
+    // O COPO SOZINHO, que é o que a trava de preço zero precisa olhar.
+    unitario_base: preco.unitario,
+    total: Math.round(unitario * qtd * 100) / 100,
+    // O PORQUÊ DO PREÇO, gravado junto. "R$ 6,80" sem dizer que R$ 0,50
+    // era a borda prata é um número que ninguém confere depois — nem a
+    // produção, que precisa saber que aquele copo leva borda.
+    adicionais: ad.escolhidos,
+    valor_adicionais_unitario: ad.unitario,
     arte,
     // A configuração inteira vai junto, em nome legível. Quem abrir o
     // orçamento no ERP lê "Cor base: Rosa", não um id que só o banco
@@ -571,6 +638,10 @@ router.post('/pagamento', escritaLimiter, async (req, res) => {
       // produção. Quem for gravar a tela lê a mesma coisa que o cliente
       // viu na hora de confirmar.
       design: { ...l.configuracao, arte: l.arte || null },
+      // Sobe como campo próprio (e não só dentro do design) porque a
+      // venda tem coluna para ele: é o que a produção lê para saber que
+      // aquele copo leva borda prata, sem garimpar num JSON.
+      adicionais: l.adicionais || [],
       preview: l.arte?.preview_url || null,
     }));
 
@@ -602,9 +673,16 @@ router.post('/pagamento', escritaLimiter, async (req, res) => {
      * atendente, que é quem consegue resolver — e o log diz ao pessoal
      * do ERP exatamente qual produto está sem preço.
      */
-    if (pedido.total <= 0) {
+    // A TRAVA OLHA O COPO, NÃO O TOTAL. Desde que o adicional tem
+    // preço próprio, um copo sem preço de tabela somado a uma borda de
+    // R$ 0,50 daria total positivo e passaria por aqui — cobrando a
+    // borda e dando o copo de graça. Basta uma linha sem preço para o
+    // pedido inteiro não ser cobrável.
+    const semPreco = linhas.filter(l => !(Number(l.unitario_base) > 0));
+    if (pedido.total <= 0 || semPreco.length) {
       console.error('[catalogo:pagamento] pedido sem preço — produtos sem sale_price/price_tiers:',
-        linhas.map(l => `${l.configuracao?.codigo || '?'} x${l.quantidade}`).join(', '));
+        (semPreco.length ? semPreco : linhas)
+          .map(l => `${l.configuracao?.codigo || '?'} x${l.quantidade}`).join(', '));
       return res.status(400).json({
         error: 'Não consegui calcular o valor deste pedido. Fale com um atendente para fecharmos por aqui.',
         code: 'SEM_PRECO',

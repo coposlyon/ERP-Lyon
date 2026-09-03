@@ -87,6 +87,10 @@ async function criarVendaDoPedido(pedido, actor = {}) {
     unit_price: i.unit_price,
     discount: 0,
     total: i.quantity * i.unit_price,
+    // O QUE A CLIENTE MARCOU (borda, canudo, tampa). Sem isto o pedido
+    // saberia o preço mas não o porquê — e na hora de produzir é o
+    // porquê que importa.
+    adicionais: Array.isArray(i.adicionais) ? i.adicionais : [],
     customization: {
       ...(i.color ? { cor: i.color } : {}),
       ...(i.border ? { borda: i.border } : {}),
@@ -97,7 +101,13 @@ async function criarVendaDoPedido(pedido, actor = {}) {
     },
   }));
   if (saleItems.length) {
-    const { error: iErr } = await supabase.from('VENDA_ITENS').insert(saleItems);
+    let { error: iErr } = await supabase.from('VENDA_ITENS').insert(saleItems);
+    // Base sem a migração 097: o pedido tem que entrar do mesmo jeito.
+    // Perder a lista de adicionais é ruim; perder o pedido pago é pior.
+    if (iErr && /adicionais/i.test(iErr.message || '')) {
+      ({ error: iErr } = await supabase.from('VENDA_ITENS')
+        .insert(saleItems.map(({ adicionais, ...resto }) => resto)));
+    }
     if (iErr) throw iErr;
   }
 
