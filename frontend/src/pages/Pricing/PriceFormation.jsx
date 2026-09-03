@@ -387,6 +387,7 @@ export default function PriceFormation() {
             <div className="space-y-2.5">
               <LinhaCusto
                 titulo="Matéria-prima"
+                origem={{ texto: 'Este valor é digitado aqui, na ficha. O custo de compra do copo fica no cadastro do produto — clique para abrir e conferir.', link: '/products' }}
                 ajuda="O copo, a caneca, a peça crua — o que você compra pronto para personalizar."
                 valor={calc.mat_unit} informado={temMat}
                 conta={temMat
@@ -415,6 +416,7 @@ export default function PriceFormation() {
 
               <LinhaCusto
                 titulo="Tintas"
+                origem={{ texto: 'Tinta lançada por lote nesta ficha. Para a tinta com preço por ml e consumo por peça, use Cadastros › Tintas — de lá ela entra sozinha em todo copo.', link: '/cadastros/tintas' }}
                 ajuda={`Quanto de tinta o lote inteiro consome, por cor. ${nColors} cor(es) — mude em Detalhes da ficha.`}
                 valor={calc.tinta_unit} informado={temTinta}
                 conta={temTinta
@@ -434,6 +436,7 @@ export default function PriceFormation() {
 
               <LinhaCusto
                 titulo="Embalagem"
+                origem={{ texto: 'Caixa lançada nesta ficha. Sacola, plástico e caixa com preço próprio se cadastram em Cadastros › Itens.', link: '/cadastros/itens' }}
                 ajuda="A caixa em que as peças vão. O custo é dividido pelas peças que cabem nela."
                 valor={calc.emb_unit} informado={temEmb}
                 conta={temEmb
@@ -449,6 +452,7 @@ export default function PriceFormation() {
 
               <LinhaCusto
                 titulo="Frete da compra"
+                origem={{ texto: 'Frete digitado aqui. O histórico de compras fica no módulo de Compras — clique para abrir.', link: '/purchases' }}
                 ajuda="O que você pagou para a mercadoria chegar até você — dividido pelas peças que vieram."
                 valor={calc.frete_unit} informado={temFrete}
                 conta={temFrete
@@ -465,6 +469,7 @@ export default function PriceFormation() {
               {/* Custos fixos: não se digitam aqui — vêm do rateio. */}
               <LinhaCusto
                 titulo="Custos fixos da empresa"
+                origem={{ texto: 'Este valor NÃO se digita aqui: vem das Despesas Fixas cadastradas, dividido pela produção mensal. Clique para abrir.', link: '/rateio/despesas-fixas' }}
                 ajuda="Aluguel, energia, salários, sistema. Não se digitam aqui: vêm das despesas cadastradas."
                 valor={calc.overhead_unit} informado={temFixo}
                 conta={temFixo

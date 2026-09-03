@@ -24,6 +24,7 @@
 import { useState } from 'react';
 import { ChevronDown, HelpCircle } from 'lucide-react';
 import { fmtBRL4 } from '@/lib/pricingCalc';
+import { Link } from 'react-router-dom';
 
 /** Valor por unidade: '—' quando ninguém informou nada ainda. */
 export const unitario = (v, informado) => (informado ? fmtBRL4(v) : '—');
@@ -54,7 +55,8 @@ export function Passo({ n, titulo, descricao, direita, children }) {
  * por peça. A conta aparece por extenso — é ela que ensina a palavra
  * "rateio" sem precisar explicá-la.
  */
-export function LinhaCusto({ titulo, ajuda, conta, valor, informado, children, fonte }) {
+export function LinhaCusto({ titulo, ajuda, conta, valor, informado, children, fonte, origem }) {
+  const [balao, setBalao] = useState(false);
   return (
     <div className={`rounded-xl border p-3 ${informado ? 'border-gray-200' : 'border-dashed border-gray-200 bg-gray-50/50'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -62,11 +64,29 @@ export function LinhaCusto({ titulo, ajuda, conta, valor, informado, children, f
           <p className="text-sm font-medium text-gray-900">{titulo}</p>
           {ajuda && <p className="text-xs text-gray-500 mt-0.5">{ajuda}</p>}
         </div>
-        <div className="text-right shrink-0">
-          <p className={`text-lg font-bold tabular-nums ${informado ? 'text-gray-900' : 'text-gray-300'}`}>
-            {unitario(valor, informado)}
-          </p>
+        {/* O VALOR DIZ DE ONDE VEM. Passar o mouse explica a
+            procedência; clicar leva à tela que a define. Número de
+            custo sem procedência é número que ninguém conserta: quem
+            discorda dele não sabe onde discordar. */}
+        <div className="text-right shrink-0 relative"
+          onMouseEnter={() => setBalao(true)} onMouseLeave={() => setBalao(false)}>
+          {origem?.link ? (
+            <Link to={origem.link} title={origem.texto}
+              className={`block text-lg font-bold tabular-nums border-b border-dotted border-gray-300 hover:border-primary-500 hover:text-primary-700 ${informado ? 'text-gray-900' : 'text-gray-300'}`}>
+              {unitario(valor, informado)}
+            </Link>
+          ) : (
+            <p className={`text-lg font-bold tabular-nums ${informado ? 'text-gray-900' : 'text-gray-300'}`}>
+              {unitario(valor, informado)}
+            </p>
+          )}
           <p className="text-[11px] text-gray-400">por peça</p>
+          {balao && origem?.texto && (
+            <span className="absolute right-0 bottom-full mb-1.5 z-30 w-64 rounded-xl bg-gray-900 text-white text-[11px] leading-relaxed p-2.5 shadow-lg text-left font-normal normal-case">
+              {origem.texto}
+              {origem.link && <span className="block mt-1 text-gray-300">Clique para abrir.</span>}
+            </span>
+          )}
         </div>
       </div>
       {children && <div className="mt-2.5 flex flex-wrap items-end gap-3">{children}</div>}
