@@ -249,35 +249,64 @@ router.get('/aplicacoes', async (req, res) => {
  */
 router.post('/aplicacoes', async (req, res) => {
   const ids = Array.isArray(req.body?.item_ids) ? req.body.item_ids : [req.body?.item_id];
-  const itens = ids.filter(Boolean);
+  const itens = [...new Set(ids.filter(Boolean))];
   const escopo = req.body?.escopo || 'todos';
   const padrao = req.body?.padrao === true;
   const consumo = req.body?.consumo == null || req.body?.consumo === '' ? null : Number(req.body.consumo);
+
+  // VÁRIOS PRODUTOS DE UMA VEZ. A Edição em massa trabalha sobre uma
+  // SELEÇÃO — "estas 97 taças" —, que não é categoria nem é um copo. É
+  // um alvo legítimo e precisa de uma linha por copo: sem isso, quem
+  // seleciona à mão fica sem caminho e volta a aplicar de um em um.
+  const produtos = Array.isArray(req.body?.product_ids) && req.body.product_ids.length
+    ? [...new Set(req.body.product_ids.filter(Boolean))]
+    : (req.body?.product_id ? [req.body.product_id] : []);
 
   if (!itens.length) return res.status(400).json({ error: 'Escolha ao menos um item.' });
   if (escopo === 'categoria' && !req.body?.category_id) {
     return res.status(400).json({ error: 'Escolha a categoria.' });
   }
-  if (escopo === 'produto' && !req.body?.product_id) {
-    return res.status(400).json({ error: 'Escolha o produto.' });
+  if (escopo === 'produto' && !produtos.length) {
+    return res.status(400).json({ error: 'Escolha ao menos um produto.' });
   }
 
-  const linhas = itens.map(item_id => ({
-    tenant_id:   req.tenantId,
-    item_id,
-    category_id: escopo === 'categoria' ? req.body.category_id : null,
-    product_id:  escopo === 'produto'   ? req.body.product_id  : null,
-    padrao,
-    consumo,
-  }));
+  // Um item × um alvo = uma linha. Com 18 bordas e 97 copos são 1746
+  // linhas, e é por isso que existe o escopo "todos": ele faz o mesmo
+  // trabalho com 18.
+  const alvos = escopo === 'produto' ? produtos : [null];
+  const linhas = [];
+  for (const item_id of itens) {
+    for (const alvo of alvos) {
+      linhas.push({
+        tenant_id:   req.tenantId,
+        item_id,
+        category_id: escopo === 'categoria' ? req.body.category_id : null,
+        product_id:  escopo === 'produto'   ? alvo : null,
+        padrao,
+        consumo,
+      });
+    }
+  }
+
+  if (linhas.length > 20000) {
+    return res.status(400).json({
+      error: `Isso daria ${linhas.length} aplicações. Use o alcance "todos os personalizados" ou "uma categoria" em vez de selecionar produto a produto.`,
+    });
+  }
 
   try {
-    const { data, error } = await supabase.from('ITEM_APLICACOES')
-      .upsert(linhas, { onConflict: 'tenant_id,item_id,category_id,product_id' })
-      .select();
-    if (error) throw error;
-    audit(req, 'create', 'item-aplicacao', escopo, { itens: itens.length, escopo });
-    res.status(201).json({ ok: true, aplicados: data?.length || linhas.length });
+    // EM LOTES. Um upsert de mil e setecentas linhas numa tacada volta
+    // com estouro de payload — e aí não se sabe o que entrou.
+    let aplicados = 0;
+    for (let i = 0; i < linhas.length; i += 500) {
+      const { data, error } = await supabase.from('ITEM_APLICACOES')
+        .upsert(linhas.slice(i, i + 500), { onConflict: 'tenant_id,item_id,category_id,product_id' })
+        .select('id');
+      if (error) throw error;
+      aplicados += data?.length || 0;
+    }
+    audit(req, 'create', 'item-aplicacao', escopo, { itens: itens.length, escopo, alvos: alvos.length });
+    res.status(201).json({ ok: true, aplicados: aplicados || linhas.length, linhas: linhas.length });
   } catch (err) {
     if (faltaMigracao(res, err)) return;
     res.status(500).json({ error: err.message });

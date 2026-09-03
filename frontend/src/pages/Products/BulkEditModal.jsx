@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, Image as ImageIcon, AlertTriangle, Trash2 } from 'lucide-react';
+import { Search, Loader2, Image as ImageIcon, AlertTriangle, Trash2, Check, PlusCircle } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
@@ -32,6 +32,12 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [ambiente, setAmbiente] = useState('');   // '' = não mexe | 'loja' | 'catalogo'
   const [ambPreco, setAmbPreco] = useState('');
   const [ambMinimo, setAmbMinimo] = useState('');
+  // ADICIONAIS EM MASSA. Praticamente todo copo oferece as mesmas
+  // bordas — aplicar as dezoito de um em um seriam 97 × 18 cliques, e
+  // é exatamente o motivo de ninguém nunca ter cadastrado nenhuma.
+  const [adicionais, setAdicionais] = useState([]);   // ids de ITENS
+  const [adicPadrao, setAdicPadrao] = useState(false);
+  const [buscaAdic, setBuscaAdic] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);        // modal de apagar em massa
   const [delPassword, setDelPassword] = useState('');
@@ -53,6 +59,15 @@ export default function BulkEditModal({ isOpen, onClose }) {
     enabled: isOpen,
   });
   const suppliers = suppliersData?.data || [];
+
+  const { data: itensCad = [] } = useQuery({
+    queryKey: ['itens', 'todos'],
+    queryFn: () => api.get('/itens'),
+    enabled: isOpen,
+  });
+  const itensFiltrados = buscaAdic.trim()
+    ? itensCad.filter(i => `${i.name} ${i.color_name || ''}`.toLowerCase().includes(buscaAdic.trim().toLowerCase()))
+    : itensCad;
 
   // O tamanho NÃO entra na busca: como termo, o "400" casava com o código
   // (CT45-2400, que é 450 ML). Vai como volume=400, que o backend compara
@@ -79,6 +94,10 @@ export default function BulkEditModal({ isOpen, onClose }) {
   }
   function doSearch(e) { e.preventDefault(); setSearch(searchInput.trim()); }
 
+  // Só busca e tamanho — a categoria não conta aqui porque ela tem
+  // representação própria (uma linha por categoria).
+  function hasFiltroDeBusca() { return !!(effectiveSearch || volumeParam); }
+
   const fields = {};
   if (supplierId === '__none__') fields.supplier_id = null;
   else if (supplierId) fields.supplier_id = supplierId;
@@ -97,6 +116,24 @@ export default function BulkEditModal({ isOpen, onClose }) {
   // Preco nao entra na edicao em massa — Precificacao e a unica porta.
   if (ambMinimo !== '') camposAmbiente.min_order_qty = ambMinimo;
   const temVitrine = !!ambiente && Object.keys(camposAmbiente).length > 0;
+
+  /**
+   * ONDE OS ADICIONAIS VÃO PARAR — e por que não é sempre "nos
+   * selecionados".
+   *
+   * O mesmo alvo tem representações de custo muito diferente. Marcar
+   * as dezoito bordas com "aplicar a todos" e nenhum filtro pode virar
+   * 18 linhas (o curinga) ou 1746 (uma por copo) — e as 18 continuam
+   * valendo para o copo cadastrado amanhã, coisa que as 1746 não
+   * fazem. Então a tela escolhe a mais barata que responde ao que foi
+   * pedido, e DIZ qual escolheu logo abaixo, porque alcance de regra
+   * decidido em silêncio é o que ninguém consegue desfazer depois.
+   */
+  const alvoAdicional = !adicionais.length ? null
+    : applyAll && categoryId ? { escopo: 'categoria', category_id: categoryId }
+    : applyAll && !hasFiltroDeBusca() ? { escopo: 'todos' }
+    : applyAll ? { escopo: 'produto', product_ids: (products || []).map(p => p.id) }
+    : { escopo: 'produto', product_ids: selectedIds };
 
   // Apagar em massa (definitivo) — só nos selecionados e com senha da conta.
   const del = useMutation({
@@ -119,30 +156,42 @@ export default function BulkEditModal({ isOpen, onClose }) {
       const alvo = applyAll
         ? { all: true, match: { search: effectiveSearch, category_id: categoryId, volume: volumeParam || undefined } }
         : { ids: selectedIds };
-      let updated = 0, vitrine = 0;
+      let updated = 0, vitrine = 0, adics = 0;
       if (hasFields) updated = (await api.patch('/products/bulk', { ...alvo, fields })).updated || 0;
       if (temVitrine) {
         vitrine = (await api.post('/products/ambientes/lote', { ...alvo, ambiente, campos: camposAmbiente })).tocados || 0;
       }
-      return { updated, vitrine };
+      // Os adicionais são OUTRA tabela e outro alcance: eles não
+      // alteram o produto, dizem o que ele passa a oferecer.
+      if (alvoAdicional) {
+        adics = (await api.post('/itens/aplicacoes', {
+          item_ids: adicionais, padrao: adicPadrao, ...alvoAdicional,
+        })).aplicados || 0;
+      }
+      return { updated, vitrine, adics };
     },
     onSuccess: (r) => {
       toast.success([
         r.updated ? `${r.updated} produto(s) atualizado(s)` : null,
         r.vitrine ? `${r.vitrine} ajuste(s) de vitrine` : null,
+        r.adics ? `${r.adics} adicional(is) aplicado(s)` : null,
       ].filter(Boolean).join(' · ') + '!');
       qc.invalidateQueries(['products']);
       qc.invalidateQueries(['bulk-products']);
       qc.invalidateQueries(['categories']);
       qc.invalidateQueries(['categories-list']);
+      qc.invalidateQueries({ queryKey: ['item-aplicacoes'] });
+      qc.invalidateQueries({ queryKey: ['adicionais-produto'] });
       setSelected({});
+      setAdicionais([]);
     },
     onError: (e) => toast.error(e.error || 'Erro ao aplicar'),
   });
 
   const hasFilter = !!(effectiveSearch || categoryId || volumeParam);
   const targetCount = applyAll ? totalMatching : selectedIds.length;
-  const canApply = (hasFields || temVitrine) && (applyAll ? totalMatching > 0 : selectedIds.length > 0);
+  const canApply = (hasFields || temVitrine || !!alvoAdicional)
+    && (applyAll ? totalMatching > 0 : selectedIds.length > 0);
 
   // Ao fechar, zera a seleção e os campos para o modal abrir limpo na próxima vez.
   function handleClose() {
@@ -152,6 +201,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
     setCostPrice('');
     setNcm(''); setCst(''); setCfop(''); setInkType('');
     setAmbiente(''); setAmbPreco(''); setAmbMinimo('');
+    setAdicionais([]); setAdicPadrao(false); setBuscaAdic('');
     setConfirmOpen(false);
     setDelOpen(false); setDelPassword('');
     onClose();
@@ -270,6 +320,106 @@ export default function BulkEditModal({ isOpen, onClose }) {
               </label>
             ))}
           </div>
+        </div>
+
+        {/* ══ ADICIONAIS ══════════════════════════════════════
+            Praticamente todo copo oferece as mesmas bordas. Aplicar as
+            dezoito de um em um seriam quase dois mil cliques — é
+            exatamente o motivo de ninguém nunca ter cadastrado
+            nenhuma. Aqui vão todas de uma vez. */}
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <PlusCircle size={13} /> Adicionais (bordas, canudos, tampas, tinta)
+          </p>
+
+          {itensCad.length === 0 ? (
+            <p className="text-xs text-gray-400 rounded-xl border border-dashed border-gray-200 p-3">
+              Nenhum item cadastrado ainda. Cadastre em <b>Cadastros › Acessórios / Bordas / Tintas</b>.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <input className="input flex-1 min-w-[160px] text-sm" placeholder="Filtrar itens…"
+                  value={buscaAdic} onChange={e => setBuscaAdic(e.target.value)} />
+                <button type="button" className="btn-secondary btn-sm"
+                  onClick={() => setAdicionais(
+                    adicionais.length === itensFiltrados.length ? [] : itensFiltrados.map(i => i.id))}>
+                  {adicionais.length === itensFiltrados.length && itensFiltrados.length > 0
+                    ? 'Limpar' : `Marcar ${itensFiltrados.length}`}
+                </button>
+              </div>
+
+              <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-50">
+                {itensFiltrados.map(i => {
+                  const marcado = adicionais.includes(i.id);
+                  return (
+                    <button key={i.id} type="button"
+                      onClick={() => setAdicionais(a => marcado ? a.filter(x => x !== i.id) : [...a, i.id])}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition ${
+                        marcado ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
+                      <span className={`w-4 h-4 rounded border grid place-items-center shrink-0 ${
+                        marcado ? 'bg-violet-600 border-violet-600 text-white' : 'border-gray-300'}`}>
+                        {marcado && <Check size={11} />}
+                      </span>
+                      {i.photo_url
+                        ? <img src={i.photo_url} alt="" className="w-7 h-7 rounded object-cover border border-gray-200 shrink-0" />
+                        : <span className="w-7 h-7 rounded border border-gray-200 shrink-0"
+                            style={{ background: i.color_hex || '#f3f4f6' }} />}
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-gray-900 truncate">
+                          {i.color_name ? `${i.color_name} — ${i.name}` : i.name}
+                        </span>
+                        <span className="block text-[11px] text-gray-400">
+                          custa R$ {Number(i.custo_na_peca || 0).toFixed(2).replace('.', ',')} ·
+                          cobra R$ {Number(i.preco_na_peca || 0).toFixed(2).replace('.', ',')}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+                {itensFiltrados.length === 0 && (
+                  <p className="p-4 text-center text-xs text-gray-400">Nenhum item com esse termo.</p>
+                )}
+              </div>
+
+              {adicionais.length > 0 && (
+                <div className="mt-2 space-y-2">
+                  <label className="flex items-start gap-2 text-sm rounded-xl border border-gray-200 p-2.5 cursor-pointer">
+                    <input type="checkbox" checked={adicPadrao} className="mt-0.5 w-4 h-4 accent-violet-600"
+                      onChange={e => setAdicPadrao(e.target.checked)} />
+                    <span>
+                      <span className="font-medium text-gray-800">Já vem no preço</span>
+                      <span className="block text-xs text-gray-500 mt-0.5">
+                        Marcado, entra sempre no custo da peça (é o caso da tinta). Desmarcado, é
+                        opcional: a cliente escolhe e o preço sobe só no pedido dela — que é o normal
+                        para borda, canudo e tampa.
+                      </span>
+                    </span>
+                  </label>
+
+                  {/* O ALCANCE ESCRITO. Regra aplicada em silêncio é
+                      regra que ninguém consegue desfazer depois. */}
+                  <p className="text-xs rounded-xl bg-violet-50 border border-violet-200 text-violet-900 p-2.5">
+                    {alvoAdicional?.escopo === 'todos' && (
+                      <><b>{adicionais.length} item(ns)</b> em <b>todos os copos personalizados</b> —
+                      inclusive os que forem cadastrados depois. São {adicionais.length} regras, não uma por copo.</>
+                    )}
+                    {alvoAdicional?.escopo === 'categoria' && (
+                      <><b>{adicionais.length} item(ns)</b> na categoria{' '}
+                      <b>{(cats || []).find(c => c.id === categoryId)?.name || 'selecionada'}</b> inteira —
+                      valendo também para os produtos que entrarem nela depois.</>
+                    )}
+                    {alvoAdicional?.escopo === 'produto' && (
+                      <><b>{adicionais.length} item(ns)</b> em <b>{alvoAdicional.product_ids.length} copo(s)</b>{' '}
+                      {applyAll ? 'do filtro atual' : 'selecionados'} —{' '}
+                      {adicionais.length * alvoAdicional.product_ids.length} aplicações, uma por copo.
+                      {' '}Vale só para estes; copo novo não herda.</>
+                    )}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {/* Fornecedor */}
@@ -408,8 +558,11 @@ export default function BulkEditModal({ isOpen, onClose }) {
       {summary && (
         <div className="space-y-4 text-sm">
           <p className="text-gray-700">
-            Você vai alterar <b>{targetCount} produto(s)</b>
-            {applyAll && summary.analyzed < targetCount ? <span className="text-gray-500"> (resumo baseado em {summary.analyzed} carregados)</span> : ''}.
+            {(hasFields || temVitrine)
+              ? <>Você vai alterar <b>{targetCount} produto(s)</b></>
+              : <>Nenhum campo do cadastro será alterado</>}
+            {(hasFields || temVitrine) && applyAll && summary.analyzed < targetCount
+              ? <span className="text-gray-500"> (resumo baseado em {summary.analyzed} carregados)</span> : ''}.
           </p>
           {temVitrine && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -423,7 +576,28 @@ export default function BulkEditModal({ isOpen, onClose }) {
               </p>
             </div>
           )}
-          {summary.rows.length === 0 && !temVitrine ? (
+          {/* OS ADICIONAIS TÊM ALCANCE PRÓPRIO, e ele nem sempre é o
+              conjunto de produtos selecionados: pode ser a categoria
+              inteira ou o catálogo todo. Confirmar sem ler isso seria
+              confirmar outra coisa. */}
+          {alvoAdicional && (
+            <div className="rounded-lg border border-violet-200 bg-violet-50 p-3">
+              <p className="font-semibold text-violet-900">
+                {adicionais.length} adicional(is) — {adicPadrao ? 'já vêm no preço' : 'opcionais'}
+              </p>
+              <p className="text-violet-800 text-[13px] mt-0.5">
+                {alvoAdicional.escopo === 'todos'
+                  ? 'Vão valer para TODOS os copos personalizados, inclusive os cadastrados depois.'
+                  : alvoAdicional.escopo === 'categoria'
+                  ? `Vão valer para a categoria ${(cats || []).find(c => c.id === categoryId)?.name || ''} inteira, inclusive produtos que entrarem nela depois.`
+                  : `Vão valer para ${alvoAdicional.product_ids.length} copo(s) — ${adicionais.length * alvoAdicional.product_ids.length} aplicações. Copo novo não herda.`}
+              </p>
+              <p className="text-violet-700 text-xs mt-1">
+                Isto não altera o cadastro dos produtos: diz o que eles passam a oferecer.
+              </p>
+            </div>
+          )}
+          {summary.rows.length === 0 && !temVitrine && !alvoAdicional ? (
             <p className="text-gray-500">Nenhum campo preenchido para alterar.</p>
           ) : (
             <div className="space-y-3">

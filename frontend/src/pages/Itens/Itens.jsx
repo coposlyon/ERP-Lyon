@@ -633,6 +633,75 @@ function FotosEmMassa({ itens, onClose, onOk }) {
 }
 
 // ════════════════════════════════════════════════════════════
+// ONDE ESTE ITEM SE APLICA — e como tirar.
+//
+// APLICAR SEM PODER DESAPLICAR É UMA PORTA DE MÃO ÚNICA. Marcar as
+// dezoito bordas em todos os copos é um clique; descobrir depois que
+// foi cedo demais e não ter onde desfazer é o tipo de coisa que faz
+// alguém parar de usar a tela inteira. Cada regra tem seu lixo aqui.
+// ════════════════════════════════════════════════════════════
+function OndeSeAplica({ item, aplicacoes, categorias, onClose, onMudou }) {
+  const [apagando, setApagando] = useState(null);
+
+  async function remover(a) {
+    const onde = a.category_id
+      ? `a categoria ${categorias.find(c => c.id === a.category_id)?.name || ''}`
+      : a.product_id ? 'aquele copo' : 'TODOS os copos personalizados';
+    if (!confirm(`Tirar "${item.name}" de ${onde}?`)) return;
+    setApagando(a.id);
+    try {
+      await api.delete(`/itens/aplicacoes/${a.id}`);
+      toast.success('Regra removida');
+      onMudou();
+    } catch (err) {
+      toast.error(err.error || 'Erro ao remover');
+    } finally { setApagando(null); }
+  }
+
+  const rotulo = a => a.category_id
+    ? { t: categorias.find(c => c.id === a.category_id)?.name || 'Uma categoria', s: 'a categoria inteira', cls: 'bg-sky-100 text-sky-700' }
+    : a.product_id
+      ? { t: 'Um copo específico', s: 'só aquele produto', cls: 'bg-violet-100 text-violet-700' }
+      : { t: 'Todos os personalizados', s: 'inclusive os cadastrados depois', cls: 'bg-gray-100 text-gray-700' };
+
+  return (
+    <Modal isOpen onClose={onClose} size="md" title={`Onde "${item.name}" se aplica`}
+      footer={<button className="btn-secondary" onClick={onClose}>Fechar</button>}>
+      <div className="space-y-2 text-sm">
+        {aplicacoes.length === 0 ? (
+          <p className="text-gray-500 py-6 text-center">
+            Este item ainda não foi aplicado em copo nenhum.
+          </p>
+        ) : aplicacoes.map(a => {
+          const r = rotulo(a);
+          return (
+            <div key={a.id} className="flex items-center gap-2.5 rounded-xl border border-gray-200 p-2.5">
+              <span className="flex-1 min-w-0">
+                <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] mr-1.5 ${r.cls}`}>{r.t}</span>
+                <span className="text-xs text-gray-500">{r.s}</span>
+                <span className="block text-[11px] text-gray-400 mt-0.5">
+                  {a.padrao ? 'já vem no preço — entra sempre no custo' : 'opcional — só no pedido de quem escolher'}
+                </span>
+              </span>
+              <button className="btn-ghost p-1.5 text-red-500 shrink-0" onClick={() => remover(a)}
+                disabled={apagando === a.id} title="Tirar esta regra">
+                {apagando === a.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              </button>
+            </div>
+          );
+        })}
+        {aplicacoes.length > 1 && (
+          <p className="text-[11px] text-gray-400 pt-1">
+            Havendo mais de uma regra para o mesmo copo, vale a mais específica: o copo ganha da
+            categoria, e a categoria ganha da regra geral.
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
 // A TELA
 // ════════════════════════════════════════════════════════════
 export default function Itens({ kind = null }) {
@@ -643,6 +712,7 @@ export default function Itens({ kind = null }) {
   const [marcados, setMarcados] = useState([]);
   const [aplicando, setAplicando] = useState(false);
   const [enviandoFotos, setEnviandoFotos] = useState(false);
+  const [vendoAplicacoes, setVendoAplicacoes] = useState(null);
 
   const tipoAtual = kind || aba;
 
@@ -655,6 +725,10 @@ export default function Itens({ kind = null }) {
   const { data: aplicacoes = [] } = useQuery({
     queryKey: ['item-aplicacoes'],
     queryFn: () => api.get('/itens/aplicacoes'),
+  });
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['product-categories'],
+    queryFn: () => api.get('/products/categories/list'),
   });
   const aplicPorItem = useMemo(() => {
     const m = new Map();
@@ -821,13 +895,16 @@ export default function Itens({ kind = null }) {
                 </div>
 
                 {aplic.length > 0 && (
-                  <p className="mt-2 text-[11px] text-gray-500">
+                  <button
+                    onClick={() => setVendoAplicacoes({ item: i, aplicacoes: aplic })}
+                    className="mt-2 text-[11px] text-gray-500 hover:text-primary-700 underline decoration-dotted underline-offset-2">
                     Aplicado em{' '}
                     {aplic.some(a => !a.category_id && !a.product_id)
                       ? 'todos os personalizados'
                       : `${aplic.length} ${aplic.length === 1 ? 'destino' : 'destinos'}`}
                     {aplic.some(a => a.padrao) && ' · já vem no preço'}
-                  </p>
+                    {' · gerenciar'}
+                  </button>
                 )}
               </div>
             );
@@ -841,6 +918,19 @@ export default function Itens({ kind = null }) {
           kindPadrao={tipoAtual}
           onClose={() => setEditando(null)}
           onSaved={() => { setEditando(null); qc.invalidateQueries({ queryKey: ['itens'] }); }}
+        />
+      )}
+      {vendoAplicacoes && (
+        <OndeSeAplica
+          item={vendoAplicacoes.item}
+          aplicacoes={vendoAplicacoes.aplicacoes}
+          categorias={categorias}
+          onClose={() => setVendoAplicacoes(null)}
+          onMudou={() => {
+            setVendoAplicacoes(null);
+            qc.invalidateQueries({ queryKey: ['item-aplicacoes'] });
+            qc.invalidateQueries({ queryKey: ['adicionais-produto'] });
+          }}
         />
       )}
       {enviandoFotos && (
