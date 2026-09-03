@@ -510,7 +510,7 @@ export default function Products() {
       </div>
 
       <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Editar Produto' : 'Novo Produto'}
-        size={abaProduto === 'catalogo' ? 'full' : 'lg'}>
+        size={abaProduto === 'catalogo' ? 'full' : abaProduto === 'adicionais' ? 'xl' : 'lg'}>
         <ProductForm product={editing} onSaved={onSaved} onCancel={closeModal} onAba={setAbaProduto} />
       </Modal>
 

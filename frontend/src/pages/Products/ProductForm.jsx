@@ -17,9 +17,10 @@ import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
   Loader2, Image as ImageIcon, Upload, ClipboardPaste,
-  ClipboardList, Sparkles, Eye, EyeOff, Info,
+  ClipboardList, Sparkles, Eye, EyeOff, Info, PlusCircle,
 } from 'lucide-react';
 import CatalogoDoProduto from './CatalogoDoProduto';
+import AdicionaisDoProduto from './AdicionaisDoProduto';
 import AjusteDeVitrine from './AjusteDeVitrine';
 
 function fileToDataUrl(file) {
@@ -228,7 +229,24 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
   const ABAS = [
     { key: 'cadastro', label: 'Cadastro', icone: ClipboardList },
     { key: 'catalogo', label: 'Catálogo personalizado', icone: Sparkles },
+    // BORDA, CANUDO E TAMPA TÊM ABA PRÓPRIA, e não uma seção no fim do
+    // cadastro: quem mexe neles quase sempre está aplicando em massa —
+    // na categoria inteira ou em todo o catálogo — e essa decisão não
+    // cabe espremida embaixo de NCM e CFOP.
+    { key: 'adicionais', label: 'Adicionais', icone: PlusCircle },
   ];
+
+  if (aba === 'adicionais') {
+    return (
+      <div className="space-y-5">
+        <Abas abas={ABAS} atual={aba} onMudar={setAba} />
+        <AdicionaisDoProduto productId={product?.id} categoryId={form.category_id || product?.category_id || null} />
+        <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+          <button type="button" onClick={onCancel} className="btn-secondary">Fechar</button>
+        </div>
+      </div>
+    );
+  }
 
   if (aba === 'catalogo') {
     return (
