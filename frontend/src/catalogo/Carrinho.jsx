@@ -600,7 +600,7 @@ function ItemDoCarrinho({ item, onQtd, onRemover }) {
             hora de pagar — que é a hora em que a compra é abandonada. */}
         {(item.adicionais_resumo || []).length > 0 && (
           <p className="text-[11px] mt-1 leading-relaxed" style={{ color: NEON.ciano }}>
-            + {item.adicionais_resumo.join(' · ')}
+            + {item.adicionais_resumo.map(t => `${item.quantidade} ${t.toLowerCase()}`).join(' · ')}
           </p>
         )}
       </div>

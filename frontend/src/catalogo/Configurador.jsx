@@ -584,7 +584,8 @@ export default function Configurador() {
           {(preco?.adicionais_disponiveis || []).length > 0 && (
             <Painel titulo={`${personalizado ? 3 : 2}. Adicionais`} cor={NEON.ciano} icone={Sparkles}>
               <p className="text-[11.5px] mb-3" style={{ color: NEON.suave }}>
-                Opcional. Marque o que quiser incluir — o preço se ajusta na hora.
+                Opcional. Marque o que quiser incluir — vem <b>um para cada copo</b> do pedido, e o
+                preço se ajusta na hora.
               </p>
 
               <div className="grid gap-2 sm:grid-cols-2">
@@ -618,8 +619,16 @@ export default function Configurador() {
                           style={{ color: marcado ? NEON.texto : 'rgba(255,255,255,0.82)' }}>
                           {a.cor ? `${a.nome} ${a.cor}` : a.nome}
                         </span>
+                        {/* QUANTO VEM E QUANTO CUSTA, escrito. "R$ 0,50
+                            por peça" faz a cliente multiplicar de
+                            cabeça; "50 un · R$ 25,00" ela lê. E é a
+                            segunda que ela vai comparar com o total. */}
                         <span className="block text-[10.5px] mt-0.5" style={{ color: NEON.fraco }}>
-                          {a.preco > 0 ? `+ ${brl(a.preco)} por peça` : 'sem custo adicional'}
+                          {a.preco > 0
+                            ? (marcado && preco?.quantidade
+                                ? `${preco.quantidade} un · ${brl(a.preco * preco.quantidade)}`
+                                : `+ ${brl(a.preco)} por peça`)
+                            : 'sem custo adicional'}
                         </span>
                       </span>
                       {marcado && <Check size={15} style={{ color: NEON.ciano, flexShrink: 0 }} />}
@@ -630,9 +639,10 @@ export default function Configurador() {
 
               {estado.adicionais.length > 0 && preco?.valor_adicionais > 0 && (
                 <Nota icone={Info} cor={NEON.ciano}>
-                  Adicionais: {brl(preco.valor_adicionais_unitario)} por peça ·{' '}
-                  <b>{brl(preco.valor_adicionais)}</b> nas {preco.quantidade} unidades. Já está no
-                  total ao lado.
+                  Você está levando {preco.quantidade} copos e{' '}
+                  {(preco.adicionais_escolhidos || [])
+                    .map(a => `${preco.quantidade} ${(a.cor ? `${a.nome} ${a.cor}` : a.nome).toLowerCase()}`)
+                    .join(', ')} — <b>{brl(preco.valor_adicionais)}</b> a mais, já somados no total ao lado.
                 </Nota>
               )}
             </Painel>
@@ -775,11 +785,11 @@ export default function Configurador() {
                 <Linha rotulo="Arte" valor={estado.posicao === 'frente_verso' ? 'Frente e verso' : 'Frente'} />
               )}
               <Linha rotulo="Qtd" valor={preco?.quantidade ? `${preco.quantidade} un` : null} />
-              {(preco?.adicionais_escolhidos || []).length > 0 && (
-                <Linha rotulo="Adicionais"
-                  valor={preco.adicionais_escolhidos
-                    .map(a => (a.cor ? `${a.nome} ${a.cor}` : a.nome)).join(', ')} />
-              )}
+              {(preco?.adicionais_escolhidos || []).map(a => (
+                <Linha key={a.item_id}
+                  rotulo={`${preco.quantidade} ${a.cor ? `${a.nome} ${a.cor}` : a.nome}`}
+                  valor={a.preco > 0 ? brl(a.preco * preco.quantidade) : 'incluso'} />
+              ))}
             </dl>
 
             {/* A SOMA ABERTA. "R$ 6,80" sem dizer que R$ 0,50 era a
