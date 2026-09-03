@@ -22,6 +22,9 @@ const router   = express.Router();
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { uploadDataUrl } = require('../lib/storage');
+// A regra das tres camadas mora numa biblioteca so: a Engenharia de
+// Custos, o catalogo e o pedido precisam da MESMA resposta.
+const { adicionaisDoProduto } = require('../lib/adicionais');
 
 const KINDS = ['acessorio', 'borda', 'tinta', 'embalagem', 'outro'];
 const UNIDADES = ['un', 'ml', 'g', 'm', 'folha'];
@@ -277,37 +280,11 @@ router.delete('/aplicacoes/:id', async (req, res) => {
 router.get('/do-produto/:productId', async (req, res) => {
   try {
     const { data: prod } = await supabase.from('PRODUTOS')
-      .select('id, category_id').eq('id', req.params.productId).eq('tenant_id', req.tenantId).maybeSingle();
+      .select('id, category_id').eq('id', req.params.productId)
+      .eq('tenant_id', req.tenantId).maybeSingle();
     if (!prod) return res.status(404).json({ error: 'Produto não encontrado' });
 
-    const { data, error } = await supabase.from('ITEM_APLICACOES')
-      .select('*, ITENS(*)')
-      .eq('tenant_id', req.tenantId)
-      .or(`product_id.eq.${prod.id},category_id.eq.${prod.category_id},and(product_id.is.null,category_id.is.null)`);
-    if (error) throw error;
-
-    // O mais específico vence: produto > categoria > curinga.
-    const peso = a => (a.product_id ? 3 : a.category_id ? 2 : 1);
-    const porItem = new Map();
-    for (const a of data || []) {
-      const atual = porItem.get(a.item_id);
-      if (!atual || peso(a) > peso(atual)) porItem.set(a.item_id, a);
-    }
-
-    res.json([...porItem.values()]
-      .filter(a => a.ITENS && a.ITENS.is_active)
-      .map(a => {
-        const consumo = Number(a.consumo ?? a.ITENS.consumo) || 1;
-        return {
-          aplicacao_id: a.id,
-          padrao: a.padrao,
-          origem: a.product_id ? 'produto' : a.category_id ? 'categoria' : 'todos',
-          consumo,
-          item: a.ITENS,
-          custo: n6(Number(a.ITENS.unit_cost) * consumo),
-          preco: n6(Number(a.ITENS.unit_price) * consumo),
-        };
-      }));
+    res.json(await adicionaisDoProduto(req.tenantId, prod.id, prod.category_id));
   } catch (err) {
     if (faltaMigracao(res, err)) return;
     res.status(500).json({ error: err.message });

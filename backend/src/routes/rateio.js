@@ -7,6 +7,9 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+// O que os adicionais cadastrados acrescentam na peca. A Engenharia
+// de Custos LE o cadastro; ela nao e mais o lugar de digitar insumo.
+const { custoDosAdicionaisPadrao } = require('../lib/adicionais');
 const { audit } = require('../lib/audit');
 const {
   VARIABLE_DEFAULTS, getConfig, saveConfig,
@@ -221,8 +224,8 @@ router.get('/product/:id', async (req, res) => {
     const findProduct = sel => supabase.from('PRODUTOS').select(sel)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
     // updated_at pode não existir em bases antigas
-    let { data: product, error: pErr } = await findProduct('id, name, cost_price, sale_price, updated_at, CATEGORIAS(name)');
-    if (pErr) ({ data: product } = await findProduct('id, name, cost_price, sale_price, CATEGORIAS(name)'));
+    let { data: product, error: pErr } = await findProduct('id, name, cost_price, sale_price, category_id, updated_at, CATEGORIAS(name)');
+    if (pErr) ({ data: product } = await findProduct('id, name, cost_price, sale_price, category_id, CATEGORIAS(name)'));
     if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
 
     // Ficha de Formação de Preço mais recente do produto
@@ -269,10 +272,14 @@ router.get('/product/:id', async (req, res) => {
 
     // ── Custo VARIÁVEL por unidade (vem do módulo de Despesas Variáveis)
     const month = new Date().toISOString().slice(0, 7);
-    const [labor, commissions, marketing, extras, cfg] = await Promise.all([
+    const [labor, commissions, marketing, extras, cfg, adic] = await Promise.all([
       productionLabor(req.tenantId), commissionBySeller(req.tenantId, month),
       marketingSpend(req.tenantId, month), extraVariableCosts(req.tenantId, month),
       getConfig(req.tenantId),
+      // Borda, tinta e canudo marcados como "ja vem no preco". Os
+      // opcionais NAO entram: encarecer o copo de quem nao pediu canudo
+      // e o erro que faz o preco de tabela subir sozinho.
+      custoDosAdicionaisPadrao(req.tenantId, product.id, product.category_id || null),
     ]);
     const units = ov.monthly_units;
     const pu = v => (units > 0 ? Math.round((v / units) * 10000) / 10000 : 0);
@@ -282,15 +289,33 @@ router.get('/product/:id', async (req, res) => {
     const src = breakdown.source === 'ficha'
       ? { o: `Ficha "${breakdown.sheet_name}"`, l: '/pricing/formacao' }
       : { o: 'Cadastro do produto', l: '/products' };
+    // CADA LINHA DIZ DE ONDE VEM E LEVA ATE LA. `explicacao` e o texto
+    // que aparece ao passar o mouse sobre o valor; `link` e para onde o
+    // clique vai. Numero de custo sem procedencia e numero que ninguem
+    // conserta: quem discorda dele nao sabe onde discordar.
+    const detalheAdic = adic.itens.length
+      ? adic.itens.map(a => `${a.item.name}${a.item.color_name ? ' ' + a.item.color_name : ''} (${a.consumo} ${a.item.base_unit})`).join(', ')
+      : 'nenhum adicional marcado como "já vem no preço"';
     const lines = [
-      { key: 'materia_prima', label: 'Matéria-prima', value: breakdown.materia_prima, origin: src.o, link: src.l },
-      { key: 'tintas',        label: 'Tinta',          value: breakdown.tintas,        origin: src.o, link: src.l },
-      { key: 'serigrafia',    label: 'Tela / Serigrafia', value: breakdown.serigrafia, origin: src.o, link: src.l },
-      { key: 'caixa',         label: 'Embalagem',      value: breakdown.caixa,         origin: src.o, link: src.l },
-      { key: 'frete',         label: 'Frete de compra', value: breakdown.frete,        origin: 'Compras', link: '/purchases' },
-      { key: 'rateio',        label: 'Rateio de despesas fixas', value: breakdown.rateio, origin: 'Despesas Fixas', link: '/rateio/despesas-fixas' },
-      { key: 'variavel',      label: 'Custos variáveis (mão de obra, comissão, marketing)', value: variavelUnit, origin: 'Despesas Variáveis', link: '/rateio/despesas-variaveis' },
-      { key: 'impostos',      label: 'Impostos', value: breakdown.impostos, origin: 'Fiscal', link: '/fiscal' },
+      { key: 'materia_prima', label: 'Matéria-prima', value: breakdown.materia_prima, origin: src.o, link: src.l,
+        explicacao: `Este valor vem ${breakdown.source === 'ficha' ? `da ficha de preço "${breakdown.sheet_name}"` : 'do custo cadastrado no produto'}. Clique para abrir e ajustar.` },
+      { key: 'tintas',        label: 'Tinta',          value: breakdown.tintas,        origin: src.o, link: src.l,
+        explicacao: 'Tinta lançada na ficha de preço. A tinta do cadastro de itens entra na linha "Adicionais".' },
+      { key: 'serigrafia',    label: 'Tela / Serigrafia', value: breakdown.serigrafia, origin: src.o, link: src.l,
+        explicacao: 'Custo de tela e serigrafia da ficha de preço deste produto.' },
+      { key: 'caixa',         label: 'Embalagem',      value: breakdown.caixa,         origin: src.o, link: src.l,
+        explicacao: 'Embalagem lançada na ficha de preço.' },
+      { key: 'adicionais',    label: 'Adicionais que já vêm no preço (borda, tinta, canudo)',
+        value: adic.custo, origin: 'Cadastros › Itens', link: '/cadastros/itens',
+        explicacao: `Este valor vem do cadastro de itens: ${detalheAdic}. Clique para abrir os cadastros e ajustar o que se gasta e o que se cobra.` },
+      { key: 'frete',         label: 'Frete de compra', value: breakdown.frete,        origin: 'Compras', link: '/purchases',
+        explicacao: 'Frete rateado das compras de matéria-prima.' },
+      { key: 'rateio',        label: 'Rateio de despesas fixas', value: breakdown.rateio, origin: 'Despesas Fixas', link: '/rateio/despesas-fixas',
+        explicacao: `Este valor vem das Despesas Fixas, dividido por ${units || 0} unidades/mês. Clique para abrir e conferir aluguel, energia e salários.` },
+      { key: 'variavel',      label: 'Custos variáveis (mão de obra, comissão, marketing)', value: variavelUnit, origin: 'Despesas Variáveis', link: '/rateio/despesas-variaveis',
+        explicacao: 'Este valor vem das Despesas Variáveis do mês (mão de obra da produção, comissão de vendedor e marketing), dividido pelas unidades produzidas.' },
+      { key: 'impostos',      label: 'Impostos', value: breakdown.impostos, origin: 'Fiscal', link: '/fiscal',
+        explicacao: 'Imposto aplicado sobre o subtotal, na alíquota configurada no módulo Fiscal.' },
     ];
     const custoTotal = r2(lines.reduce((s, l) => s + (Number(l.value) || 0), 0));
     for (const l of lines) {
@@ -327,8 +352,16 @@ router.get('/product/:id', async (req, res) => {
         category: product.CATEGORIAS?.name || null,
         sale_price: preco,
       },
-      breakdown: { ...breakdown, custo_total: custoTotal, variavel: variavelUnit },
+      breakdown: { ...breakdown, custo_total: custoTotal, variavel: variavelUnit, adicionais: adic.custo },
       lines,
+      // Os opcionais nao entram no custo do copo, mas a tela precisa
+      // mostrar quanto eles PODEM somar quando a cliente escolher.
+      adicionais: {
+        padrao: adic.itens.map(a => ({ nome: a.item.name, cor: a.item.color_name, custo: a.custo, preco: a.preco })),
+        opcionais: adic.opcionais.map(a => ({ nome: a.item.name, cor: a.item.color_name, custo: a.custo, preco: a.preco })),
+        custo_padrao: adic.custo,
+        preco_padrao: adic.preco,
+      },
       custo_total: custoTotal,
       variavel_unit: variavelUnit,
       monthly_units: units,
@@ -349,6 +382,151 @@ router.get('/product/:id', async (req, res) => {
   } catch (err) {
     console.error('[rateio/product]', err.message);
     res.status(500).json({ error: 'Erro ao calcular o rateio do produto' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// GET /rateio/categoria/:id — O RATEIO DE UMA CATEGORIA INTEIRA.
+//
+// POR QUE POR CATEGORIA E NÃO SÓ POR PRODUTO. Ninguém forma preço de
+// Long Drink 400 ml sozinho: forma-se o preço de LONG DRINK. Abrir
+// vinte e quatro fichas para descobrir que todas têm o mesmo rateio,
+// o mesmo custo variável e o mesmo imposto é trabalho que a máquina
+// faz melhor — e é o que fazia a Engenharia de Custos parecer grande
+// demais para ser usada.
+//
+// O QUE É MÉDIA E O QUE NÃO É. Rateio fixo, custo variável e imposto
+// são IGUAIS para todo produto: são despesa da empresa dividida pelas
+// unidades do mês. O que varia de copo para copo é a matéria-prima e
+// o que a ficha de cada um diz — isso, sim, sai como média, e a tela
+// mostra o intervalo (do mais barato ao mais caro) junto, porque uma
+// média sem dispersão esconde exatamente o copo que está no prejuízo.
+// ════════════════════════════════════════════════════════════
+router.get('/categoria/:id', async (req, res) => {
+  try {
+    const ov = await fixedOverview(req.tenantId);
+    const { data: cat } = await supabase.from('CATEGORIAS')
+      .select('id, name').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!cat) return res.status(404).json({ error: 'Categoria não encontrada' });
+
+    const { data: produtos } = await supabase.from('PRODUTOS')
+      .select('id, name, cost_price, sale_price')
+      .eq('tenant_id', req.tenantId).eq('category_id', cat.id)
+      .order('name').limit(500);
+    const lista = produtos || [];
+    if (!lista.length) return res.status(404).json({ error: 'Categoria sem produtos' });
+
+    // As fichas de todos os produtos de uma vez — 500 produtos não
+    // podem virar 500 idas ao banco.
+    let fichas = [];
+    try {
+      const { data } = await supabase.from('PRECIFICACOES')
+        .select('*').eq('tenant_id', req.tenantId).eq('is_active', true)
+        .in('product_id', lista.map(p => p.id));
+      fichas = data || [];
+    } catch { /* migração 042 pendente */ }
+    // Mais de uma ficha ativa por produto: fica a mais recente.
+    const fichaDe = new Map();
+    for (const f of fichas) {
+      const atual = fichaDe.get(f.product_id);
+      if (!atual || new Date(f.updated_at || 0) > new Date(atual.updated_at || 0)) fichaDe.set(f.product_id, f);
+    }
+
+    const month = new Date().toISOString().slice(0, 7);
+    const [labor, commissions, marketing, extras, cfg, adic] = await Promise.all([
+      productionLabor(req.tenantId), commissionBySeller(req.tenantId, month),
+      marketingSpend(req.tenantId, month), extraVariableCosts(req.tenantId, month),
+      getConfig(req.tenantId),
+      // Sem product_id: o que vale para ESTA categoria e o que vale
+      // para todo o catálogo. É o adicional da categoria inteira.
+      custoDosAdicionaisPadrao(req.tenantId, null, cat.id),
+    ]);
+    const units = ov.monthly_units;
+    const variavelUnit = units > 0
+      ? Math.round(((labor.total + commissions.total + marketing.total + extras.total) / units) * 10000) / 10000
+      : 0;
+
+    // ── o que varia de copo para copo ──────────────────────────
+    const porProduto = lista.map(p => {
+      const sheet = fichaDe.get(p.id);
+      const c = sheet ? computeSheet({ ...sheet, overhead_unit: ov.overhead_unit }) : null;
+      const proprio = c
+        ? c.mat_unit + c.tinta_unit + c.pers_unit + c.emb_unit + c.frete_unit
+        : Number(p.cost_price) || 0;
+      const custo = r2(proprio + ov.overhead_unit + variavelUnit + adic.custo);
+      const impostos = r2(custo * (Number(ov.tax_pct_default) || 0) / 100);
+      const total = r2(custo + impostos);
+      const preco = Number(p.sale_price) || 0;
+      return {
+        id: p.id, name: p.name,
+        com_ficha: !!sheet,
+        custo_proprio: r2(proprio),
+        custo_total: total,
+        sale_price: preco,
+        margem_pct: preco > 0 ? Math.round(((preco - total) / preco) * 1000) / 10 : null,
+      };
+    });
+
+    const media = arr => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+    const proprios = porProduto.map(p => p.custo_proprio);
+    const proprioMedio = r2(media(proprios));
+    const impostoMedio = r2((proprioMedio + ov.overhead_unit + variavelUnit + adic.custo) * (Number(ov.tax_pct_default) || 0) / 100);
+
+    const detalheAdic = adic.itens.length
+      ? adic.itens.map(a => `${a.item.name}${a.item.color_name ? ' ' + a.item.color_name : ''}`).join(', ')
+      : 'nenhum adicional marcado como "já vem no preço" nesta categoria';
+
+    const lines = [
+      { key: 'proprio', label: 'Matéria-prima e ficha (média da categoria)', value: proprioMedio,
+        origin: 'Formação de Preço', link: '/pricing/formacao',
+        explicacao: `Média dos ${lista.length} produtos da categoria. ${porProduto.filter(p => p.com_ficha).length} têm ficha de preço; o resto usa o custo do cadastro.` },
+      { key: 'adicionais', label: 'Adicionais que já vêm no preço', value: adic.custo,
+        origin: 'Cadastros › Itens', link: '/cadastros/itens',
+        explicacao: `Este valor vem do cadastro de itens aplicado a esta categoria: ${detalheAdic}. Clique para abrir os cadastros.` },
+      { key: 'rateio', label: 'Rateio de despesas fixas', value: ov.overhead_unit,
+        origin: 'Despesas Fixas', link: '/rateio/despesas-fixas',
+        explicacao: `Igual para todo produto: despesa fixa do mês dividida por ${units || 0} unidades.` },
+      { key: 'variavel', label: 'Custos variáveis', value: variavelUnit,
+        origin: 'Despesas Variáveis', link: '/rateio/despesas-variaveis',
+        explicacao: 'Igual para todo produto: mão de obra, comissão e marketing do mês, divididos pelas unidades.' },
+      { key: 'impostos', label: 'Impostos', value: impostoMedio,
+        origin: 'Fiscal', link: '/fiscal',
+        explicacao: `Alíquota de ${ov.tax_pct_default || 0}% sobre o subtotal médio.` },
+    ];
+    const custoMedio = r2(lines.reduce((a, l) => a + (Number(l.value) || 0), 0));
+    for (const l of lines) {
+      l.value = Math.round((Number(l.value) || 0) * 10000) / 10000;
+      l.pct = custoMedio > 0 ? Math.round((l.value / custoMedio) * 1000) / 10 : 0;
+    }
+
+    const totais = porProduto.map(p => p.custo_total).sort((a, b) => a - b);
+    const comPreco = porProduto.filter(p => p.margem_pct != null);
+    const metaMargem = Number(cfg.margin_pct) || 30;
+
+    res.json({
+      categoria: { id: cat.id, name: cat.name, produtos: lista.length },
+      lines,
+      custo_medio: custoMedio,
+      // A DISPERSÃO É TÃO IMPORTANTE QUANTO A MÉDIA: é ela que mostra
+      // se existe um copo fora da curva escondido atrás do número bonito.
+      custo_min: totais[0] ?? 0,
+      custo_max: totais[totais.length - 1] ?? 0,
+      margem_meta: metaMargem,
+      margem_media: comPreco.length
+        ? Math.round((comPreco.reduce((a, p) => a + p.margem_pct, 0) / comPreco.length) * 10) / 10
+        : null,
+      abaixo_meta: porProduto.filter(p => p.margem_pct != null && p.margem_pct < metaMargem).length,
+      sem_preco: porProduto.filter(p => !p.sale_price).length,
+      sem_ficha: porProduto.filter(p => !p.com_ficha).length,
+      produtos: porProduto.sort((a, b) => (a.margem_pct ?? 999) - (b.margem_pct ?? 999)),
+      adicionais: {
+        padrao: adic.itens.map(a => ({ nome: a.item.name, cor: a.item.color_name, custo: a.custo, preco: a.preco })),
+        opcionais: adic.opcionais.map(a => ({ nome: a.item.name, cor: a.item.color_name, custo: a.custo, preco: a.preco })),
+      },
+    });
+  } catch (err) {
+    console.error('[rateio/categoria]', err.message);
+    res.status(500).json({ error: 'Erro ao calcular o rateio da categoria' });
   }
 });
 

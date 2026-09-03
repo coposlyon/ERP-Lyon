@@ -28,7 +28,7 @@ import {
   Clock, Umbrella, DollarSign, ScrollText, Fingerprint, CalendarDays, Box, LineChart, Factory, ShieldCheck,
   Calculator, PieChart, Home, Landmark, Star, Trophy,
   MessageSquare, LogOut, LayoutGrid, Globe, CloudUpload, UserPlus, UserMinus,
-  Sparkles, Layers, Droplet,
+  Sparkles, Layers, Droplet, FolderTree,
 } from 'lucide-react';
 import { SITES } from '@/pages/Sites/registro';
 
@@ -131,6 +131,7 @@ export const menuItems = [
       { label: 'Bordas',     path: '/cadastros/bordas',     icon: Layers,   module: 'products' },
       { label: 'Tintas',     path: '/cadastros/tintas',     icon: Droplet,  module: 'products' },
       { label: 'Itens (todos)', path: '/cadastros/itens',   icon: Box,      module: 'products' },
+      { label: 'Insumos',      path: '/engenharia/insumos', icon: FlaskConical, module: 'financial' },
     ],
   },
   {
@@ -157,10 +158,9 @@ export const menuItems = [
     children: [
       { label: 'Formação de Preço', path: '/pricing/formacao', icon: Calculator, module: 'financial' },
       { label: 'Análise de Produtos', path: '/pricing', icon: LineChart, module: 'financial', exact: true },
-      { label: 'Insumos', path: '/engenharia/insumos', icon: FlaskConical, module: 'financial' },
       { label: 'Despesas Fixas', path: '/rateio/despesas-fixas', icon: Home, module: 'financial' },
       { label: 'Despesas Variáveis', path: '/rateio/despesas-variaveis', icon: Percent, module: 'financial' },
-      { label: 'Rateio por Produto', path: '/rateio/produto', icon: Package, module: 'financial' },
+      { label: 'Rateio por Categoria', path: '/rateio/produto', icon: FolderTree, module: 'financial' },
       { label: 'Rateio por Pedido', path: '/rateio/pedido', icon: ShoppingCart, module: 'financial' },
       { label: 'Painel de Rentabilidade', path: '/rateio/rentabilidade', icon: LineChart, module: 'financial' },
       { label: 'Simulador de Metas', path: '/rateio/metas', icon: Target, module: 'financial' },
