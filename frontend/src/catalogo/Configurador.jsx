@@ -84,6 +84,9 @@ export default function Configurador() {
   const [telaCheia, setTelaCheia] = useState(false);
   // UM GRUPO ABERTO POR VEZ. Dois abertos já são a parede de novo.
   const [grupoAberto, setGrupoAberto] = useState(null);
+  // A personalização começa fechada: a maioria abre a página só para
+  // ver o copo e o preço.
+  const [querPersonalizar, setQuerPersonalizar] = useState(false);
 
   const { data: cfg, isLoading, error } = useQuery({
     queryKey: ['catalogo', 'modelo', chave],
@@ -313,6 +316,13 @@ export default function Configurador() {
    */
   const bordaEscolhida = useMemo(
     () => adicionaisEscolhidos.find(a => a.tipo === 'borda') || null,
+    [adicionaisEscolhidos]);
+
+  // Tudo que NÃO é borda vai ao lado do copo: canudo, tampa, e o que a
+  // Lyon cadastrar amanhã. A regra é por exclusão de propósito — item
+  // novo aparece sozinho, sem ninguém lembrar de listá-lo aqui.
+  const acessoriosEscolhidos = useMemo(
+    () => adicionaisEscolhidos.filter(a => a.tipo !== 'borda'),
     [adicionaisEscolhidos]);
 
   const escolhaVisual = useMemo(() => {
@@ -719,6 +729,32 @@ export default function Configurador() {
 
           {personalizado && (
             <Painel titulo={`${numeroDoPainel()}. Personalização`} cor={NEON.roxo} icone={Palette}>
+              {/* UMA PERGUNTA ANTES DO PAINEL INTEIRO.
+                  Tipo de impressão, posição da arte, editor e ocasião
+                  do evento é muita decisão junta para quem talvez nem
+                  queira arte nenhuma — e é a maior parte da altura da
+                  página. Perguntar primeiro devolve a tela a quem só
+                  quer o copo, e não tira nada de quem quer personalizar:
+                  o card abre inteiro, do mesmo jeito. */}
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
+                <span className="text-[13.5px] font-medium" style={{ color: NEON.texto }}>
+                  Quer personalizar do seu jeito?
+                </span>
+                <div className="flex gap-2">
+                  <Opcao titulo="Sim" cor={NEON.roxo} ativo={querPersonalizar}
+                    onClick={() => setQuerPersonalizar(true)} />
+                  <Opcao titulo="Não" cor={NEON.azul} ativo={!querPersonalizar}
+                    onClick={() => setQuerPersonalizar(false)} />
+                </div>
+              </div>
+              {!querPersonalizar && (
+                <p className="text-[11.5px]" style={{ color: NEON.fraco }}>
+                  Sem problema — seguimos com o copo do jeito que está. Você pode voltar aqui a
+                  qualquer momento antes de fechar o pedido.
+                </p>
+              )}
+
+              {querPersonalizar && (<>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Rotulo>Tipo de impressão</Rotulo>
@@ -804,6 +840,8 @@ export default function Configurador() {
                   fale com um atendente para montar a personalização.
                 </Nota>
               )}
+              )}
+              </>)}
             </Painel>
           )}
 
@@ -872,10 +910,12 @@ export default function Configurador() {
               <div className="flex items-end justify-center gap-2 sm:gap-4">
                 <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente"
                   borda={bordaEscolhida}
+                  acessorios={acessoriosEscolhidos}
                   gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 190 : 216} />
                 {personalizado && estado.posicao === 'frente_verso' && (
                   <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso"
                     borda={bordaEscolhida}
+                    acessorios={acessoriosEscolhidos}
                     gabarito={gabarito} altura={190} />
                 )}
               </div>
@@ -1069,10 +1109,12 @@ export default function Configurador() {
               style={{ background: '#ffffff' }}>
               <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente"
                 borda={bordaEscolhida}
+                acessorios={acessoriosEscolhidos}
                 gabarito={gabarito} altura={Math.min(520, window.innerHeight * 0.62)} />
               {personalizado && estado.posicao === 'frente_verso' && (
                 <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso"
                   borda={bordaEscolhida}
+                  acessorios={acessoriosEscolhidos}
                   gabarito={gabarito} altura={Math.min(520, window.innerHeight * 0.62)} />
               )}
             </div>

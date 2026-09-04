@@ -670,6 +670,11 @@ export default function CopoPreview({
   // cor_hex, nome }. Vem de fora porque quem sabe o que a cliente
   // marcou é o configurador, não a prévia.
   borda = null,
+  // Canudo, tampa e o que mais a cliente marcar. Ao contrário da
+  // borda, estes NÃO se pintam sobre o copo: são peças separadas, que
+  // vêm na caixa junto. Desenhar um canudo dentro do copo seria
+  // inventar um produto; mostrá-lo AO LADO é o que a caixa mostra.
+  acessorios = [],
 }) {
   const { campos = {} } = escolha;
   // O VERSO É A MESMA PEÇA VISTA POR TRÁS. A foto do cadastro é uma só,
@@ -735,6 +740,7 @@ export default function CopoPreview({
         <Desenho escolha={escolha} familia={familia} arte={arte}
           altura={altura} gabarito={gabarito} espelhar={espelhar} />
         {rodape}
+        <Acessorios itens={acessorios} />
         <Aplicados itens={aplicados} />
       </figure>
     );
@@ -784,12 +790,48 @@ export default function CopoPreview({
         )}
       </div>
       {rodape}
+      <Acessorios itens={acessorios} />
       <Aplicados itens={aplicados} />
       {ressalva && (
         <p className="text-[10.5px] leading-snug text-center mt-1.5 max-w-[230px]"
           style={{ color: '#94a3b8' }}>{ressalva}</p>
       )}
     </figure>
+  );
+}
+
+/**
+ * O QUE VAI JUNTO NA CAIXA — canudo, tampa, e o que mais for marcado.
+ *
+ * A BORDA SE PINTA NO COPO; ESTES NÃO. Borda é acabamento aplicado na
+ * peça, e existe foto dela para pôr no aro. Canudo e tampa são peças
+ * separadas: desenhá-los encaixados no copo seria inventar uma imagem
+ * de produto que ninguém fotografou. Ao lado, com a foto de cada um, é
+ * o que a cliente vai receber — e é honesto.
+ */
+function Acessorios({ itens }) {
+  if (!itens?.length) return null;
+  return (
+    <div className="flex flex-wrap justify-center gap-2 mt-2.5 max-w-[240px]">
+      {itens.map(a => (
+        <span key={a.item_id} className="flex flex-col items-center gap-1"
+          style={{ width: 58 }} title={a.cor ? `${a.nome} ${a.cor}` : a.nome}>
+          {a.foto ? (
+            <img src={a.foto} alt="" className="w-11 h-11 rounded-lg object-cover"
+              style={{ border: '1px solid #e2e8f0' }} />
+          ) : (
+            <span className="w-11 h-11 rounded-lg"
+              style={{ background: a.cor_hex || '#f1f5f9', border: '1px solid #e2e8f0' }} />
+          )}
+          <span className="text-[9px] leading-tight text-center" style={{ color: '#475569' }}>
+            {a.nome}
+            {a.cor && (
+              <span className="block" style={{ color: '#94a3b8' }}>{a.cor}</span>
+            )}
+          </span>
+        </span>
+      ))}
+    </div>
   );
 }
 
