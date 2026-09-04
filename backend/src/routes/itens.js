@@ -26,7 +26,11 @@ const { uploadDataUrl } = require('../lib/storage');
 // Custos, o catalogo e o pedido precisam da MESMA resposta.
 const { adicionaisDoProduto } = require('../lib/adicionais');
 
-const KINDS = ['acessorio', 'borda', 'tinta', 'embalagem', 'outro'];
+// 'cor' é a cor da PEÇA CRUA (o copo azul bic). Mora aqui junto com
+// borda e canudo porque a pergunta é a mesma — o que a peça leva —, e
+// porque assim existe UM lugar onde a cor é cadastrada, em vez de ser
+// digitada dentro do nome de 97 produtos.
+const KINDS = ['cor', 'acessorio', 'borda', 'tinta', 'embalagem', 'outro'];
 const UNIDADES = ['un', 'ml', 'g', 'm', 'folha'];
 
 const n6 = v => Math.round((Number(v) || 0) * 1e6) / 1e6;

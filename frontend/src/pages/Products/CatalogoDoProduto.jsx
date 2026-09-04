@@ -32,6 +32,27 @@ const BLOQUEAR = 'bloquear';
 // Como o cliente lê cada grupo de cor. O grupo vem do cadastro técnico
 // (CONFIG_CORES.grupo); este mapa só traduz para português de tela e
 // explica onde aquela cor é usada — grupo novo cai no próprio nome.
+/**
+ * O QUE ESTE ACABAMENTO FAZ NA TELA DA CLIENTE.
+ *
+ * "Bicolor" não diz nada para quem está ligando a chave; "a cliente
+ * escolhe 2 cores" diz. A frase é MONTADA a partir dos campos que o
+ * acabamento abre no configurador — não é um texto escrito aqui, que
+ * envelheceria no primeiro acabamento novo.
+ */
+function oQueAcontece(a) {
+  const campos = Array.isArray(a.campos) ? a.campos : [];
+  if (!campos.length) return 'A cliente só escolhe o copo — este acabamento não pede nada a mais.';
+  const cores = campos.filter(c => c.grupo !== 'produto');
+  const partes = [];
+  if (cores.length === 1) partes.push(`a cliente escolhe 1 cor (${cores[0].label})`);
+  else if (cores.length > 1) {
+    partes.push(`a cliente escolhe ${cores.length} cores (${cores.map(c => c.label).join(', ')})`);
+  }
+  if (campos.some(c => c.grupo === 'produto')) partes.push('e a cor do copo');
+  return partes.length ? partes.join(' ') : 'A cliente escolhe a cor do copo.';
+}
+
 const GRUPOS = {
   produto:        { titulo: 'Cor do copo', ajuda: 'A cor da peça crua. Cada cor é um produto irmão no cadastro — o catálogo oferece as que estiverem publicadas.' },
   pintura:        { titulo: 'Cores de pintura', ajuda: 'Alimenta os campos de cor base, cor da boca e degradê.' },
@@ -200,13 +221,13 @@ export default function CatalogoDoProduto({ productId }) {
       )}
 
       {/* ── Acabamentos ──────────────────────────────────── */}
-      <Bloco titulo="Acabamentos permitidos" icone={Layers}
-        ajuda="Cada acabamento vira um card na vitrine. O nome ao lado é exatamente o que o cliente vai ler.">
+      <Bloco titulo="O que o cliente pode escolher" icone={Layers}
+        ajuda="Ligue um acabamento e a linha diz o que aparece para a cliente no catálogo.">
         <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
           {ficha.acabamentos.map(a => (
             <LinhaTri key={a.id}
               titulo={a.nome}
-              sub={a.nome_comercial}
+              sub={oQueAcontece(a)}
               alerta={!a.no_catalogo ? 'Este acabamento está marcado como “não aparece no catálogo” na configuração técnica.' : null}
               herdado={a.herdado}
               estado={estadoDe('acabamentos', a.id, a.estado)}
@@ -216,37 +237,14 @@ export default function CatalogoDoProduto({ productId }) {
         </div>
       </Bloco>
 
-      {/* ── Cores, por onde se aplicam ───────────────────── */}
-      <Bloco titulo="Cores permitidas" icone={Palette}
-        ajuda="Cor de borda não é cor de pintura nem cor de personalização. Cada campo do configurador se alimenta de uma destas listas.">
-        <div className="space-y-4">
-          {Object.entries(ficha.cores).map(([grupo, lista]) => (
-            <div key={grupo}>
-              <p className="text-sm font-semibold text-gray-700">
-                {GRUPOS[grupo]?.titulo || grupo}
-                <span className="ml-2 text-[11px] font-normal text-gray-400">
-                  {lista.filter(c => (estadoDe('cores', c.id, c.estado) === PERMITIR)
-                    || (estadoDe('cores', c.id, c.estado) === HERDAR && c.herdado)).length} de {lista.length} liberadas
-                </span>
-              </p>
-              {GRUPOS[grupo]?.ajuda && (
-                <p className="text-[11px] text-gray-500 mt-0.5 mb-1.5">{GRUPOS[grupo].ajuda}</p>
-              )}
-              <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 max-h-64 overflow-y-auto pr-1">
-                {lista.map(c => (
-                  <LinhaTri key={c.id} compacto
-                    titulo={c.name}
-                    cor={c.hex}
-                    herdado={c.herdado}
-                    estado={estadoDe('cores', c.id, c.estado)}
-                    onMudar={v => mexer('cores', c.id, v)} />
-                ))}
-              </div>
-            </div>
-          ))}
-          {!Object.keys(ficha.cores).length && <Vazio texto="Nenhuma cor cadastrada na configuração técnica." />}
-        </div>
-      </Bloco>
+      {/* AS CORES SAÍRAM DAQUI.
+          Eram quatro grades com dezenas de caixinhas Herdar/Sim/Não —
+          e nenhuma delas era a cor de verdade: a cor da peça nunca foi
+          cadastrada, era texto dentro do nome do produto. Agora a cor é
+          cadastro (Cadastros › Cores) e cada copo aponta para a sua. O
+          que o catálogo oferece é o conjunto de cores dos copos
+          publicados — não uma segunda lista, mantida à mão, que
+          discordava da primeira. */}
 
       {/* ── Impressão ────────────────────────────────────── */}
       <Bloco titulo="Tipo de impressão" icone={Droplet}

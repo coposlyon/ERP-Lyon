@@ -41,7 +41,7 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
     name: '', code: '', ean: '', category_id: '',
     cost_price: '', sale_price: '', current_stock: '',
     pricing_sheet_id: '',
-    ncm: '', cst: '', cfop: '', is_active: true,
+    ncm: '', cst: '', cfop: '', is_active: true, cor_item_id: null,
     show_in_store: true, show_in_catalogo: false, ink_type: '',
     supplier_id: '',
     height: '', weight: '', thickness: '',
@@ -59,6 +59,11 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
   const { data: categories = [] } = useQuery({
     queryKey: ['categories'],
     queryFn: () => api.get('/products/categories/list'),
+  });
+
+  const { data: coresCadastradas = [] } = useQuery({
+    queryKey: ['itens', 'cor'],
+    queryFn: () => api.get('/itens?kind=cor'),
   });
 
   const { data: suppliersData } = useQuery({
@@ -96,6 +101,7 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
         ean: product.ean || '',
         category_id: product.category_id || '',
         cost_price: product.cost_price || '',
+        cor_item_id: product.cor_item_id || null,
         sale_price: product.sale_price ?? '',
         current_stock: product.current_stock ?? '',
         pricing_sheet_id: product.pricing_sheet_id || '',
@@ -275,6 +281,31 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
         <div>
           <label className="label">ID (código do produto)</label>
           <input className="input" value={form.code} onChange={e => set('code', e.target.value)} placeholder="0001" />
+        </div>
+
+        {/* A COR VEM DO CADASTRO, e não mais digitada dentro do nome.
+            Digitada 97 vezes, ela virava "AZUL BEBE" e "AZUL BEBÊ" — e
+            aí não havia como o sistema responder "quais cores a Lyon
+            faz?" sem varrer nome por nome. Escolhida de uma lista, a
+            cor é a MESMA em todo copo que a usa. */}
+        <div className="col-span-2">
+          <label className="label flex items-center gap-2">
+            Cor da peça
+            {form.cor_item_id && (() => {
+              const c = coresCadastradas.find(x => x.id === form.cor_item_id);
+              return c ? <span className="w-4 h-4 rounded border border-gray-200 inline-block"
+                style={{ background: c.color_hex || '#f3f4f6' }} /> : null;
+            })()}
+          </label>
+          <select className="input" value={form.cor_item_id || ''}
+            onChange={e => set('cor_item_id', e.target.value || null)}>
+            <option value="">— sem cor (peça lisa ou insumo) —</option>
+            {coresCadastradas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <p className="text-[11px] text-gray-400 mt-1">
+            Cor nova se cadastra em <b>Cadastros › Cores</b> — de lá ela fica disponível para
+            todos os copos.
+          </p>
         </div>
         <div>
           <label className="label">EAN / Código de Barras</label>

@@ -302,6 +302,7 @@ function AppRoutes() {
         {/* Cadastro de itens: a mesma tela travada por tipo. Quem entra
             por Acessórios não vê tinta; quem entra por Itens vê tudo. */}
         <Route path="cadastros/itens"      element={<Mod m={['products','financial','settings','production']}><Itens /></Mod>} />
+        <Route path="cadastros/cores"      element={<Mod m={['products','financial','settings','production']}><Itens kind="cor" /></Mod>} />
         <Route path="cadastros/acessorios" element={<Mod m={['products','financial','settings','production']}><Itens kind="acessorio" /></Mod>} />
         <Route path="cadastros/bordas"     element={<Mod m={['products','financial','settings','production']}><Itens kind="borda" /></Mod>} />
         <Route path="cadastros/tintas"     element={<Mod m={['products','financial','settings','production']}><Itens kind="tinta" /></Mod>} />

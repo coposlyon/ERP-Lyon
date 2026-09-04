@@ -24,7 +24,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Loader2, Pencil, Trash2, Search, Package, Layers,
   Droplet, Box, Sparkles, Image as ImageIcon, Upload, X, AlertTriangle,
-  CheckSquare, Square, Tag, Check, Images,
+  CheckSquare, Square, Tag, Check, Images, Palette,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -34,6 +34,8 @@ import { fmtBRL } from '@/lib/pricingCalc';
 
 // ── Os tipos, na ordem em que a fábrica pensa neles ──────────
 export const TIPOS = [
+  { kind: 'cor',       label: 'Cores',      singular: 'Cor',       icon: Palette,
+    dica: 'A cor da peça crua. Cada copo do cadastro aponta para uma cor daqui.' },
   { kind: 'acessorio', label: 'Acessórios', singular: 'Acessório', icon: Sparkles,
     dica: 'Canudo, tampa, alça, tag — o que a cliente escolhe e faz o preço subir.' },
   { kind: 'borda',     label: 'Bordas',     singular: 'Borda',     icon: Layers,
@@ -45,7 +47,7 @@ export const TIPOS = [
   { kind: 'outro',     label: 'Outros',     singular: 'Item',      icon: Package,
     dica: 'O que aparecer amanhã e não couber acima.' },
 ];
-const TIPO = k => TIPOS.find(t => t.kind === k) || TIPOS[4];
+const TIPO = k => TIPOS.find(t => t.kind === k) || TIPOS[TIPOS.length - 1];
 
 const UNIDADES = [
   { v: 'un',    label: 'unidade' },

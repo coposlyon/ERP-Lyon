@@ -126,6 +126,7 @@ export const menuItems = [
       // Cadastrar canudo, borda e tinta é cadastro — quem faz isso é
       // quem compra, não quem forma preço. A engenharia LÊ estes
       // valores; ela não é mais o lugar de digitá-los.
+      { label: 'Cores',      path: '/cadastros/cores',      icon: Palette,  module: 'products' },
       { label: 'Acessórios', path: '/cadastros/acessorios', icon: Sparkles, module: 'products' },
       { label: 'Bordas',     path: '/cadastros/bordas',     icon: Layers,   module: 'products' },
       { label: 'Tintas',     path: '/cadastros/tintas',     icon: Droplet,  module: 'products' },

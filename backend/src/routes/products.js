@@ -841,6 +841,9 @@ router.post('/', validate(productSchema), async (req, res) => {
       code, ean, description, category_id,
       ...(tipo_id !== undefined ? { tipo_id: tipo_id || null } : {}),
       cost_price: cost_price || 0,
+      // A COR VEM DO CADASTRO DE CORES, nao mais digitada dentro do
+      // nome. Nulo continua valendo: produto liso e insumo nao tem cor.
+      ...(req.body.cor_item_id !== undefined ? { cor_item_id: req.body.cor_item_id || null } : {}),
       // PRODUTO NOVO NASCE SEM PRECO, e isso e de proposito: quem
       // define preco e a Precificacao (lib/preco.js diz por que).
       // Zero aqui nao e "de graca", e "ainda nao precificado" — e o
@@ -925,6 +928,7 @@ router.put('/:id', async (req, res) => {
     if (category_id !== undefined) payload.category_id = category_id || null;
     if (tipo_id !== undefined) payload.tipo_id = tipo_id || null;
     if (cost_price !== undefined) payload.cost_price = cost_price;
+    if (req.body.cor_item_id !== undefined) payload.cor_item_id = req.body.cor_item_id || null;
     // `sale_price` NAO entra por aqui. A tela de produto mostra o
     // preco; quem grava e a Precificacao. Ver lib/preco.js.
     if (min_stock !== undefined) payload.min_stock = min_stock;
