@@ -7,6 +7,7 @@ import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import ProductForm from './ProductForm';
 import BulkEditModal from './BulkEditModal';
+import ModeloDoProduto from './ModeloDoProduto';
 import ImportStockModal from './ImportStockModal';
 import ImportProductsModal from './ImportProductsModal';
 import { loadImage, recolorCup, makeCupTemplate } from './recolorCup';
@@ -176,6 +177,9 @@ export default function Products() {
   }, [todosPersonalizados]);
 
   const [modeloAberto, setModeloAberto] = useState(null);
+  // O modelo aberto em JANELA (cores + adicionais), diferente do
+  // acordeão da lista — lá é espiar, aqui é trabalhar.
+  const [modeloJanela, setModeloJanela] = useState(null);
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, is_active }) => api.put(`/products/${id}`, { is_active }),
@@ -589,9 +593,10 @@ export default function Products() {
                 const aberto = modeloAberto === m.chave;
                 return (
                   <div key={m.chave} className="rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-50 transition">
                     <button type="button"
                       onClick={() => setModeloAberto(aberto ? null : m.chave)}
-                      className="w-full flex items-center gap-3 px-3 py-3 text-left hover:bg-gray-50 transition">
+                      className="flex items-center gap-3 flex-1 min-w-0 text-left">
                       {/* As cores do modelo em miniatura: a linha diz o
                           que ela contém antes de ser aberta. */}
                       <span className="flex -space-x-2 shrink-0">
@@ -609,12 +614,17 @@ export default function Products() {
                           {m.semFoto > 0 && ` · ${m.semFoto} sem foto`}
                         </span>
                       </span>
-                      <span className="text-sm text-gray-600 whitespace-nowrap shrink-0">
+                      <span className="text-sm text-gray-600 whitespace-nowrap shrink-0 hidden sm:block">
                         {m.custo == null ? 'custos variados' : `custo ${fmt(m.custo)}`}
                       </span>
                       <ChevronDown size={16}
                         className={`shrink-0 text-gray-400 transition-transform ${aberto ? 'rotate-180' : ''}`} />
                     </button>
+                    <button type="button" className="btn-secondary btn-sm shrink-0"
+                      onClick={() => setModeloJanela(m)}>
+                      Abrir modelo
+                    </button>
+                    </div>
 
                     {aberto && (
                       <div className="border-t border-gray-100 divide-y divide-gray-50">
@@ -652,6 +662,29 @@ export default function Products() {
           </>
         )}
       </div>
+
+      {modeloJanela && (
+        <ModeloDoProduto
+          modelo={modeloJanela}
+          onClose={() => setModeloJanela(null)}
+          onEditarCor={c => { setModeloJanela(null); openEdit(c); }}
+          onNovaCor={m => {
+            setModeloJanela(null);
+            // Nasce já com a categoria e o começo do nome — o que muda
+            // de uma cor para a outra é só a cor.
+            const base = m.cores[0];
+            setEditing({
+              name: `${m.categoria} - `,
+              category_id: base?.category_id || '',
+              cost_price: base?.cost_price ?? '',
+              show_in_catalogo: true,
+              show_in_store: base?.show_in_store !== false,
+              is_active: true,
+            });
+            setModalOpen(true);
+          }}
+        />
+      )}
 
       <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Editar Produto' : 'Novo Produto'}
         size={abaProduto === 'catalogo' ? 'full' : abaProduto === 'adicionais' ? 'xl' : 'lg'}>
