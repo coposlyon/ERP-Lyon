@@ -39,6 +39,22 @@ import { lerRascunho, gravarRascunho, limparRascunho } from './rascunho';
 
 const HOJE = () => new Date().toISOString().slice(0, 10);
 
+/**
+ * O QUE ESTE ACABAMENTO ABRE PARA A CLIENTE.
+ *
+ * "Tricolor" não diz o que vai acontecer; "escolhe 3 cores (Cor 1, Cor
+ * 2, Cor da boca)" diz. A frase é montada dos campos que o acabamento
+ * traz do cadastro — acabamento novo já nasce explicado, sem passar
+ * por aqui.
+ */
+function oQueAbre(a) {
+  const campos = a?.campos || [];
+  if (!campos.length) return 'sem escolhas — o copo já vem assim';
+  const nomes = campos.map(c => c.label).filter(Boolean);
+  return `escolhe ${campos.length} ${campos.length === 1 ? 'cor' : 'cores'}`
+    + (nomes.length ? ` (${nomes.join(', ')})` : '');
+}
+
 const INICIAL = {
   tipo_pedido: 'personalizado',
   acabamento_id: null,
@@ -488,19 +504,43 @@ export default function Configurador() {
               </Nota>
             )}
 
-            {/* O SELETOR DE ACABAMENTO SAIU DAQUI.
-                Eram catorze chips — Degradê, Bicolor, Tricolor, Jateado,
-                Efeito Gelo, Borda Metalizada e as versões "com Borda" —
-                logo abaixo do produto que o cliente acabou de escolher.
-                O pedido do catálogo é o copo cadastrado, e o acabamento
-                é combinado com a Lyon; oferecer catorze caminhos ali era
-                pedir uma decisão que não é do cliente e que a vitrine
-                nem promete cumprir.
+            {/* O SELETOR DE ACABAMENTO VOLTOU.
+                Ele tinha sido tirado por achar-se que catorze caminhos
+                era decisão demais para a cliente. Só que quem liga o
+                acabamento no cadastro é a dona da fábrica, e ligar algo
+                que não aparece em lugar nenhum é pior do que a lista
+                longa: ela marcava "Sim" no Tricolor e no Efeito Gelo e
+                nada acontecia, sem erro para explicar.
 
-                O acabamento CONTINUA existindo por baixo: o efeito de
-                abertura escolhe o primeiro da lista, e é dele que saem
-                os campos de cor, o preço e o item que vai para o
-                carrinho. O que saiu foi a pergunta, não o dado. */}
+                A lista aqui é a do CADASTRO: chega já filtrada pelos
+                que estão liberados para este copo. E cada um diz o que
+                abre — "escolhe 2 cores (Cor, Cor da boca)" —, que é a
+                informação que faltava para a escolha não ser um chute. */}
+            {(cfg.acabamentos || []).length > 1 && (
+              <div className="mt-4">
+                <Rotulo>Acabamento</Rotulo>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {cfg.acabamentos.map(a => (
+                    <Opcao key={a.id} quebrar
+                      titulo={a.nome}
+                      sub={oQueAbre(a)}
+                      cor={NEON.roxo}
+                      ativo={estado.acabamento_id === a.id}
+                      onClick={() => {
+                        // Troca limpando o que não vale mais: a cor da
+                        // boca continua fazendo sentido no Bicolor, a
+                        // terceira cor do Tricolor não.
+                        const validos = new Set((a.campos || []).map(c => c.key));
+                        const restante = {};
+                        for (const [k, v] of Object.entries(estado.campos || {})) {
+                          if (validos.has(k)) restante[k] = v;
+                        }
+                        mudar({ acabamento_id: a.id, campos: restante });
+                      }} />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* OS CAMPOS DA PEÇA. Vêm do acabamento, um a um. Nenhum
                 está escrito nesta tela — acabamento novo no cadastro
@@ -572,6 +612,39 @@ export default function Configurador() {
                 </p>
               )}
             </div>
+
+            {/* O TIPO DE IMPRESSÃO SUBIU PARA CÁ.
+                Ele morava dentro de "Personalização", que agora começa
+                fechada — então a cliente não via, e a dona da fábrica
+                ligava o Transfer sem que ele aparecesse em lugar
+                nenhum. Mas o motivo é anterior a isso: impressão MUDA O
+                PREÇO. Decisão que mexe no valor pertence ao bloco do
+                produto, junto do que a cliente está comprando, e não
+                atrás de uma pergunta opcional. */}
+            {personalizado && (
+              <div className="mt-4">
+                <Rotulo>Tipo de impressão</Rotulo>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {(cfg.processos || []).map(pr => (
+                    <Opcao key={pr.id} quebrar
+                      titulo={pr.nome}
+                      sub={pr.max_cores
+                        ? `até ${pr.max_cores} cor${pr.max_cores > 1 ? 'es' : ''}${pr.linha_tinta ? ` · tinta ${pr.linha_tinta}` : ''}`
+                        : 'arte colorida, do jeito que você quiser'}
+                      icone={pr.max_cores === 1 ? Droplet : Palette}
+                      cor={pr.max_cores === 1 ? NEON.ciano : NEON.magenta}
+                      ativo={estado.processo_id === pr.id}
+                      onClick={() => mudar({ processo_id: pr.id })} />
+                  ))}
+                  {!(cfg.processos || []).length && (
+                    <p className="text-[11.5px] col-span-full" style={{ color: NEON.fraco }}>
+                      Nenhum tipo de impressão liberado para este copo.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
           </Painel>
 
           {/* ══ ADICIONAIS ═══════════════════════════════════════
@@ -755,38 +828,6 @@ export default function Configurador() {
 
               {querPersonalizar && (<>
               <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Rotulo>Tipo de impressão</Rotulo>
-                  {/* TODOS OS PROCESSOS LIBERADOS, e não dois botões
-                      fixos. A versão anterior espremia a lista inteira
-                      em "1 cor" e "Arte colorida", e "Arte colorida"
-                      pegava o PRIMEIRO processo que não fosse de uma
-                      cor — que é a Serigrafia 2 cores. Transfer,
-                      Serigrafia 3 cores e Laser podiam estar ligados no
-                      cadastro e não tinham como aparecer aqui: o
-                      Administrativo marcava "Sim" e nada acontecia.
-
-                      Esta tela é desenhada pelo cadastro (é a regra do
-                      arquivo: nenhum `if` de acabamento aqui). O tipo
-                      de impressão não podia ser a exceção. */}
-                  <div className="grid grid-cols-2 gap-2">
-                    {(cfg.processos || []).map(pr => (
-                      <Opcao key={pr.id} quebrar
-                        titulo={pr.nome}
-                        sub={[pr.max_cores ? `até ${pr.max_cores} cor${pr.max_cores > 1 ? 'es' : ''}` : 'colorido',
-                              pr.linha_tinta && `tinta ${pr.linha_tinta}`].filter(Boolean).join(' · ')}
-                        icone={pr.max_cores === 1 ? Droplet : Palette}
-                        cor={pr.max_cores === 1 ? NEON.ciano : NEON.magenta}
-                        ativo={estado.processo_id === pr.id}
-                        onClick={() => mudar({ processo_id: pr.id })} />
-                    ))}
-                    {!(cfg.processos || []).length && (
-                      <p className="text-[11.5px] col-span-2" style={{ color: NEON.fraco }}>
-                        Nenhum tipo de impressão liberado para este copo.
-                      </p>
-                    )}
-                  </div>
-                </div>
 
                 <div>
                   <Rotulo>Posição da arte</Rotulo>
