@@ -307,6 +307,40 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
             todos os copos.
           </p>
         </div>
+
+        {/* A FOTO MORA JUNTO DA COR, e não trinta campos abaixo.
+            Ela não é "a foto do produto" no abstrato: é a foto DESTE
+            copo NESTA cor — é ela que o catálogo mostra quando a
+            cliente escolhe Azul Bic. Longe do campo de cor, ninguém
+            liga uma coisa à outra, e é assim que 3 das 24 cores ficam
+            sem foto e ninguém percebe. */}
+        <div className="col-span-2">
+          <label className="label flex items-center gap-1.5">
+            <ImageIcon size={14} className="text-primary-500" />
+            {(() => {
+              const c = coresCadastradas.find(x => x.id === form.cor_item_id);
+              return c ? `Foto deste copo na cor ${c.name}` : 'Foto deste copo';
+            })()}
+          </label>
+          <div className="flex items-center gap-3">
+            <div className="w-20 h-20 rounded-xl bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center shrink-0">
+              {mainImage ? <img src={mainImage} alt="" className="w-full h-full object-cover" /> : <ImageIcon size={22} className="text-gray-300" />}
+            </div>
+            <label className="btn-secondary cursor-pointer">
+              <Upload size={15} /> {mainImage ? 'Trocar foto' : 'Enviar foto'}
+              <input type="file" accept="image/*" className="hidden" onChange={e => { pickImage(e.target.files?.[0], setMainImage); e.target.value = ''; }} />
+            </label>
+            <button type="button" onClick={pasteFromClipboard} className="btn-secondary" title="Colar imagem copiada">
+              <ClipboardPaste size={15} /> Colar
+            </button>
+            {mainImage && <button type="button" onClick={() => setMainImage('')} className="text-xs text-red-500 hover:text-red-600">Remover</button>}
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            É esta foto que aparece no catálogo e na loja quando a cliente escolhe esta cor.
+            Dica: copie uma imagem e aperte <b>Ctrl+V</b> em qualquer lugar desta janela.
+          </p>
+        </div>
+
         <div>
           <label className="label">EAN / Código de Barras</label>
           <input className="input" value={form.ean} onChange={e => set('ean', e.target.value)} placeholder="7891234567890" />
@@ -428,25 +462,6 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
           <div><label className="label">CFOP</label><input className="input" value={form.cfop} onChange={e => set('cfop', e.target.value)} placeholder="5102" maxLength={4} /></div>
         </div>
       </details>
-
-      {/* Foto do produto (loja) */}
-      <div>
-        <label className="label flex items-center gap-1.5"><ImageIcon size={14} className="text-primary-500" /> Foto do produto (aparece na loja)</label>
-        <div className="flex items-center gap-3">
-          <div className="w-20 h-20 rounded-xl bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center shrink-0">
-            {mainImage ? <img src={mainImage} alt="" className="w-full h-full object-cover" /> : <ImageIcon size={22} className="text-gray-300" />}
-          </div>
-          <label className="btn-secondary cursor-pointer">
-            <Upload size={15} /> {mainImage ? 'Trocar foto' : 'Enviar foto'}
-            <input type="file" accept="image/*" className="hidden" onChange={e => { pickImage(e.target.files?.[0], setMainImage); e.target.value = ''; }} />
-          </label>
-          <button type="button" onClick={pasteFromClipboard} className="btn-secondary" title="Colar imagem copiada">
-            <ClipboardPaste size={15} /> Colar
-          </button>
-          {mainImage && <button type="button" onClick={() => setMainImage('')} className="text-xs text-red-500 hover:text-red-600">Remover</button>}
-        </div>
-        <p className="text-xs text-gray-400 mt-1">Dica: copie uma imagem e aperte <b>Ctrl+V</b> em qualquer lugar desta janela — não precisa clicar em nada antes.</p>
-      </div>
 
       {/* Linha do material — quem determina a tinta compatível */}
       <div>

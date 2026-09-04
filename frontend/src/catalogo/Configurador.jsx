@@ -1068,9 +1068,11 @@ export default function Configurador() {
             <div className="rounded-2xl px-3 sm:px-6 py-6 max-w-full flex items-end justify-center gap-3 sm:gap-8"
               style={{ background: '#ffffff' }}>
               <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente"
+                borda={bordaEscolhida}
                 gabarito={gabarito} altura={Math.min(520, window.innerHeight * 0.62)} />
               {personalizado && estado.posicao === 'frente_verso' && (
                 <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso"
+                  borda={bordaEscolhida}
                   gabarito={gabarito} altura={Math.min(520, window.innerHeight * 0.62)} />
               )}
             </div>
