@@ -223,6 +223,36 @@ export default function CatalogoDoProduto({ productId }) {
       {/* ── Acabamentos ──────────────────────────────────── */}
       <Bloco titulo="O que o cliente pode escolher" icone={Layers}
         ajuda="Ligue um acabamento e a linha diz o que aparece para a cliente no catálogo.">
+        {/* O PLACAR, ANTES DAS CATORZE LINHAS.
+            Sem ele, saber quantos estão realmente no ar exigia ler
+            catorze botões um por um — e "Herdar" não conta a verdade
+            sozinho. O número aqui é o MESMO que o catálogo usa. */}
+        {(() => {
+          const ligados = ficha.acabamentos.filter(a => {
+            const e = estadoDe('acabamentos', a.id, a.estado);
+            return e === PERMITIR || (e === HERDAR && a.herdado);
+          }).length;
+          const total = ficha.acabamentos.length;
+          return (
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <p className={`text-sm font-medium ${ligados ? 'text-gray-800' : 'text-gray-500'}`}>
+                {ligados} de {total} aparecem hoje no catálogo
+              </p>
+              {total > 0 && (
+                <div className="flex gap-1.5">
+                  <button type="button" className="btn-secondary btn-sm"
+                    onClick={() => ficha.acabamentos.forEach(a => mexer('acabamentos', a.id, PERMITIR))}>
+                    Liberar todos
+                  </button>
+                  <button type="button" className="btn-secondary btn-sm text-red-600"
+                    onClick={() => ficha.acabamentos.forEach(a => mexer('acabamentos', a.id, BLOQUEAR))}>
+                    Bloquear todos
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
           {ficha.acabamentos.map(a => (
             <LinhaTri key={a.id}
@@ -249,6 +279,31 @@ export default function CatalogoDoProduto({ productId }) {
       {/* ── Impressão ────────────────────────────────────── */}
       <Bloco titulo="Tipo de impressão" icone={Droplet}
         ajuda="A química da tinta tem que casar com o material do copo. O cliente escolhe a cor da arte; a linha de tinta quem determina é a ficha técnica.">
+        {(() => {
+          const ligados = ficha.processos.filter(pr => {
+            const e = estadoDe('processos', pr.id, pr.estado);
+            return e === PERMITIR || (e === HERDAR && pr.herdado);
+          }).length;
+          return (
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <p className={`text-sm font-medium ${ligados ? 'text-gray-800' : 'text-gray-500'}`}>
+                {ligados} de {ficha.processos.length} aparecem hoje no catálogo
+              </p>
+              {ficha.processos.length > 0 && (
+                <div className="flex gap-1.5">
+                  <button type="button" className="btn-secondary btn-sm"
+                    onClick={() => ficha.processos.forEach(pr => mexer('processos', pr.id, PERMITIR))}>
+                    Liberar todos
+                  </button>
+                  <button type="button" className="btn-secondary btn-sm text-red-600"
+                    onClick={() => ficha.processos.forEach(pr => mexer('processos', pr.id, BLOQUEAR))}>
+                    Bloquear todos
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         <div className="grid gap-1.5 sm:grid-cols-2">
           {ficha.processos.map(pr => (
             <LinhaTri key={pr.id}
@@ -421,17 +476,27 @@ function LinhaTri({ titulo, sub, cor, alerta, herdado, estado, onMudar, compacto
       </div>
 
       <div className="flex shrink-0 rounded-md overflow-hidden border border-gray-200">
+        {/* "HERDAR" NÃO É DESLIGADO, e a tela deixava parecer que era.
+            O botão ficava cinza-escuro — cara de neutro — enquanto a
+            categoria liberava tudo por baixo. A dona da fábrica olhou
+            catorze linhas em "Herdar" e concluiu, com toda a razão, que
+            estava tudo desligado; o catálogo mostrava os catorze.
+
+            Agora o botão diz o que ele HERDA, e se pinta da cor do
+            resultado. A informação já existia — só estava escondida
+            atrás de passar o mouse, que ninguém faz. */}
         {[
-          { v: HERDAR, t: herdado ? 'Herda: liberado' : 'Herda: bloqueado', l: 'Herdar' },
+          { v: HERDAR, t: herdado ? 'Segue a categoria: liberado' : 'Segue a categoria: bloqueado',
+            l: herdado ? 'Herdar · Sim' : 'Herdar · Não' },
           { v: PERMITIR, t: 'Liberar só neste produto', l: 'Sim' },
           { v: BLOQUEAR, t: 'Bloquear só neste produto', l: 'Não' },
         ].map(o => (
           <button key={o.v} type="button" title={o.t} onClick={() => onMudar(o.v)}
-            className={`px-2 py-1 text-[10.5px] font-medium transition-colors ${
+            className={`px-2 py-1 text-[10.5px] font-medium transition-colors whitespace-nowrap ${
               estado === o.v
                 ? (o.v === BLOQUEAR ? 'bg-red-500 text-white'
                   : o.v === PERMITIR ? 'bg-green-500 text-white'
-                  : 'bg-gray-700 text-white')
+                  : herdado ? 'bg-green-700 text-white' : 'bg-red-700 text-white')
                 : 'bg-white text-gray-500 hover:bg-gray-50'
             }`}>
             {o.l}
