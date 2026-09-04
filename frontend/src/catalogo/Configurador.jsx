@@ -194,12 +194,11 @@ export default function Configurador() {
     return todas.filter(c => querem.includes(String(c.name).toLowerCase()));
   };
 
-  // §10: só "1 cor" e "Arte colorida". Quem é quem sai do cadastro (o
-  // processo de uma cor e o colorido), não de nomes escritos aqui.
+  // Serve só para escrever a linha de tinta no cabeçalho do copo. A
+  // ESCOLHA do processo não passa mais por aqui: a tela lista todos os
+  // que o cadastro liberou (ver "Tipo de impressão" mais abaixo).
   const processoUmaCor = useMemo(
     () => (cfg?.processos || []).find(p => p.max_cores === 1) || null, [cfg]);
-  const processoColorido = useMemo(
-    () => (cfg?.processos || []).find(p => !p.max_cores || p.max_cores > 1) || null, [cfg]);
 
   const personalizado = estado.tipo_pedido !== 'liso';
   const gabarito = cfg?.gabarito || null;
@@ -758,16 +757,33 @@ export default function Configurador() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Rotulo>Tipo de impressão</Rotulo>
+                  {/* TODOS OS PROCESSOS LIBERADOS, e não dois botões
+                      fixos. A versão anterior espremia a lista inteira
+                      em "1 cor" e "Arte colorida", e "Arte colorida"
+                      pegava o PRIMEIRO processo que não fosse de uma
+                      cor — que é a Serigrafia 2 cores. Transfer,
+                      Serigrafia 3 cores e Laser podiam estar ligados no
+                      cadastro e não tinham como aparecer aqui: o
+                      Administrativo marcava "Sim" e nada acontecia.
+
+                      Esta tela é desenhada pelo cadastro (é a regra do
+                      arquivo: nenhum `if` de acabamento aqui). O tipo
+                      de impressão não podia ser a exceção. */}
                   <div className="grid grid-cols-2 gap-2">
-                    {processoUmaCor && (
-                      <Opcao titulo="1 cor" icone={Droplet} cor={NEON.ciano}
-                        ativo={estado.processo_id === processoUmaCor.id}
-                        onClick={() => mudar({ processo_id: processoUmaCor.id })} />
-                    )}
-                    {processoColorido && (
-                      <Opcao titulo="Arte colorida" icone={Palette} cor={NEON.magenta}
-                        ativo={estado.processo_id === processoColorido.id}
-                        onClick={() => mudar({ processo_id: processoColorido.id })} />
+                    {(cfg.processos || []).map(pr => (
+                      <Opcao key={pr.id} quebrar
+                        titulo={pr.nome}
+                        sub={[pr.max_cores ? `até ${pr.max_cores} cor${pr.max_cores > 1 ? 'es' : ''}` : 'colorido',
+                              pr.linha_tinta && `tinta ${pr.linha_tinta}`].filter(Boolean).join(' · ')}
+                        icone={pr.max_cores === 1 ? Droplet : Palette}
+                        cor={pr.max_cores === 1 ? NEON.ciano : NEON.magenta}
+                        ativo={estado.processo_id === pr.id}
+                        onClick={() => mudar({ processo_id: pr.id })} />
+                    ))}
+                    {!(cfg.processos || []).length && (
+                      <p className="text-[11.5px] col-span-2" style={{ color: NEON.fraco }}>
+                        Nenhum tipo de impressão liberado para este copo.
+                      </p>
                     )}
                   </div>
                 </div>
