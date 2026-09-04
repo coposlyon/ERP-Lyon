@@ -230,6 +230,45 @@ export default function Configurador() {
     if (restam.length !== estado.adicionais.length) mudar({ adicionais: restam });
   }, [preco?.adicionais_disponiveis]); // eslint-disable-line
 
+  /**
+   * OS ADICIONAIS AGRUPADOS PELO NOME.
+   *
+   * O cadastro guarda "Borda Metalizada" dezoito vezes, uma por cor —
+   * é o certo lá, porque cada cor tem preço, foto e estoque próprios.
+   * Aqui isso vira o oposto do útil: dezoito linhas repetindo a mesma
+   * palavra, com a única coisa que muda (a cor) escondida no fim.
+   *
+   * Agrupar devolve a ordem em que a cliente pensa: primeiro se quer
+   * borda, depois qual cor. E é o agrupamento que torna a escolha
+   * ÚNICA dentro do grupo possível — um copo não leva duas bordas.
+   */
+  // A NUMERAÇÃO DOS PAINÉIS, CONTADA E NÃO ESCRITA À MÃO.
+  //
+  // Cada painel trazia o próprio número numa continha (`personalizado ?
+  // 3 : 2`), e bastou entrar um painel novo no meio para a tela mostrar
+  // dois "4" — porque um dos cinco lugares ficou para trás. Com o
+  // contador, painel novo não pede que ninguém se lembre de somar um em
+  // todos os outros.
+  const numeroDoPainel = (() => {
+    let n = 0;
+    return () => ++n;
+  })();
+
+  const gruposAdicionais = useMemo(() => {
+    const porNome = new Map();
+    for (const a of preco?.adicionais_disponiveis || []) {
+      if (!porNome.has(a.nome)) porNome.set(a.nome, []);
+      porNome.get(a.nome).push(a);
+    }
+    return [...porNome.entries()].map(([nome, opcoes]) => ({
+      nome,
+      opcoes,
+      // "A partir de" só faz sentido com o menor preço do grupo — é o
+      // número que a cliente usa para decidir se abre o grupo.
+      precoMin: Math.min(...opcoes.map(o => Number(o.preco) || 0)),
+    }));
+  }, [preco?.adicionais_disponiveis]);
+
   const escolhaVisual = useMemo(() => {
     const campos = {};
     for (const campo of acabamento?.campos || []) {
@@ -362,7 +401,7 @@ export default function Configurador() {
             fica mais larga que o celular. */}
         <div className="space-y-4 min-w-0">
 
-          <Painel titulo="1. Produto e Configuração" cor={NEON.ciano} icone={Box}>
+          <Painel titulo={`${numeroDoPainel()}. Produto e Configuração`} cor={NEON.ciano} icone={Box}>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <Rotulo>Modelo do produto</Rotulo>
@@ -481,7 +520,7 @@ export default function Configurador() {
           </Painel>
 
           {personalizado && (
-            <Painel titulo="2. Personalização" cor={NEON.roxo} icone={Palette}>
+            <Painel titulo={`${numeroDoPainel()}. Personalização`} cor={NEON.roxo} icone={Palette}>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Rotulo>Tipo de impressão</Rotulo>
@@ -573,66 +612,109 @@ export default function Configurador() {
           {/* ══ ADICIONAIS ═══════════════════════════════════════
               A BORDA É O QUE MAIS SE VENDE JUNTO, e até aqui ela não
               tinha onde ser escolhida: estava cadastrada, tinha preço,
-              e o catálogo não a oferecia. Cada item marcado sobe o
-              preço na hora — e o valor vem do servidor, não daqui: o
-              que a tela manda são ids.
+              e o catálogo não a oferecia.
 
-              Só aparecem os OPCIONAIS. O que está marcado como "já vem
-              no preço" (a tinta da serigrafia) já está dentro do valor
-              de tabela; mostrá-lo aqui sugeriria que é escolha, e
-              cobrá-lo seria cobrar duas vezes. */}
-          {(preco?.adicionais_disponiveis || []).length > 0 && (
-            <Painel titulo={`${personalizado ? 3 : 2}. Adicionais`} cor={NEON.ciano} icone={Sparkles}>
+              AGRUPADO PELO NOME, E NÃO UMA LISTA CRUA. Dezoito
+              quadradinhos "Borda Metalizada Mosaico Vermelho", "Borda
+              Metalizada Prata"... repetem a mesma palavra dezoito vezes
+              e escondem a única coisa que muda, que é a cor. Agora é
+              "Borda Metalizada" uma vez, e as cores embaixo — que é
+              como a cliente pensa: primeiro decide se quer borda,
+              depois qual.
+
+              E DENTRO DO GRUPO SÓ CABE UMA. Um copo não leva borda
+              prata E borda dourada: escolher a segunda troca a
+              primeira. Grupos diferentes (canudo, tampa) continuam
+              independentes — esses somam.
+
+              Só aparecem os OPCIONAIS. O que está marcado como "já
+              está no preço do copo" (a tinta) já está dentro do valor
+              de tabela; mostrá-lo aqui sugeriria escolha, e cobrá-lo
+              seria cobrar duas vezes. */}
+          {gruposAdicionais.length > 0 && (
+            <Painel titulo={`${numeroDoPainel()}. Adicionais`} cor={NEON.ciano} icone={Sparkles}>
               <p className="text-[11.5px] mb-3" style={{ color: NEON.suave }}>
-                Opcional. Marque o que quiser incluir — vem <b>um para cada copo</b> do pedido, e o
-                preço se ajusta na hora.
+                Opcional. Vem <b>um para cada copo</b> do pedido, e o preço se ajusta na hora.
               </p>
 
-              <div className="grid gap-2 sm:grid-cols-2">
-                {preco.adicionais_disponiveis.map(a => {
-                  const marcado = estado.adicionais.includes(a.item_id);
+              <div className="space-y-4">
+                {gruposAdicionais.map(g => {
+                  const escolhido = g.opcoes.find(o => estado.adicionais.includes(o.item_id)) || null;
                   return (
-                    <button key={a.item_id} type="button" aria-pressed={marcado}
-                      onClick={() => mudar({
-                        adicionais: marcado
-                          ? estado.adicionais.filter(x => x !== a.item_id)
-                          : [...estado.adicionais, a.item_id],
-                      })}
-                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all active:scale-[0.985]"
-                      style={{
-                        background: marcado ? corComAlfa(NEON.ciano, 0.16) : 'rgba(255,255,255,0.035)',
-                        border: `1px solid ${marcado ? corComAlfa(NEON.ciano, 0.85) : 'rgba(255,255,255,0.10)'}`,
-                        boxShadow: marcado ? `0 0 16px ${corComAlfa(NEON.ciano, 0.3)}` : 'none',
-                      }}>
-                      {/* A FOTO GANHA DA COR quando existe: numa borda
-                          mosaico a cor é aproximação e a foto é o
-                          produto. É no olho que a cliente escolhe. */}
-                      {a.foto ? (
-                        <img src={a.foto} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0"
-                          style={{ border: '1px solid rgba(255,255,255,0.15)' }} />
-                      ) : (
-                        <span className="w-10 h-10 rounded-lg shrink-0"
-                          style={{ background: a.cor_hex || 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }} />
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[12.5px] font-medium leading-tight truncate"
-                          style={{ color: marcado ? NEON.texto : 'rgba(255,255,255,0.82)' }}>
-                          {a.cor ? `${a.nome} ${a.cor}` : a.nome}
+                    <div key={g.nome}>
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-2 mb-2">
+                        <span className="text-[12.5px] font-semibold" style={{ color: NEON.texto }}>
+                          {g.nome}
                         </span>
-                        {/* QUANTO VEM E QUANTO CUSTA, escrito. "R$ 0,50
-                            por peça" faz a cliente multiplicar de
-                            cabeça; "50 un · R$ 25,00" ela lê. E é a
-                            segunda que ela vai comparar com o total. */}
-                        <span className="block text-[10.5px] mt-0.5" style={{ color: NEON.fraco }}>
-                          {a.preco > 0
-                            ? (marcado && preco?.quantidade
-                                ? `${preco.quantidade} un · ${brl(a.preco * preco.quantidade)}`
-                                : `+ ${brl(a.preco)} por peça`)
-                            : 'sem custo adicional'}
+                        <span className="text-[10.5px]" style={{ color: NEON.fraco }}>
+                          {escolhido
+                            ? (escolhido.preco > 0
+                                ? `${escolhido.cor || 'escolhido'} · ${preco?.quantidade || 0} un · ${brl(escolhido.preco * (preco?.quantidade || 0))}`
+                                : `${escolhido.cor || 'escolhido'} · sem custo adicional`)
+                            : (g.precoMin > 0
+                                ? `${g.opcoes.length} ${g.opcoes.length === 1 ? 'opção' : 'opções'} · a partir de ${brl(g.precoMin)} por peça`
+                                : `${g.opcoes.length} ${g.opcoes.length === 1 ? 'opção' : 'opções'}`)}
                         </span>
-                      </span>
-                      {marcado && <Check size={15} style={{ color: NEON.ciano, flexShrink: 0 }} />}
-                    </button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {/* SAIR DA ESCOLHA PRECISA SER UM BOTÃO. Sem o
+                            "Sem", desmarcar exigiria clicar de novo no
+                            que já está aceso — que ninguém adivinha. */}
+                        <button type="button" aria-pressed={!escolhido}
+                          onClick={() => mudar({
+                            adicionais: estado.adicionais.filter(
+                              id => !g.opcoes.some(o => o.item_id === id)),
+                          })}
+                          className="px-3 py-2 rounded-xl text-[12px] transition-all active:scale-[0.985]"
+                          style={{
+                            background: !escolhido ? corComAlfa(NEON.ciano, 0.16) : 'rgba(255,255,255,0.035)',
+                            border: `1px solid ${!escolhido ? corComAlfa(NEON.ciano, 0.7) : 'rgba(255,255,255,0.10)'}`,
+                            color: !escolhido ? NEON.texto : NEON.fraco,
+                          }}>
+                          Sem
+                        </button>
+
+                        {g.opcoes.map(o => {
+                          const ativo = escolhido?.item_id === o.item_id;
+                          return (
+                            <button key={o.item_id} type="button" aria-pressed={ativo}
+                              title={o.preco > 0 ? `${o.cor || o.nome} — ${brl(o.preco)} por peça` : (o.cor || o.nome)}
+                              onClick={() => mudar({
+                                // Troca dentro do grupo: tira qualquer
+                                // outra cor deste mesmo item e põe esta.
+                                adicionais: [
+                                  ...estado.adicionais.filter(id => !g.opcoes.some(x => x.item_id === id)),
+                                  o.item_id,
+                                ],
+                              })}
+                              className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-xl text-left transition-all active:scale-[0.985]"
+                              style={{
+                                background: ativo ? corComAlfa(NEON.ciano, 0.16) : 'rgba(255,255,255,0.035)',
+                                border: `1px solid ${ativo ? corComAlfa(NEON.ciano, 0.85) : 'rgba(255,255,255,0.10)'}`,
+                                boxShadow: ativo ? `0 0 16px ${corComAlfa(NEON.ciano, 0.3)}` : 'none',
+                              }}>
+                              {/* A FOTO GANHA DA COR quando existe: numa
+                                  borda mosaico a cor é aproximação e a
+                                  foto é o produto. É no olho que a
+                                  cliente escolhe. */}
+                              {o.foto ? (
+                                <img src={o.foto} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0"
+                                  style={{ border: '1px solid rgba(255,255,255,0.15)' }} />
+                              ) : (
+                                <span className="w-8 h-8 rounded-lg shrink-0"
+                                  style={{ background: o.cor_hex || 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }} />
+                              )}
+                              <span className="text-[12px] leading-tight"
+                                style={{ color: ativo ? NEON.texto : 'rgba(255,255,255,0.82)' }}>
+                                {o.cor || o.nome}
+                              </span>
+                              {ativo && <Check size={14} style={{ color: NEON.ciano, flexShrink: 0 }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -648,7 +730,7 @@ export default function Configurador() {
             </Painel>
           )}
 
-          <Painel titulo={`${(personalizado ? 3 : 2) + ((preco?.adicionais_disponiveis || []).length > 0 ? 1 : 0)}. Entrega e Evento`}
+          <Painel titulo={`${numeroDoPainel()}. Entrega e Evento`}
             cor={NEON.azul} icone={CalendarDays}>
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
@@ -683,7 +765,7 @@ export default function Configurador() {
             </Nota>
           </Painel>
 
-          <Painel titulo={`${personalizado ? 4 : 3}. Forma de pagamento`} cor={NEON.roxo} icone={CreditCard}>
+          <Painel titulo={`${numeroDoPainel()}. Forma de pagamento`} cor={NEON.roxo} icone={CreditCard}>
             <div className="grid grid-cols-3 gap-2">
               <Opcao titulo="PIX" icone={QrCode} cor={NEON.ciano}
                 ativo={estado.pagamento === 'pix'} onClick={() => mudar({ pagamento: 'pix' })} />
