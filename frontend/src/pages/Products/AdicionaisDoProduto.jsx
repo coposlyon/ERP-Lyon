@@ -181,12 +181,19 @@ export default function AdicionaisDoProduto({ productId, categoryId }) {
   const custoFixo = padroes.reduce((s, a) => s + Number(a.custo || 0), 0);
   const precoFixo = padroes.reduce((s, a) => s + Number(a.preco || 0), 0);
 
+  /**
+   * TIRAR DE ONDE QUER QUE VENHA — ver ModeloDoProduto para o porquê.
+   * Botão que existe e não age é promessa quebrada; o que a origem
+   * muda é o ALCANCE, e é a confirmação que precisa dizer isso.
+   */
   async function remover(a) {
-    if (a.origem !== 'produto') {
-      toast.error(`Este item vem ${a.origem === 'categoria' ? 'da categoria' : 'da regra geral'}. Remova de lá, ou aplique aqui uma exceção.`);
-      return;
-    }
-    if (!confirm(`Tirar "${a.item.name}" deste copo?`)) return;
+    const nome = `${a.item.name}${a.item.color_name ? ' ' + a.item.color_name : ''}`;
+    const aviso = a.origem === 'todos'
+      ? `Este adicional vem da REGRA GERAL.\n\nRemover vai tirar "${nome}" de TODOS os copos personalizados — não só deste.\n\nContinuar?`
+      : a.origem === 'categoria'
+        ? `Este adicional vem da CATEGORIA.\n\nRemover vai tirar "${nome}" de todos os copos da categoria.\n\nContinuar?`
+        : `Tirar "${nome}" deste copo?`;
+    if (!confirm(aviso)) return;
     try {
       await api.delete(`/itens/aplicacoes/${a.aplicacao_id}`);
       toast.success('Adicional removido');
@@ -219,8 +226,10 @@ export default function AdicionaisDoProduto({ productId, categoryId }) {
           </p>
         </div>
         <button type="button" onClick={() => remover(a)}
-          className={`btn-ghost p-1.5 shrink-0 ${a.origem === 'produto' ? 'text-red-500' : 'text-gray-300'}`}
-          title={a.origem === 'produto' ? 'Tirar deste copo' : 'Herdado — remova na origem'}>
+          className="btn-ghost p-1.5 shrink-0 text-red-500"
+          title={a.origem === 'produto' ? 'Tirar deste copo'
+            : a.origem === 'categoria' ? 'Tirar da categoria inteira'
+            : 'Tirar de todos os copos personalizados'}>
           <Trash2 size={14} />
         </button>
       </div>

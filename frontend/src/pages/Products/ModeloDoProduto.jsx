@@ -167,19 +167,47 @@ export default function ModeloDoProduto({ modelo, onClose, onEditarCor, onNovaCo
   const opcionais = adicionais.filter(a => !a.padrao);
   const custoFixo = padroes.reduce((s, a) => s + Number(a.custo || 0), 0);
 
+  /**
+   * TIRAR O ADICIONAL — DE ONDE QUER QUE ELE VENHA.
+   *
+   * Antes, item herdado da categoria ou da regra geral devolvia um
+   * recado mandando a pessoa procurar outra tela. Isso é um beco sem
+   * saída: quem está aqui está tentando resolver uma coisa, e a tela
+   * responde "não é comigo". Se a regra pode ser criada por aqui, ela
+   * tem que poder ser desfeita por aqui.
+   *
+   * O QUE MUDA CONFORME A ORIGEM é o ALCANCE, e é por isso que a
+   * confirmação muda junto: apagar a regra geral tira o item de TODOS
+   * os copos, não só deste modelo. Quem clica precisa ler isso ANTES,
+   * não descobrir depois — regra que some em silêncio é a que ninguém
+   * consegue reconstruir.
+   */
   async function removerRegra(a) {
-    if (a.origem !== 'produto') {
-      toast.error(`Vem ${a.origem === 'categoria' ? 'da categoria' : 'da regra geral'}. Remova em Cadastros › Itens.`);
-      return;
-    }
-    if (!confirm(`Tirar "${a.item.name}" das ${modelo.cores.length} cores deste modelo?`)) return;
+    const nome = `${a.item.name}${a.item.color_name ? ' ' + a.item.color_name : ''}`;
+
+    const aviso = a.origem === 'todos'
+      ? `Este adicional vem da REGRA GERAL.\n\nRemover vai tirar "${nome}" de TODOS os copos personalizados — não só deste modelo.\n\nContinuar?`
+      : a.origem === 'categoria'
+        ? `Este adicional vem da CATEGORIA.\n\nRemover vai tirar "${nome}" de toda a categoria, inclusive de outros tamanhos.\n\nContinuar?`
+        : `Tirar "${nome}" das ${modelo.cores.length} cores deste modelo?`;
+    if (!confirm(aviso)) return;
+
     try {
-      // Uma regra por cor: apagar só a da primeira deixaria as outras 23.
-      const todas = await api.get('/itens/aplicacoes');
-      const doModelo = todas.filter(x =>
-        x.item_id === a.item.id && modelo.cores.some(c => c.id === x.product_id));
-      for (const r of doModelo) await api.delete(`/itens/aplicacoes/${r.id}`);
-      toast.success(`Removido de ${doModelo.length} cores`);
+      if (a.origem === 'produto') {
+        // Uma regra por cor: apagar só a da primeira deixaria as outras.
+        const todas = await api.get('/itens/aplicacoes');
+        const doModelo = todas.filter(x =>
+          x.item_id === a.item.id && modelo.cores.some(c => c.id === x.product_id));
+        for (const r of doModelo) await api.delete(`/itens/aplicacoes/${r.id}`);
+        toast.success(`Removido de ${doModelo.length} cores`);
+      } else {
+        // Herdada: `aplicacao_id` JÁ É a linha da categoria ou do
+        // curinga — é ela que ganhou a disputa das três camadas.
+        await api.delete(`/itens/aplicacoes/${a.aplicacao_id}`);
+        toast.success(a.origem === 'todos'
+          ? 'Regra geral removida — saiu de todos os copos'
+          : 'Regra da categoria removida');
+      }
       qc.invalidateQueries({ queryKey: ['adicionais-produto'] });
       qc.invalidateQueries({ queryKey: ['item-aplicacoes'] });
     } catch (err) { toast.error(err.error || 'Erro ao remover'); }
@@ -346,9 +374,14 @@ function LinhaAdic({ a, onRemover }) {
           custa {miudo(a.custo)} · cobra {miudo(a.preco)}
         </p>
       </div>
+      {/* A LIXEIRA VALE PARA TODAS AS ORIGENS. Cinza e sem ação era
+          uma promessa quebrada: o botão existe, então tem que agir. O
+          que a origem muda é o alcance, e isso a confirmação diz. */}
       <button type="button" onClick={() => onRemover(a)}
-        className={`btn-ghost p-1.5 shrink-0 ${a.origem === 'produto' ? 'text-red-500' : 'text-gray-300'}`}
-        title={a.origem === 'produto' ? 'Tirar do modelo' : 'Herdado — remova na origem'}>
+        className="btn-ghost p-1.5 shrink-0 text-red-500"
+        title={a.origem === 'produto' ? 'Tirar deste modelo'
+          : a.origem === 'categoria' ? 'Tirar da categoria inteira'
+          : 'Tirar de todos os copos personalizados'}>
         <Trash2 size={14} />
       </button>
     </div>
