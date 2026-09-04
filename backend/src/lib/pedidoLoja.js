@@ -102,7 +102,7 @@ async function criarVendaDoPedido(pedido, actor = {}) {
   }));
   if (saleItems.length) {
     let { error: iErr } = await supabase.from('VENDA_ITENS').insert(saleItems);
-    // Base sem a migração 097: o pedido tem que entrar do mesmo jeito.
+    // Base sem a migração 099: o pedido tem que entrar do mesmo jeito.
     // Perder a lista de adicionais é ruim; perder o pedido pago é pior.
     if (iErr && /adicionais/i.test(iErr.message || '')) {
       ({ error: iErr } = await supabase.from('VENDA_ITENS')

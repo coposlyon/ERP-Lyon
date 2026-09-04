@@ -38,8 +38,8 @@ const semTabela = err =>
 const faltaMigracao = (res, err) => {
   if (!semTabela(err)) return false;
   res.status(400).json({
-    error: 'Cadastro de itens não habilitado: rode a migração 097_itens_e_adicionais.sql.',
-    code: 'MIGRATION_097',
+    error: 'Cadastro de itens não habilitado: rode a migração 099_itens_e_adicionais.sql.',
+    code: 'MIGRATION_099',
   });
   return true;
 };

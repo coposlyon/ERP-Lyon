@@ -23,7 +23,7 @@ const peso = a => (a.product_id ? 3 : a.category_id ? 2 : 1);
 /**
  * Os adicionais que valem para um produto, já com custo e preço na peça.
  *
- * Devolve lista vazia — nunca lança — quando a migração 097 ainda não
+ * Devolve lista vazia — nunca lança — quando a migração 099 ainda não
  * rodou. Um sistema que quebra a tela de custo inteira porque uma
  * tabela nova não existe é pior do que um que mostra o custo sem os
  * adicionais.
@@ -72,7 +72,7 @@ async function adicionaisDoProduto(tenantId, productId, categoryId = null) {
       })
       .sort((x, y) => (y.padrao - x.padrao) || x.item.name.localeCompare(y.item.name, 'pt-BR'));
   } catch {
-    return [];   // migração 097 pendente — o resto da tela continua de pé
+    return [];   // migração 099 pendente — o resto da tela continua de pé
   }
 }
 

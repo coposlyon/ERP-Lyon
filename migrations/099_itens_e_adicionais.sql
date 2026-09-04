@@ -1,5 +1,5 @@
 -- ============================================================
--- 097. O CADASTRO DE ITENS — e o preço saindo de um lugar só.
+-- 099. O CADASTRO DE ITENS — e o preço saindo de um lugar só.
 --
 -- O PROBLEMA QUE ISTO RESOLVE. O custo de um copo estava espalhado:
 -- matéria-prima no cadastro do produto, tinta e tela na Engenharia de
@@ -136,5 +136,5 @@ ALTER TABLE "VENDA_ITENS"
 
 NOTIFY pgrst, 'reload schema';
 
-INSERT INTO "_MIGRATIONS" (version, name) VALUES ('097', 'itens_e_adicionais')
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('099', 'itens_e_adicionais')
 ON CONFLICT (version) DO NOTHING;

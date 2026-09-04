@@ -63,7 +63,22 @@ export default function Configurador() {
   const navigate = useNavigate();
   const carrinho = useCarrinho();
 
-  const [estado, setEstado] = useState(() => lerRascunho(chave) || INICIAL);
+  /**
+   * O RASCUNHO ENTRA POR CIMA DO INICIAL, e nunca no lugar dele.
+   *
+   * O rascunho é um retrato do estado de uma VERSÃO ANTERIOR da tela,
+   * guardado no navegador da cliente. Quando um campo novo nasce aqui
+   * — `adicionais` foi o primeiro —, quem estava com uma aba aberta
+   * volta com um objeto que não tem esse campo, e a primeira linha que
+   * fizer `estado.adicionais.includes(...)` derruba a tela inteira.
+   * Foi exatamente o que aconteceu.
+   *
+   * Espalhar `|| []` por cada uso trata o sintoma e esquece um. O
+   * espalhamento sobre INICIAL trata a causa: campo que o rascunho não
+   * tem nasce com o padrão, e o campo que nascer amanhã já vem
+   * protegido sem ninguém lembrar.
+   */
+  const [estado, setEstado] = useState(() => ({ ...INICIAL, ...(lerRascunho(chave) || {}) }));
   const [preco, setPreco] = useState(null);
   const [calculando, setCalculando] = useState(false);
   const [telaCheia, setTelaCheia] = useState(false);
