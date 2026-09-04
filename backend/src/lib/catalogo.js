@@ -161,7 +161,17 @@ function nomeDoAcabamento(acab) {
 function nomeComercial(baseNome, acabamento, capacidade) {
   const acab = acabamento ? nomeDoAcabamento(acabamento) : '';
   const semAcabamento = !acab || /^(liso)$/i.test(acab);
-  return [baseNome, semAcabamento ? '' : acab, capacidade]
+
+  // "LONG DRINK TRADICIONAL Tradicional 350 ml" — a categoria já tem a
+  // palavra no nome, e o acabamento a repetia. Acontece sempre que o
+  // Administrativo batiza a categoria com o acabamento junto, que é o
+  // normal aqui: a linha Tradicional tem categoria Tradicional. Repetir
+  // não acrescenta nada e faz o catálogo parecer defeituoso.
+  const nu = t => String(t || '').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+  const jaEstaNoNome = acab && nu(baseNome).split(/\s+/).includes(nu(acab));
+
+  return [baseNome, (semAcabamento || jaEstaNoNome) ? '' : acab, capacidade]
     .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 }
 

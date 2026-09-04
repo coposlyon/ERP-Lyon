@@ -122,7 +122,6 @@ export const menuItems = [
       { label: 'Clientes', path: '/customers', icon: Users, module: 'customers' },
       { label: 'Aprovações de Cadastro', path: '/cadastro-aprovacoes', icon: ShieldCheck, adminOnly: true },
       { label: 'Fornecedores', path: '/suppliers', icon: Truck, module: 'suppliers' },
-      { label: 'Tabelas de Preço', path: '/price-tables', icon: Percent, module: 'price-tables' },
       // O QUE ENTRA NO COPO MORA AQUI, e não na Engenharia de Custos.
       // Cadastrar canudo, borda e tinta é cadastro — quem faz isso é
       // quem compra, não quem forma preço. A engenharia LÊ estes
