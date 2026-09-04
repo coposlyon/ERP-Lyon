@@ -102,7 +102,7 @@ function Amostra({ item, size = 40 }) {
 // ════════════════════════════════════════════════════════════
 // FORMULÁRIO DO ITEM
 // ════════════════════════════════════════════════════════════
-function FormItem({ item, kindPadrao, onClose, onSaved }) {
+function FormItem({ item, kindPadrao, kindTravado, onClose, onSaved }) {
   const novo = !item?.id;
   const [f, setF] = useState(() => ({
     kind:         item?.kind || kindPadrao || 'acessorio',
@@ -180,9 +180,25 @@ function FormItem({ item, kindPadrao, onClose, onSaved }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Tipo</label>
-            <select className="input" value={f.kind} onChange={e => set('kind', e.target.value)}>
-              {TIPOS.map(x => <option key={x.kind} value={x.kind}>{x.label}</option>)}
-            </select>
+            {/* TELA DE ACESSÓRIOS NÃO CADASTRA BORDA.
+                O seletor aberto deixava criar uma borda de dentro dos
+                Acessórios — e ela sumia na hora de salvar, porque a
+                lista da tela filtra por tipo. O item existia e ninguém
+                achava. Onde a tela já tem um tipo, o tipo é aquele; a
+                troca fica em Cadastros › Itens, que é a tela que
+                enxerga todos. */}
+            {kindTravado ? (
+              <p className="input bg-gray-50 text-gray-600 flex items-center">
+                {TIPO(f.kind).label}
+                <span className="ml-auto text-[11px] text-gray-400">
+                  para mudar, use Itens (todos)
+                </span>
+              </p>
+            ) : (
+              <select className="input" value={f.kind} onChange={e => set('kind', e.target.value)}>
+                {TIPOS.map(x => <option key={x.kind} value={x.kind}>{x.label}</option>)}
+              </select>
+            )}
           </div>
           <div>
             <label className="label">Unidade de medida</label>
@@ -908,6 +924,10 @@ export default function Itens({ kind = null }) {
         <FormItem
           item={editando.id ? editando : null}
           kindPadrao={tipoAtual}
+          // Travado só quando a TELA é de um tipo (Acessórios, Bordas,
+          // Tintas). Na aba de Itens (todos) a troca continua livre —
+          // aba é filtro, não identidade.
+          kindTravado={kind}
           onClose={() => setEditando(null)}
           onSaved={() => { setEditando(null); qc.invalidateQueries({ queryKey: ['itens'] }); }}
         />
