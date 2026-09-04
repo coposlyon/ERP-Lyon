@@ -681,7 +681,14 @@ export default function CopoPreview({
   // da frente; espelhá-la é o que põe a alça da caneca do outro lado,
   // que é onde ela está quando se olha o copo por trás. A arte NÃO
   // espelha junto — nome de casal ao contrário não é verso, é erro.
-  const espelhar = face === 'verso';
+  // QUAL DAS DUAS FACES SAI ESPELHADA.
+  //
+  // Era o verso. A dona da fabrica olhou e disse o contrario: a alca
+  // tem que estar do outro lado — na FRENTE ela fica de um jeito e no
+  // verso do outro, e a foto de catalogo da Lyon e tirada com a alca no
+  // lado oposto ao que estava saindo aqui. Quem conhece a peca e ela;
+  // a tela segue.
+  const espelhar = face !== 'verso';
 
   // A FOTO DA COR ESCOLHIDA, E A VERDADE SOBRE ELA.
   //
