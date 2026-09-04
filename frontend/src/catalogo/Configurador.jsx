@@ -285,15 +285,33 @@ export default function Configurador() {
   }, [preco?.adicionais_disponiveis]);
 
   /**
-   * A BORDA QUE A PRÉVIA VAI PINTAR.
+   * O QUE ESTÁ MARCADO, LIDO DA TELA E NÃO DA RESPOSTA DO SERVIDOR.
    *
-   * Sai dos adicionais escolhidos, e não de um campo próprio: quem
-   * decide o que é borda é o cadastro (`tipo === 'borda'`), não uma
-   * lista de nomes escrita aqui que envelhece na primeira borda nova.
+   * Esta lista saía de `preco.adicionais_escolhidos` — ou seja, só
+   * existia depois do debounce de 350 ms MAIS a ida ao servidor. O
+   * quadradinho acendia na hora e a prévia continuava mostrando a borda
+   * ANTERIOR por segundos, o que lia como travamento: a cliente clica
+   * de novo, e aí troca duas vezes.
+   *
+   * O catálogo de opções (`adicionais_disponiveis`) já está na mão e
+   * NÃO muda quando se troca de borda — só quando muda o produto. Então
+   * a identidade do que foi escolhido é resposta local e imediata. O
+   * DINHEIRO continua vindo do servidor: aqui se decide o que mostrar,
+   * lá se decide o que cobrar.
+   */
+  const adicionaisEscolhidos = useMemo(
+    () => (preco?.adicionais_disponiveis || [])
+      .filter(a => estado.adicionais.includes(a.item_id)),
+    [preco?.adicionais_disponiveis, estado.adicionais]);
+
+  /**
+   * A BORDA QUE A PRÉVIA VAI PINTAR. Quem decide o que é borda é o
+   * cadastro (`tipo === 'borda'`), não uma lista de nomes escrita aqui
+   * que envelhece na primeira borda nova.
    */
   const bordaEscolhida = useMemo(
-    () => (preco?.adicionais_escolhidos || []).find(a => a.tipo === 'borda') || null,
-    [preco?.adicionais_escolhidos]);
+    () => adicionaisEscolhidos.find(a => a.tipo === 'borda') || null,
+    [adicionaisEscolhidos]);
 
   const escolhaVisual = useMemo(() => {
     const campos = {};
@@ -343,7 +361,7 @@ export default function Configurador() {
       adicionais: estado.adicionais,
       // Só para o carrinho conseguir escrever "Borda Prata" sem
       // perguntar de novo.
-      adicionais_resumo: (preco?.adicionais_escolhidos || [])
+      adicionais_resumo: adicionaisEscolhidos
         .map(a => (a.cor ? `${a.nome} ${a.cor}` : a.nome)),
     };
   }
@@ -748,7 +766,7 @@ export default function Configurador() {
               {estado.adicionais.length > 0 && preco?.valor_adicionais > 0 && (
                 <Nota icone={Info} cor={NEON.ciano}>
                   Você está levando {preco.quantidade} copos e{' '}
-                  {(preco.adicionais_escolhidos || [])
+                  {adicionaisEscolhidos
                     .map(a => `${preco.quantidade} ${(a.cor ? `${a.nome} ${a.cor}` : a.nome).toLowerCase()}`)
                     .join(', ')} — <b>{brl(preco.valor_adicionais)}</b> a mais, já somados no total ao lado.
                 </Nota>
@@ -895,10 +913,10 @@ export default function Configurador() {
                 <Linha rotulo="Arte" valor={estado.posicao === 'frente_verso' ? 'Frente e verso' : 'Frente'} />
               )}
               <Linha rotulo="Qtd" valor={preco?.quantidade ? `${preco.quantidade} un` : null} />
-              {(preco?.adicionais_escolhidos || []).map(a => (
+              {adicionaisEscolhidos.map(a => (
                 <Linha key={a.item_id}
-                  rotulo={`${preco.quantidade} ${a.cor ? `${a.nome} ${a.cor}` : a.nome}`}
-                  valor={a.preco > 0 ? brl(a.preco * preco.quantidade) : 'incluso'} />
+                  rotulo={`${preco?.quantidade || 0} ${a.cor ? `${a.nome} ${a.cor}` : a.nome}`}
+                  valor={a.preco > 0 ? brl(a.preco * (preco?.quantidade || 0)) : 'incluso'} />
               ))}
             </dl>
 

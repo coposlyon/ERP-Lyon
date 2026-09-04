@@ -29,6 +29,7 @@
 // ============================================================
 
 import { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 
 /** Socorro para cor sem hex no cadastro. Some sozinho conforme o Administrativo preenche. */
 const POR_NOME = {
@@ -601,25 +602,51 @@ function pintarBorda(fonte, geo, borda) {
  */
 function FotoDaPeca({ src, espelhar, borda = null }) {
   const [pronta, setPronta] = useState(null);
+  // TRABALHO INVISÍVEL PARECE TRAVAMENTO. Recortar o fundo e pintar o
+  // aro são duas passadas de canvas sobre a foto inteira, e no celular
+  // isso leva um tempo que a cliente sente. Sem aviso, ela vê a peça
+  // antiga parada depois de já ter clicado na cor nova — e clica de
+  // novo, o que troca duas vezes.
+  const [ocupado, setOcupado] = useState(false);
 
   useEffect(() => {
     let vivo = true;
     setPronta(null);
-    recortarFundo(src).then(async r => {
-      if (!vivo || !r) return;
-      const base = r.url || src;
-      // Sem borda escolhida, o recorte já é o resultado final.
-      if (!borda) { if (vivo) setPronta(r.url || null); return; }
-      const comBorda = await pintarBorda(base, r.geo, borda);
-      if (vivo) setPronta(comBorda || r.url || null);
-    });
-    return () => { vivo = false; };
+    // O VÉU SÓ APARECE SE A ESPERA FOR SENTIDA. Foto já processada volta
+    // do cache em milissegundos; piscar um "carregando" nesse caso faz a
+    // tela tremer a cada clique — que é o oposto de tranquilizar.
+    const aviso = setTimeout(() => { if (vivo) setOcupado(true); }, 120);
+    recortarFundo(src)
+      .then(async r => {
+        if (!vivo) return;
+        if (!r) return;
+        const base = r.url || src;
+        if (!borda) { setPronta(r.url || null); return; }
+        const comBorda = await pintarBorda(base, r.geo, borda);
+        if (vivo) setPronta(comBorda || r.url || null);
+      })
+      .finally(() => { clearTimeout(aviso); if (vivo) setOcupado(false); });
+    return () => { vivo = false; clearTimeout(aviso); };
   }, [src, borda?.foto, borda?.cor_hex, borda?.nome]); // eslint-disable-line
 
   return (
-    <img src={pronta || src} alt="Foto da peça escolhida" draggable={false}
-      className="absolute inset-0 w-full h-full object-contain"
-      style={{ transform: espelhar ? 'scaleX(-1)' : undefined }} />
+    <>
+      <img src={pronta || src} alt="Foto da peça escolhida" draggable={false}
+        className="absolute inset-0 w-full h-full object-contain transition-opacity duration-200"
+        style={{ transform: espelhar ? 'scaleX(-1)' : undefined, opacity: ocupado ? 0.35 : 1 }} />
+      {ocupado && (
+        // O palco da prévia é BRANCO (ver Configurador): véu claro e
+        // letra escura, ou o aviso fica invisível justamente na tela em
+        // que ele precisa aparecer.
+        <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 pointer-events-none"
+          style={{ background: 'rgba(255,255,255,0.55)' }}>
+          <Loader2 size={20} className="animate-spin" style={{ color: '#7c3aed' }} />
+          <span className="text-[10.5px] tracking-wide" style={{ color: '#64748b' }}>
+            montando a prévia…
+          </span>
+        </span>
+      )}
+    </>
   );
 }
 
