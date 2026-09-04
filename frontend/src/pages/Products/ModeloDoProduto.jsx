@@ -147,6 +147,132 @@ function AdicionarAoModelo({ modelo, jaAplicados, onClose, onOk }) {
   );
 }
 
+/**
+ * EDITAR O MODELO INTEIRO — o caminho normal.
+ *
+ * Abrir um modelo e ter que entrar cor por cor para mudar o mesmo custo
+ * dez vezes é o trabalho que ninguém termina: para na terceira cor, e
+ * as outras sete ficam com o valor velho. O que é IGUAL nas dez cores
+ * (custo, fornecedor, fiscal, onde aparece) se edita aqui, uma vez.
+ *
+ * O QUE É DE CADA COR NÃO ENTRA AQUI: nome, código, EAN, foto e
+ * estoque. Esses distinguem uma cor da outra — aplicá-los em massa
+ * apagaria justamente o que faz cada linha existir. Para eles, o lápis
+ * de cada cor.
+ *
+ * CAMPO EM BRANCO NÃO É ZERO: só o que for preenchido é aplicado. É a
+ * mesma regra da Edição em massa, e é o que permite mexer no custo sem
+ * levar o NCM junto.
+ */
+function EditarModelo({ modelo, onSalvo }) {
+  const { data: suppliersData } = useQuery({
+    queryKey: ['suppliers-list'],
+    queryFn: () => api.get('/suppliers?limit=200&is_active=true'),
+  });
+  const suppliers = suppliersData?.data || [];
+
+  // Um valor só quando as cores concordam; divergiu, o campo nasce
+  // vazio e a dica diz que hoje há mais de um.
+  const comum = (campo, normaliza = v => v) => {
+    const vs = [...new Set(modelo.cores.map(c => normaliza(c[campo])))];
+    return vs.length === 1 ? vs[0] : null;
+  };
+  const custoComum = comum('cost_price', v => Number(v) || 0);
+  const forncComum = comum('supplier_id', v => v || '');
+  const ncmComum   = comum('ncm', v => v || '');
+
+  const [f, setF] = useState({
+    cost_price: custoComum != null ? String(custoComum) : '',
+    supplier_id: '', ncm: '', cst: '', cfop: '',
+    show_in_catalogo: '', show_in_store: '',
+  });
+  const [salvando, setSalvando] = useState(false);
+  const set = (k, v) => setF(o => ({ ...o, [k]: v }));
+
+  const campos = {};
+  if (f.cost_price !== '' && Number(f.cost_price) >= 0) campos.cost_price = Number(f.cost_price);
+  if (f.supplier_id) campos.supplier_id = f.supplier_id;
+  if (f.ncm.trim()) campos.ncm = f.ncm.trim();
+  if (f.cst.trim()) campos.cst = f.cst.trim();
+  if (f.cfop.trim()) campos.cfop = f.cfop.trim();
+  if (f.show_in_catalogo) campos.show_in_catalogo = f.show_in_catalogo === 'sim';
+  if (f.show_in_store) campos.show_in_store = f.show_in_store === 'sim';
+  const temAlgo = Object.keys(campos).length > 0;
+
+  async function salvar() {
+    if (!temAlgo) { toast.error('Preencha o que quer mudar nas cores'); return; }
+    if (!confirm(`Aplicar em todas as ${modelo.cores.length} cores de ${modelo.titulo}?`)) return;
+    setSalvando(true);
+    try {
+      const r = await api.patch('/products/bulk', { ids: modelo.cores.map(c => c.id), fields: campos });
+      toast.success(`${r.updated || modelo.cores.length} cores atualizadas`);
+      onSalvo();
+    } catch (err) {
+      toast.error(err.error || 'Erro ao aplicar');
+    } finally { setSalvando(false); }
+  }
+
+  return (
+    <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-3 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-gray-800">
+          Editar as {modelo.cores.length} cores de uma vez
+        </p>
+        <button type="button" className="btn-primary btn-sm" onClick={salvar} disabled={salvando || !temAlgo}>
+          {salvando ? <Loader2 size={14} className="animate-spin" /> : `Aplicar nas ${modelo.cores.length}`}
+        </button>
+      </div>
+      <p className="text-[11px] text-gray-500">
+        Só o que você preencher é aplicado. Nome, código, foto e estoque são de cada cor —
+        para esses, use o lápis na linha dela.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+        <div>
+          <label className="label">Custo de compra (R$)</label>
+          <input className="input" type="number" step="0.01" value={f.cost_price}
+            onChange={e => set('cost_price', e.target.value)}
+            placeholder={custoComum == null ? 'hoje: vários' : '—'} />
+        </div>
+        <div>
+          <label className="label">Fornecedor</label>
+          <select className="input" value={f.supplier_id} onChange={e => set('supplier_id', e.target.value)}>
+            <option value="">{forncComum ? '— não alterar —' : '— vários hoje —'}</option>
+            {suppliers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">NCM</label>
+          <input className="input" value={f.ncm} onChange={e => set('ncm', e.target.value)}
+            maxLength={8} placeholder={ncmComum || 'não alterar'} />
+        </div>
+        <div>
+          <label className="label">CST / CSOSN</label>
+          <input className="input" value={f.cst} onChange={e => set('cst', e.target.value)} maxLength={4} placeholder="não alterar" />
+        </div>
+        <div>
+          <label className="label">CFOP</label>
+          <input className="input" value={f.cfop} onChange={e => set('cfop', e.target.value)} maxLength={4} placeholder="não alterar" />
+        </div>
+        <div>
+          <label className="label">Aparece no catálogo</label>
+          <select className="input" value={f.show_in_catalogo} onChange={e => set('show_in_catalogo', e.target.value)}>
+            <option value="">— não alterar —</option>
+            <option value="sim">Publicar</option>
+            <option value="nao">Tirar do ar</option>
+          </select>
+        </div>
+      </div>
+
+      <p className="flex items-start gap-1.5 text-[11px] text-gray-400">
+        <Info size={12} className="mt-0.5 shrink-0" />
+        O preço de venda não entra aqui — quem grava preço é a{' '}
+        <Link to="/pricing/formacao" className="text-primary-600 hover:underline">Formação de Preço</Link>.
+      </p>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════
 export default function ModeloDoProduto({ modelo, onClose, onEditarCor, onNovaCor }) {
   const qc = useQueryClient();
@@ -234,10 +360,19 @@ export default function ModeloDoProduto({ modelo, onClose, onEditarCor, onNovaCo
 
         {aba === 'cores' ? (
           <div className="space-y-3">
+            {/* Fecha ao aplicar: o `modelo` desta janela é um retrato
+                tirado quando ela abriu. Mantê-la aberta mostraria os
+                valores VELHOS logo depois de o toast dizer que mudou —
+                e é aí que alguém aplica de novo, achando que falhou. */}
+            <EditarModelo modelo={modelo} onSalvo={() => {
+              qc.invalidateQueries({ queryKey: ['produtos-personalizados'] });
+              qc.invalidateQueries({ queryKey: ['products'] });
+              onClose();
+            }} />
+
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-gray-500">
-                Cada cor é um cadastro próprio — tem estoque, código e nota fiscal dela.
-                Clique para abrir.
+                Para mudar só uma cor — nome, foto, estoque — use o lápis na linha dela.
               </p>
               <button type="button" className="btn-primary btn-sm"
                 onClick={() => onNovaCor(modelo)}>
