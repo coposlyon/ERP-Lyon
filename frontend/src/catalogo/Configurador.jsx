@@ -284,6 +284,17 @@ export default function Configurador() {
     }));
   }, [preco?.adicionais_disponiveis]);
 
+  /**
+   * A BORDA QUE A PRÉVIA VAI PINTAR.
+   *
+   * Sai dos adicionais escolhidos, e não de um campo próprio: quem
+   * decide o que é borda é o cadastro (`tipo === 'borda'`), não uma
+   * lista de nomes escrita aqui que envelhece na primeira borda nova.
+   */
+  const bordaEscolhida = useMemo(
+    () => (preco?.adicionais_escolhidos || []).find(a => a.tipo === 'borda') || null,
+    [preco?.adicionais_escolhidos]);
+
   const escolhaVisual = useMemo(() => {
     const campos = {};
     for (const campo of acabamento?.campos || []) {
@@ -809,9 +820,11 @@ export default function Configurador() {
             <div className="rounded-xl px-2 sm:px-3 py-4 overflow-hidden" style={{ background: '#ffffff' }}>
               <div className="flex items-end justify-center gap-2 sm:gap-4">
                 <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente"
+                  borda={bordaEscolhida}
                   gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 190 : 216} />
                 {personalizado && estado.posicao === 'frente_verso' && (
                   <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso"
+                    borda={bordaEscolhida}
                     gabarito={gabarito} altura={190} />
                 )}
               </div>

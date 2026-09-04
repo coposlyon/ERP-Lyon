@@ -379,6 +379,30 @@ const distancia2 = (r, g, b, fr, fg, fb) =>
 const PERTO = 34 * 34 * 3;   // ainda é o papel
 const LONGE = 96 * 96 * 3;   // já é a peça
 
+/**
+ * ONDE A PEÇA COMEÇA E ONDE ELA ACABA, lida do próprio recorte.
+ *
+ * Depois do apagador, o que sobrou opaco É a peça. A primeira linha com
+ * pixel opaco é o aro; a última é o fundo do copo. É essa medida que
+ * permite pintar a borda metalizada EM CIMA DO ARO de cada foto, em vez
+ * de chutar uma porcentagem que acerta num modelo e erra na caneca.
+ *
+ * Devolve frações da altura (0 a 1) porque a foto é exibida em tamanhos
+ * diferentes — fração sobrevive ao redimensionamento, pixel não.
+ */
+function geometriaDaPeca(px, L, A) {
+  let topo = -1, base = -1;
+  for (let y = 0; y < A; y++) {
+    let temPeca = false;
+    for (let x = 0; x < L; x++) {
+      if (px[(y * L + x) * 4 + 3] >= 128) { temPeca = true; break; }
+    }
+    if (temPeca) { if (topo < 0) topo = y; base = y; }
+  }
+  if (topo < 0) return null;
+  return { topo: topo / A, base: (base + 1) / A };
+}
+
 function recortarFundo(src) {
   if (CACHE_RECORTE.has(src)) return CACHE_RECORTE.get(src);
 
@@ -400,8 +424,9 @@ function recortarFundo(src) {
         const px = dados.data;
 
         // Canto já transparente? O PNG veio recortado do cadastro —
-        // mexer nele só teria como resultado estragá-lo.
-        if (px[3] < 250) return resolve(null);
+        // mexer nele só teria como resultado estragá-lo. Mas a
+        // geometria continua servindo: é dela que sai onde fica o aro.
+        if (px[3] < 250) return resolve({ url: null, geo: geometriaDaPeca(px, L, A) });
 
         const fr = px[0], fg = px[1], fb = px[2];
 
@@ -444,7 +469,7 @@ function recortarFundo(src) {
         if (apagados > L * A * 0.9) return resolve(null);
 
         ctx.putImageData(dados, 0, 0);
-        resolve(tela.toDataURL('image/png'));
+        resolve({ url: tela.toDataURL('image/png'), geo: geometriaDaPeca(px, L, A) });
       } catch {
         resolve(null); // canvas sujo por CORS: a foto original serve
       }
@@ -456,23 +481,143 @@ function recortarFundo(src) {
   return promessa;
 }
 
+// ════════════════════════════════════════════════════════════
+// A BORDA METALIZADA, PINTADA NO ARO.
+//
+// O cabeçalho deste arquivo diz que acabamento não se desenha sobre a
+// foto, e continua valendo para pintura e jateado: são serviço sobre a
+// peça inteira, e fingir isso numa foto seria inventar um produto. A
+// BORDA É OUTRA COISA. Ela ocupa uma faixa estreita e conhecida — o aro
+// —, e dela existe A FOTO DE VERDADE, cadastrada em Cadastros › Bordas.
+// Não é desenho: é a textura real, no lugar real.
+//
+// E É O LUGAR REAL PORQUE NINGUÉM CHUTOU. A faixa não é uma
+// porcentagem escolhida a olho: o aro sai da geometria que o recorte de
+// fundo já mediu nesta mesma foto. Porcentagem fixa acertaria no long
+// drink e erraria na caneca, que tem alça e enquadramento diferentes.
+//
+// `source-atop` É O QUE FAZ A BORDA SEGUIR A PEÇA. A textura só pinta
+// onde já existe pixel opaco, então ela para exatamente na silhueta —
+// inclusive na elipse do aro — sem nenhum recorte escrito à mão.
+// ════════════════════════════════════════════════════════════
+
+const CACHE_BORDA = new Map();
+
+/** Quanto do copo a borda ocupa. Medida da faixa real das metalizadas. */
+const FAIXA_DA_BORDA = 0.075;
+
+/** A textura da borda, na altura da faixa e repetida ao longo dela. */
+function texturaDaBorda(fotoUrl, altura) {
+  return new Promise(resolve => {
+    if (!fotoUrl) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onerror = () => resolve(null);
+    img.onload = () => {
+      try {
+        // Esticar uma foto quadrada numa faixa larga e baixa deforma o
+        // desenho do mosaico. Escalar pela ALTURA e repetir na
+        // horizontal mantém a proporção — é o mesmo que a borda faz na
+        // peça, que é uma fita dando a volta.
+        const L = Math.max(1, Math.round(img.naturalWidth * (altura / img.naturalHeight)));
+        const t = document.createElement('canvas');
+        t.width = L; t.height = Math.max(1, Math.round(altura));
+        t.getContext('2d').drawImage(img, 0, 0, t.width, t.height);
+        resolve(t);
+      } catch { resolve(null); }
+    };
+    img.src = fotoUrl;
+  });
+}
+
 /**
- * A foto da peça, recortada quando dá. Enquanto o recorte não fica
- * pronto mostra a foto original: prévia que pisca em branco é pior que
- * meio segundo com o fundo do estúdio.
+ * A foto da peça com a borda escolhida pintada no aro.
+ *
+ * Devolve `null` sempre que não der certo — sem geometria, sem foto,
+ * canvas sujo. Nunca lança: a prévia sem borda é uma prévia; a prévia
+ * quebrada é uma tela branca.
  */
-function FotoDaPeca({ src, espelhar }) {
-  const [recortada, setRecortada] = useState(null);
+function pintarBorda(fonte, geo, borda) {
+  if (!fonte || !geo || !borda) return Promise.resolve(null);
+  const chave = `${fonte.slice(-64)}|${borda.foto || borda.cor_hex || borda.nome}`;
+  if (CACHE_BORDA.has(chave)) return CACHE_BORDA.get(chave);
+
+  const promessa = new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onerror = () => resolve(null);
+    img.onload = async () => {
+      try {
+        const { naturalWidth: L, naturalHeight: A } = img;
+        if (!L || !A) return resolve(null);
+
+        const tela = document.createElement('canvas');
+        tela.width = L; tela.height = A;
+        const ctx = tela.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        const y0 = geo.topo * A;
+        const h = Math.max(3, (geo.base - geo.topo) * A * FAIXA_DA_BORDA);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, y0, L, h);
+        ctx.clip();
+        // Só pinta sobre o que já é peça: fora dela, nada acontece.
+        ctx.globalCompositeOperation = 'source-atop';
+
+        const textura = await texturaDaBorda(borda.foto, h);
+        if (textura) {
+          const padrao = ctx.createPattern(textura, 'repeat-x');
+          if (padrao) {
+            padrao.setTransform?.(new DOMMatrix().translate(0, y0));
+            ctx.fillStyle = padrao;
+          } else {
+            ctx.fillStyle = borda.cor_hex || '#c0c6cf';
+          }
+        } else {
+          // Borda ainda sem foto cadastrada: a cor aproximada já mostra
+          // onde ela fica e que ela existe.
+          ctx.fillStyle = borda.cor_hex || '#c0c6cf';
+        }
+        ctx.fillRect(0, y0, L, h);
+        ctx.restore();
+
+        resolve(tela.toDataURL('image/png'));
+      } catch { resolve(null); }
+    };
+    img.src = fonte;
+  });
+
+  CACHE_BORDA.set(chave, promessa);
+  return promessa;
+}
+
+/**
+ * A foto da peça, recortada quando dá — e com a borda escolhida pintada
+ * no aro. Enquanto o trabalho não fica pronto mostra a foto original:
+ * prévia que pisca em branco é pior que meio segundo com o fundo do
+ * estúdio.
+ */
+function FotoDaPeca({ src, espelhar, borda = null }) {
+  const [pronta, setPronta] = useState(null);
 
   useEffect(() => {
     let vivo = true;
-    setRecortada(null);
-    recortarFundo(src).then(url => { if (vivo && url) setRecortada(url); });
+    setPronta(null);
+    recortarFundo(src).then(async r => {
+      if (!vivo || !r) return;
+      const base = r.url || src;
+      // Sem borda escolhida, o recorte já é o resultado final.
+      if (!borda) { if (vivo) setPronta(r.url || null); return; }
+      const comBorda = await pintarBorda(base, r.geo, borda);
+      if (vivo) setPronta(comBorda || r.url || null);
+    });
     return () => { vivo = false; };
-  }, [src]);
+  }, [src, borda?.foto, borda?.cor_hex, borda?.nome]); // eslint-disable-line
 
   return (
-    <img src={recortada || src} alt="Foto da peça escolhida" draggable={false}
+    <img src={pronta || src} alt="Foto da peça escolhida" draggable={false}
       className="absolute inset-0 w-full h-full object-contain"
       style={{ transform: espelhar ? 'scaleX(-1)' : undefined }} />
   );
@@ -494,6 +639,10 @@ function FotoDaPeca({ src, espelhar }) {
 export default function CopoPreview({
   escolha = {}, familia = null, fotoModelo = null, fotosPorCor = null,
   arte = null, face = 'frente', altura = 300, gabarito = null,
+  // A borda metalizada escolhida no bloco de Adicionais: { foto,
+  // cor_hex, nome }. Vem de fora porque quem sabe o que a cliente
+  // marcou é o configurador, não a prévia.
+  borda = null,
 }) {
   const { campos = {} } = escolha;
   // O VERSO É A MESMA PEÇA VISTA POR TRÁS. A foto do cadastro é uma só,
@@ -588,7 +737,7 @@ export default function CopoPreview({
           continua certa porque é toda em porcentagem. */}
       <div className="relative"
         style={{ width: altura * 0.78, maxWidth: '100%', aspectRatio: '0.78' }}>
-        <FotoDaPeca src={foto} espelhar={espelhar} />
+        <FotoDaPeca src={foto} espelhar={espelhar} borda={borda} />
 
         {/* A ARTE, na janela onde a impressão realmente sai. Vem como SVG
             e é embutida por dangerouslySetInnerHTML — o vetor é da Lyon,
