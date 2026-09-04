@@ -29,6 +29,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
+import ComoEntraNoCopo from '@/components/UI/ComoEntraNoCopo';
 import { fmtBRL } from '@/lib/pricingCalc';
 
 // ── Os tipos, na ordem em que a fábrica pensa neles ──────────
@@ -387,16 +388,7 @@ function AplicarEmMassa({ itens, onClose, onOk }) {
           </label>
         </div>
 
-        <label className="flex items-start gap-2.5 text-sm cursor-pointer rounded-xl border border-gray-200 p-3">
-          <input type="checkbox" className="mt-0.5" checked={padrao} onChange={e => setPadrao(e.target.checked)} />
-          <span>
-            <b>Já vem no preço</b>
-            <span className="block text-xs text-gray-500">
-              Marcado, o item entra sempre no custo da peça (é o caso da tinta). Desmarcado, é
-              opcional: a cliente escolhe e o preço sobe só no pedido dela.
-            </span>
-          </span>
-        </label>
+        <ComoEntraNoCopo padrao={padrao} onMudar={setPadrao} />
       </div>
     </Modal>
   );
@@ -680,7 +672,7 @@ function OndeSeAplica({ item, aplicacoes, categorias, onClose, onMudou }) {
                 <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] mr-1.5 ${r.cls}`}>{r.t}</span>
                 <span className="text-xs text-gray-500">{r.s}</span>
                 <span className="block text-[11px] text-gray-400 mt-0.5">
-                  {a.padrao ? 'já vem no preço — entra sempre no custo' : 'opcional — só no pedido de quem escolher'}
+                  {a.padrao ? 'já está no preço do copo — a cliente não escolhe' : 'a cliente escolhe e paga à parte'}
                 </span>
               </span>
               <button className="btn-ghost p-1.5 text-red-500 shrink-0" onClick={() => remover(a)}
@@ -902,7 +894,7 @@ export default function Itens({ kind = null }) {
                     {aplic.some(a => !a.category_id && !a.product_id)
                       ? 'todos os personalizados'
                       : `${aplic.length} ${aplic.length === 1 ? 'destino' : 'destinos'}`}
-                    {aplic.some(a => a.padrao) && ' · já vem no preço'}
+                    {aplic.some(a => a.padrao) && ' · já no preço do copo'}
                     {' · gerenciar'}
                   </button>
                 )}

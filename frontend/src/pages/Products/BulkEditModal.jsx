@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Loader2, Image as ImageIcon, AlertTriangle, Trash2, Check, PlusCircle } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
+import ComoEntraNoCopo from '@/components/UI/ComoEntraNoCopo';
 import toast from 'react-hot-toast';
 
 export default function BulkEditModal({ isOpen, onClose }) {
@@ -384,18 +385,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
               {adicionais.length > 0 && (
                 <div className="mt-2 space-y-2">
-                  <label className="flex items-start gap-2 text-sm rounded-xl border border-gray-200 p-2.5 cursor-pointer">
-                    <input type="checkbox" checked={adicPadrao} className="mt-0.5 w-4 h-4 accent-violet-600"
-                      onChange={e => setAdicPadrao(e.target.checked)} />
-                    <span>
-                      <span className="font-medium text-gray-800">Já vem no preço</span>
-                      <span className="block text-xs text-gray-500 mt-0.5">
-                        Marcado, entra sempre no custo da peça (é o caso da tinta). Desmarcado, é
-                        opcional: a cliente escolhe e o preço sobe só no pedido dela — que é o normal
-                        para borda, canudo e tampa.
-                      </span>
-                    </span>
-                  </label>
+                  <ComoEntraNoCopo padrao={adicPadrao} onMudar={setAdicPadrao} />
 
                   {/* O ALCANCE ESCRITO. Regra aplicada em silêncio é
                       regra que ninguém consegue desfazer depois. */}
@@ -583,7 +573,9 @@ export default function BulkEditModal({ isOpen, onClose }) {
           {alvoAdicional && (
             <div className="rounded-lg border border-violet-200 bg-violet-50 p-3">
               <p className="font-semibold text-violet-900">
-                {adicionais.length} adicional(is) — {adicPadrao ? 'já vêm no preço' : 'opcionais'}
+                {adicionais.length} adicional(is) — {adicPadrao
+                  ? 'já no preço do copo (a cliente não escolhe)'
+                  : 'a cliente escolhe e paga à parte'}
               </p>
               <p className="text-violet-800 text-[13px] mt-0.5">
                 {alvoAdicional.escopo === 'todos'

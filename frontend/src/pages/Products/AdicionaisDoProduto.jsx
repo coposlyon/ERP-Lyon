@@ -22,6 +22,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
+import ComoEntraNoCopo from '@/components/UI/ComoEntraNoCopo';
 
 const fmtMiudo = v => {
   const n = Number(v) || 0;
@@ -116,16 +117,7 @@ function EscolherItens({ productId, categoryId, jaAplicados, onClose, onOk }) {
           )}
         </div>
 
-        <label className="flex items-start gap-2.5 rounded-xl border border-gray-200 p-2.5 cursor-pointer">
-          <input type="checkbox" className="mt-0.5" checked={padrao} onChange={e => setPadrao(e.target.checked)} />
-          <span>
-            <b>Já vem no preço</b>
-            <span className="block text-xs text-gray-500">
-              Marcado, entra sempre no custo da peça (a tinta). Desmarcado, é opcional:
-              a cliente escolhe e o preço sobe só no pedido dela.
-            </span>
-          </span>
-        </label>
+        <ComoEntraNoCopo padrao={padrao} onMudar={setPadrao} />
 
         {/* ── quais itens ── */}
         <div className="relative">
@@ -239,8 +231,9 @@ export default function AdicionaisDoProduto({ productId, categoryId }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="text-xs text-gray-500 max-w-md leading-relaxed">
-          Borda, canudo, tampa, tinta. O que está marcado como <b>já vem no preço</b> entra
-          sempre no custo da peça; o resto é opcional e só sobe o preço no pedido de quem escolher.
+          Borda, canudo, tampa, tinta. O que <b>a cliente escolhe</b> aparece no catálogo e sobe o
+          preço no pedido dela; o que <b>já está no preço do copo</b> é gasto seu em toda peça (a
+          tinta) e não aparece para ela.
         </p>
         <button type="button" className="btn-primary shrink-0" onClick={() => setEscolhendo(true)}>
           <Plus size={15} /> Adicionar Adicional
@@ -265,7 +258,7 @@ export default function AdicionaisDoProduto({ productId, categoryId }) {
           {padroes.length > 0 && (
             <div className="rounded-xl border border-gray-200 overflow-hidden">
               <div className="bg-gray-50 px-3 py-1.5 flex items-center justify-between">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">Já vem no preço</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">Já está no preço do copo</span>
                 <span className="text-[11px] text-gray-500">
                   custa {fmtMiudo(custoFixo)} · cobra {fmtMiudo(precoFixo)}
                 </span>
