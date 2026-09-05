@@ -51,11 +51,25 @@ const POR_NOME = {
   'fosco natural': '#e5e7eb',
 };
 
+/**
+  * A COR DE UMA OPCAO — pelo hex do cadastro, ou pelo nome.
+  *
+  * Boa parte das cores foi cadastrada SEM hex: sao linhas com nome e
+  * mais nada. Por isso o mapa por nome existe — e por isso a busca
+  * ignora acento: o cadastro tem "AMARELO CANARIO" e "AMARELO
+  * CANÁRIO", e um mapa que so responde a uma das grafias deixa metade
+  * das cores cinza sem ninguem entender por que.
+  */
 export function corDe(opcao, padrao = '#cbd5e1') {
   if (!opcao) return padrao;
   if (opcao.hex) return opcao.hex;
+  const semAcento = t => String(t || '').normalize('NFD')
+    .replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   const chave = String(opcao.name || '').toLowerCase().trim();
-  return POR_NOME[chave] || padrao;
+  if (POR_NOME[chave]) return POR_NOME[chave];
+  const alvo = semAcento(chave);
+  const achado = Object.keys(POR_NOME).find(k => semAcento(k) === alvo);
+  return achado ? POR_NOME[achado] : padrao;
 }
 
 /** Quase transparente? Então o copo é vidro, e vidro deixa o fundo passar. */

@@ -33,7 +33,7 @@ import {
   CatalogoShell, Painel, NEON, bordaNeon, corComAlfa,
   Rotulo, Opcao, Botao, Campo, Seletor, Bolinha, Nota, brl,
 } from './ui';
-import CopoPreview from './CopoPreview';
+import CopoPreview, { corDe } from './CopoPreview';
 import { useCarrinho } from './carrinhoContexto';
 import { lerRascunho, gravarRascunho, limparRascunho } from './rascunho';
 
@@ -385,10 +385,15 @@ export default function Configurador() {
 
   // Os hexadecimais na ordem escolhida, para a prévia marcar a área de
   // impressão nas cores da tinta.
+  // `corDe` E NAO `.hex`: a maioria das cores esta cadastrada sem hex, e
+  // pegar o campo cru devolvia `undefined` para todas — o `filter`
+  // esvaziava a lista e a previa nao pintava nada. Foi o que fez a cor
+  // "nao trocar" na tela.
   const hexDasCoresArte = useMemo(
     () => (estado.cores_arte || [])
-      .map(id => coresDaTinta.find(c => c.id === id)?.hex)
-      .filter(Boolean),
+      .map(id => coresDaTinta.find(c => c.id === id))
+      .filter(Boolean)
+      .map(c => corDe(c)),
     [estado.cores_arte, coresDaTinta]);
 
   function trocarCorArte(i, valor) {
@@ -651,7 +656,7 @@ export default function Configurador() {
                           </Seletor>
                           {atual && (
                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                              <Bolinha hex={atual.hex} />
+                              <Bolinha hex={corDe(atual)} />
                             </span>
                           )}
                         </div>
@@ -766,7 +771,7 @@ export default function Configurador() {
                               </Seletor>
                               {atual && (
                                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                                  <Bolinha hex={atual.hex} />
+                                  <Bolinha hex={corDe(atual)} />
                                 </span>
                               )}
                             </div>
