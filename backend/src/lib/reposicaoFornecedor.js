@@ -43,12 +43,32 @@ function gerarToken() {
 }
 
 /**
- * Gera (ou renova) o endereço do fornecedor para um pedido.
+ * O endereço do fornecedor para um pedido — UM SÓ, e sempre o mesmo.
  *
- * Renovar em vez de criar outro: dois endereços vivos para a mesma
- * reposição é o fornecedor respondendo num e o estoque olhando o outro.
+ * ANTES ESTE BOTÃO TROCAVA O TOKEN A CADA CLIQUE, e trocar o token MATA
+ * o link que já foi mandado. Na prática: a Lyon manda o link no
+ * WhatsApp, abre a tela de novo para conferir, clica em "gerar link" —
+ * e o fornecedor, do outro lado, recebe "Link não encontrado" no
+ * endereço que acabou de receber. O botão parecia inofensivo e era a
+ * única maneira de quebrar a solicitação.
+ *
+ * Agora o token vivo é REAPROVEITADO. Só nasce um novo quando não há
+ * nenhum, ou quando o que existe venceu, ou quando alguém pediu a troca
+ * de propósito (`renovar`) — que é o que se faz quando o link vazou.
+ * Renovar também zera as tentativas: link novo, chance nova.
  */
-async function gerarLink(tenantId, pedidoId) {
+async function gerarLink(tenantId, pedidoId, { renovar = false } = {}) {
+  const { data: atual } = await supabase.from('PEDIDOS_REPOSICAO')
+    .select('id, public_token, token_expira_em, supplier_name, protocol_number, supplier_id')
+    .eq('id', pedidoId).eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (!atual) return null;
+
+  const vivo = atual.public_token
+    && atual.token_expira_em
+    && new Date(atual.token_expira_em) > new Date();
+  if (vivo && !renovar) return atual;
+
   const token = gerarToken();
   const expira = new Date(Date.now() + DIAS_DE_VALIDADE * 24 * 3600 * 1000);
 
@@ -59,21 +79,77 @@ async function gerarLink(tenantId, pedidoId) {
       tentativas: 0,
     })
     .eq('id', pedidoId).eq('tenant_id', tenantId)
-    .select('id, public_token, token_expira_em, supplier_name, protocol_number')
+    .select('id, public_token, token_expira_em, supplier_name, protocol_number, supplier_id')
     .maybeSingle();
 
   if (error) throw error;
-  if (!data) return null;
-  return data;
+  return data || null;
 }
 
-/** O pedido por trás do token, com o fornecedor junto. */
+/**
+ * O pedido por trás do token, com o fornecedor junto.
+ *
+ * EM DUAS CONSULTAS, DE PROPÓSITO. Antes era uma só, pedindo o
+ * fornecedor embutido (`*, FORNECEDORES ( ... )`). Embutir depende de
+ * existir chave estrangeira entre as tabelas, e ela não existia — a
+ * consulta INTEIRA falhava, o código lia só `data`, e o `null` que
+ * sobrava virava "Link não encontrado". O fornecedor abria o link
+ * certo, digitava CNPJ e telefone certos, e a tela dizia que a
+ * solicitação não existe. A chave foi criada (migração 101), mas a
+ * dependência some junto:
+ *
+ * O PEDIDO É LIDO SOZINHO, e o fornecedor depois. Assim o pior caso
+ * deixa de ser "a solicitação sumiu" e passa a ser "confirme com a
+ * Lyon" — que é uma frase verdadeira, e não um beco sem saída.
+ */
 async function porToken(token) {
   if (!token || String(token).length < 20) return null;
-  const { data } = await supabase.from('PEDIDOS_REPOSICAO')
-    .select('*, FORNECEDORES ( id, name, cnpj, phone )')
-    .eq('public_token', String(token)).maybeSingle();
-  return data || null;
+
+  const { data: pedido, error } = await supabase.from('PEDIDOS_REPOSICAO')
+    .select('*').eq('public_token', String(token)).maybeSingle();
+  if (error || !pedido) return null;
+
+  if (!pedido.supplier_id) return { ...pedido, FORNECEDORES: null };
+
+  const { data: fornecedor } = await supabase.from('FORNECEDORES')
+    .select('id, name, cnpj, phone').eq('id', pedido.supplier_id).maybeSingle();
+
+  return { ...pedido, FORNECEDORES: fornecedor || null };
+}
+
+/**
+ * A MENSAGEM PRONTA PARA O WHATSAPP DO FORNECEDOR.
+ *
+ * O link sozinho não bastava: alguém tinha que copiar o endereço, abrir
+ * o WhatsApp, achar o contato e escrever o recado — quatro passos à mão
+ * para cada reposição, e é aí que o pedido fica parado um dia inteiro.
+ *
+ * Sai com o número do fornecedor JÁ NO ENDEREÇO quando o cadastro tem
+ * telefone; sem telefone, sai um `wa.me` sem número, que abre a lista de
+ * contatos com o texto pronto. Pior que mandar direto, melhor que
+ * digitar.
+ */
+function mensagemWhatsapp({ url, protocolo, fornecedor, itens = [], telefone }) {
+  const linhas = itens.slice(0, 12)
+    .map(i => `• ${i.pedido}x ${i.nome}`)
+    .join('\n');
+  const resto = itens.length > 12 ? `\n• …e mais ${itens.length - 12} item(ns)` : '';
+
+  const texto = [
+    `Olá${fornecedor ? `, ${String(fornecedor).split(' ').slice(0, 3).join(' ')}` : ''}! Aqui é a Lyon Copos Acrílicos.`,
+    '',
+    `Temos uma solicitação de reposição${protocolo ? ` (protocolo ${protocolo})` : ''}:`,
+    linhas + resto,
+    '',
+    'Confirme pelo link o que você tem disponível e envie a cotação:',
+    url,
+    '',
+    'O link é pessoal da sua empresa — para abrir, confirme o CNPJ e o telefone do cadastro.',
+  ].filter(l => l !== undefined).join('\n');
+
+  const num = digitos(telefone);
+  const destino = num.length >= 10 ? (num.length <= 11 ? `55${num}` : num) : '';
+  return `https://wa.me/${destino}?text=${encodeURIComponent(texto)}`;
 }
 
 /**
@@ -193,7 +269,7 @@ async function responder(pedido, { itens, cotacao_url }) {
 }
 
 module.exports = {
-  gerarLink, porToken, porQueNaoAbre, conferirIdentidade,
+  gerarLink, porToken, porQueNaoAbre, conferirIdentidade, mensagemWhatsapp,
   registrarTentativa, fichaParaOFornecedor, responder,
   digitos, finalDoTelefone, DIAS_DE_VALIDADE, MAX_TENTATIVAS,
 };

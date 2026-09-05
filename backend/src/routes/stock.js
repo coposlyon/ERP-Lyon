@@ -432,7 +432,30 @@ router.post('/replenishment-orders', async (req, res) => {
       console.error('[replenishment-orders] Erro ao gerar conta a pagar:', e.message);
     }
 
-    res.status(201).json({ ...order, payable });
+    /**
+     * O LINK NASCE COM A SOLICITACAO.
+     *
+     * Ele era criado num botao separado — "gerar novo link" —, e quem
+     * esquecesse de clicar mandava para o fornecedor uma mensagem sem
+     * endereco nenhum. Pior: clicar de novo TROCAVA o token e matava o
+     * link ja enviado.
+     *
+     * Agora a solicitacao ja sai com o endereco e com o recado do
+     * WhatsApp montado. O botao continua existindo para reenviar (e
+     * devolve o MESMO link).
+     *
+     * Se falhar, a solicitacao nao cai junto: ela existe, e o link se
+     * pede de novo na tela.
+     */
+    let link = null;
+    try {
+      const r = await R.gerarLink(req.tenantId, order.id);
+      if (r) link = await linkDaReposicao(req, { ...order, ...r });
+    } catch (e) {
+      console.error('[replenishment-orders] Erro ao gerar link:', e.message);
+    }
+
+    res.status(201).json({ ...order, payable, link });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -591,26 +614,61 @@ router.post('/replenishment-orders/:id/log-resend', async (req, res) => {
  */
 router.post('/replenishment-orders/:id/link', async (req, res) => {
   try {
-    const r = await R.gerarLink(req.tenantId, req.params.id);
+    // `renovar` so quando alguem pede de proposito — ver `gerarLink`.
+    // Sem isso, clicar no botao de novo matava o link ja enviado.
+    const r = await R.gerarLink(req.tenantId, req.params.id, { renovar: !!req.body?.renovar });
     if (!r) return res.status(404).json({ error: 'Pedido de reposicao nao encontrado' });
 
-    // A base vem do que o proprio navegador usou para chegar aqui — o
-    // ERP roda em lyoncopos.online e em localhost, e um endereco fixo
-    // no codigo mandaria o fornecedor para o lugar errado num deles.
-    const base = process.env.APP_URL
-      || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
-
-    audit(req, 'link', 'reposicao', r.id, { fornecedor: r.supplier_name });
-    res.json({
-      url: `${base}/fornecedor/${r.public_token}`,
-      expira_em: r.token_expira_em,
-      protocolo: r.protocol_number,
-      fornecedor: r.supplier_name,
-    });
+    audit(req, 'link', 'reposicao', r.id, { fornecedor: r.supplier_name, renovado: !!req.body?.renovar });
+    res.json(await linkDaReposicao(req, r));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * O ENDERECO E O RECADO, MONTADOS NO MESMO LUGAR.
+ *
+ * Sao usados em dois pontos — quando a solicitacao NASCE e quando
+ * alguem abre a tela depois — e duas copias e uma que vai divergir no
+ * dia em que o texto mudar.
+ *
+ * A base vem do que o proprio navegador usou para chegar aqui: o ERP
+ * roda em lyoncopos.online e em localhost, e um endereco fixo no codigo
+ * mandaria o fornecedor para o lugar errado num deles.
+ */
+async function linkDaReposicao(req, pedido) {
+  const base = process.env.APP_URL
+    || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  const url = `${base}/fornecedor/${pedido.public_token}`;
+
+  // O telefone sai do cadastro, nunca do corpo da requisicao: e para ele
+  // que a mensagem vai.
+  let telefone = null;
+  if (pedido.supplier_id) {
+    const { data } = await supabase.from('FORNECEDORES')
+      .select('phone').eq('id', pedido.supplier_id).maybeSingle();
+    telefone = data?.phone || null;
+  }
+
+  const itens = (pedido.products || []).map(p => ({
+    nome: p.name || p.nome || 'Produto',
+    pedido: Math.abs(Number(p.qty_to_replenish ?? p.qtd ?? 0)) || 0,
+  }));
+
+  return {
+    url,
+    expira_em: pedido.token_expira_em,
+    protocolo: pedido.protocol_number,
+    fornecedor: pedido.supplier_name,
+    tem_telefone: !!telefone,
+    whatsapp: R.mensagemWhatsapp({
+      url, telefone, itens,
+      protocolo: pedido.protocol_number,
+      fornecedor: pedido.supplier_name,
+    }),
+  };
+}
 
 router.post('/replenishment-orders/:id/complete', async (req, res) => {
   const { id } = req.params;

@@ -19,7 +19,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Link2, Copy, CheckCircle2, Loader2, Paperclip, Clock, PackageCheck, Inbox,
+  Link2, Copy, CheckCircle2, Loader2, Paperclip, Clock, PackageCheck, Inbox, MessageCircle,
   Pencil, Trash2, X, Ban,
 } from 'lucide-react';
 import api from '@/lib/api';
@@ -57,15 +57,25 @@ export default function SolicitacoesReposicao() {
     });
   }, [data]);
 
+  /**
+   * O ENDEREÇO DO FORNECEDOR — o mesmo, sempre.
+   *
+   * O botão dizia "Novo link" e era exatamente isso: cada clique
+   * trocava o token e MATAVA o endereço já enviado. Quem mandava o link
+   * e depois abria a tela para conferir derrubava o próprio envio, e o
+   * fornecedor lia "Link não encontrado". Agora o servidor devolve o
+   * link vivo; trocar de verdade só com `renovar`, que é o que se faz
+   * quando o endereço vazou.
+   */
   const gerarLink = useMutation({
-    mutationFn: id => api.post(`/stock/replenishment-orders/${id}/link`),
-    onSuccess: (r, id) => {
-      setLinkDe({ id, url: r.url });
-      // Copiar na hora: o próximo passo é colar no WhatsApp, e obrigar
-      // um segundo clique para isso é atrito sem motivo.
+    mutationFn: ({ id, renovar }) =>
+      api.post(`/stock/replenishment-orders/${id}/link`, { renovar: !!renovar }),
+    onSuccess: (r, { id, renovar }) => {
+      setLinkDe({ id, url: r.url, whatsapp: r.whatsapp, temTelefone: r.tem_telefone });
+      qc.invalidateQueries({ queryKey: ['reposicao-solicitacoes'] });
       navigator.clipboard?.writeText(r.url)
-        .then(() => toast.success('Link copiado — cole no WhatsApp do fornecedor'))
-        .catch(() => toast('Link gerado — copie abaixo', { icon: '🔗' }));
+        .then(() => toast.success(renovar ? 'Link trocado e copiado' : 'Link copiado'))
+        .catch(() => toast('Link abaixo — copie à mão', { icon: '🔗' }));
     },
     onError: e => toast.error(e.error || 'Não consegui gerar o link'),
   });
@@ -186,11 +196,29 @@ export default function SolicitacoesReposicao() {
                     já entrou, na outra o link já morreu. */}
                 {p.status !== 'completed' && p.status !== 'cancelled' && (
                   <>
-                    <button type="button" onClick={() => gerarLink.mutate(p.id)}
+                    {/* MANDAR NO WHATSAPP É O BOTÃO PRINCIPAL — é o que
+                        a pessoa veio fazer. O link já existe desde que a
+                        solicitação nasceu; copiar endereço à mão, abrir
+                        o WhatsApp, achar o contato e escrever o recado
+                        eram quatro passos para cada reposição, e é aí
+                        que o pedido ficava parado um dia. */}
+                    <button type="button"
+                      onClick={() => gerarLink.mutate({ id: p.id }, {
+                        onSuccess: r => window.open(r.whatsapp, '_blank', 'noopener'),
+                      })}
                       disabled={gerarLink.isPending}
-                      title="Gera o endereço para o fornecedor responder"
+                      title="Abre o WhatsApp do fornecedor com o recado e o link prontos"
+                      className="btn-primary text-xs">
+                      {gerarLink.isPending
+                        ? <Loader2 size={13} className="animate-spin" />
+                        : <MessageCircle size={13} />}
+                      Mandar no WhatsApp
+                    </button>
+                    <button type="button" onClick={() => gerarLink.mutate({ id: p.id })}
+                      disabled={gerarLink.isPending}
+                      title="Mostra e copia o mesmo endereço, sem trocá-lo"
                       className="btn-secondary text-xs">
-                      <Link2 size={13} /> {p.public_token ? 'Novo link' : 'Gerar link'}
+                      <Link2 size={13} /> Copiar link
                     </button>
                     <button type="button"
                       onClick={() => (editando?.id === p.id ? setEditando(null) : abrirEdicao(p))}
@@ -224,16 +252,36 @@ export default function SolicitacoesReposicao() {
                 navegador sem permissão, e aí a pessoa precisa do texto
                 para copiar à mão. */}
             {linkDe?.id === p.id && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-100">
-                <input readOnly value={linkDe.url} onFocus={e => e.target.select()}
-                  className="flex-1 bg-transparent text-xs font-mono text-gray-600 outline-none" />
-                <button type="button" title="Copiar"
-                  onClick={() => navigator.clipboard?.writeText(linkDe.url)
-                    .then(() => toast.success('Copiado'))
-                    .catch(() => toast.error('Copie à mão'))}
-                  className="text-gray-400 hover:text-primary-600">
-                  <Copy size={14} />
-                </button>
+              <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <input readOnly value={linkDe.url} onFocus={e => e.target.select()}
+                    className="flex-1 bg-transparent text-xs font-mono text-gray-600 outline-none" />
+                  <button type="button" title="Copiar"
+                    onClick={() => navigator.clipboard?.writeText(linkDe.url)
+                      .then(() => toast.success('Copiado'))
+                      .catch(() => toast.error('Copie à mão'))}
+                    className="text-gray-400 hover:text-primary-600">
+                    <Copy size={14} />
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500">
+                  {!linkDe.temTelefone && (
+                    <span className="text-amber-600">
+                      Fornecedor sem telefone no cadastro — o WhatsApp abre para você escolher o contato.
+                    </span>
+                  )}
+                  {/* TROCAR O LINK É DESTRUTIVO e por isso fica escondido
+                      aqui embaixo, dito por inteiro: quem clica precisa
+                      saber que derruba o endereço que já mandou. */}
+                  <button type="button"
+                    onClick={() => {
+                      if (!window.confirm('Trocar o link derruba o endereço que você já enviou ao fornecedor. Continuar?')) return;
+                      gerarLink.mutate({ id: p.id, renovar: true });
+                    }}
+                    className="underline hover:text-red-600">
+                    trocar o link (derruba o que já foi enviado)
+                  </button>
+                </div>
               </div>
             )}
 
