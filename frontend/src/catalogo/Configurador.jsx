@@ -383,6 +383,14 @@ export default function Configurador() {
 
   const quantasCores = Number(processo?.max_cores) || 0;
 
+  // Os hexadecimais na ordem escolhida, para a prévia marcar a área de
+  // impressão nas cores da tinta.
+  const hexDasCoresArte = useMemo(
+    () => (estado.cores_arte || [])
+      .map(id => coresDaTinta.find(c => c.id === id)?.hex)
+      .filter(Boolean),
+    [estado.cores_arte, coresDaTinta]);
+
   function trocarCorArte(i, valor) {
     const arr = [...(estado.cores_arte || [])];
     arr[i] = valor;
@@ -1096,12 +1104,12 @@ export default function Configurador() {
                 faces da MESMA peça. */}
             <div className="rounded-xl px-2 sm:px-3 py-4 overflow-hidden" style={{ background: '#ffffff' }}>
               <div className="flex items-end justify-center gap-2 sm:gap-4">
-                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente"
+                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente" coresArte={hexDasCoresArte}
                   borda={bordaEscolhida}
                   acessorios={acessoriosEscolhidos}
                   gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 190 : 216} />
                 {personalizado && estado.posicao === 'frente_verso' && (
-                  <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso"
+                  <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso" coresArte={hexDasCoresArte}
                     borda={bordaEscolhida}
                     acessorios={acessoriosEscolhidos}
                     gabarito={gabarito} altura={190} />

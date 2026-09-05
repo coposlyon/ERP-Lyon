@@ -238,6 +238,9 @@ const PADRAO = FORMATOS['long-drink'];
  */
 function Desenho({
   escolha = {}, familia = null, arte = null, altura = 300, gabarito = null, espelhar = false,
+  // As cores da TINTA escolhidas no tipo de impressão — hexadecimais,
+  // na ordem em que a cliente escolheu.
+  coresArte = [],
 }) {
   const { acabamento, campos = {} } = escolha;
   const requer = acabamento?.requer || {};
@@ -336,6 +339,31 @@ function Desenho({
                          transform: espelhar ? 'scaleX(-1)' : undefined }}
                 dangerouslySetInnerHTML={{ __html: arte }} />
             </foreignObject>
+          </g>
+        )}
+
+        {/* A COR DA TINTA, ANTES DE EXISTIR ARTE.
+            A cliente escolhe "Serigrafia 2 cores · Vermelho e Branco" e
+            o copo não mudava em nada — a cor da arte é tinta, não é a
+            cor da peça, e não tinha por que pintar o corpo. Mas não
+            mostrar NADA fazia a escolha parecer não ter sido registrada.
+            Enquanto a arte não é montada, a área de impressão aparece
+            marcada nas cores escolhidas: é onde a tinta vai, e nela. */}
+        {!arte && coresArte.length > 0 && (
+          <g clipPath={`url(#${id}-recorte)`} opacity="0.9">
+            {coresArte.map((hex, i) => {
+              const alturaFaixa = alturaArte / coresArte.length;
+              return (
+                <rect key={i}
+                  x={F.arte.cx - larguraArte / 2}
+                  y={F.arte.topo + i * alturaFaixa}
+                  width={larguraArte} height={alturaFaixa}
+                  fill={hex} rx="2" opacity="0.85" />
+              );
+            })}
+            <rect x={F.arte.cx - larguraArte / 2} y={F.arte.topo}
+              width={larguraArte} height={alturaArte}
+              fill="none" stroke="rgba(255,255,255,0.35)" strokeDasharray="3 3" rx="2" />
           </g>
         )}
       </svg>
@@ -675,6 +703,9 @@ export default function CopoPreview({
   // vêm na caixa junto. Desenhar um canudo dentro do copo seria
   // inventar um produto; mostrá-lo AO LADO é o que a caixa mostra.
   acessorios = [],
+  // As cores da TINTA escolhidas no tipo de impressao. Passam direto
+  // para o desenho: e la que a area de impressao e marcada com elas.
+  coresArte = [],
 }) {
   const { campos = {} } = escolha;
   // O VERSO É A MESMA PEÇA VISTA POR TRÁS. A foto do cadastro é uma só,
@@ -744,7 +775,7 @@ export default function CopoPreview({
   if (!foto) {
     return (
       <figure className="flex flex-col items-center m-0 min-w-0 max-w-full">
-        <Desenho escolha={escolha} familia={familia} arte={arte}
+        <Desenho escolha={escolha} familia={familia} arte={arte} coresArte={coresArte}
           altura={altura} gabarito={gabarito} espelhar={espelhar} />
         {rodape}
         <Acessorios itens={acessorios} />
