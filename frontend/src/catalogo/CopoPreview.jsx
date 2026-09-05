@@ -826,6 +826,26 @@ export default function CopoPreview({
             color: '#111318',
           }} dangerouslySetInnerHTML={{ __html: arte }} />
         )}
+
+        {/* A COR DA TINTA SOBRE A FOTO.
+            A marcação já existia no desenho vetorial — mas a prévia só
+            desenha quando NÃO há foto, e a Lyon tem foto de quase tudo.
+            Na prática a cliente trocava a cor e a tela não mexia um
+            pixel. A mesma janela da arte, nas cores escolhidas: é onde a
+            tinta vai, e nela. */}
+        {!arte && coresArte.length > 0 && (
+          <div className="absolute overflow-hidden rounded-[3px] flex flex-col" style={{
+            left: `${((espelhar ? 1 - janela.cx : janela.cx) - janela.largura / 2) * 100}%`,
+            top: `${janela.topo * 100}%`,
+            width: `${janela.largura * 100}%`,
+            height: `${janela.altura * 100}%`,
+            outline: '1px dashed rgba(17,19,24,0.35)',
+          }}>
+            {coresArte.map((hex, i) => (
+              <span key={i} style={{ background: hex, flex: 1, opacity: 0.88 }} />
+            ))}
+          </div>
+        )}
       </div>
       {rodape}
       <Acessorios itens={acessorios} />
