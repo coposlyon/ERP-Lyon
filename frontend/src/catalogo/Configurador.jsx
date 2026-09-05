@@ -47,6 +47,32 @@ const HOJE = () => new Date().toISOString().slice(0, 10);
  * duas, a primeira é a de baixo e a segunda a de cima; com três entra o
  * meio entre elas — a mesma ordem que a prévia desenha.
  */
+/**
+ * UM SELETOR DE COR — a lista, a bolinha e mais nada.
+ *
+ * Mora fora do `Configurador` porque agora é usado em dois lugares (a
+ * cor do copo, antes da impressão, e as cores de cima, depois dela).
+ * Componente declarado DENTRO de outro nasce de novo a cada render, e o
+ * navegador fecha a lista aberta no meio do clique.
+ */
+function SeletorDeCor({ opcoes, valor, aoTrocar, vazio }) {
+  const atual = opcoes.find(o => o.id === valor) || null;
+  return (
+    <div className="relative">
+      <Seletor value={valor} onChange={e => aoTrocar(e.target.value)}
+        style={{ paddingLeft: atual ? 30 : 12 }}>
+        <option value="">{vazio}</option>
+        {opcoes.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </Seletor>
+      {atual && (
+        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+          <Bolinha hex={corDe(atual)} />
+        </span>
+      )}
+    </div>
+  );
+}
+
 const NOME_DA_FAIXA = (i, total) => {
   if (total < 2) return 'Cor';
   if (i === 0) return 'Cor 1 · parte de baixo';
@@ -189,6 +215,7 @@ export default function Configurador() {
     // mesma coisa duas vezes. O nome vem do cadastro do produto e as
     // opcoes de CONFIG_CORES, entao a comparacao ignora acento e caixa.
     let corMudou = false;
+    let coresDoLink = null;
     const corDoLink = params.get('cor');
     if (corDoLink) {
       const chave = txt => String(txt || '').normalize('NFD')
@@ -202,6 +229,20 @@ export default function Configurador() {
           corMudou = true;
         }
       }
+
+      // E QUANDO O ACABAMENTO NÃO PEDE COR, A COR DO LINK É A COR DO
+      // COPO. Ela virou a primeira pergunta da tela — é dela que sai o
+      // que aquele copo aceita de impressão. Quem clicou no card da
+      // PÉROLA na vitrine já respondeu: abrir a tela com a pergunta em
+      // branco é perguntar duas vezes, e pior, é mostrar a lista do
+      // modelo inteiro antes de encolher sozinha um segundo depois.
+      if (!campoBase) {
+        const achada = (cfg?.cores?.produto || []).find(c => chave(c.name) === alvoCor);
+        if (achada && (estado.cores_arte || [])[0] !== achada.id) {
+          coresDoLink = [achada.id, ...(estado.cores_arte || []).slice(1)];
+          corMudou = true;
+        }
+      }
     }
 
     // A SAÍDA ANTECIPADA FICAVA ANTES DA COR, e por isso o clique no
@@ -211,7 +252,11 @@ export default function Configurador() {
     // desiste quando NÃO HÁ NADA a aplicar — nem acabamento, nem cor.
     if (alvo.id === estado.acabamento_id && !corMudou) return;
 
-    mudar({ acabamento_id: alvo.id, campos: restante });
+    mudar({
+      acabamento_id: alvo.id,
+      campos: restante,
+      ...(coresDoLink ? { cores_arte: coresDoLink } : {}),
+    });
   }, [cfg, params, estado.acabamento_id, estado.campos, mudar]);
 
   const acabamento = useMemo(
@@ -407,6 +452,55 @@ export default function Configurador() {
   const hexDasCoresArte = useMemo(
     () => coresEscolhidas.map(c => corDe(c)), [coresEscolhidas]);
 
+  /**
+   * O QUE ESTA COR LIBERA — e não o que o modelo inteiro libera.
+   *
+   * A regra de catálogo é POR COR: a Lyon liberou o Transfer só no LONG
+   * DRINK TRANSPARENTE. Só que a página é do MODELO — as vinte e quatro
+   * cores juntas —, e o servidor mandava a UNIÃO de tudo que alguma cor
+   * aceita. Resultado: o Transfer aparecia nas vinte e quatro, e a
+   * regra que ela acabou de gravar parecia não ter sido gravada.
+   *
+   * O servidor agora manda `por_cor`: para cada cor do modelo, o que
+   * ela aceita. Escolhida a cor, esta tela mostra o dela. Sem cor
+   * escolhida não há como filtrar — e aí a lista é a do modelo, com o
+   * aviso de que ela ainda vai encolher.
+   */
+  const corDoCopo = coresEscolhidas[0] || null;
+  const liberado = useMemo(
+    () => (corDoCopo?.produto_id ? cfg?.por_cor?.[corDoCopo.produto_id] : null) || null,
+    [cfg, corDoCopo]);
+
+  const processosDaCor = useMemo(() => {
+    const todos = cfg?.processos || [];
+    return liberado ? todos.filter(p => liberado.processos.includes(p.id)) : todos;
+  }, [cfg, liberado]);
+
+  const acabamentosDaCor = useMemo(() => {
+    const todos = cfg?.acabamentos || [];
+    return liberado ? todos.filter(a => liberado.acabamentos.includes(a.id)) : todos;
+  }, [cfg, liberado]);
+
+  /**
+   * TROCOU DE COR, O QUE NÃO VALE MAIS CAI.
+   *
+   * Escolher Transfer no transparente e depois trocar para Amarelo
+   * Canário — que não faz Transfer — deixaria a tela com o botão aceso
+   * numa opção que o servidor vai recusar no fechamento. Some na hora,
+   * que é quando a cliente ainda consegue entender por quê.
+   */
+  useEffect(() => {
+    if (!liberado) return;
+    const patch = {};
+    if (estado.processo_id && !liberado.processos.includes(estado.processo_id)) {
+      patch.processo_id = null;
+    }
+    if (estado.acabamento_id && !liberado.acabamentos.includes(estado.acabamento_id)) {
+      patch.acabamento_id = acabamentosDaCor[0]?.id || null;
+    }
+    if (Object.keys(patch).length) mudar(patch);
+  }, [liberado, estado.processo_id, estado.acabamento_id, acabamentosDaCor, mudar]);
+
   const escolhaVisual = useMemo(() => {
     const campos = {};
     for (const campo of acabamento?.campos || []) {
@@ -435,6 +529,18 @@ export default function Configurador() {
 
     return { acabamento, campos };
   }, [acabamento, estado.campos, cfg, coresEscolhidas]);
+
+  // O que o seletor da enésima cor recebe. A mesma cor não entra duas
+  // vezes: escolhida numa ponta, sai da lista das outras.
+  const slotDeCor = i => {
+    const usadas = new Set((estado.cores_arte || []).filter((v, k) => k !== i && v));
+    return {
+      opcoes: coresDaTinta.filter(c => !usadas.has(c.id)),
+      valor: estado.cores_arte?.[i] || '',
+      aoTrocar: v => trocarCorArte(i, v),
+      vazio: i === 0 ? 'Escolha a cor…' : `${NOME_DA_FAIXA(i, quantasCores)}…`,
+    };
+  };
 
   function trocarCorArte(i, valor) {
     const arr = [...(estado.cores_arte || [])];
@@ -467,13 +573,15 @@ export default function Configurador() {
         .map(c => [c.label, escolhaVisual.campos[c.key]?.name])
         .filter(([, v]) => v)),
       processo_id: personalizado ? estado.processo_id : null,
-      // As cores da arte vao pelo NOME: quem le isso e a producao, e
-      // um uuid nao diz nada para quem esta na maquina.
-      cores_arte: personalizado
-        ? (estado.cores_arte || [])
-            .map(id => coresDaTinta.find(c => c.id === id)?.name)
-            .filter(Boolean)
-        : [],
+      // OS IDS VAO, E OS NOMES VAO JUNTO.
+      //
+      // Só o nome viajava, "para a produção ler". Só que quem lê antes
+      // da produção é o SERVIDOR, e é por esses ids que ele descobre
+      // qual cor do modelo foi escolhida — e daí qual produto é vendido
+      // e o que aquela cor aceita de impressão. Com nome só, a
+      // conferência não achava a cor e passava batido.
+      cores_arte: personalizado ? (estado.cores_arte || []).filter(Boolean) : [],
+      cores_arte_nomes: personalizado ? coresEscolhidas.map(c => c.name) : [],
       impressao: personalizado
         ? (cfg?.processos || []).find(p => p.id === estado.processo_id)?.nome || null
         : null,
@@ -616,11 +724,11 @@ export default function Configurador() {
                 que estão liberados para este copo. E cada um diz o que
                 abre — "escolhe 2 cores (Cor, Cor da boca)" —, que é a
                 informação que faltava para a escolha não ser um chute. */}
-            {(cfg.acabamentos || []).length > 1 && (
+            {acabamentosDaCor.length > 1 && (
               <div className="mt-4">
                 <Rotulo>Acabamento</Rotulo>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {cfg.acabamentos.map(a => (
+                  {acabamentosDaCor.map(a => (
                     <Opcao key={a.id} quebrar
                       titulo={a.nome}
                       sub={oQueAbre(a)}
@@ -739,6 +847,27 @@ export default function Configurador() {
               )}
             </div>
 
+            {/* A COR DO COPO VEM ANTES DE TUDO QUE DEPENDE DELA.
+                Ela morava embaixo do tipo de impressão, e é o tipo de
+                impressão que depende DELA: Transfer só existe no
+                transparente. Perguntar na ordem inversa é oferecer uma
+                opção e tirá-la um clique depois.
+                Só aparece quando o acabamento não pede a cor da peça —
+                havendo campo de cor no acabamento, quem manda é ele. */}
+            {personalizado && quantasCores > 0 && !acabamento?.campos?.some(c => c.grupo === 'produto') && (
+              <div className="mt-4">
+                <Rotulo>Cor do copo{quantasCores > 1 ? ' · parte de baixo' : ''}</Rotulo>
+                <div className="max-w-sm">
+                  <SeletorDeCor {...slotDeCor(0)} />
+                </div>
+                {!corDoCopo && (
+                  <p className="text-[11px] mt-1" style={{ color: NEON.suave }}>
+                    Escolha a cor para ver o que ela aceita de impressão.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* O TIPO DE IMPRESSÃO SUBIU PARA CÁ.
                 Ele morava dentro de "Personalização", que agora começa
                 fechada — então a cliente não via, e a dona da fábrica
@@ -751,7 +880,7 @@ export default function Configurador() {
               <div className="mt-4">
                 <Rotulo>Tipo de impressão</Rotulo>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {(cfg.processos || []).map(pr => (
+                  {processosDaCor.map(pr => (
                     <Opcao key={pr.id} quebrar
                       titulo={pr.nome}
                       sub={pr.max_cores
@@ -773,59 +902,36 @@ export default function Configurador() {
                         });
                       }} />
                   ))}
-                  {!(cfg.processos || []).length && (
+                  {!processosDaCor.length && (
                     <p className="text-[11.5px] col-span-full" style={{ color: NEON.fraco }}>
-                      Nenhum tipo de impressão liberado para este copo.
+                      {corDoCopo
+                        ? `Nenhum tipo de impressão liberado para ${corDoCopo.name}.`
+                        : 'Nenhum tipo de impressão liberado para este copo.'}
                     </p>
                   )}
                 </div>
 
-                {/* AS CORES DA ARTE. Uma pergunta por cor que a
-                    impressão escolhida imprime — "2 cores" pede duas, e
-                    a mesma cor não entra duas vezes, pelo mesmo motivo
-                    do tricolor: pagar por duas e receber uma. */}
-                {quantasCores > 0 && (
+                {/* AS OUTRAS CORES DA PEÇA. A primeira já foi
+                    perguntada acima — ela é a cor do copo, e é dela que
+                    sai esta lista de impressões. Aqui ficam só as que a
+                    impressão escolhida acrescenta: "2 cores" pede a de
+                    cima, "3 cores" pede o meio e a de cima. */}
+                {quantasCores > 1 && (
                   <div className="mt-3">
-                    <Rotulo>
-                      {quantasCores === 1
-                        ? 'Cor da arte'
-                        : `Cores — escolha ${quantasCores}, de baixo para cima`}
-                    </Rotulo>
-                    {quantasCores > 1 && (
-                      <p className="text-[11px] mb-1.5" style={{ color: NEON.suave }}>
-                        A <b>Cor 1</b> é a parte de baixo do copo
-                        {quantasCores === 3 ? ', a Cor 2 é o meio' : ''} e a
-                        <b> Cor {quantasCores}</b> é a parte de cima. A prévia ao
-                        lado mostra na hora.
-                      </p>
-                    )}
+                    <Rotulo>Cores de cima — mais {quantasCores - 1}</Rotulo>
+                    <p className="text-[11px] mb-1.5" style={{ color: NEON.suave }}>
+                      A <b>Cor 1</b> é a parte de baixo do copo
+                      {quantasCores === 3 ? ', a Cor 2 é o meio' : ''} e a
+                      <b> Cor {quantasCores}</b> é a parte de cima. A prévia ao
+                      lado mostra na hora.
+                    </p>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {Array.from({ length: quantasCores }).map((_, i) => {
-                        const usadas = new Set(
-                          (estado.cores_arte || []).filter((v, k) => k !== i && v));
-                        const opcoes = coresDaTinta.filter(c => !usadas.has(c.id));
-                        const valor = estado.cores_arte?.[i] || '';
-                        const atual = opcoes.find(o => o.id === valor);
+                      {Array.from({ length: quantasCores - 1 }).map((_, k) => {
+                        const i = k + 1;
                         return (
                           <div key={i}>
-                            {quantasCores > 1 && (
-                              <Rotulo>{NOME_DA_FAIXA(i, quantasCores)}</Rotulo>
-                            )}
-                            <div className="relative">
-                              <Seletor value={valor}
-                                onChange={e => trocarCorArte(i, e.target.value)}
-                                style={{ paddingLeft: atual ? 30 : 12 }}>
-                                <option value="">
-                                  {quantasCores === 1 ? 'Selecione…' : `${NOME_DA_FAIXA(i, quantasCores)}…`}
-                                </option>
-                                {opcoes.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                              </Seletor>
-                              {atual && (
-                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                                  <Bolinha hex={corDe(atual)} />
-                                </span>
-                              )}
-                            </div>
+                            <Rotulo>{NOME_DA_FAIXA(i, quantasCores)}</Rotulo>
+                            <SeletorDeCor {...slotDeCor(i)} />
                           </div>
                         );
                       })}

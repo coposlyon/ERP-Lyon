@@ -581,6 +581,40 @@ async function configDoModelo(tenantId, chave) {
   const okCor  = permitidos('cor');
   const okProc = permitidos('processo');
 
+  /**
+   * O QUE CADA COR ACEITA — porque a regra por cor não é a regra do modelo.
+   *
+   * `permitidos` acima devolve a UNIÃO: tudo que alguma cor deste modelo
+   * aceita. Ela existe para montar as listas, e está certa para isso.
+   * Errado era usá-la como resposta final: a Lyon liberou o Transfer SÓ
+   * no LONG DRINK TRANSPARENTE e ele apareceu em todas as vinte e quatro
+   * cores, porque a página do catálogo é do MODELO — as vinte e quatro
+   * juntas — e uma cor que abre abria para todas.
+   *
+   * Aqui a resposta é por cor: para cada produto do modelo, a regra dele
+   * quando existe, e a da categoria quando não existe. É a mesma conta
+   * que a tela de Editar Produto mostra com "Herdar · Sim / Sim / Não",
+   * e agora o catálogo faz a mesma conta.
+   *
+   * Vai no corpo da resposta porque quem escolhe a cor é a cliente,
+   * depois da página carregada: refazer a viagem ao servidor a cada
+   * troca de cor seria uma espera por clique.
+   */
+  const regraDoProduto = new Map();   // `${tipo}|${ref}|${produto}` -> bool
+  const regraDaCategoria = new Map(); // `${tipo}|${ref}`            -> bool
+  for (const r of compatRes.data || []) {
+    if (r.product_id) {
+      if (idsMembros.has(r.product_id)) regraDoProduto.set(`${r.tipo}|${r.ref_id}|${r.product_id}`, !!r.permitido);
+    } else if (r.category_id === categoryId) {
+      regraDaCategoria.set(`${r.tipo}|${r.ref_id}`, !!r.permitido);
+    }
+  }
+  const aceita = (tipo, ref, produtoId) => {
+    const doProduto = regraDoProduto.get(`${tipo}|${ref}|${produtoId}`);
+    if (doProduto !== undefined) return doProduto;
+    return regraDaCategoria.get(`${tipo}|${ref}`) === true;
+  };
+
   const acabamentos = (acabRes.data || [])
     .filter(a => okAcab.has(a.id) && a.no_catalogo !== false && !ehCombinacaoComBorda(a))
     .map(a => ({
@@ -676,7 +710,19 @@ async function configDoModelo(tenantId, chave) {
       preco_adicional: Number(p.preco_adicional) || 0,
     }));
 
+  // O mapa que a tela consulta a cada troca de cor: por produto, o que
+  // aquela cor aceita de acabamento e de impressão. Só entram os ids que
+  // já estão nas listas acima — o resto a tela nem conhece.
+  const porCor = {};
+  for (const m of membros) {
+    porCor[m.id] = {
+      acabamentos: acabamentos.filter(a => aceita('acabamento', a.id, m.id)).map(a => a.id),
+      processos: processos.filter(p => aceita('processo', p.id, m.id)).map(p => p.id),
+    };
+  }
+
   return {
+    por_cor: porCor,
     modelo: {
       chave, base, capacidade,
       categoria: catRes.data.name,
@@ -747,6 +793,33 @@ function precoDoItem({ produto, quantidade, acabamento, processo }) {
 
   const valorUnitario = Math.round((unitario + extras) * 100) / 100;
   return { unitario: valorUnitario, total: Math.round(valorUnitario * qtd * 100) / 100 };
+}
+
+/**
+ * QUAL COR DO MODELO A ESCOLHA APONTA — o produto de verdade.
+ *
+ * Duas portas, e as duas valem: o campo de grupo «produto» do acabamento
+ * (Bicolor pede a cor da peça) e a primeira cor da impressão, que desde
+ * que a paleta virou a da categoria É a cor do copo. Pintura, borda e
+ * jateado não entram: são serviço sobre o copo, não outro copo.
+ *
+ * Serve para duas coisas que têm que concordar: qual linha de produto é
+ * vendida (preço, código, estoque) e o que aquela cor aceita de
+ * acabamento e de impressão.
+ */
+function produtoDaEscolha(config, escolha = {}) {
+  const acab = (config.acabamentos || []).find(a => a.id === escolha.acabamento_id);
+  for (const campo of acab?.campos || []) {
+    if (campo.grupo !== 'produto') continue;
+    const achado = (config.cores?.produto || []).find(c => c.id === escolha.campos?.[campo.key]);
+    if (achado?.produto_id) return achado.produto_id;
+  }
+  const primeira = (escolha.cores_arte || []).find(Boolean);
+  if (primeira) {
+    const achado = (config.cores?.produto || []).find(c => c.id === primeira);
+    if (achado?.produto_id) return achado.produto_id;
+  }
+  return null;
 }
 
 /**
@@ -823,6 +896,33 @@ function validarEscolha(config, escolha = {}) {
     if (!proc) problemas.push('Esse tipo de impressão não é compatível com este produto.');
   }
 
+  /**
+   * E A COR ESCOLHIDA ACEITA ISSO?
+   *
+   * A tela já não deixa escolher o proibido, mas a tela é do cliente e a
+   * requisição é de quem quiser. Sem esta conferência, "Transfer só no
+   * transparente" seria uma regra que qualquer um contorna trocando um
+   * campo no corpo da requisição — e a produção receberia um pedido que
+   * não sabe fazer.
+   *
+   * Enquanto a cor não foi escolhida não há o que conferir: quem cobra
+   * a cor é a regra das cores da impressão, logo acima.
+   */
+  const produtoId = produtoDaEscolha(config, escolha);
+  const daCor = produtoId ? config.por_cor?.[produtoId] : null;
+  if (daCor) {
+    const nomeDaCor = (config.cores?.produto || [])
+      .find(c => c.produto_id === produtoId)?.name || 'essa cor';
+    if (acab && !daCor.acabamentos.includes(acab.id)) {
+      problemas.push(`${acab.nome} não está liberado para ${nomeDaCor}.`);
+    }
+    if (escolha.processo_id && escolha.tipo_pedido !== 'liso'
+        && !daCor.processos.includes(escolha.processo_id)) {
+      const nome = (config.processos || []).find(p => p.id === escolha.processo_id)?.nome || 'Essa impressão';
+      problemas.push(`${nome} não está liberado para ${nomeDaCor}.`);
+    }
+  }
+
   return { ok: problemas.length === 0, problemas, acabamento: acab };
 }
 
@@ -831,6 +931,6 @@ module.exports = {
   nomeDaCategoria, nomeDoAcabamento, nomeComercial,
   chaveModelo, lerChave,
   familias, modelosDaFamilia, configDoModelo,
-  precoDoItem, validarEscolha,
+  precoDoItem, validarEscolha, produtoDaEscolha,
   escolherPorAlvo, produtosDaFamilia, primeiraFoto, produtosPublicados,
 };

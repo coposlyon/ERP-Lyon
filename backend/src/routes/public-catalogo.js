@@ -25,7 +25,7 @@ const rateLimit = require('express-rate-limit');
 const supabase = require('../config/supabase');
 const {
   familias, modelosDaFamilia, configDoModelo,
-  precoDoItem, validarEscolha,
+  precoDoItem, validarEscolha, produtoDaEscolha,
 } = require('../lib/catalogo');
 // O caixa é o MESMO da loja: PIX, fila de pedidos e virada em venda. Um
 // pedido do catálogo e um pedido da loja chegam no ERP pela mesma porta,
@@ -97,7 +97,8 @@ router.get('/modelo/:chave', async (req, res) => {
  * regra, um lugar.
  */
 router.post('/preco', async (req, res) => {
-  const { modelo, acabamento_id, processo_id, quantidade, campos, tipo_pedido, cores_liso, adicionais } = req.body || {};
+  const { modelo, acabamento_id, processo_id, quantidade, campos, tipo_pedido,
+          cores_liso, cores_arte, adicionais } = req.body || {};
   try {
     const cfg = await configDoModelo(STORE_TENANT, String(modelo || ''));
     if (cfg.erro || cfg.config_ausente) return res.status(404).json({ error: 'Modelo não encontrado' });
@@ -107,6 +108,12 @@ router.post('/preco', async (req, res) => {
       tipo_pedido: tipo_pedido || 'personalizado',
       quantidade: Number(quantidade) || 0,
       cores_liso,
+      // AS CORES ENTRAM NA CONTA DO PREÇO. A primeira é a cor do copo, e
+      // é ela que diz QUAL produto está sendo vendido — preço, código e
+      // o que aquela cor aceita de impressão saem daí. Sem elas aqui, a
+      // tela mostrava o preço da referência do modelo enquanto a cliente
+      // trocava de cor.
+      cores_arte: Array.isArray(cores_arte) ? cores_arte : [],
     };
     const check = validarEscolha(cfg, escolha);
 
@@ -192,18 +199,11 @@ async function adicionaisDoPedido(produtoId, categoriaId, escolhidos) {
 /**
  * Qual produto do cadastro a escolha aponta.
  *
- * Só o campo de grupo "produto" resolve isso — pintura, borda e jateado
- * são serviço sobre o copo, não outro copo.
+ * A CONTA MORA EM `catalogo.js`, junto da conferência que usa a mesma
+ * resposta. Duas cópias da mesma regra é como o preço e a validação
+ * passam a discordar sobre qual copo está sendo vendido.
  */
-function produtoEscolhido(cfg, escolha) {
-  const acab = (cfg.acabamentos || []).find(a => a.id === escolha.acabamento_id);
-  for (const campo of acab?.campos || []) {
-    if (campo.grupo !== 'produto') continue;
-    const escolhido = (cfg.cores?.produto || []).find(c => c.id === escolha.campos?.[campo.key]);
-    if (escolhido?.produto_id) return escolhido.produto_id;
-  }
-  return null;
-}
+const produtoEscolhido = (cfg, escolha) => produtoDaEscolha(cfg, escolha);
 
 /**
  * O mínimo de unidades deste item.
@@ -459,6 +459,7 @@ async function montarItem(item) {
     tipo_pedido: item.tipo_pedido || 'personalizado',
     quantidade: Number(item.quantidade) || 0,
     cores_liso: item.cores_liso,
+    cores_arte: Array.isArray(item.cores_arte) ? item.cores_arte : [],
   };
 
   const check = validarEscolha(cfg, escolha);
