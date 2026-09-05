@@ -789,6 +789,14 @@ export default function Configurador() {
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] pointer-events-none"
                     style={{ color: NEON.fraco }}>un</span>
                 </div>
+                {/* O MÍNIMO, DITO ANTES DE SER APLICADO. O servidor sobe
+                    a quantidade para o mínimo sozinho — e ver o total
+                    mudar sem entender por quê é o que gera a ligação. */}
+                {preco?.quantidade_minima > 1 && (
+                  <p className="text-[11px] mt-1" style={{ color: NEON.suave }}>
+                    Mínimo de <b>{preco.quantidade_minima} un</b> por pedido.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -916,16 +924,12 @@ export default function Configurador() {
                     );
                   })}
 
-                  {personalizado && (
-                    <div>
-                      <Rotulo>Linha de impressão</Rotulo>
-                      <div className="rounded-lg px-3 py-2.5 text-[13px] flex items-center gap-2"
-                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.16)', color: NEON.suave }}>
-                        <Droplet size={13} style={{ color: NEON.ciano }} />
-                        Tinta {cfg.modelo.linha || processoUmaCor?.linha_tinta || 'compatível'}
-                      </div>
-                    </div>
-                  )}
+                  {/* "LINHA DE IMPRESSÃO — TINTA PS" SAIU.
+                      É ficha técnica: a química da tinta tem que casar
+                      com o material do copo, e quem decide isso é a
+                      fábrica, não o cliente. Ocupava um terço da linha
+                      para dizer, a quem está escolhendo cor, uma sigla
+                      que não muda nada do que ele pode escolher. */}
                 </div>
               ) : (
                 <p className="text-[12px]" style={{ color: NEON.fraco }}>
@@ -975,8 +979,11 @@ export default function Configurador() {
                   {processosDaCor.map(pr => (
                     <Opcao key={pr.id} quebrar
                       titulo={pr.nome}
+                      // A LINHA DE TINTA SAIU DAQUI TAMBÉM. "tinta PS" é
+                      // ficha técnica da fábrica; para quem compra, o
+                      // que importa é quantas cores a arte pode ter.
                       sub={pr.max_cores
-                        ? `até ${pr.max_cores} cor${pr.max_cores > 1 ? 'es' : ''}${pr.linha_tinta ? ` · tinta ${pr.linha_tinta}` : ''}`
+                        ? `até ${pr.max_cores} cor${pr.max_cores > 1 ? 'es' : ''} na arte`
                         : 'arte colorida, do jeito que você quiser'}
                       icone={pr.max_cores === 1 ? Droplet : Palette}
                       cor={pr.max_cores === 1 ? NEON.ciano : NEON.magenta}
@@ -1002,6 +1009,27 @@ export default function Configurador() {
                     </p>
                   )}
                 </div>
+
+                {/* FRENTE OU FRENTE E VERSO SUBIU PARA CÁ.
+                    Ela morava dentro de "Personalização", atrás da
+                    pergunta "quer personalizar?" — e é uma decisão de
+                    IMPRESSÃO: muda o preço e é irmã do tipo de
+                    impressão, não da arte. Quem só queria o copo com
+                    dois lados impressos tinha que abrir um painel que
+                    fala de nomes e datas para chegar nela. */}
+                {gabarito?.permite_verso !== false && (
+                  <div className="mt-3">
+                    <Rotulo>Onde a impressão vai</Rotulo>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      <Opcao titulo="Só na frente" icone={Box} cor={NEON.azul} quebrar
+                        ativo={estado.posicao === 'frente'}
+                        onClick={() => mudar({ posicao: 'frente' })} />
+                      <Opcao titulo="Frente e verso" icone={Layers} cor={NEON.ciano} quebrar
+                        ativo={estado.posicao === 'frente_verso'}
+                        onClick={() => mudar({ posicao: 'frente_verso' })} />
+                    </div>
+                  </div>
+                )}
 
                 {/* AS OUTRAS CORES DA PEÇA. A primeira já foi
                     perguntada acima — ela é a cor do copo, e é dela que
@@ -1259,34 +1287,18 @@ export default function Configurador() {
                   O que fica é o que MUDA O PREÇO — frente ou frente e
                   verso — mais a ocasião, que é uma etiqueta e ajuda a
                   produção a preparar o material. */}
-              <div className="grid gap-3 sm:grid-cols-2 mt-3">
-                <div>
-                  <Rotulo>Posição da arte</Rotulo>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Opcao titulo="Frente" icone={Box} cor={NEON.azul}
-                      ativo={estado.posicao === 'frente'}
-                      onClick={() => mudar({ posicao: 'frente' })} />
-                    {gabarito?.permite_verso !== false && (
-                      <Opcao titulo="Frente e verso" icone={Layers} cor={NEON.ciano}
-                        ativo={estado.posicao === 'frente_verso'}
-                        onClick={() => mudar({ posicao: 'frente_verso' })} />
-                    )}
+              {ocasioes.filter(o => o.destaque).length > 0 && (
+                <div className="mt-3">
+                  <Rotulo>Ocasião do evento (opcional)</Rotulo>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ocasioes.filter(o => o.destaque).map(o => (
+                      <Opcao key={o.id} titulo={o.nome} cor={NEON.rosa}
+                        ativo={estado.ocasiao === o.id}
+                        onClick={() => mudar({ ocasiao: estado.ocasiao === o.id ? null : o.id })} />
+                    ))}
                   </div>
                 </div>
-
-                {ocasioes.filter(o => o.destaque).length > 0 && (
-                  <div>
-                    <Rotulo>Ocasião do evento (opcional)</Rotulo>
-                    <div className="flex flex-wrap gap-1.5">
-                      {ocasioes.filter(o => o.destaque).map(o => (
-                        <Opcao key={o.id} titulo={o.nome} cor={NEON.rosa}
-                          ativo={estado.ocasiao === o.id}
-                          onClick={() => mudar({ ocasiao: estado.ocasiao === o.id ? null : o.id })} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              )}
 
               <div className="mt-3">
                 <Nota icone={PenTool} cor={NEON.roxo}>
