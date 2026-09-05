@@ -153,6 +153,98 @@ router.put('/categoria/:id/nome-catalogo', exigirGestao, async (req, res) => {
 // ── Gabaritos da arte ───────────────────────────────────────
 
 // ============================================================
+// O CATALOGO DA CATEGORIA INTEIRA.
+//
+// A matriz de compatibilidade aceita regra por CATEGORIA ou por
+// PRODUTO, e a de categoria e a que resolve o caso comum: "todo Long
+// Drink 350 aceita borda". Ate agora so existia tela para a regra de
+// PRODUTO — quem quisesse abrir a borda para a categoria inteira tinha
+// de abrir os 24 produtos, um a um, ou colar SQL.
+//
+// A regra de produto continua vencendo esta: e assim que se abre para a
+// categoria e se fecha uma cor especifica, sem reescrever o resto.
+// ============================================================
+
+const TIPOS = ['acabamento', 'processo', 'cor'];
+
+router.get('/categoria/:id/regras', async (req, res) => {
+  try {
+    const [cat, acab, proc, cores, regras] = await Promise.all([
+      supabase.from('CATEGORIAS').select('id, name')
+        .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle(),
+      supabase.from('CONFIG_ACABAMENTOS').select('id, name, label_comercial, seq')
+        .eq('tenant_id', req.tenantId).eq('is_active', true).order('seq'),
+      supabase.from('CONFIG_PROCESSOS').select('id, name, max_cores, seq')
+        .eq('tenant_id', req.tenantId).eq('is_active', true).order('seq'),
+      supabase.from('CONFIG_CORES').select('id, name, grupo, hex, seq')
+        .eq('tenant_id', req.tenantId).eq('is_active', true).order('seq'),
+      supabase.from('PRODUTO_COMPATIBILIDADE').select('tipo, ref_id, permitido')
+        .eq('tenant_id', req.tenantId).eq('category_id', req.params.id),
+    ]);
+    if (!cat.data) return res.status(404).json({ error: 'Categoria nao encontrada' });
+
+    // Ausencia de linha = NAO liberado. E o mesmo criterio que o
+    // catalogo publico usa para montar a vitrine; a tela nao pode dizer
+    // "sim" onde a vitrine diz "nao".
+    const mapa = {};
+    for (const t of TIPOS) mapa[t] = {};
+    for (const r of regras.data || []) {
+      if (mapa[r.tipo]) mapa[r.tipo][r.ref_id] = !!r.permitido;
+    }
+    const marca = (linhas, tipo, extra = () => ({})) => (linhas || []).map(x => ({
+      id: x.id,
+      nome: x.label_comercial || x.name,
+      permitido: mapa[tipo][x.id] === true,
+      ...extra(x),
+    }));
+
+    res.json({
+      categoria: cat.data,
+      acabamentos: marca(acab.data, 'acabamento'),
+      processos: marca(proc.data, 'processo', x => ({ max_cores: x.max_cores })),
+      cores: marca(cores.data, 'cor', x => ({ grupo: x.grupo, hex: x.hex })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/categoria/:id/regras', exigirGestao, async (req, res) => {
+  const tipo = String(req.body?.tipo || '');
+  if (!TIPOS.includes(tipo)) return res.status(400).json({ error: 'Tipo invalido' });
+
+  try {
+    // So os LIBERADOS viram linha. Bloqueado e a ausencia de regra — e
+    // isso importa: gravar `permitido = false` para tudo encheria a
+    // tabela de linhas que dizem o que ja era o padrao, e a proxima
+    // pessoa a ler acharia que alguem decidiu fechar cada uma delas.
+    const liberados = Object.entries(req.body?.regras || {})
+      .filter(([, v]) => v === true)
+      .map(([ref_id]) => ref_id);
+
+    const { error: erroDel } = await supabase.from('PRODUTO_COMPATIBILIDADE')
+      .delete().eq('tenant_id', req.tenantId).eq('category_id', req.params.id).eq('tipo', tipo);
+    if (erroDel) throw erroDel;
+
+    if (liberados.length) {
+      const linhas = liberados.map(ref_id => ({
+        tenant_id: req.tenantId, category_id: req.params.id, product_id: null,
+        tipo, ref_id, permitido: true,
+      }));
+      for (let i = 0; i < linhas.length; i += 500) {
+        const { error } = await supabase.from('PRODUTO_COMPATIBILIDADE').insert(linhas.slice(i, i + 500));
+        if (error) throw error;
+      }
+    }
+
+    audit(req, 'update', 'categoria-catalogo', req.params.id, { tipo, liberados: liberados.length });
+    res.json({ ok: true, tipo, liberados: liberados.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
 // O PRECO DO ACABAMENTO E DA IMPRESSAO, POR FAIXA DE QUANTIDADE
 // (migracao 099).
 //

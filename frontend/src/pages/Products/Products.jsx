@@ -157,6 +157,9 @@ export default function Products() {
           chave,
           titulo: [categoria, cap].filter(Boolean).join(' '),
           categoria,
+          // O ID vai junto: e por ele que a aba "Catalogo personalizado"
+          // grava a regra da categoria inteira.
+          category_id: p.category_id || null,
           capacidade: cap,
           cores: [],
         });

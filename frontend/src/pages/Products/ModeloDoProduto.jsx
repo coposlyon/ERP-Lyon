@@ -18,10 +18,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Palette, PlusCircle, Plus, Loader2, Edit2, AlertTriangle,
-  Image as ImageIcon, Check, Search, Trash2, Info,
+  Image as ImageIcon, Check, Search, Trash2, Info, Layers,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
+import CatalogoDaCategoria from './CatalogoDaCategoria';
 import Modal from '@/components/UI/Modal';
 import ComoEntraNoCopo from '@/components/UI/ComoEntraNoCopo';
 
@@ -342,6 +343,10 @@ export default function ModeloDoProduto({ modelo, onClose, onEditarCor, onNovaCo
   const ABAS = [
     { k: 'cores', t: `Cores (${modelo.cores.length})`, i: Palette },
     { k: 'adicionais', t: 'Adicionais', i: PlusCircle },
+    // A REGRA DA CATEGORIA INTEIRA. Ate aqui so existia tela para a
+    // regra de PRODUTO — abrir a borda para a categoria toda pedia
+    // abrir os 24 produtos, um a um.
+    { k: 'catalogo', t: 'Catálogo personalizado', i: Layers },
   ];
 
   return (
@@ -358,7 +363,11 @@ export default function ModeloDoProduto({ modelo, onClose, onEditarCor, onNovaCo
           ))}
         </div>
 
-        {aba === 'cores' ? (
+        {aba === 'catalogo' ? (
+          <CatalogoDaCategoria
+            categoryId={modelo.category_id || modelo.cores?.[0]?.category_id || null}
+            titulo={modelo.titulo} />
+        ) : aba === 'cores' ? (
           <div className="space-y-3">
             {/* Fecha ao aplicar: o `modelo` desta janela é um retrato
                 tirado quando ela abriu. Mantê-la aberta mostraria os
