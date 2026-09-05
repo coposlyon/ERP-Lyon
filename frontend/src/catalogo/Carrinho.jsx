@@ -141,6 +141,17 @@ export default function Carrinho() {
     quantidade: i.quantidade,
     posicao: i.posicao,
     projeto_id: i.projeto_id,
+    // ESTA LISTA É DE PERMISSÃO, e por isso campo novo tem que ser
+    // lembrado aqui — senão ele existe no carrinho, existe no servidor,
+    // e some no meio do caminho sem erro nenhum.
+    //
+    // `personalizar` é o que libera o editor no acompanhamento depois
+    // do pagamento; `cores_arte` diz QUAL cor de copo foi escolhida (é
+    // por ela que o servidor sabe qual produto está sendo vendido) e os
+    // nomes são o que a produção lê na máquina.
+    personalizar: !!i.personalizar,
+    cores_arte: i.cores_arte || [],
+    cores_arte_nomes: i.cores_arte_nomes || [],
     // OS IDS DO QUE ELA MARCOU, e só. O preço de cada adicional o
     // servidor relê do cadastro no fechamento — mandar valor daqui
     // seria deixar o navegador dizer quanto custa.
