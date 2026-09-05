@@ -215,7 +215,6 @@ export default function Configurador() {
     // mesma coisa duas vezes. O nome vem do cadastro do produto e as
     // opcoes de CONFIG_CORES, entao a comparacao ignora acento e caixa.
     let corMudou = false;
-    let coresDoLink = null;
     const corDoLink = params.get('cor');
     if (corDoLink) {
       const chave = txt => String(txt || '').normalize('NFD')
@@ -229,20 +228,6 @@ export default function Configurador() {
           corMudou = true;
         }
       }
-
-      // E QUANDO O ACABAMENTO NÃO PEDE COR, A COR DO LINK É A COR DO
-      // COPO. Ela virou a primeira pergunta da tela — é dela que sai o
-      // que aquele copo aceita de impressão. Quem clicou no card da
-      // PÉROLA na vitrine já respondeu: abrir a tela com a pergunta em
-      // branco é perguntar duas vezes, e pior, é mostrar a lista do
-      // modelo inteiro antes de encolher sozinha um segundo depois.
-      if (!campoBase) {
-        const achada = (cfg?.cores?.produto || []).find(c => chave(c.name) === alvoCor);
-        if (achada && (estado.cores_arte || [])[0] !== achada.id) {
-          coresDoLink = [achada.id, ...(estado.cores_arte || []).slice(1)];
-          corMudou = true;
-        }
-      }
     }
 
     // A SAÍDA ANTECIPADA FICAVA ANTES DA COR, e por isso o clique no
@@ -252,12 +237,39 @@ export default function Configurador() {
     // desiste quando NÃO HÁ NADA a aplicar — nem acabamento, nem cor.
     if (alvo.id === estado.acabamento_id && !corMudou) return;
 
-    mudar({
-      acabamento_id: alvo.id,
-      campos: restante,
-      ...(coresDoLink ? { cores_arte: coresDoLink } : {}),
-    });
+    mudar({ acabamento_id: alvo.id, campos: restante });
   }, [cfg, params, estado.acabamento_id, estado.campos, mudar]);
+
+  /**
+   * A COR DO LINK É A COR DO COPO — e não depende de acabamento nenhum.
+   *
+   * Isto morava dentro do efeito do acabamento, que sai logo na
+   * primeira linha quando o modelo não tem acabamento liberado. O LONG
+   * DRINK está assim, e o clique no card da PÉROLA abria o
+   * configurador com a cor em branco: a cliente respondia na vitrine e
+   * a tela perguntava de novo — e pior, mostrava a lista de impressões
+   * do modelo inteiro até ela responder.
+   *
+   * Uma vez por abertura. Depois disto quem manda é o seletor da tela,
+   * e reaplicar o link desfaria a escolha dela.
+   */
+  const corDoLinkAplicada = useRef(false);
+  useEffect(() => {
+    if (corDoLinkAplicada.current) return;
+    const pedida = params.get('cor');
+    if (!pedida || !cfg?.cores?.produto?.length) return;
+    corDoLinkAplicada.current = true;
+
+    const chave = txt => String(txt || '').normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+    const alvo = chave(pedida);
+    const achada = cfg.cores.produto.find(c => chave(c.name) === alvo);
+    if (!achada) return;
+
+    setEstado(a => ((a.cores_arte || [])[0] === achada.id
+      ? a
+      : { ...a, cores_arte: [achada.id, ...(a.cores_arte || []).slice(1)] }));
+  }, [cfg, params]);
 
   const acabamento = useMemo(
     () => (cfg?.acabamentos || []).find(a => a.id === estado.acabamento_id) || null,
@@ -854,7 +866,13 @@ export default function Configurador() {
                 opção e tirá-la um clique depois.
                 Só aparece quando o acabamento não pede a cor da peça —
                 havendo campo de cor no acabamento, quem manda é ele. */}
-            {personalizado && quantasCores > 0 && !acabamento?.campos?.some(c => c.grupo === 'produto') && (
+            {/* SEM AMARRAR NO NUMERO DE CORES. Quantas cores a peça tem
+                é o tipo de impressão que diz — e o tipo de impressão só
+                aparece DEPOIS da cor, porque depende dela. Amarrado nos
+                dois, o seletor não aparecia nunca: nem cor, nem
+                impressão, nem jeito de começar. */}
+            {personalizado && coresDaTinta.length > 0
+              && !acabamento?.campos?.some(c => c.grupo === 'produto') && (
               <div className="mt-4">
                 <Rotulo>Cor do copo{quantasCores > 1 ? ' · parte de baixo' : ''}</Rotulo>
                 <div className="max-w-sm">
