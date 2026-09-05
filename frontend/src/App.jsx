@@ -20,7 +20,9 @@ import MeusPedidos from '@/pages/Public/MeusPedidos';
 // Páginas do ERP carregadas sob demanda (code-splitting por rota) —
 // cada uma vira um chunk próprio, deixando a carga inicial leve.
 const Dashboard          = lazy(() => import('@/pages/Dashboard/Dashboard'));
-const Products           = lazy(() => import('@/pages/Products/Products'));
+// A tela de Produtos com as pecas dele junto — cores, acessorios,
+// bordas, tintas, itens e insumos viraram secoes dela.
+const Products           = lazy(() => import('@/pages/Products/ProdutosShell'));
 const Customers          = lazy(() => import('@/pages/Customers/Customers'));
 const CustomerDetail     = lazy(() => import('@/pages/Customers/CustomerDetail'));
 const LyonPrime          = lazy(() => import('@/pages/LyonPrime/LyonPrime'));

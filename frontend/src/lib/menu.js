@@ -126,12 +126,15 @@ export const menuItems = [
       // Cadastrar canudo, borda e tinta é cadastro — quem faz isso é
       // quem compra, não quem forma preço. A engenharia LÊ estes
       // valores; ela não é mais o lugar de digitá-los.
-      { label: 'Cores',      path: '/cadastros/cores',      icon: Palette,  module: 'products' },
-      { label: 'Acessórios', path: '/cadastros/acessorios', icon: Sparkles, module: 'products' },
-      { label: 'Bordas',     path: '/cadastros/bordas',     icon: Layers,   module: 'products' },
-      { label: 'Tintas',     path: '/cadastros/tintas',     icon: Droplet,  module: 'products' },
-      { label: 'Itens (todos)', path: '/cadastros/itens',   icon: Box,      module: 'products' },
-      { label: 'Insumos',      path: '/engenharia/insumos', icon: FlaskConical, module: 'financial' },
+      // CORES, ACESSORIOS, BORDAS, TINTAS, ITENS E INSUMOS SAIRAM DAQUI.
+      //
+      // Nenhum deles e cadastro que vive por conta propria: sao as PECAS
+      // do produto. A cor existe porque o copo tem cor; a tinta existe
+      // porque a arte e impressa nele. Soltos no menu, obrigavam a sair
+      // de Produtos para cadastrar o que so serve a Produtos.
+      //
+      // Viraram secoes da propria tela de Produtos. As rotas antigas
+      // continuam respondendo — link salvo e favorito nao quebram.
     ],
   },
   {
