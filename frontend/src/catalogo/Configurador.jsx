@@ -362,15 +362,6 @@ export default function Configurador() {
     () => adicionaisEscolhidos.filter(a => a.tipo !== 'borda'),
     [adicionaisEscolhidos]);
 
-  const escolhaVisual = useMemo(() => {
-    const campos = {};
-    for (const campo of acabamento?.campos || []) {
-      const id = estado.campos?.[campo.key];
-      if (id) campos[campo.key] = opcoesDoCampo(campo).find(c => c.id === id) || null;
-    }
-    return { acabamento, campos };
-  }, [acabamento, estado.campos, cfg]);
-
   /**
    * QUANTAS CORES A ARTE TEM — e quais.
    *
@@ -399,18 +390,51 @@ export default function Configurador() {
 
   const quantasCores = Number(processo?.max_cores) || 0;
 
-  // Os hexadecimais na ordem escolhida, para a prévia marcar a área de
-  // impressão nas cores da tinta.
+  // AS CORES ESCOLHIDAS, POR INTEIRO — e não só o hexadecimal.
+  // Cada uma é um produto do cadastro, com foto: é dela que a prévia
+  // tira a peça a mostrar (ver `escolhaVisual`, logo abaixo). O
+  // hexadecimal continua saindo daqui para pintar as faixas.
+  //
   // `corDe` E NAO `.hex`: a maioria das cores esta cadastrada sem hex, e
   // pegar o campo cru devolvia `undefined` para todas — o `filter`
-  // esvaziava a lista e a previa nao pintava nada. Foi o que fez a cor
-  // "nao trocar" na tela.
-  const hexDasCoresArte = useMemo(
+  // esvaziava a lista e a previa nao pintava nada.
+  const coresEscolhidas = useMemo(
     () => (estado.cores_arte || [])
       .map(id => coresDaTinta.find(c => c.id === id))
-      .filter(Boolean)
-      .map(c => corDe(c)),
+      .filter(Boolean),
     [estado.cores_arte, coresDaTinta]);
+
+  const hexDasCoresArte = useMemo(
+    () => coresEscolhidas.map(c => corDe(c)), [coresEscolhidas]);
+
+  const escolhaVisual = useMemo(() => {
+    const campos = {};
+    for (const campo of acabamento?.campos || []) {
+      const id = estado.campos?.[campo.key];
+      if (id) campos[campo.key] = opcoesDoCampo(campo).find(c => c.id === id) || null;
+    }
+
+    /**
+     * A COR ESCOLHIDA É A PEÇA — e a prévia mostra A FOTO DELA.
+     *
+     * As cores oferecidas são as da categoria: cada uma é um produto de
+     * verdade no cadastro, com foto de estúdio. Escolher "Azul
+     * Translucido" e continuar vendo o copo verde da foto de referência
+     * é a tela dizendo que não registrou o clique — e a cliente clica de
+     * novo.
+     *
+     * Entra como `cor_produto` porque é exatamente isso que ela é, e
+     * porque `cor_produto` é a primeira da ORDEM_DA_FOTO na prévia: a
+     * peça de verdade ganha de qualquer tinta. Só entra quando o
+     * acabamento não trouxe cor nenhuma — havendo campo de cor da peça,
+     * quem manda é ele.
+     */
+    if (!campos.cor_produto && !campos.cor_base && coresEscolhidas[0]) {
+      campos.cor_produto = coresEscolhidas[0];
+    }
+
+    return { acabamento, campos };
+  }, [acabamento, estado.campos, cfg, coresEscolhidas]);
 
   function trocarCorArte(i, valor) {
     const arr = [...(estado.cores_arte || [])];

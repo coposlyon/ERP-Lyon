@@ -96,9 +96,9 @@ const ehVidro = opcao =>
 export function faixasDoCorpo(campos = {}, coresArte = []) {
   const daPeca = [campos.cor_base, campos.cor_meio, campos.cor_topo]
     .filter(Boolean).map(c => corDe(c));
-  if (daPeca.length >= 2) return { faixas: daPeca, daImpressao: false };
-  if (coresArte.length >= 2) return { faixas: coresArte, daImpressao: true };
-  return { faixas: [], daImpressao: false };
+  if (daPeca.length >= 2) return daPeca;
+  if (coresArte.length >= 2) return coresArte;
+  return [];
 }
 
 // ── A FOTO QUE COMBINA COM A COR ESCOLHIDA ───────────────────
@@ -295,7 +295,7 @@ function Desenho({
 
   // As faixas do corpo, de baixo para cima. Duas ou mais viram bandas
   // de verdade; uma só continua sendo o corpo inteiro de uma cor.
-  const { faixas, daImpressao } = faixasDoCorpo(campos, coresArte);
+  const faixas = faixasDoCorpo(campos, coresArte);
 
   const id = `copo-${familia || 'padrao'}`;
   const vidro = ehVidro(base) && !topo;
@@ -399,35 +399,6 @@ function Desenho({
           </g>
         )}
 
-        {/* A COR DA TINTA, ANTES DE EXISTIR ARTE.
-            A cliente escolhe "Serigrafia 2 cores · Vermelho e Branco" e
-            o copo não mudava em nada — a cor da arte é tinta, não é a
-            cor da peça, e não tinha por que pintar o corpo. Mas não
-            mostrar NADA fazia a escolha parecer não ter sido registrada.
-            Enquanto a arte não é montada, a área de impressão aparece
-            marcada nas cores escolhidas: é onde a tinta vai, e nela. */}
-        {!arte && coresArte.length > 0 && (
-          <g clipPath={`url(#${id}-recorte)`} opacity="0.9">
-            {/* SE AS CORES JÁ PINTARAM O COPO, NÃO SE PINTA DUAS VEZES.
-                Com as faixas no corpo, encher também a janela da arte
-                repete a mesma informação e some com a única coisa que a
-                janela tem para dizer: ONDE a impressão sai. Fica só o
-                tracejado. */}
-            {!daImpressao && coresArte.map((hex, i) => {
-              const alturaFaixa = alturaArte / coresArte.length;
-              return (
-                <rect key={i}
-                  x={F.arte.cx - larguraArte / 2}
-                  y={F.arte.topo + i * alturaFaixa}
-                  width={larguraArte} height={alturaFaixa}
-                  fill={hex} rx="2" opacity="0.85" />
-              );
-            })}
-            <rect x={F.arte.cx - larguraArte / 2} y={F.arte.topo}
-              width={larguraArte} height={alturaArte}
-              fill="none" stroke="rgba(255,255,255,0.35)" strokeDasharray="3 3" rx="2" />
-          </g>
-        )}
       </svg>
     </figure>
   );
@@ -867,7 +838,7 @@ export default function CopoPreview({
   const espelhar = face !== 'verso';
 
   // As faixas de cor do corpo, de baixo para cima — ver `faixasDoCorpo`.
-  const { faixas, daImpressao } = faixasDoCorpo(campos, coresArte);
+  const faixas = faixasDoCorpo(campos, coresArte);
 
   // A FOTO DA COR ESCOLHIDA, E A VERDADE SOBRE ELA.
   //
@@ -979,28 +950,6 @@ export default function CopoPreview({
           }} dangerouslySetInnerHTML={{ __html: arte }} />
         )}
 
-        {/* A COR DA TINTA SOBRE A FOTO.
-            A marcação já existia no desenho vetorial — mas a prévia só
-            desenha quando NÃO há foto, e a Lyon tem foto de quase tudo.
-            Na prática a cliente trocava a cor e a tela não mexia um
-            pixel. A mesma janela da arte, nas cores escolhidas: é onde a
-            tinta vai, e nela. */}
-        {!arte && coresArte.length > 0 && (
-          <div className="absolute overflow-hidden rounded-[3px] flex flex-col" style={{
-            left: `${((espelhar ? 1 - janela.cx : janela.cx) - janela.largura / 2) * 100}%`,
-            top: `${janela.topo * 100}%`,
-            width: `${janela.largura * 100}%`,
-            height: `${janela.altura * 100}%`,
-            outline: '1px dashed rgba(17,19,24,0.35)',
-          }}>
-            {/* Com o corpo já pintado nessas mesmas cores, a janela
-                cheia só repete a informação e esconde a única coisa que
-                ela tem para dizer: onde a impressão sai. */}
-            {!daImpressao && coresArte.map((hex, i) => (
-              <span key={i} style={{ background: hex, flex: 1, opacity: 0.88 }} />
-            ))}
-          </div>
-        )}
       </div>
       {rodape}
       <Acessorios itens={acessorios} />
