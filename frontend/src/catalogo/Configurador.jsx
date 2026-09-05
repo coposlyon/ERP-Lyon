@@ -368,6 +368,22 @@ export default function Configurador() {
     return () => ++n;
   })();
 
+  /**
+   * OU É BORDA, OU É TAMPA — nunca as duas.
+   *
+   * A tampa encaixa no aro; a borda metalizada É o aro pintado. Uma
+   * cobre a outra: o copo sai com a borda que a cliente pagou e não
+   * consegue ver, e a reclamação chega depois de entregue.
+   *
+   * A BORDA SE RECONHECE PELO CADASTRO (`tipo === 'borda'`), que é como
+   * a prévia já a reconhece. A tampa não tem tipo próprio — é um
+   * acessório entre outros —, então vai pelo nome, e é a única coisa
+   * escrita aqui. No dia em que existir "tipo: tampa" no cadastro, esta
+   * linha some e nada mais muda.
+   */
+  const ehTampa = a => /\btampa/i.test(String(a?.nome || ''));
+  const brigaCom = a => (a?.tipo === 'borda' ? ehTampa : (ehTampa(a) ? (x => x?.tipo === 'borda') : null));
+
   const gruposAdicionais = useMemo(() => {
     const porNome = new Map();
     for (const a of preco?.adicionais_disponiveis || []) {
@@ -478,7 +494,51 @@ export default function Configurador() {
    * escolhida não há como filtrar — e aí a lista é a do modelo, com o
    * aviso de que ela ainda vai encolher.
    */
-  const corDoCopo = coresEscolhidas[0] || null;
+  /**
+   * O CAMPO DO ACABAMENTO QUE JÁ PERGUNTA A COR DA PEÇA.
+   *
+   * "Tradicional" pede «Cor do produto»; "Degradê" pede «Cor». Havendo
+   * um deles, o seletor solto de "Cor do copo" seria a mesma pergunta
+   * feita duas vezes na mesma tela.
+   */
+  const campoDeCor = useMemo(
+    () => (acabamento?.campos || []).find(
+      c => c.grupo === 'produto' || (c.grupo === 'pintura' && !c.apenas?.length)) || null,
+    [acabamento]);
+
+  /**
+   * A COR DA PEÇA — venha ela de onde vier.
+   *
+   * É por ela que a tela sabe o que aquele copo aceita, e ela tem duas
+   * portas: o campo «Cor do produto» do acabamento e o seletor de cor
+   * da impressão. Lendo só a segunda, ligar o acabamento Tradicional
+   * (que pergunta pela primeira) desligava o filtro por cor inteiro —
+   * e o Transfer voltava a aparecer em todas.
+   */
+  const corDoCopo = useMemo(() => {
+    if (campoDeCor?.grupo === 'produto') {
+      const id = estado.campos?.[campoDeCor.key];
+      const achada = (cfg?.cores?.produto || []).find(c => c.id === id);
+      if (achada) return achada;
+    }
+    return coresEscolhidas[0] || null;
+  }, [campoDeCor, estado.campos, cfg, coresEscolhidas]);
+
+  /**
+   * A COR DO ACABAMENTO ESPELHA NA PRIMEIRA COR DA IMPRESSÃO.
+   *
+   * Assim tudo que vem depois — a prévia, o preço, a conferência do
+   * servidor — lê a cor de UM lugar só. E é o que segura o filtro de
+   * pé na troca de acabamento: saindo do Tradicional para o Degradê, o
+   * Degradê não tem campo de cor de produto, e sem o espelho a tela
+   * perdia a cor e voltava a mostrar a lista do modelo inteiro.
+   */
+  useEffect(() => {
+    if (campoDeCor?.grupo !== 'produto') return;
+    const id = estado.campos?.[campoDeCor.key] || '';
+    if (!id || (estado.cores_arte || [])[0] === id) return;
+    setEstado(a => ({ ...a, cores_arte: [id, ...(a.cores_arte || []).slice(1)] }));
+  }, [campoDeCor, estado.campos, estado.cores_arte]);
   const liberado = useMemo(
     () => (corDoCopo?.produto_id ? cfg?.por_cor?.[corDoCopo.produto_id] : null) || null,
     [cfg, corDoCopo]);
@@ -871,8 +931,7 @@ export default function Configurador() {
                 aparece DEPOIS da cor, porque depende dela. Amarrado nos
                 dois, o seletor não aparecia nunca: nem cor, nem
                 impressão, nem jeito de começar. */}
-            {personalizado && coresDaTinta.length > 0
-              && !acabamento?.campos?.some(c => c.grupo === 'produto') && (
+            {personalizado && coresDaTinta.length > 0 && !campoDeCor && (
               <div className="mt-4">
                 <Rotulo>Cor do copo{quantasCores > 1 ? ' · parte de baixo' : ''}</Rotulo>
                 <div className="max-w-sm">
@@ -994,6 +1053,19 @@ export default function Configurador() {
                 Opcional. Vem <b>um para cada copo</b> do pedido, e o preço se ajusta na hora.
               </p>
 
+              {/* Dito ANTES de acontecer. A troca automática sem aviso lê
+                  como bug: a cliente marca a tampa e vê a borda apagar
+                  sozinha. */}
+              {(preco?.adicionais_disponiveis || []).some(a => a.tipo === 'borda')
+                && (preco?.adicionais_disponiveis || []).some(ehTampa) && (
+                <div className="mb-3">
+                  <Nota icone={Info} cor={NEON.ciano}>
+                    <b>Borda e tampa não vão juntas</b> — a tampa encaixa no aro, que é
+                    onde a borda fica. Escolher uma tira a outra.
+                  </Nota>
+                </div>
+              )}
+
               <div className="space-y-2">
                 {gruposAdicionais.map(g => {
                   const escolhido = g.opcoes.find(o => estado.adicionais.includes(o.item_id)) || null;
@@ -1065,9 +1137,19 @@ export default function Configurador() {
                             return (
                               <button key={o.item_id} type="button" aria-pressed={ativo}
                                 onClick={() => {
+                                  // Sai o que este grupo já tinha, e sai
+                                  // também o que briga com o escolhido:
+                                  // marcar tampa desmarca a borda, e
+                                  // vice-versa.
+                                  const rival = brigaCom(o);
+                                  const disponiveis = preco?.adicionais_disponiveis || [];
                                   mudar({
                                     adicionais: [
-                                      ...estado.adicionais.filter(id => !g.opcoes.some(x => x.item_id === id)),
+                                      ...estado.adicionais.filter(id => {
+                                        if (g.opcoes.some(x => x.item_id === id)) return false;
+                                        if (!rival) return true;
+                                        return !rival(disponiveis.find(x => x.item_id === id));
+                                      }),
                                       o.item_id,
                                     ],
                                   });
