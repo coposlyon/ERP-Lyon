@@ -516,7 +516,18 @@ function marco(action, req, extra = {}) {
  * Devolve `{ erro }` quando não dá, e `{ status, log, fase, destino }`
  * quando dá. Quem chama grava — assim a decisão fica testável sem banco.
  */
-function avancar(venda, aplicaveis, quem, req, observacao = null) {
+function avancar(venda, aplicaveis, quem, req, observacao = null, opcoes = {}) {
+  // O AVANCO AUTOMATICO PULA A PERMISSAO E O REQUISITO — e so eles.
+  //
+  // Quem liga isso e a empresa, no painel de pedidos, dizendo "aqui o
+  // pagamento ja vem acertado antes do pedido entrar". A politica ja
+  // FOI a decisao humana; pedir de novo o comprovante e a permissao
+  // seria pedir duas vezes a mesma autorizacao.
+  //
+  // O que NAO se pula: pedido encerrado nao anda, e fase de fabrica sem
+  // envio nao anda. Essas duas nao sao burocracia — sao o registro
+  // batendo com o que aconteceu no chao.
+  const automatico = !!opcoes.automatico;
   if (A.finalizado(venda?.status)) {
     return { erro: 'Este pedido já está encerrado.' };
   }
@@ -536,27 +547,34 @@ function avancar(venda, aplicaveis, quem, req, observacao = null) {
     };
   }
 
-  if (!podeAtuarNaFase(fase.key, quem)) {
+  if (!automatico && !podeAtuarNaFase(fase.key, quem)) {
     const area = A.infoStatus(statusDeEntrada(fase)).area;
     return { erro: `Esta etapa é de ${A.AREAS[area] || area}. Peça a alguém da área ou a um gerente.`, http: 403 };
   }
 
-  const ctx = { ...venda, pagamento: liberacaoDePagamento(venda) };
-  const requisitos = (REQUISITOS[fase.key] ? REQUISITOS[fase.key](ctx) : [])
-    .map(r => ({ obrigatorio: true, ...r }));
-  const faltando = requisitos.filter(r => r.obrigatorio && !r.ok);
-  if (faltando.length) {
-    return {
-      erro: `Ainda falta: ${faltando.map(r => r.label.toLowerCase()).join('; ')}.`,
-      requisitos: faltando,
-    };
+  if (!automatico) {
+    const ctx = { ...venda, pagamento: liberacaoDePagamento(venda) };
+    const requisitos = (REQUISITOS[fase.key] ? REQUISITOS[fase.key](ctx) : [])
+      .map(r => ({ obrigatorio: true, ...r }));
+    const faltando = requisitos.filter(r => r.obrigatorio && !r.ok);
+    if (faltando.length) {
+      return {
+        erro: `Ainda falta: ${faltando.map(r => r.label.toLowerCase()).join('; ')}.`,
+        requisitos: faltando,
+      };
+    }
   }
 
   const log = Array.isArray(venda.production_log) ? [...venda.production_log] : [];
   marcos.forEach((m, i) => {
     // A observação acompanha o marco que a pessoa de fato registrou —
     // o primeiro. O segundo é só a porta da fase seguinte.
-    log.push(marco(m, req, i === 0 && observacao ? { observacao: String(observacao).slice(0, 500) } : {}));
+    // `automatico` fica gravado no marco: daqui a seis meses, quem olhar
+    // a linha do tempo precisa saber que ninguém clicou ali.
+    log.push(marco(m, req, {
+      ...(i === 0 && observacao ? { observacao: String(observacao).slice(0, 500) } : {}),
+      ...(automatico ? { automatico: true } : {}),
+    }));
   });
 
   return { status: destino, log, fase, destino };

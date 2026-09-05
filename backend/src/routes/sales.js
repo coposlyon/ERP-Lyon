@@ -19,6 +19,9 @@ const C = require('../lib/comprovante');
 // A cobranca PIX da chave da propria loja (Nubank). Sem gateway: o
 // dinheiro cai direto na conta, e por isso a baixa e manual.
 const { gerarCobrancaPix } = require('../lib/pixCobranca');
+// O que o pedido faz sozinho ao nascer — hoje, confirmar o pagamento
+// quando a empresa configurou assim.
+const Auto = require('../lib/pedidoAutomacao');
 
 const saleSchema = Joi.object({
   items: Joi.array().min(1).items(
@@ -45,6 +48,52 @@ router.get('/payment-terms', async (req, res) => {
 
 // O vocabulário de origem que a tela desenha no seletor e na coluna.
 router.get('/origens', (req, res) => res.json(ORIGENS));
+
+// ============================================================
+// A CONFIGURACAO DO PAINEL DE PEDIDOS.
+//
+// Rota propria em vez de PUT /settings por dois motivos: aquela troca o
+// objeto `settings` INTEIRO (dois painéis salvando ao mesmo tempo e um
+// apaga o outro) e exige admin — e quem cuida do painel de pedidos é o
+// comercial. Aqui só a chave de pedidos entra, mesclada.
+//
+// Vem ANTES de `/:id` de propósito: /sales/config bateria na rota do
+// pedido e viraria "pedido não encontrado".
+// ============================================================
+router.get('/config', async (req, res) => {
+  try {
+    res.json({
+      [Auto.CHAVE]: await Auto.confirmaPagamentoSozinho(req.tenantId),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/config', async (req, res) => {
+  if (!['admin', 'manager'].includes(req.userProfile?.role)) {
+    return res.status(403).json({ error: 'Só administrador ou gerente muda a configuração dos pedidos.' });
+  }
+  try {
+    const { data: emp } = await supabase.from('EMPRESAS')
+      .select('settings').eq('id', req.tenantId).maybeSingle();
+
+    // Mescla, e nao substitui: `settings` guarda site, PIX, prazos de
+    // pagamento e mais — escrever o objeto inteiro daqui apagaria tudo
+    // o que esta tela nao conhece.
+    const settings = { ...(emp?.settings || {}) };
+    settings.pedidos = { ...(settings.pedidos || {}), [Auto.CHAVE]: !!req.body?.[Auto.CHAVE] };
+
+    const { error } = await supabase.from('EMPRESAS')
+      .update({ settings }).eq('id', req.tenantId);
+    if (error) throw error;
+
+    audit(req, 'update', 'config', null, { pedidos: settings.pedidos });
+    res.json({ [Auto.CHAVE]: settings.pedidos[Auto.CHAVE] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 const isISODate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
 
@@ -322,6 +371,36 @@ router.post('/', validate(saleSchema), async (req, res) => {
       }
       Object.assign(data, attempt);
       data.status = 'iniciando_pedido';
+
+      /**
+       * O PAGAMENTO SE CONFIRMA SOZINHO — se a empresa quiser.
+       *
+       * Na Lyon o dinheiro entra ANTES do pedido: paga no balcão, manda
+       * o PIX, combina o prazo, e só então alguém digita a venda. Nascer
+       * em "Aguardando financeiro" fazia todo pedido ficar parado
+       * esperando alguém confirmar o que já tinha acontecido.
+       *
+       * Não é um UPDATE de status escrito aqui: são dois passos do mesmo
+       * motor que a tela usa, então a linha do tempo fica igual à de um
+       * pedido confirmado no clique — com os marcos e as horas — e cada
+       * um deles marcado como automático, para quem olhar daqui a seis
+       * meses saber que ninguém clicou.
+       *
+       * Falhar aqui não derruba a venda: ela já está gravada, e o pior
+       * caso é o pedido ficar onde nasceu, esperando o clique de sempre.
+       */
+      try {
+        if (await Auto.confirmaPagamentoSozinho(req.tenantId)) {
+          const carga = await carregarParaFluxo(req.tenantId, data.id);
+          const r = carga && Auto.confirmarPagamentoAoNascer(carga.venda, carga.aplicaveis, req);
+          if (r) {
+            await gravarPasso(req.tenantId, data.id, r);
+            data.status = r.status;
+          }
+        }
+      } catch (e) {
+        console.error('[sales] confirmacao automatica do pagamento:', e.message);
+      }
     }
 
     audit(req, 'create', 'sale', data?.id, {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { Plus, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Eye, CheckCircle2, Siren, RotateCcw, Wrench, Maximize2, Minimize2, Wallet } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '@/lib/api';
@@ -72,6 +73,35 @@ export default function Sales() {
    * abria esta tela via a lista de ontem e concluía que o pedido tinha
    * se perdido. A faixa abaixo é a resposta, com o caminho junto.
    */
+  /**
+   * O PAGAMENTO SE CONFIRMA SOZINHO?
+   *
+   * Na Lyon o dinheiro entra ANTES do pedido — paga no balcão, manda o
+   * PIX, combina o prazo — e só então alguém digita a venda. Com isto
+   * ligado, o pedido nasce com o pagamento cumprido e já cai na fila do
+   * estoque, em vez de ficar parado esperando alguém confirmar o que já
+   * aconteceu.
+   *
+   * O interruptor mora AQUI, e não em Configurações, porque quem
+   * convive com a consequência é quem olha esta lista.
+   */
+  const { data: configPedidos } = useQuery({
+    queryKey: ['sales-config'],
+    queryFn: () => api.get('/sales/config'),
+  });
+  const autoPagamento = !!configPedidos?.confirmar_pagamento_automatico;
+
+  const salvarConfig = useMutation({
+    mutationFn: valor => api.put('/sales/config', { confirmar_pagamento_automatico: valor }),
+    onSuccess: r => {
+      qc.setQueryData(['sales-config'], r);
+      toast.success(r.confirmar_pagamento_automatico
+        ? 'Novos pedidos vão nascer com o pagamento confirmado'
+        : 'Novos pedidos vão esperar a confirmação do pagamento');
+    },
+    onError: e => toast.error(e.error || 'Não consegui salvar'),
+  });
+
   const { data: fila } = useQuery({
     queryKey: ['store-payments', 'aguardando_pagamento'],
     queryFn: () => api.get('/store-payments?status=aguardando_pagamento'),
@@ -194,6 +224,22 @@ export default function Sales() {
             style={{ background: v.control.background, color: v.textPrimary, border: v.control.border }}>
             {telaCheia.ativo ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             <span className="hidden sm:inline">{telaCheia.ativo ? 'Sair da tela cheia' : 'Tela cheia'}</span>
+          </button>
+          {/* O ESTADO ATUAL É O RÓTULO. Um interruptor que só diz
+              "confirmação automática" obriga a clicar para descobrir se
+              está ligado; este diz o que ACONTECE hoje com o próximo
+              pedido, e o clique inverte. */}
+          <button type="button" onClick={() => salvarConfig.mutate(!autoPagamento)}
+            disabled={salvarConfig.isPending}
+            title={autoPagamento
+              ? 'Hoje o pedido nasce com o pagamento já confirmado e vai direto para o estoque. Clique para passar a exigir a confirmação manual.'
+              : 'Hoje o pedido nasce esperando o financeiro confirmar o pagamento. Clique para confirmar automaticamente.'}
+            className="flex items-center gap-2 px-3 py-2.5 rounded-[0.6rem] text-sm disabled:opacity-50"
+            style={{ background: v.control.background, color: v.textPrimary, border: v.control.border }}>
+            <Wallet size={15} style={{ color: autoPagamento ? '#22c55e' : '#f59e0b' }} />
+            <span className="hidden sm:inline">
+              {autoPagamento ? 'Pagamento automático' : 'Pagamento manual'}
+            </span>
           </button>
           <button onClick={() => navigate('/sales/new')} className="btn-primary">
             <Plus size={16} /> Novo Pedido
