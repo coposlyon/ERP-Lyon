@@ -318,6 +318,54 @@ export default function PedidoCliente() {
           </div>
         </Card>
 
+        {/* ══ A ARTE, QUE SE MONTA AGORA ══════════════════════
+            A personalização saiu do caminho da compra. No catálogo a
+            cliente só marca que QUER arte — montar nomes, datas e
+            frases antes de saber se vai comprar é a maior parte da
+            tela e a maior parte da desistência. Ela monta aqui, com o
+            pedido já pago e sem pressa.
+
+            É o passo que FALTA, então fica em cima da lista de itens e
+            não escondido numa coluna: quem abre este pedido tem uma
+            coisa a fazer, e ela precisa ser a primeira que se vê. */}
+        {(p.itens || []).some(i => i.personalizar) && (
+          <Card Icon={PenTool} titulo="Sua personalização">
+            <div className="space-y-2.5">
+              {(p.itens || []).filter(i => i.personalizar).map(i => (
+                <div key={i.id} className="flex flex-wrap items-center gap-3 justify-between rounded-xl px-3.5 py-3"
+                  style={{ background: i.arte_pronta ? 'rgba(34,197,94,0.10)' : 'rgba(168,85,247,0.12)',
+                           border: `1px solid ${i.arte_pronta ? 'rgba(34,197,94,0.35)' : 'rgba(168,85,247,0.42)'}` }}>
+                  <div className="min-w-0">
+                    <p className="text-white text-[14px] font-semibold leading-tight">{i.produto}</p>
+                    <p className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.65)' }}>
+                      {i.arte_pronta
+                        ? 'Arte recebida — já está com a produção. Dá para trocar até a aprovação.'
+                        : `${i.quantidade} un. · falta montar a arte para a produção começar.`}
+                    </p>
+                  </div>
+                  {i.modelo_chave ? (
+                    <button type="button"
+                      onClick={() => navigate(
+                        `/personalizados/arte/${i.modelo_chave}?pedido=${id}&item=${i.id}`)}
+                      className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-[13.5px] shrink-0"
+                      style={{ background: i.arte_pronta ? 'rgba(255,255,255,0.10)' : 'linear-gradient(90deg,#a855f7,#6366f1)',
+                               color: '#fff' }}>
+                      <PenTool size={15} /> {i.arte_pronta ? 'Trocar a arte' : 'Montar minha arte'}
+                    </button>
+                  ) : (
+                    /* Pedido antigo, feito antes de a chave do modelo
+                       viajar junto: melhor mandar falar com a loja do
+                       que abrir o editor no copo errado. */
+                    <span className="text-[12px] shrink-0" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                      fale com um atendente para montar
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
         {/* ── Quem vai retirar ────────────────────────────────── */}
         {p.retirada && (
           <ChamadoRetirada retirada={p.retirada} onAbrir={() => setFormRetirada(true)} />

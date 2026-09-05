@@ -531,6 +531,18 @@ async function montarItem(item) {
       impressao: proc ? proc.nome : null,
       posicao_arte: item.posicao || null,
       projeto_arte: item.projeto_id || null,
+      // A CLIENTE QUER MONTAR A ARTE — e vai montar DEPOIS de pagar.
+      // Gravado no pedido porque é ele que carrega a informação até a
+      // tela de acompanhamento: sem isso o pedido chega lá sem saber
+      // que falta arte, e o botão de personalizar nunca aparece.
+      personalizar: !!item.personalizar,
+      // A CHAVE DO MODELO VIAJA JUNTO. É por ela que a tela do cliente
+      // abre o editor no copo certo depois do pagamento — sem ela o
+      // pedido sabe QUE falta arte e não sabe DE QUE peça.
+      modelo: item.modelo || null,
+      // As cores da impressão pelo nome, para quem está na máquina.
+      // Elas viajavam do carrinho e paravam aqui sem serem gravadas.
+      cores_arte: Array.isArray(item.cores_arte_nomes) ? item.cores_arte_nomes : [],
     },
   };
 }

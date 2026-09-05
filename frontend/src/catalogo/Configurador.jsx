@@ -107,10 +107,6 @@ const INICIAL = {
   posicao: 'frente',
   ocasiao: null,
   quantidade: '',
-  cep: '',
-  data_evento: '',
-  retirar: false,
-  pagamento: 'pix',
   projeto: null,
   // Os adicionais que a cliente marcou — ids do cadastro. Aqui não
   // mora preço nenhum: o valor é do servidor, sempre.
@@ -658,6 +654,11 @@ export default function Configurador() {
         ? (cfg?.processos || []).find(p => p.id === estado.processo_id)?.nome || null
         : null,
       posicao: personalizado ? estado.posicao : null,
+      // A INTENÇÃO DE PERSONALIZAR VIAJA COM O ITEM.
+      // Ela é o que libera o editor no acompanhamento depois do
+      // pagamento. Sem isso, o pedido chega lá sem saber que a cliente
+      // quer arte, e o botão nunca aparece.
+      personalizar: personalizado && querPersonalizar,
       projeto_id: estado.projeto?.id || null,
       previa: personalizado ? facesArte.frente || null : null,
       quantidade: preco?.quantidade || 0,
@@ -682,18 +683,12 @@ export default function Configurador() {
     limparRascunho(chave);
     toast.success('Item adicionado ao carrinho');
     if (depois === 'continuar') navigate('/personalizados');
-    else if (depois) navigate(`/personalizados/carrinho?acao=${depois}&pagamento=${estado.pagamento}`);
+    // Sem `?pagamento=`: a forma de pagamento é escolhida no carrinho,
+    // que é onde ela passou a morar.
+    else if (depois) navigate(`/personalizados/carrinho?acao=${depois}`);
     else setEstado({ ...INICIAL, acabamento_id: estado.acabamento_id });
   }
 
-  function irParaArte() {
-    if (!temGabarito) {
-      toast.error('Este produto ainda não tem gabarito de arte. Fale com um atendente.');
-      return;
-    }
-    gravarRascunho(chave, estado);
-    navigate(`/personalizados/arte/${chave}`);
-  }
 
   if (isLoading) {
     return (
@@ -722,8 +717,9 @@ export default function Configurador() {
 
   return (
     <CatalogoShell
-      titulo="Configurar Produto, Gerar Orçamento e Pagamento"
-      subtitulo="Selecione o modelo, acabamento, personalização e forma de pagamento."
+      compacto
+      titulo="Monte seu copo"
+      subtitulo="Cor, impressão e adicionais. Frete e pagamento vêm na próxima tela."
       trilha={[
         { nome: 'Catálogo', para: '/personalizados' },
         { nome: cfg.modelo.base },
@@ -753,7 +749,7 @@ export default function Configurador() {
         <div className="space-y-4 min-w-0">
 
           <Painel titulo={`${numeroDoPainel()}. Produto e Configuração`} cor={NEON.ciano} icone={Box}>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div>
                 <Rotulo>Modelo do produto</Rotulo>
                 {/* Sem `truncate`: "Long Drink Degradê com Borda…" cortado é o
@@ -774,6 +770,25 @@ export default function Configurador() {
               <div>
                 <Rotulo>Tipo de pedido</Rotulo>
                 <Opcao titulo="Personalizado" icone={PenTool} cor={NEON.roxo} quebrar ativo />
+              </div>
+
+              {/* A QUANTIDADE SUBIU PARA CÁ, e não é entrega.
+                  Ela morava em "Entrega e Evento", junto do CEP e da
+                  data — e esses dois foram embora, porque frete e
+                  pagamento se resolvem DEPOIS, na tela do pedido. A
+                  quantidade não: ela muda o preço a cada dígito, e
+                  preço é o que a cliente está olhando aqui. */}
+              <div>
+                <Rotulo>Quantidade</Rotulo>
+                <div className="relative">
+                  <Campo type="number" inputMode="numeric" min={preco?.quantidade_minima || 1}
+                    value={estado.quantidade}
+                    placeholder={String(preco?.quantidade_minima || 1)}
+                    onChange={e => mudar({ quantidade: e.target.value })}
+                    style={{ paddingRight: 36 }} />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] pointer-events-none"
+                    style={{ color: NEON.fraco }}>un</span>
+                </div>
               </div>
             </div>
 
@@ -1047,6 +1062,12 @@ export default function Configurador() {
               está no preço do copo" (a tinta) já está dentro do valor
               de tabela; mostrá-lo aqui sugeriria escolha, e cobrá-lo
               seria cobrar duas vezes. */}
+          {/* ADICIONAIS E PERSONALIZAÇÃO LADO A LADO.
+              Empilhados, os dois somavam quase quinhentos pixels de
+              altura sendo que cada um ocupa meia largura de conteúdo —
+              e era isso que empurrava o fim da página para baixo da
+              dobra. Em tela estreita voltam a empilhar sozinhos. */}
+          <div className="grid gap-4 items-start lg:grid-cols-2">
           {gruposAdicionais.length > 0 && (
             <Painel titulo={`${numeroDoPainel()}. Adicionais`} cor={NEON.ciano} icone={Sparkles}>
               <p className="text-[11.5px] mb-3" style={{ color: NEON.suave }}>
@@ -1222,14 +1243,23 @@ export default function Configurador() {
               </div>
               {!querPersonalizar && (
                 <p className="text-[11.5px]" style={{ color: NEON.fraco }}>
-                  Sem problema — seguimos com o copo do jeito que está. Você pode voltar aqui a
-                  qualquer momento antes de fechar o pedido.
+                  Sem problema — seguimos com o copo do jeito que está.
                 </p>
               )}
 
               {querPersonalizar && (<>
-              <div className="grid gap-3 sm:grid-cols-2">
-
+              {/* A ARTE SE MONTA DEPOIS DE PAGO.
+                  O editor morava aqui, e era a maior parte da altura da
+                  página — pedido por pedido, a cliente montava a arte
+                  inteira ANTES de saber se ia comprar, e a maioria não
+                  comprava. Agora a pergunta é só a intenção: marcado
+                  "Sim", o pedido nasce com a personalização liberada, e
+                  o link de montar a arte abre no acompanhamento assim
+                  que o pagamento é confirmado.
+                  O que fica é o que MUDA O PREÇO — frente ou frente e
+                  verso — mais a ocasião, que é uma etiqueta e ajuda a
+                  produção a preparar o material. */}
+              <div className="grid gap-3 sm:grid-cols-2 mt-3">
                 <div>
                   <Rotulo>Posição da arte</Rotulo>
                   <div className="grid grid-cols-2 gap-2">
@@ -1243,36 +1273,9 @@ export default function Configurador() {
                     )}
                   </div>
                 </div>
-              </div>
 
-              {/* O bloco do editor de arte */}
-              <div className="mt-4 p-3.5 rounded-xl" style={bordaNeon(NEON.magenta, 0.6)}>
-                <div className="flex flex-wrap gap-4">
-                  <div className="w-24 h-24 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: corComAlfa(NEON.roxo, 0.14), border: `1px solid ${corComAlfa(NEON.roxo, 0.5)}` }}>
-                    {facesArte.frente
-                      ? <div className="w-full h-full p-2" style={{ color: '#e9d5ff' }}
-                          dangerouslySetInnerHTML={{ __html: facesArte.frente }} />
-                      : <PenTool size={30} style={{ color: NEON.roxo }} />}
-                  </div>
-
-                  <div className="flex-1 min-w-[190px]">
-                    <p className="font-semibold text-[15px]" style={{ color: NEON.texto }}>
-                      {estado.projeto ? 'Sua arte está pronta' : 'Crie sua própria arte'}
-                    </p>
-                    <p className="text-[12px] mt-1 leading-relaxed" style={{ color: NEON.suave }}>
-                      {estado.projeto
-                        ? 'Você pode abrir o editor de novo para trocar nomes, data ou frase.'
-                        : 'Escolha a ocasião do evento e abra o editor para montar sua arte.'}
-                    </p>
-                    <div className="mt-3 max-w-[240px]">
-                      <Botao cheio icone={PenTool} onClick={irParaArte}>
-                        {estado.projeto ? 'Editar sua arte' : 'Criar sua arte'}
-                      </Botao>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 min-w-[210px]">
+                {ocasioes.filter(o => o.destaque).length > 0 && (
+                  <div>
                     <Rotulo>Ocasião do evento (opcional)</Rotulo>
                     <div className="flex flex-wrap gap-1.5">
                       {ocasioes.filter(o => o.destaque).map(o => (
@@ -1280,15 +1283,17 @@ export default function Configurador() {
                           ativo={estado.ocasiao === o.id}
                           onClick={() => mudar({ ocasiao: estado.ocasiao === o.id ? null : o.id })} />
                       ))}
-                      {ocasioes.some(o => !o.destaque) && (
-                        <Opcao titulo="+ Mais opções" cor={NEON.azul} onClick={irParaArte} />
-                      )}
                     </div>
                   </div>
-                </div>
+                )}
+              </div>
 
-                <Nota icone={Info} cor={NEON.roxo}>
-                  Você poderá escolher um modelo pronto, editar nomes, datas e frases antes de confirmar.
+              <div className="mt-3">
+                <Nota icone={PenTool} cor={NEON.roxo}>
+                  <b>Você monta a arte depois do pagamento.</b> Assim que o pedido for
+                  confirmado, entre em <b>Faça login</b> com seu CPF para abrir o editor e
+                  montar nomes, datas e frases com calma — sem prazo apertado e sem perder
+                  o que você já escolheu aqui.
                 </Nota>
               </div>
 
@@ -1302,54 +1307,15 @@ export default function Configurador() {
             </Painel>
           )}
 
-          <Painel titulo={`${numeroDoPainel()}. Entrega e Evento`}
-            cor={NEON.azul} icone={CalendarDays}>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <Rotulo>Quantidade</Rotulo>
-                <div className="relative">
-                  <Campo type="number" inputMode="numeric" min={preco?.quantidade_minima || 1}
-                    value={estado.quantidade}
-                    placeholder={String(preco?.quantidade_minima || 1)}
-                    onChange={e => mudar({ quantidade: e.target.value })}
-                    style={{ paddingRight: 36 }} />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] pointer-events-none"
-                    style={{ color: NEON.fraco }}>un</span>
-                </div>
-              </div>
-              <div>
-                <Rotulo>CEP</Rotulo>
-                <Campo inputMode="numeric" maxLength={9} placeholder="00000-000"
-                  value={estado.cep}
-                  onChange={e => mudar({
-                    cep: e.target.value.replace(/\D/g, '').slice(0, 8).replace(/(\d{5})(\d)/, '$1-$2'),
-                  })} />
-              </div>
-              <div>
-                <Rotulo>Data do evento</Rotulo>
-                <Campo type="date" min={HOJE()} value={estado.data_evento}
-                  onChange={e => mudar({ data_evento: e.target.value })}
-                  style={{ colorScheme: 'dark' }} />
-              </div>
-            </div>
-            <Nota icone={Info} cor={NEON.azul}>
-              A data do evento ajuda a calcular prazo e entrega.
-            </Nota>
-          </Painel>
+          </div>
 
-          <Painel titulo={`${numeroDoPainel()}. Forma de pagamento`} cor={NEON.roxo} icone={CreditCard}>
-            <div className="grid grid-cols-3 gap-2">
-              <Opcao titulo="PIX" icone={QrCode} cor={NEON.ciano}
-                ativo={estado.pagamento === 'pix'} onClick={() => mudar({ pagamento: 'pix' })} />
-              <Opcao titulo="Cartão" icone={CreditCard} cor={NEON.azul}
-                ativo={estado.pagamento === 'cartao'} onClick={() => mudar({ pagamento: 'cartao' })} />
-              <Opcao titulo="Boleto" icone={Barcode} cor={NEON.roxo}
-                ativo={estado.pagamento === 'boleto'} onClick={() => mudar({ pagamento: 'boleto' })} />
-            </div>
-            <Nota icone={Info} cor={NEON.roxo}>
-              Ao clicar em "Confirmar pedido", o sistema solicitará seu cadastro para prosseguir.
-            </Nota>
-          </Painel>
+          {/* ENTREGA E FORMA DE PAGAMENTO SAIRAM DAQUI.
+              Eram dois painéis inteiros — CEP, data do evento, PIX,
+              cartão, boleto — perguntados antes de a cliente ter
+              decidido comprar, e empurravam o resto da tela para baixo
+              da dobra. Frete e pagamento são a PRÓXIMA tela: o carrinho
+              já pergunta os dois, no momento em que eles importam.
+              Aqui fica só o que muda o copo e o preço. */}
         </div>
 
         {/* ═══ DIREITA — a peça, o preço e os botões ═══ */}
@@ -1395,20 +1361,48 @@ export default function Configurador() {
           </Painel>
 
           <div className="space-y-2.5">
-            <Botao icone={ShoppingCart} cor={NEON.magenta} onClick={() => adicionar(null)}
-              disabled={!podeFechar}>
-              Adicionar ao carrinho
-            </Botao>
-            <Botao icone={ArrowLeft} cor={NEON.azul} onClick={() => navigate('/personalizados')}>
-              Continuar comprando
-            </Botao>
-            <Botao icone={FileText} cor={NEON.roxo} onClick={() => adicionar('orcamento')}
-              disabled={!podeFechar}>
-              Gerar orçamento
-            </Botao>
+            {/* O PREÇO GRUDADO NO BOTÃO.
+                Ele morava só no "Resumo do pedido", que fica embaixo dos
+                botões — ou seja, abaixo da dobra. O cliente via
+                "Confirmar pedido" sem ver quanto custa, que é a única
+                pergunta que ele está fazendo. Aqui é o total; a soma
+                aberta continua no resumo, logo abaixo. */}
+            <div className="rounded-xl px-4 py-3 flex items-baseline justify-between gap-2"
+              style={bordaNeon(NEON.rosa, 0.55)}>
+              <span className="text-[12px]" style={{ color: NEON.suave }}>
+                {preco?.quantidade ? `${preco.quantidade} un · ${brl(preco.valor_unitario)} cada` : 'Total'}
+              </span>
+              <span className="text-[21px] font-bold leading-none" style={{ color: NEON.texto }}>
+                {calculando ? '…' : brl(preco?.valor_produtos || 0)}
+              </span>
+            </div>
+
+            {/* Carrinho e orçamento LADO A LADO: são os dois caminhos
+                alternativos, do mesmo peso, e empilhados custavam uma
+                linha inteira de altura numa coluna que precisa acabar
+                antes da dobra. */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <Botao icone={ShoppingCart} cor={NEON.magenta} onClick={() => adicionar(null)}
+                disabled={!podeFechar}>
+                Carrinho
+              </Botao>
+              <Botao icone={FileText} cor={NEON.roxo} onClick={() => adicionar('orcamento')}
+                disabled={!podeFechar}>
+                Orçamento
+              </Botao>
+            </div>
             <Botao cheio icone={Lock} onClick={() => adicionar('pagamento')} disabled={!podeFechar}>
               Confirmar pedido
             </Botao>
+
+            {/* SAIR NÃO É UMA AÇÃO DO MESMO TAMANHO DE COMPRAR.
+                "Continuar comprando" era um botão da mesma altura dos
+                outros três, e a coluna inteira precisa caber na tela. */}
+            <button type="button" onClick={() => navigate('/personalizados')}
+              className="w-full text-[12.5px] py-1.5 inline-flex items-center justify-center gap-1.5"
+              style={{ color: NEON.suave }}>
+              <ArrowLeft size={13} /> Continuar comprando
+            </button>
 
             {/* Os campos que faltam já estão marcados em vermelho no painel 1.
                 Aqui vai só o motivo de o botão estar apagado — repetir a lista
@@ -1465,42 +1459,18 @@ export default function Configurador() {
               <Valor rotulo="Valor unitário" valor={preco?.valor_unitario} />
             </div>
 
-            <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[12.5px]" style={{ color: NEON.suave }}>Retirar no local?</span>
-                <div className="flex gap-1.5">
-                  <Opcao titulo="Sim" cor={NEON.ciano} ativo={estado.retirar}
-                    onClick={() => mudar({ retirar: true })} />
-                  <Opcao titulo="Não" cor={NEON.azul} ativo={!estado.retirar}
-                    onClick={() => mudar({ retirar: false })} />
-                </div>
+            {/* SÓ O PRAZO. Retirada, frete e validade da cotação
+                saíram junto com o painel de entrega: são perguntas do
+                carrinho, e repeti-las aqui pedia CEP a quem ainda está
+                escolhendo a cor do copo. O prazo fica porque é
+                PRODUÇÃO, não entrega — é quanto a fábrica leva. */}
+            {prazo && (
+              <div className="mt-3 pt-3 flex items-baseline justify-between gap-2 text-[12.5px]"
+                style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <span style={{ color: NEON.suave }}>Prazo de produção</span>
+                <span style={{ color: NEON.texto }}>{prazo.min} a {prazo.max} dias úteis</span>
               </div>
-
-              <div className="mt-2 space-y-1.5 text-[12.5px]">
-                {estado.retirar
-                  ? <Valor rotulo="Frete estimado" valor={0} />
-                  : (
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span style={{ color: NEON.suave }}>Frete estimado</span>
-                      <span className="text-right" style={{ color: NEON.fraco }}>
-                        {estado.cep ? 'calculado no fechamento' : 'informe o CEP'}
-                      </span>
-                    </div>
-                  )}
-                {prazo && (
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span style={{ color: NEON.suave }}>Prazo estimado</span>
-                    <span style={{ color: NEON.texto }}>{prazo.min} a {prazo.max} dias úteis</span>
-                  </div>
-                )}
-                {regras?.validade_dias && (
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span style={{ color: NEON.suave }}>Validade da cotação</span>
-                    <span style={{ color: NEON.texto }}>{regras.validade_dias} dias</span>
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
 
             {calculando && (
               <p className="text-[11px] mt-3 flex items-center gap-1.5" style={{ color: NEON.fraco }}>
@@ -1508,16 +1478,6 @@ export default function Configurador() {
               </p>
             )}
 
-            {prazo && (
-              <div className="mt-3 p-2.5 rounded-lg text-[11px] leading-relaxed flex items-start gap-2"
-                style={{ background: corComAlfa(NEON.ciano, 0.07), color: NEON.suave }}>
-                <Info size={13} className="shrink-0 mt-0.5" style={{ color: NEON.ciano }} />
-                <span>
-                  Prazo de produção: {prazo.min} a {prazo.max} dias úteis. Em caso de urgência ou
-                  dúvidas, fale com um de nossos atendentes.
-                </span>
-              </div>
-            )}
           </Painel>
 
           {/* UM botão de atendimento na tela inteira. */}
@@ -1529,17 +1489,15 @@ export default function Configurador() {
           </a>
 
 
-          <Painel titulo="Informações importantes" cor={NEON.azul} icone={Info}>
-            <p className="text-[11.5px] leading-relaxed" style={{ color: NEON.suave }}>
-              Após o pagamento, o sistema gera automaticamente o número do pedido
-              (<b style={{ color: NEON.texto }}>PV-000123</b>) e o acesso para acompanhamento
-              com CPF + data de nascimento.
-            </p>
-            <Link to="/acompanhar"
-              className="text-[12px] mt-2.5 inline-flex items-center gap-1.5" style={{ color: NEON.ciano }}>
-              <PackageCheck size={13} /> Acompanhar um pedido
-            </Link>
-          </Painel>
+          {/* ERA UM PAINEL INTEIRO para dizer o que já está no botão
+              de login ali em cima. Virou uma linha: a tela precisa
+              caber sem rolar, e parágrafo explicativo é a primeira
+              coisa que se corta. */}
+          <Link to="/acompanhar"
+            className="w-full rounded-xl py-2.5 px-4 text-[12.5px] flex items-center justify-center gap-2"
+            style={{ ...bordaNeon(NEON.azul, 0.5), color: NEON.suave }}>
+            <PackageCheck size={14} style={{ color: NEON.ciano }} /> Já comprou? Acompanhe seu pedido
+          </Link>
         </div>
       </div>
 

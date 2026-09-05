@@ -83,6 +83,13 @@ function montarPedidoDoCliente(venda, extra = {}) {
   // campo novo na lib nasceria exposto aqui e ninguém perceberia.
   const detalhados = (venda.VENDA_ITENS || []).map(caracteristicasDoItem);
   const itens = detalhados.map(i => ({
+    // O id do item, e só ele: e por ele que a cliente anexa a arte que
+    // montou depois de pagar. Nao expoe nada — sem o token do pedido
+    // ele nao abre porta nenhuma.
+    id: i.id,
+    personalizar: i.personalizar,
+    arte_pronta: i.arte_pronta,
+    modelo_chave: i.modelo_chave,
     codigo: i.codigo,
     produto: i.produto,
     capacidade: i.capacidade,

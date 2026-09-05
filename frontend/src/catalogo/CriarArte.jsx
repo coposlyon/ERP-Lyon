@@ -21,7 +21,7 @@
 // ============================================================
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Check, Loader2, Sparkles, Undo2, Redo2, Type, Wand2,
   AlignLeft, AlignCenter, AlignRight, Move, ZoomIn, ZoomOut, RotateCcw,
@@ -29,6 +29,10 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from './api';
+// O acompanhamento do pedido mora fora do catálogo (/api/acompanhar), e
+// o interceptor de `lib/api` já sabe não misturar o token do ERP com o
+// do cliente naquelas rotas.
+import apiErp from '@/lib/api';
 import {
   CatalogoShell, Painel, NEON, bordaNeon, corComAlfa,
   Rotulo, Opcao, Botao, Campo, Seletor, Nota,
@@ -42,6 +46,19 @@ const FACE_VAZIA = () => ({ arte_id: null, valores: {}, estilo: { ...ESTILO_PADR
 
 export default function CriarArte() {
   const { chave } = useParams();
+
+  /**
+   * O EDITOR TAMBÉM ABRE DE DENTRO DE UM PEDIDO JÁ PAGO.
+   *
+   * A personalização saiu do caminho da compra: no catálogo a cliente só
+   * diz que quer, e monta a arte depois de pagar, entrando pelo "Faça
+   * login". Vindo de lá, a URL traz o pedido e o item — e o fim do
+   * caminho muda: em vez de voltar para o configurador com um rascunho,
+   * a arte é anexada AO ITEM e a tela volta para o pedido.
+   */
+  const [buscaParams] = useSearchParams();
+  const doPedido = buscaParams.get('pedido');
+  const doItem = buscaParams.get('item');
   const navigate = useNavigate();
 
   // O rascunho é a ponte com o configurador: o cliente veio de lá com
@@ -201,6 +218,17 @@ export default function CriarArte() {
           dados: faces,
         },
       });
+
+      // Veio de um pedido pago: a arte é do ITEM, e não de um rascunho
+      // de carrinho que já foi fechado.
+      if (doPedido && doItem) {
+        await apiErp.post(`/acompanhar/pedido/${doPedido}/arte`, {
+          item_id: doItem, projeto_id: r.id,
+        }, { headers: { Authorization: `Bearer ${sessionStorage.getItem('acompanhar_token') || ''}` } });
+        toast.success('Arte enviada para a produção');
+        navigate(`/acompanhar/pedido/${doPedido}`);
+        return;
+      }
 
       toast.success('Arte confirmada');
       navigate(`/personalizados/configurar/${chave}`);

@@ -550,4 +550,65 @@ router.post('/pedido/:id/humano', exigirToken, async (req, res) => {
   } catch { res.status(500).json({ error: 'Não foi possível abrir o atendimento agora.' }); }
 });
 
+/**
+ * A ARTE QUE A CLIENTE MONTOU DEPOIS DE PAGAR.
+ *
+ * A personalização deixou de ser feita antes da compra: no catálogo ela
+ * só marca que QUER, e monta a arte aqui, com o pedido já pago. Vender
+ * primeiro e desenhar depois é o que tira a decisão de arte do caminho
+ * de quem só queria saber o preço.
+ *
+ * A TRAVA É DUPLA, e as duas são do servidor:
+ *   - o pedido tem que ser deste cliente (`pedidoDoCliente`);
+ *   - o item tem que ser DAQUELE pedido, e tem que estar marcado como
+ *     "quer personalizar". Sem a segunda, o id de um item de outro
+ *     pedido passaria só por vir junto de um pedido válido.
+ *
+ * O QUE ENTRA É UM ID DE PROJETO, nunca o vetor. O desenho já foi
+ * gravado por `/catalogo/projeto`, que aplica o gabarito do cadastro —
+ * aceitar SVG aqui seria aceitar arte fora da área de impressão.
+ */
+router.post('/pedido/:id/arte', exigirToken, async (req, res) => {
+  try {
+    const saleId = await pedidoDoCliente(req.params.id, req.customerId);
+    if (!saleId) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    const { item_id, projeto_id } = req.body || {};
+    if (!item_id || !projeto_id) return res.status(400).json({ error: 'Faltou o item ou a arte.' });
+
+    const { data: item } = await supabase.from('VENDA_ITENS')
+      .select('id, sale_id, customization').eq('id', item_id).maybeSingle();
+    if (!item || item.sale_id !== saleId) return res.status(404).json({ error: 'Item não encontrado.' });
+
+    const conf = item.customization || {};
+    if (!conf.personalizar) {
+      return res.status(400).json({ error: 'Este item não foi pedido com personalização.' });
+    }
+
+    const { data: proj } = await supabase.from('CATALOGO_PROJETOS')
+      .select('id, posicao, gabarito, faces, preview_url')
+      .eq('tenant_id', req.tenantId).eq('id', projeto_id).maybeSingle();
+    if (!proj) return res.status(404).json({ error: 'Arte não encontrada.' });
+
+    const { error } = await supabase.from('VENDA_ITENS').update({
+      customization: {
+        ...conf,
+        projeto_arte: proj.id,
+        arte: {
+          projeto_id: proj.id,
+          posicao: proj.posicao,
+          gabarito: proj.gabarito || null,
+          frente: proj.faces?.frente?.svg || null,
+          verso: proj.faces?.verso?.svg || null,
+          preview_url: proj.preview_url || null,
+          enviada_em: new Date().toISOString(),
+        },
+      },
+    }).eq('id', item.id);
+    if (error) throw error;
+
+    res.json({ ok: true });
+  } catch { res.status(500).json({ error: 'Não foi possível salvar sua arte agora.' }); }
+});
+
 module.exports = router;

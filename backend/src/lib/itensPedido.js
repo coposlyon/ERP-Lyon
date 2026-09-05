@@ -121,6 +121,16 @@ function caracteristicasDoItem(item) {
     tem_borda: temBorda,
     tem_pintura: !!(degrade || bicolor || jateado),
     tem_personalizacao: temPersonalizacao,
+    // A ARTE QUE A CLIENTE VAI MONTAR DEPOIS DE PAGAR.
+    //
+    // `personalizar` é a intenção que ela marcou no catálogo;
+    // `arte_pronta` diz se ela já montou. Os dois juntos são o que
+    // decide, na tela do pedido, entre "Monte sua arte" e "Arte
+    // recebida" — e o `modelo` é por onde o editor abre no copo certo.
+    id: item.id,
+    personalizar: !!c.personalizar,
+    arte_pronta: !!(c.arte?.projeto_id || c.projeto_arte),
+    modelo_chave: c.modelo || null,
     acessorio: corBorda ? `Borda ${corBorda}` : (temBorda ? 'Borda' : null),
     quantidade: Number(item.quantity) || 0,
     valor_unitario: Number(item.unit_price) || 0,

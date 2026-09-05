@@ -14,7 +14,7 @@
 // NADA DO ERP ENTRA AQUI. Estas telas são o lado de fora.
 // ============================================================
 import { Link } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, LogIn } from 'lucide-react';
 
 // O espectro da logo, usado em toda a casca: ciano à esquerda, magenta à
 // direita. Ficam num lugar só para a tela nova não inventar o quarto tom
@@ -65,26 +65,55 @@ function CantosNeon() {
  *                vira link, porque link para onde já se está é o tipo de
  *                detalhe que faz o cliente achar que travou.
  */
-export function CatalogoShell({ titulo, subtitulo, trilha = [], largura = 'max-w-[1600px]', children }) {
+export function CatalogoShell({ titulo, subtitulo, trilha = [], largura = 'max-w-[1600px]',
+  // TELA QUE PRECISA CABER SEM ROLAR pede um cabeçalho que não coma um
+  // terço da altura. No configurador o título é identidade, não
+  // conteúdo — a trilha já diz onde a pessoa está.
+  compacto = false, children }) {
   return (
     <div className="min-h-screen relative overflow-x-hidden" style={{ background: NEON.fundo }}>
       <CantosNeon />
 
-      <div className={`${largura} mx-auto px-4 sm:px-6 py-7 relative z-10`}>
+      <div className={`${largura} mx-auto px-4 sm:px-6 py-4 relative z-10`}>
+        {/* FAÇA LOGIN, NO ALTO E EM TODA TELA DO CATÁLOGO.
+            É por ele que a cliente entra no pedido dela — para
+            acompanhar, e agora também para MONTAR A ARTE depois de
+            pagar. Escondido, essa porta não existe: quem fecha o pedido
+            fecha a aba e não sabe que pode voltar.
+            Fica na casca, e não em cada tela, porque é o mesmo botão em
+            todas — repetido tela a tela, some de uma delas no primeiro
+            dia em que alguém esquecer. */}
+        <div className="flex justify-end mb-1">
+          <Link to="/acompanhar"
+            className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-bold text-[13.5px]
+                       tracking-wide transition-transform active:scale-[0.97]"
+            style={{
+              background: `linear-gradient(90deg, ${NEON.magenta}, ${NEON.roxo})`,
+              color: '#fff',
+              boxShadow: `0 0 18px ${corComAlfa(NEON.magenta, 0.45)}`,
+            }}>
+            <LogIn size={16} /> FAÇA LOGIN
+          </Link>
+        </div>
+
         <div className="text-center">
           <Link to="/personalizados" className="inline-block">
-            <img src="/lyon-logo.png" alt="Lyon Copos" width={190} height={54} draggable={false}
-              className="mx-auto mb-3 w-[190px] max-w-[60%]"
+            {/* O logo encolheu junto com o resto do cabeçalho: ele
+                custava, sozinho, um oitavo da altura da tela numa
+                página que precisa caber inteira sem rolar. */}
+            <img src="/lyon-logo.png" alt="Lyon Copos" width={150} height={43} draggable={false}
+              className={`mx-auto mb-1.5 max-w-[46%] ${compacto ? 'w-[112px]' : 'w-[150px]'}`}
               onError={e => { e.target.style.display = 'none'; }} />
           </Link>
 
           {titulo && (
-            <h1 className="text-[26px] sm:text-[34px] font-bold leading-tight" style={{ color: NEON.texto }}>
+            <h1 className={`font-bold leading-tight ${compacto ? 'text-[17px] sm:text-[19px]' : 'text-[21px] sm:text-[27px]'}`}
+              style={{ color: NEON.texto }}>
               {titulo}
             </h1>
           )}
           {subtitulo && (
-            <p className="text-[13px] sm:text-sm mt-1.5" style={{ color: NEON.suave }}>{subtitulo}</p>
+            <p className="text-[12.5px] mt-1" style={{ color: NEON.suave }}>{subtitulo}</p>
           )}
 
           {trilha.length > 0 && (
@@ -104,7 +133,7 @@ export function CatalogoShell({ titulo, subtitulo, trilha = [], largura = 'max-w
           )}
         </div>
 
-        <div className="mt-6">{children}</div>
+        <div className="mt-4">{children}</div>
       </div>
     </div>
   );
