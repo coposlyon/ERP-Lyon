@@ -31,6 +31,8 @@
 const supabase = require('../config/supabase');
 const { aplicarAmbiente } = require('./ambienteProduto');
 const { precoFaixa, precoComImpressao } = require('./calc');
+// A porta unica do preco — e de onde sai o adicional por faixa.
+const P = require('./preco');
 
 const tabelaAusente = err =>
   /42P01|PGRST(002|205)|does not exist|schema cache/i.test(`${err?.code || ''} ${err?.message || ''}`);
@@ -403,7 +405,7 @@ async function acabamentosPorCategoria(tenantId, categoryIds) {
 
   const [acabRes, compatRes] = await Promise.all([
     supabase.from('CONFIG_ACABAMENTOS')
-      .select('id, name, seq, label_comercial, preco_adicional, preco_metodo, no_catalogo, campos, requer_pintura, requer_borda, requer_jateamento')
+      .select('id, name, seq, label_comercial, preco_adicional, faixas, preco_metodo, no_catalogo, campos, requer_pintura, requer_borda, requer_jateamento')
       .eq('tenant_id', tenantId).eq('is_active', true).order('seq'),
     supabase.from('PRODUTO_COMPATIBILIDADE').select('category_id, ref_id, permitido')
       .eq('tenant_id', tenantId).eq('tipo', 'acabamento').in('category_id', ids),
@@ -467,11 +469,11 @@ async function configDoModelo(tenantId, chave) {
 
   const [acabRes, coresRes, procRes, compatRes, gabRes, embRes, famRes] = await Promise.all([
     supabase.from('CONFIG_ACABAMENTOS')
-      .select('id, name, seq, label_comercial, preco_adicional, preco_metodo, no_catalogo, campos, requer_pintura, requer_borda, requer_jateamento')
+      .select('id, name, seq, label_comercial, preco_adicional, faixas, preco_metodo, no_catalogo, campos, requer_pintura, requer_borda, requer_jateamento')
       .eq('tenant_id', tenantId).eq('is_active', true).order('seq'),
     supabase.from('CONFIG_CORES').select('id, name, grupo, hex, seq')
       .eq('tenant_id', tenantId).eq('is_active', true).order('seq'),
-    supabase.from('CONFIG_PROCESSOS').select('id, name, max_cores, seq, linha_tinta, preco_adicional, preco_metodo')
+    supabase.from('CONFIG_PROCESSOS').select('id, name, max_cores, seq, linha_tinta, preco_adicional, faixas, preco_metodo')
       .eq('tenant_id', tenantId).eq('is_active', true).order('seq'),
     supabase.from('PRODUTO_COMPATIBILIDADE').select('tipo, ref_id, permitido, category_id, product_id')
       .eq('tenant_id', tenantId)
@@ -650,8 +652,12 @@ function precoDoItem({ produto, quantidade, acabamento, processo }) {
     ? precoComImpressao(produto, metodo, qtd)
     : precoFaixa(produto.price_tiers, produto.sale_price, qtd);
 
-  const extras = (metodo ? 0 : Number(acabamento?.preco_adicional) || 0)
-    + (Number(processo?.preco_adicional) || 0);
+  // OS EXTRAS TAMBEM ANDAM POR FAIXA (migracao 099). Antes eram um
+  // numero so, cobrado igual para dez pecas e para dois mil — e e
+  // justamente aqui que a escala aparece: a tela da serigrafia custa o
+  // mesmo para 50 ou 500 copos.
+  const extras = (metodo ? 0 : P.adicionalPorFaixa(acabamento, qtd))
+    + P.adicionalPorFaixa(processo, qtd);
 
   const valorUnitario = Math.round((unitario + extras) * 100) / 100;
   return { unitario: valorUnitario, total: Math.round(valorUnitario * qtd * 100) / 100 };

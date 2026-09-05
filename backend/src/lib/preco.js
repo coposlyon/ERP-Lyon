@@ -48,6 +48,30 @@ function precoUnitario(produto, quantidade = 1) {
   return precoFaixa(produto?.price_tiers, produto?.sale_price, qtd);
 }
 
+/**
+ * O ADICIONAL DE UM ACABAMENTO OU DE UM TIPO DE IMPRESSÃO, POR FAIXA.
+ *
+ * Montar a tela da serigrafia custa o mesmo para 50 ou 500 copos.
+ * Cobrar por unidade o mesmo valor nos dois casos erra para os dois
+ * lados: caro no pedido grande, barato no pequeno. Daí a faixa.
+ *
+ * `preco_adicional` é o piso — o que vale quando nenhuma faixa alcança
+ * a quantidade. Sem ele, todo acabamento já cadastrado passaria a
+ * custar zero no dia em que a migração 099 rodasse.
+ *
+ * A conta é a MESMA de `calc.precoFaixa`, e não uma parecida: faixa de
+ * quantidade é uma regra só no sistema, e duas implementações dela
+ * discordariam num caso de borda que ninguém ia procurar.
+ */
+function adicionalPorFaixa(config, quantidade = 1) {
+  if (!config) return 0;
+  const qtd = Math.max(1, Number(quantidade) || 1);
+  const base = Number(config.preco_adicional) || 0;
+  const faixas = Array.isArray(config.faixas) ? config.faixas : [];
+  if (!faixas.length) return base;
+  return precoFaixa(faixas, base, qtd);
+}
+
 /** O mesmo, multiplicado. Arredonda uma vez só, no fim. */
 function precoTotal(produto, quantidade = 1) {
   const qtd = Math.max(1, Number(quantidade) || 1);
@@ -100,6 +124,6 @@ function precoNoCorpo(body) {
 }
 
 module.exports = {
-  precoUnitario, precoTotal, definirPreco,
+  precoUnitario, precoTotal, definirPreco, adicionalPorFaixa,
   precoNoCorpo, MSG_PRECO_FORA_DE_LUGAR,
 };

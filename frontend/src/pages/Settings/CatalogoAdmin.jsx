@@ -26,10 +26,11 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   LayoutGrid, Ruler, Package, Sparkles, Palette, Plus, Trash2, Save,
-  Loader2, Eye, EyeOff, Star, Info,
+  Loader2, Eye, EyeOff, Star, Info, Layers,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
+import PrecosPorFaixa from './PrecosPorFaixa';
 
 const ABAS = [
   { key: 'familias',  label: 'Famílias',      icone: LayoutGrid, cor: 'violet' },
@@ -37,6 +38,10 @@ const ABAS = [
   { key: 'embalagem', label: 'Caixa do liso', icone: Package,    cor: 'teal' },
   { key: 'ocasioes',  label: 'Ocasiões',      icone: Sparkles,   cor: 'pink' },
   { key: 'artes',     label: 'Banco de artes', icone: Palette,   cor: 'amber' },
+  // O PRECO DO QUE SE APLICA EM CIMA DO COPO. O produto ja tinha faixa
+  // por quantidade; acabamento e impressao tinham um numero so, cobrado
+  // igual para dez pecas e para dois mil (migracao 099).
+  { key: 'precos',    label: 'Preço por faixa', icone: Layers,   cor: 'green' },
 ];
 
 export default function CatalogoAdmin() {
@@ -59,7 +64,7 @@ export default function CatalogoAdmin() {
 
   const Atual = {
     familias: Familias, gabaritos: Gabaritos, embalagem: Embalagem,
-    ocasioes: Ocasioes, artes: Artes,
+    ocasioes: Ocasioes, artes: Artes, precos: PrecosPorFaixa,
   }[aba];
 
   return (

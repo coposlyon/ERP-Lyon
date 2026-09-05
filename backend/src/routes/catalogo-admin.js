@@ -152,6 +152,82 @@ router.put('/categoria/:id/nome-catalogo', exigirGestao, async (req, res) => {
 
 // ── Gabaritos da arte ───────────────────────────────────────
 
+// ============================================================
+// O PRECO DO ACABAMENTO E DA IMPRESSAO, POR FAIXA DE QUANTIDADE
+// (migracao 099).
+//
+// O produto ja tinha faixa; o que se aplica EM CIMA dele nao tinha.
+// Montar a tela da serigrafia custa o mesmo para 50 ou 500 copos, e
+// cobrar por unidade o mesmo valor nos dois casos erra para os dois
+// lados. Aqui se define "de 100 para cima, sai a tanto".
+//
+// `preco_adicional` continua sendo o PISO: vale quando nenhuma faixa
+// alcanca a quantidade. Zerar a lista de faixas devolve o comportamento
+// antigo, de valor unico.
+// ============================================================
+
+const TABELA = { acabamento: 'CONFIG_ACABAMENTOS', processo: 'CONFIG_PROCESSOS' };
+
+router.get('/precos', async (req, res) => {
+  try {
+    const [acab, proc] = await Promise.all([
+      supabase.from('CONFIG_ACABAMENTOS')
+        .select('id, name, label_comercial, seq, preco_adicional, faixas')
+        .eq('tenant_id', req.tenantId).eq('is_active', true).order('seq'),
+      supabase.from('CONFIG_PROCESSOS')
+        .select('id, name, max_cores, seq, preco_adicional, faixas')
+        .eq('tenant_id', req.tenantId).eq('is_active', true).order('seq'),
+    ]);
+    if (acab.error) throw acab.error;
+    if (proc.error) throw proc.error;
+    res.json({ acabamentos: acab.data || [], processos: proc.data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/precos/:tipo/:id', exigirGestao, async (req, res) => {
+  const tabela = TABELA[req.params.tipo];
+  if (!tabela) return res.status(400).json({ error: 'Tipo invalido' });
+
+  try {
+    /**
+     * A FAIXA CHEGA COMO TEXTO DE FORMULARIO e sai como numero.
+     *
+     * Linha sem preco e sem quantidade minima nao vira faixa: e a linha
+     * em branco que o editor deixa quando alguem clica em "+ faixa" e
+     * desiste. Guardar isso faria `precoFaixa` comparar contra NaN.
+     *
+     * `max_qty` vazio vira null de proposito — e a ultima faixa, o "daí
+     * para cima". Sem ela, pedido acima do teto cairia no piso, que e o
+     * valor do pedido PEQUENO: o maior pedido pagando a maior tarifa.
+     */
+    const faixas = (Array.isArray(req.body?.faixas) ? req.body.faixas : [])
+      .map(f => ({
+        min_qty: Math.max(1, Math.round(Number(f.min_qty) || 0)),
+        max_qty: (f.max_qty === '' || f.max_qty == null) ? null : Math.round(Number(f.max_qty) || 0),
+        price: Math.max(0, Number(String(f.price).replace(',', '.')) || 0),
+      }))
+      .filter(f => f.min_qty > 0)
+      .sort((a, b) => a.min_qty - b.min_qty);
+
+    const patch = { faixas };
+    if (req.body?.preco_adicional !== undefined) {
+      patch.preco_adicional = Math.max(0, Number(String(req.body.preco_adicional).replace(',', '.')) || 0);
+    }
+
+    const { data, error } = await supabase.from(tabela)
+      .update(patch).eq('id', req.params.id).eq('tenant_id', req.tenantId)
+      .select('id, name, preco_adicional, faixas').single();
+    if (error) throw error;
+
+    audit(req, 'price', req.params.tipo, data.id, { name: data.name, faixas: faixas.length });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/gabaritos', async (req, res) => {
   try {
     const { data, error } = await supabase.from('CATALOGO_GABARITOS')
