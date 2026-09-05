@@ -147,6 +147,27 @@ function nomeDaCategoria(categoria) {
   return String(categoria?.name || '').trim();
 }
 
+/**
+  * ACABAMENTO COMBINADO COM BORDA NAO E MAIS UMA OPCAO PROPRIA.
+  *
+  * O cadastro tem "Degrade", "Degrade + Borda", "Jateado", "Jateado +
+  * Borda"... — a mesma peca duas vezes, uma delas com a borda embutida.
+  * Mas a borda ja e escolhida como ADICIONAL em qualquer acabamento, e
+  * a lista dobrada so fazia o cliente escolher entre duas portas para o
+  * mesmo lugar.
+  *
+  * O `+` no nome e o marcador da combinacao — e o mesmo que
+  * `nomeDoAcabamento` troca por "com" ao mostrar. "Borda Metalizada"
+  * nao tem `+` e continua: ela e um acabamento, nao a combinacao de
+  * dois.
+  *
+  * ISTO E UM FILTRO DE EXIBICAO, e nao uma exclusao: a linha continua
+  * no cadastro, e pedido antigo feito como "Tricolor + Borda" continua
+  * com nome. Desativar de vez (`is_active = false`) e a decisao do
+  * Administrativo, e este filtro nao atrapalha se ela for tomada.
+  */
+const ehCombinacaoComBorda = a => /\+/.test(String(a?.name || ''));
+
 /** "Degradê + Borda" → "Degradê com Borda". */
 function nomeDoAcabamento(acab) {
   if (acab?.label_comercial) return acab.label_comercial;
@@ -441,7 +462,8 @@ async function acabamentosPorCategoria(tenantId, categoryIds) {
   if (compatRes.error) throw compatRes.error;
 
   const acabPorId = Object.fromEntries((acabRes.data || [])
-    .filter(a => a.no_catalogo !== false).map(a => [a.id, a]));
+    .filter(a => a.no_catalogo !== false && !ehCombinacaoComBorda(a))
+    .map(a => [a.id, a]));
 
   const saida = {};
   for (const c of compatRes.data || []) {
@@ -560,7 +582,7 @@ async function configDoModelo(tenantId, chave) {
   const okProc = permitidos('processo');
 
   const acabamentos = (acabRes.data || [])
-    .filter(a => okAcab.has(a.id) && a.no_catalogo !== false)
+    .filter(a => okAcab.has(a.id) && a.no_catalogo !== false && !ehCombinacaoComBorda(a))
     .map(a => ({
       id: a.id,
       nome: nomeDoAcabamento(a),
@@ -727,6 +749,28 @@ function validarEscolha(config, escolha = {}) {
       continue;
     }
     jaUsada.set(valor, campo.label);
+  }
+
+  /**
+   * A ARTE PRECISA DIZER QUAIS CORES.
+   *
+   * "Serigrafia 2 cores" imprime duas; escolher a impressao e nao dizer
+   * quais e mandar para a producao um pedido que ela nao consegue
+   * executar sem telefonar. E a mesma cor duas vezes e pagar por duas e
+   * receber uma — a mesma regra dos campos do acabamento.
+   *
+   * `max_cores` vazio e arte colorida (transfer, DTF): nao ha cor de
+   * tinta a escolher, e nada e exigido.
+   */
+  const proc = (config.processos || []).find(p => p.id === escolha.processo_id);
+  const exigidas = Number(proc?.max_cores) || 0;
+  if (exigidas > 0 && escolha.tipo_pedido !== 'liso') {
+    const escolhidas = (escolha.cores_arte || []).filter(Boolean);
+    if (escolhidas.length < exigidas) {
+      problemas.push(`${proc.nome || 'A impressão'} imprime ${exigidas} cor(es): informe todas.`);
+    } else if (new Set(escolhidas).size !== escolhidas.length) {
+      problemas.push('A mesma cor foi escolhida duas vezes na arte. Cada cor da impressão é diferente.');
+    }
   }
 
   if (escolha.tipo_pedido === 'liso') {

@@ -60,6 +60,9 @@ const INICIAL = {
   acabamento_id: null,
   campos: {},
   processo_id: null,
+  // Uma cor por posicao da arte: ['<id>', '<id>']. Quantas depende do
+  // `max_cores` do tipo de impressao escolhido.
+  cores_arte: [],
   posicao: 'frente',
   ocasiao: null,
   quantidade: '',
@@ -234,6 +237,10 @@ export default function Configurador() {
           processo_id: personalizado ? estado.processo_id : null,
           quantidade: estado.quantidade,
           campos: estado.campos,
+          // O servidor confere se a quantidade de cores bate com a
+          // impressao escolhida — a tela ja pede o numero certo, mas a
+          // tela e do cliente e a requisicao e de quem quiser.
+          cores_arte: personalizado ? estado.cores_arte : [],
           tipo_pedido: estado.tipo_pedido,
           adicionais: estado.adicionais,
         });
@@ -349,6 +356,39 @@ export default function Configurador() {
     return { acabamento, campos };
   }, [acabamento, estado.campos, cfg]);
 
+  /**
+   * QUANTAS CORES A ARTE TEM — e quais.
+   *
+   * "Serigrafia 2 cores" imprime duas cores; a tela precisa perguntar
+   * QUAIS duas. Antes ela nao perguntava nenhuma: o cliente escolhia
+   * "2 cores", pagava por duas, e a producao recebia um pedido sem
+   * dizer quais — e alguem ligava para perguntar.
+   *
+   * As opcoes saem das cores de PINTURA liberadas para este modelo:
+   * sao as tintas que a serigrafia tem. Se o cadastro nao separou por
+   * grupo, cai no primeiro grupo que existir — melhor perguntar com a
+   * lista errada de grupo do que nao perguntar.
+   *
+   * `max_cores` vazio = arte colorida (transfer, DTF): nao se escolhe
+   * cor de tinta, a arte ja vem colorida.
+   */
+  const processo = useMemo(
+    () => (cfg?.processos || []).find(p => p.id === estado.processo_id) || null,
+    [cfg, estado.processo_id]);
+
+  const coresDaTinta = useMemo(() => {
+    const grupos = cfg?.cores || {};
+    return grupos.pintura?.length ? grupos.pintura : (Object.values(grupos)[0] || []);
+  }, [cfg]);
+
+  const quantasCores = Number(processo?.max_cores) || 0;
+
+  function trocarCorArte(i, valor) {
+    const arr = [...(estado.cores_arte || [])];
+    arr[i] = valor;
+    mudar({ cores_arte: arr });
+  }
+
   const facesArte = estado.projeto?.faces || {};
   const arteFrente = personalizado ? facesArte.frente || null : null;
   const arteVerso = personalizado && estado.posicao === 'frente_verso' ? facesArte.verso || null : null;
@@ -374,6 +414,13 @@ export default function Configurador() {
         .map(c => [c.label, escolhaVisual.campos[c.key]?.name])
         .filter(([, v]) => v)),
       processo_id: personalizado ? estado.processo_id : null,
+      // As cores da arte vao pelo NOME: quem le isso e a producao, e
+      // um uuid nao diz nada para quem esta na maquina.
+      cores_arte: personalizado
+        ? (estado.cores_arte || [])
+            .map(id => coresDaTinta.find(c => c.id === id)?.name)
+            .filter(Boolean)
+        : [],
       impressao: personalizado
         ? (cfg?.processos || []).find(p => p.id === estado.processo_id)?.nome || null
         : null,
@@ -660,7 +707,18 @@ export default function Configurador() {
                       icone={pr.max_cores === 1 ? Droplet : Palette}
                       cor={pr.max_cores === 1 ? NEON.ciano : NEON.magenta}
                       ativo={estado.processo_id === pr.id}
-                      onClick={() => mudar({ processo_id: pr.id })} />
+                      onClick={() => {
+                        // TROCAR DE IMPRESSAO CORTA O QUE NAO CABE MAIS.
+                        // De "3 cores" para "1 cor", as duas ultimas
+                        // deixam de existir — guarda-las faria o pedido
+                        // sair com cor que a impressao nao imprime.
+                        const teto = Number(pr.max_cores) || 0;
+                        const atuais = estado.cores_arte || [];
+                        mudar({
+                          processo_id: pr.id,
+                          cores_arte: teto ? atuais.slice(0, teto) : atuais,
+                        });
+                      }} />
                   ))}
                   {!(cfg.processos || []).length && (
                     <p className="text-[11.5px] col-span-full" style={{ color: NEON.fraco }}>
@@ -668,6 +726,53 @@ export default function Configurador() {
                     </p>
                   )}
                 </div>
+
+                {/* AS CORES DA ARTE. Uma pergunta por cor que a
+                    impressão escolhida imprime — "2 cores" pede duas, e
+                    a mesma cor não entra duas vezes, pelo mesmo motivo
+                    do tricolor: pagar por duas e receber uma. */}
+                {quantasCores > 0 && (
+                  <div className="mt-3">
+                    <Rotulo>
+                      {quantasCores === 1
+                        ? 'Cor da arte'
+                        : `Cores da arte — escolha ${quantasCores}`}
+                    </Rotulo>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {Array.from({ length: quantasCores }).map((_, i) => {
+                        const usadas = new Set(
+                          (estado.cores_arte || []).filter((v, k) => k !== i && v));
+                        const opcoes = coresDaTinta.filter(c => !usadas.has(c.id));
+                        const valor = estado.cores_arte?.[i] || '';
+                        const atual = opcoes.find(o => o.id === valor);
+                        return (
+                          <div key={i}>
+                            <div className="relative">
+                              <Seletor value={valor}
+                                onChange={e => trocarCorArte(i, e.target.value)}
+                                style={{ paddingLeft: atual ? 30 : 12 }}>
+                                <option value="">
+                                  {quantasCores === 1 ? 'Selecione…' : `Cor ${i + 1}…`}
+                                </option>
+                                {opcoes.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                              </Seletor>
+                              {atual && (
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                  <Bolinha hex={atual.hex} />
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {!coresDaTinta.length && (
+                      <p className="text-[10.5px] mt-1" style={{ color: '#fca5a5' }}>
+                        Nenhuma cor de tinta liberada para este modelo — fale com um atendente.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

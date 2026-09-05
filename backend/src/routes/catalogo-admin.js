@@ -223,7 +223,11 @@ router.get('/categoria/:id/regras', async (req, res) => {
 
     res.json({
       categoria: cat.data,
-      acabamentos: marca(acab.data, 'acabamento'),
+      // Acabamento combinado com borda ("Degrade + Borda") nao entra:
+      // a borda ja e adicional em qualquer um, e a lista dobrada so faz
+      // escolher entre duas portas para o mesmo lugar. O `+` no nome e
+      // o marcador da combinacao — "Borda Metalizada" nao tem, e fica.
+      acabamentos: marca((acab.data || []).filter(a => !/\+/.test(a.name || '')), 'acabamento'),
       processos: marca(proc.data, 'processo', x => ({ max_cores: x.max_cores })),
       cores: marca(cores.data, 'cor', x => ({ grupo: x.grupo, hex: x.hex })),
     });
