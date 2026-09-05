@@ -178,6 +178,17 @@ router.get('/precos', async (req, res) => {
         .select('id, name, max_cores, seq, preco_adicional, faixas')
         .eq('tenant_id', req.tenantId).eq('is_active', true).order('seq'),
     ]);
+    // A COLUNA PODE NAO EXISTIR AINDA. As migracoes deste projeto sao
+    // coladas a mao no Supabase, e o codigo sobe antes. Em vez de um 500
+    // sem explicacao, a tela recebe o motivo e diz o que fazer.
+    const falta = [acab.error, proc.error].find(e =>
+      e && /faixas|does not exist|schema cache/i.test(`${e.code || ''} ${e.message || ''}`));
+    if (falta) {
+      return res.status(409).json({
+        error: 'Falta rodar a migração 099 no banco — é ela que cria as faixas por quantidade.',
+        migracao: '099_faixas_por_quantidade',
+      });
+    }
     if (acab.error) throw acab.error;
     if (proc.error) throw proc.error;
     res.json({ acabamentos: acab.data || [], processos: proc.data || [] });

@@ -386,6 +386,32 @@ async function modelosDaFamilia(tenantId, slug) {
   };
 }
 
+/**
+ * LER UMA TABELA QUE PODE AINDA NÃO TER A COLUNA NOVA.
+ *
+ * As migrações deste projeto são aplicadas à mão, e o código sobe
+ * antes. Entre o deploy e o SQL colado no Supabase existe uma janela em
+ * que o servidor pede uma coluna que o banco não tem — e o PostgREST
+ * responde "column does not exist", que o `tabelaAusente` lê como
+ * "tabela ausente" e vira "Catálogo não configurado" na cara do
+ * cliente. Foi exatamente assim que a vitrine inteira caiu ao ganhar
+ * `faixas` (migração 099).
+ *
+ * Aqui a consulta tenta com a coluna nova e, se o banco não a conhece,
+ * repete sem ela. O catálogo perde a faixa por quantidade — que ainda
+ * não existe lá mesmo — e continua de pé.
+ */
+async function selectTolerante(tabela, colunas, opcional, montar) {
+  const primeira = await montar(supabase.from(tabela).select(colunas));
+  if (!primeira.error) return primeira;
+
+  const msg = `${primeira.error.code || ''} ${primeira.error.message || ''}`;
+  if (!new RegExp(`${opcional}|does not exist|schema cache`, 'i').test(msg)) return primeira;
+
+  const sem = colunas.split(',').map(c => c.trim()).filter(c => c !== opcional).join(', ');
+  return montar(supabase.from(tabela).select(sem));
+}
+
 const precoDe = p => {
   const tiers = Array.isArray(p.price_tiers) ? p.price_tiers : [];
   const opcoes = [Number(p.sale_price) || 0, ...tiers.map(t => Number(t.price) || 0)].filter(v => v > 0);
@@ -404,9 +430,10 @@ async function acabamentosPorCategoria(tenantId, categoryIds) {
   if (!ids.length) return {};
 
   const [acabRes, compatRes] = await Promise.all([
-    supabase.from('CONFIG_ACABAMENTOS')
-      .select('id, name, seq, label_comercial, preco_adicional, faixas, preco_metodo, no_catalogo, campos, requer_pintura, requer_borda, requer_jateamento')
-      .eq('tenant_id', tenantId).eq('is_active', true).order('seq'),
+    selectTolerante('CONFIG_ACABAMENTOS',
+      'id, name, seq, label_comercial, preco_adicional, faixas, preco_metodo, no_catalogo, campos, requer_pintura, requer_borda, requer_jateamento',
+      'faixas',
+      q => q.eq('tenant_id', tenantId).eq('is_active', true).order('seq')),
     supabase.from('PRODUTO_COMPATIBILIDADE').select('category_id, ref_id, permitido')
       .eq('tenant_id', tenantId).eq('tipo', 'acabamento').in('category_id', ids),
   ]);
@@ -468,13 +495,15 @@ async function configDoModelo(tenantId, chave) {
   const referencia = membros.find(p => /TRANSPARENTE/i.test(p.partes.cor || '')) || membros[0];
 
   const [acabRes, coresRes, procRes, compatRes, gabRes, embRes, famRes] = await Promise.all([
-    supabase.from('CONFIG_ACABAMENTOS')
-      .select('id, name, seq, label_comercial, preco_adicional, faixas, preco_metodo, no_catalogo, campos, requer_pintura, requer_borda, requer_jateamento')
-      .eq('tenant_id', tenantId).eq('is_active', true).order('seq'),
+    selectTolerante('CONFIG_ACABAMENTOS',
+      'id, name, seq, label_comercial, preco_adicional, faixas, preco_metodo, no_catalogo, campos, requer_pintura, requer_borda, requer_jateamento',
+      'faixas',
+      q => q.eq('tenant_id', tenantId).eq('is_active', true).order('seq')),
     supabase.from('CONFIG_CORES').select('id, name, grupo, hex, seq')
       .eq('tenant_id', tenantId).eq('is_active', true).order('seq'),
-    supabase.from('CONFIG_PROCESSOS').select('id, name, max_cores, seq, linha_tinta, preco_adicional, faixas, preco_metodo')
-      .eq('tenant_id', tenantId).eq('is_active', true).order('seq'),
+    selectTolerante('CONFIG_PROCESSOS',
+      'id, name, max_cores, seq, linha_tinta, preco_adicional, faixas, preco_metodo', 'faixas',
+      q => q.eq('tenant_id', tenantId).eq('is_active', true).order('seq')),
     supabase.from('PRODUTO_COMPATIBILIDADE').select('tipo, ref_id, permitido, category_id, product_id')
       .eq('tenant_id', tenantId)
       .or(`category_id.eq.${categoryId},product_id.in.(${membros.map(m => m.id).join(',')})`),
