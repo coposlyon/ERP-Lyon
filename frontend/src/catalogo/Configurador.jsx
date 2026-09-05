@@ -1159,12 +1159,12 @@ export default function Configurador() {
                 faces da MESMA peça. */}
             <div className="rounded-xl px-2 sm:px-3 py-4 overflow-hidden" style={{ background: '#ffffff' }}>
               <div className="flex items-end justify-center gap-2 sm:gap-4">
-                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente" coresArte={hexDasCoresArte}
+                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente" coresArte={coresEscolhidas}
                   borda={bordaEscolhida}
                   acessorios={acessoriosEscolhidos}
                   gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 190 : 216} />
                 {personalizado && estado.posicao === 'frente_verso' && (
-                  <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso" coresArte={hexDasCoresArte}
+                  <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso" coresArte={coresEscolhidas}
                     borda={bordaEscolhida}
                     acessorios={acessoriosEscolhidos}
                     gabarito={gabarito} altura={190} />
@@ -1359,12 +1359,12 @@ export default function Configurador() {
                 significar ver diferente. */}
             <div className="rounded-2xl px-3 sm:px-6 py-6 max-w-full flex items-end justify-center gap-3 sm:gap-8"
               style={{ background: '#ffffff' }}>
-              <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente"
+              <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente" coresArte={coresEscolhidas}
                 borda={bordaEscolhida}
                 acessorios={acessoriosEscolhidos}
                 gabarito={gabarito} altura={Math.min(520, window.innerHeight * 0.62)} />
               {personalizado && estado.posicao === 'frente_verso' && (
-                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso"
+                <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso" coresArte={coresEscolhidas}
                   borda={bordaEscolhida}
                   acessorios={acessoriosEscolhidos}
                   gabarito={gabarito} altura={Math.min(520, window.innerHeight * 0.62)} />

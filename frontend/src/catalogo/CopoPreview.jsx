@@ -94,12 +94,14 @@ const ehVidro = opcao =>
 // escolhe as duas e espera ver o copo nelas. Enquanto o acabamento não
 // pedir as cores da peça, são essas que desenham as faixas.
 export function faixasDoCorpo(campos = {}, coresArte = []) {
-  const daPeca = [campos.cor_base, campos.cor_meio, campos.cor_topo]
-    .filter(Boolean).map(c => corDe(c));
+  const daPeca = [campos.cor_base, campos.cor_meio, campos.cor_topo].filter(Boolean);
   if (daPeca.length >= 2) return daPeca;
   if (coresArte.length >= 2) return coresArte;
   return [];
 }
+
+/** Uma faixa e outra sao a mesma cor? Compara por id, e por nome quando falta. */
+const mesmaCor = (a, b) => !!a && !!b && ((a.id && a.id === b.id) || a.name === b.name);
 
 // ── A FOTO QUE COMBINA COM A COR ESCOLHIDA ───────────────────
 //
@@ -326,7 +328,7 @@ function Desenho({
               e um degradê suave aqui mostraria um produto que a fábrica
               não faz. */}
           <linearGradient id={`${id}-corpo`} x1="0" y1="1" x2="0" y2="0">
-            {faixas.length >= 2 ? faixas.flatMap((hex, i) => ([
+            {faixas.length >= 2 ? faixas.map(f => corDe(f)).flatMap((hex, i) => ([
               <stop key={`${i}a`} offset={`${(i / faixas.length) * 100}%`}
                 stopColor={hex} stopOpacity="0.96" />,
               <stop key={`${i}b`} offset={`${((i + 1) / faixas.length) * 100}%`}
@@ -453,16 +455,24 @@ const LONGE = 96 * 96 * 3;   // já é a peça
  * diferentes — fração sobrevive ao redimensionamento, pixel não.
  */
 function geometriaDaPeca(px, L, A) {
-  let topo = -1, base = -1;
+  let topo = -1, base = -1, esq = L, dir = -1;
   for (let y = 0; y < A; y++) {
     let temPeca = false;
     for (let x = 0; x < L; x++) {
-      if (px[(y * L + x) * 4 + 3] >= 128) { temPeca = true; break; }
+      if (px[(y * L + x) * 4 + 3] >= 128) {
+        temPeca = true;
+        if (x < esq) esq = x;
+        if (x > dir) dir = x;
+      }
     }
     if (temPeca) { if (topo < 0) topo = y; base = y; }
   }
   if (topo < 0) return null;
-  return { topo: topo / A, base: (base + 1) / A };
+  // A LARGURA TAMBÉM. Ela não servia para a borda metalizada, que
+  // atravessa a peça de lado a lado, mas serve para encaixar a foto de
+  // uma cor sobre a de outra: sem ela as duas casam pela borda da
+  // imagem, e o copo de cima sai deslocado do de baixo.
+  return { topo: topo / A, base: (base + 1) / A, esq: esq / L, dir: (dir + 1) / L };
 }
 
 function recortarFundo(src) {
@@ -566,24 +576,89 @@ function recortarFundo(src) {
 // ════════════════════════════════════════════════════════════
 // AS FAIXAS DE COR, PINTADAS NA FOTO.
 //
-// Mesmo mecanismo da borda, e pelo mesmo motivo de sempre: a Lyon tem
-// foto de quase tudo, então a prévia quase nunca cai no desenho — e o
-// copo de duas cores desenhado bonito no plano B não aparecia para
-// ninguém. `source-atop` faz a tinta parar na silhueta da peça, sem
-// recorte escrito à mão, e a altura de cada faixa sai da geometria que
-// o recorte de fundo já mediu NESTA foto (o aro e o fundo do copo),
-// não de uma porcentagem chutada que acerta no long drink e erra na
-// caneca.
+// CADA FAIXA É A FOTO DAQUELA COR, e não uma aproximação dela. Cor 2 =
+// "Roxo Translúcido" é um produto do cadastro, fotografado no estúdio;
+// pintar a metade de cima com um lilás de tabela devolve uma cor que
+// não é a do catálogo — e foi exatamente a reclamação: "a segunda cor
+// não está puxando as cores corretas". Agora a metade de cima é
+// recortada da FOTO do Roxo Translúcido e colada por cima da foto da
+// Cor 1. As duas são o mesmo modelo, no mesmo estúdio, no mesmo
+// enquadramento: o resultado é o copo bicolor de verdade, com o brilho
+// e o volume de cada cor.
 //
-// A TINTA É TRANSLÚCIDA DE PROPÓSITO. Chapar cor sólida sobre a foto
-// apaga o brilho, a sombra e o volume — vira um adesivo colorido com
-// formato de copo. Por baixo continua sendo a peça fotografada.
+// A PRIMEIRA FAIXA NÃO SE PINTA. A foto de base JÁ É a da Cor 1 (ver
+// `escolhaVisual` no configurador) — repintá-la por cima de si mesma só
+// tira nitidez.
+//
+// AS DUAS FOTOS SE ALINHAM PELA PEÇA, não pela borda da imagem. Cada
+// foto tem seu enquadramento, e o recorte de fundo já mediu em qual
+// altura a peça começa e acaba nas duas; a de cima é escalada até a
+// peça dela ocupar a mesma faixa de pixels da peça de baixo. Encaixar
+// pela imagem inteira deixaria o aro de uma no meio do corpo da outra.
+//
+// `source-atop` É O QUE FAZ A COR PARAR NA SILHUETA, sem recorte
+// escrito à mão — o mesmo mecanismo da borda metalizada.
+//
+// SEM FOTO DA COR, CAI NA TINTA CHAPADA translúcida, que é o que havia
+// antes: pior que a foto, melhor que não mostrar a segunda cor.
 // ════════════════════════════════════════════════════════════
 
 const CACHE_FAIXAS = new Map();
 
-/** Quanto da tinta deixa a foto aparecer por baixo. */
+/** Quanto da tinta chapada deixa a foto aparecer por baixo. */
 const FORCA_DA_FAIXA = 0.82;
+
+/**
+ * Onde a peça de uma foto tem que cair para casar com a peça da outra.
+ *
+ * ESCALA PARA COBRIR, e não para caber. As fotos do estúdio não são
+ * milimetricamente iguais — um copo saiu um fio mais estreito que o
+ * outro —, e uma peça que "cabe" deixa a de baixo aparecendo numa
+ * franja de um ou dois pixels em volta, que lê como defeito na peça.
+ * Cobrindo, ela sobra; e o que sobra é cortado pelo `source-atop`, que
+ * só pinta onde a peça de baixo já é opaca. Sobrar não custa nada,
+ * faltar custa a prévia inteira.
+ *
+ * E o encaixe é pelo CENTRO DA PEÇA nos dois eixos, não pelo canto da
+ * imagem: é a peça que tem que coincidir com a peça.
+ */
+function encaixe(imgB, geoB, L, A, geoA) {
+  const Bw = imgB.naturalWidth, Bh = imgB.naturalHeight;
+  const altB = (geoB.base - geoB.topo) * Bh;
+  const largB = (geoB.dir - geoB.esq) * Bw;
+  if (!altB || !largB) return null;
+
+  const alvoAlt = (geoA.base - geoA.topo) * A;
+  const alvoLarg = (geoA.dir - geoA.esq) * L;
+  // Um por cento a mais mata a franja que sobra do arredondamento.
+  const escala = Math.max(alvoAlt / altB, alvoLarg / largB) * 1.01;
+
+  const centroAx = (geoA.esq + geoA.dir) / 2 * L;
+  const centroAy = (geoA.topo + geoA.base) / 2 * A;
+  const centroBx = (geoB.esq + geoB.dir) / 2 * Bw * escala;
+  const centroBy = (geoB.topo + geoB.base) / 2 * Bh * escala;
+
+  return {
+    x: centroAx - centroBx,
+    y: centroAy - centroBy,
+    larg: Bw * escala,
+    alt: Bh * escala,
+  };
+}
+
+/** A foto de uma cor, já sem o fundo do estúdio, pronta para colar. */
+function pecaRecortada(url) {
+  return recortarFundo(url).then(r => {
+    if (!r || !r.geo || r.geo.esq === undefined) return null;
+    return new Promise(resolve => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onerror = () => resolve(null);
+      img.onload = () => resolve({ img, geo: r.geo });
+      img.src = r.url || url;
+    });
+  }).catch(() => null);
+}
 
 /**
  * A foto da peça repartida nas cores escolhidas, de baixo para cima.
@@ -596,14 +671,14 @@ function pintarFaixas(fonte, geo, faixas) {
   if (!fonte || !geo || !Array.isArray(faixas) || faixas.length < 2) {
     return Promise.resolve(null);
   }
-  const chave = `${fonte.slice(-64)}|${faixas.join('>')}`;
+  const chave = `${fonte.slice(-64)}|${faixas.map(f => f?.id || f?.name).join('>')}`;
   if (CACHE_FAIXAS.has(chave)) return CACHE_FAIXAS.get(chave);
 
   const promessa = new Promise(resolve => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onerror = () => resolve(null);
-    img.onload = () => {
+    img.onload = async () => {
       try {
         const { naturalWidth: L, naturalHeight: A } = img;
         if (!L || !A) return resolve(null);
@@ -617,20 +692,38 @@ function pintarFaixas(fonte, geo, faixas) {
         const altura = (geo.base - geo.topo) * A;
         const faixa = altura / faixas.length;
 
-        ctx.save();
-        ctx.globalCompositeOperation = 'source-atop';
-        ctx.globalAlpha = FORCA_DA_FAIXA;
-        faixas.forEach((hex, i) => {
+        // As fotos das cores de cima, buscadas de uma vez. A primeira
+        // não entra: ela já é a foto de base.
+        const pecas = await Promise.all(
+          faixas.map((f, i) => (i === 0 || !f?.imagem) ? null : pecaRecortada(f.imagem)));
+
+        for (let i = 1; i < faixas.length; i++) {
           // `i` conta de BAIXO para cima: a primeira cor é o fundo do
           // copo, a última é a boca.
           const y = topo + altura - (i + 1) * faixa;
-          ctx.fillStyle = hex;
           // Meio pixel de folga entre as faixas: sem isso o
-          // arredondamento deixa uma linha da foto original aparecendo
+          // arredondamento deixa uma linha da foto de baixo aparecendo
           // na emenda, que parece defeito na peça.
-          ctx.fillRect(0, y - 0.5, L, faixa + 1);
-        });
-        ctx.restore();
+          const alturaDaFaixa = faixa + 1;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, y - 0.5, L, alturaDaFaixa);
+          ctx.clip();
+          ctx.globalCompositeOperation = 'source-atop';
+
+          const peca = pecas[i];
+          const enc = (peca && geo.esq !== undefined)
+            ? encaixe(peca.img, peca.geo, L, A, geo) : null;
+          if (enc) {
+            ctx.drawImage(peca.img, enc.x, enc.y, enc.larg, enc.alt);
+          } else {
+            ctx.globalAlpha = FORCA_DA_FAIXA;
+            ctx.fillStyle = corDe(faixas[i]);
+            ctx.fillRect(0, y - 0.5, L, alturaDaFaixa);
+          }
+          ctx.restore();
+        }
 
         resolve(tela.toDataURL('image/png'));
       } catch { resolve(null); }
@@ -771,7 +864,8 @@ function FotoDaPeca({ src, espelhar, borda = null, faixas = [] }) {
       })
       .finally(() => { clearTimeout(aviso); if (vivo) setOcupado(false); });
     return () => { vivo = false; clearTimeout(aviso); };
-  }, [src, borda?.foto, borda?.cor_hex, borda?.nome, faixas.join('>')]); // eslint-disable-line
+  }, [src, borda?.foto, borda?.cor_hex, borda?.nome,
+      faixas.map(f => f?.id || f?.name).join('>')]); // eslint-disable-line
 
   return (
     <>
