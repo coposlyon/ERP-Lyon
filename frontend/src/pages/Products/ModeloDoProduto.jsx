@@ -18,7 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Palette, PlusCircle, Plus, Loader2, Edit2, AlertTriangle,
-  Image as ImageIcon, Check, Search, Trash2, Info, Layers,
+  Image as ImageIcon, Check, Search, Trash2, Info, Layers, Tags,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -275,6 +275,195 @@ function EditarModelo({ modelo, onSalvo }) {
 }
 
 // ════════════════════════════════════════════════════════════
+// O PREÇO QUE CAI COM A QUANTIDADE.
+//
+// "50 copos a R$ 10, 100 a R$ 8, 200 a R$ 6" é como a Lyon vende, e o
+// catálogo já sabia ler isso (`PRODUTOS.price_tiers`, lido por
+// `calc.precoFaixa`). O que não existia era ONDE ESCREVER: a faixa só
+// se editava produto a produto, e um modelo tem vinte e quatro cores —
+// o que na prática quer dizer que ninguém preenchia, e o catálogo
+// vendia tudo pelo preço de uma unidade.
+//
+// A FAIXA É DO MODELO, e não da cor. O desconto por volume é do copo,
+// não do amarelo: aplicar nas vinte e quatro de uma vez é o que essa
+// tela existe para fazer.
+//
+// A CLIENTE SÓ DIZ "A PARTIR DE QUANTOS" E "POR QUANTO". O fim de cada
+// faixa é calculado do começo da seguinte — pedir as duas pontas à mão
+// é como nascem faixas que se sobrepõem (100–200 e 150–300) e um preço
+// que depende da ordem em que as linhas foram lidas.
+//
+// ABAIXO DA PRIMEIRA FAIXA VALE O PREÇO DE TABELA, que continua sendo
+// da Formação de Preço. Aqui é só o desconto por volume — o preço-base
+// tem uma porta só, e não é esta.
+// ════════════════════════════════════════════════════════════
+function PrecoPorQuantidade({ modelo, onSalvo }) {
+  const cores = modelo.cores || [];
+
+  // Um valor só quando as cores concordam. Divergindo, vale a primeira
+  // e a tela avisa — é mais honesto que escolher uma calada.
+  const mesmaFaixa = JSON.stringify(cores.map(c => c.price_tiers || []));
+  const divergem = new Set(cores.map(c => JSON.stringify(c.price_tiers || []))).size > 1;
+  const baseComum = new Set(cores.map(c => Number(c.sale_price) || 0));
+  const precoBase = baseComum.size === 1 ? [...baseComum][0] : null;
+
+  const daCor = (cores[0]?.price_tiers || [])
+    .slice()
+    .sort((a, b) => (Number(a.min_qty) || 0) - (Number(b.min_qty) || 0))
+    .map(t => ({ min: String(Number(t.min_qty) || 0), preco: String(Number(t.price) || 0) }));
+
+  const [linhas, setLinhas] = useState(daCor.length ? daCor : [{ min: '', preco: '' }]);
+  const [minimo, setMinimo] = useState(String(Math.max(...cores.map(c => Number(c.min_order_qty) || 1), 1)));
+  const [salvando, setSalvando] = useState(false);
+
+  const mudar = (i, k, v) => setLinhas(l => l.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+  const tirar = i => setLinhas(l => (l.length > 1 ? l.filter((_, j) => j !== i) : l));
+  const somar = () => setLinhas(l => [...l, { min: '', preco: '' }]);
+
+  // Ordenadas pelo começo, e é dessa ordem que sai o fim de cada uma.
+  const validas = linhas
+    .map(x => ({ min: parseInt(x.min, 10), preco: Number(String(x.preco).replace(',', '.')) }))
+    .filter(x => Number.isFinite(x.min) && x.min > 0 && Number.isFinite(x.preco) && x.preco >= 0)
+    .sort((a, b) => a.min - b.min);
+
+  const repetida = new Set(validas.map(v => v.min)).size !== validas.length;
+
+  const paraSalvar = validas.map((x, i) => ({
+    min_qty: x.min,
+    max_qty: i + 1 < validas.length ? validas[i + 1].min - 1 : null,
+    price: x.preco,
+  }));
+
+  async function salvar() {
+    if (repetida) { toast.error('Duas faixas começam na mesma quantidade'); return; }
+    const min = Math.max(1, parseInt(minimo, 10) || 1);
+    if (!confirm(`Aplicar nas ${cores.length} cores de ${modelo.titulo}?`)) return;
+    setSalvando(true);
+    try {
+      await api.patch('/products/bulk', {
+        ids: cores.map(c => c.id),
+        fields: { price_tiers: paraSalvar, min_order_qty: min },
+      });
+      toast.success(`Preço por quantidade aplicado em ${cores.length} cores`);
+      onSalvo();
+    } catch (err) {
+      toast.error(err.error || 'Erro ao aplicar');
+    } finally { setSalvando(false); }
+  }
+
+  const brl = v => 'R$ ' + (Number(v) || 0).toFixed(2).replace('.', ',');
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-3 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">
+              Preço por quantidade — vale para as {cores.length} cores
+            </p>
+            <p className="text-[11px] text-gray-500">
+              Quanto mais copos, mais barato cada um. É este preço que o catálogo mostra.
+            </p>
+          </div>
+          <button type="button" className="btn-primary btn-sm" onClick={salvar} disabled={salvando}>
+            {salvando ? <Loader2 size={14} className="animate-spin" /> : `Aplicar nas ${cores.length}`}
+          </button>
+        </div>
+
+        {divergem && (
+          <p className="text-[11px] text-amber-600">
+            Hoje as cores têm faixas diferentes entre si. O que está abaixo é a da primeira —
+            aplicar iguala todas.
+          </p>
+        )}
+
+        <div>
+          <label className="label">Mínimo do pedido (un)</label>
+          <input className="input w-40" type="number" min={1} value={minimo}
+            onChange={e => setMinimo(e.target.value)} />
+          <p className="text-[11px] text-gray-500 mt-1">
+            Abaixo disso o catálogo não deixa fechar — ele sobe a quantidade para o mínimo.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          {linhas.map((l, i) => (
+            <div key={i} className="flex flex-wrap items-end gap-2">
+              <div className="w-36">
+                <label className="label">A partir de</label>
+                <div className="relative">
+                  <input className="input pr-8" type="number" min={1} value={l.min}
+                    placeholder="50" onChange={e => mudar(i, 'min', e.target.value)} />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">un</span>
+                </div>
+              </div>
+              <div className="w-36">
+                <label className="label">Cada copo sai a</label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">R$</span>
+                  <input className="input pl-8" type="number" step="0.01" min={0} value={l.preco}
+                    placeholder="10,00" onChange={e => mudar(i, 'preco', e.target.value)} />
+                </div>
+              </div>
+              <button type="button" onClick={() => tirar(i)}
+                disabled={linhas.length === 1}
+                className="btn-secondary btn-sm mb-0.5 disabled:opacity-40" title="Tirar esta faixa">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={somar} className="btn-secondary btn-sm">
+            <Plus size={14} /> Mais uma faixa
+          </button>
+        </div>
+      </div>
+
+      {/* O QUE O CLIENTE VAI VER, escrito por extenso. A lista de campos
+          acima é o que se digita; isto é o que ela SIGNIFICA — e é aqui
+          que um "200 mais barato que 500" salta aos olhos antes de ir
+          para o ar. */}
+      <div className="rounded-xl border border-gray-200 p-3">
+        <p className="text-xs font-semibold text-gray-700 mb-2">Como vai ficar no catálogo</p>
+        {!paraSalvar.length ? (
+          <p className="text-xs text-gray-500">
+            Sem faixa, todo pedido sai pelo preço de tabela
+            {precoBase != null ? ` (${brl(precoBase)} cada)` : ''}.
+          </p>
+        ) : (
+          <ul className="text-xs text-gray-600 space-y-1">
+            {parseInt(minimo, 10) < (paraSalvar[0]?.min_qty || 0) && (
+              <li>
+                De <b>{Math.max(1, parseInt(minimo, 10) || 1)}</b> a{' '}
+                <b>{paraSalvar[0].min_qty - 1}</b> un —{' '}
+                {precoBase != null ? <b>{brl(precoBase)}</b> : 'preço de tabela'} cada
+                <span className="text-gray-400"> (preço de tabela)</span>
+              </li>
+            )}
+            {paraSalvar.map((t, i) => (
+              <li key={i}>
+                {t.max_qty == null
+                  ? <>De <b>{t.min_qty}</b> un para cima — </>
+                  : <>De <b>{t.min_qty}</b> a <b>{t.max_qty}</b> un — </>}
+                <b>{brl(t.price)}</b> cada
+                <span className="text-gray-400">
+                  {' '}({brl(t.price * t.min_qty)} em {t.min_qty} un)
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="flex items-start gap-1.5 text-[11px] text-gray-400 mt-2">
+          <Info size={12} className="mt-0.5 shrink-0" />
+          O preço de tabela continua saindo da{' '}
+          <Link to="/pricing/formacao" className="text-primary-600 hover:underline">Formação de Preço</Link>.
+          Aqui é só o desconto por volume.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
 export default function ModeloDoProduto({ modelo, onClose, onEditarCor, onNovaCor }) {
   const qc = useQueryClient();
   const [aba, setAba] = useState('cores');
@@ -342,6 +531,7 @@ export default function ModeloDoProduto({ modelo, onClose, onEditarCor, onNovaCo
 
   const ABAS = [
     { k: 'cores', t: `Cores (${modelo.cores.length})`, i: Palette },
+    { k: 'preco', t: 'Preço por quantidade', i: Tags },
     { k: 'adicionais', t: 'Adicionais', i: PlusCircle },
     // A REGRA DA CATEGORIA INTEIRA. Ate aqui so existia tela para a
     // regra de PRODUTO — abrir a borda para a categoria toda pedia
@@ -363,7 +553,13 @@ export default function ModeloDoProduto({ modelo, onClose, onEditarCor, onNovaCo
           ))}
         </div>
 
-        {aba === 'catalogo' ? (
+        {aba === 'preco' ? (
+          <PrecoPorQuantidade modelo={modelo} onSalvo={() => {
+            qc.invalidateQueries({ queryKey: ['produtos-personalizados'] });
+            qc.invalidateQueries({ queryKey: ['products'] });
+            onClose();
+          }} />
+        ) : aba === 'catalogo' ? (
           <CatalogoDaCategoria
             categoryId={modelo.category_id || modelo.cores?.[0]?.category_id || null}
             titulo={modelo.titulo} />
