@@ -167,15 +167,36 @@ router.put('/categoria/:id/nome-catalogo', exigirGestao, async (req, res) => {
 
 const TIPOS = ['acabamento', 'processo', 'cor'];
 
+/**
+ * Le a configuracao com o preco, aguentando a coluna `faixas` nao
+ * existir ainda.
+ *
+ * As migracoes deste projeto sao coladas a mao no Supabase e o codigo
+ * sobe antes. Ja derrubamos a vitrine inteira uma vez por causa dessa
+ * janela — aqui a consulta repete sem a coluna e a tela abre do mesmo
+ * jeito, so sem as faixas.
+ */
+async function selectComFaixas(tabela, colunas, tenantId) {
+  const filtra = q => q.eq('tenant_id', tenantId).eq('is_active', true).order('seq');
+  const r = await filtra(supabase.from(tabela).select(colunas));
+  if (!r.error) return r;
+  const msg = `${r.error.code || ''} ${r.error.message || ''}`;
+  if (!/faixas|does not exist|schema cache/i.test(msg)) return r;
+  const sem = colunas.split(',').map(c => c.trim()).filter(c => c !== 'faixas').join(', ');
+  return filtra(supabase.from(tabela).select(sem));
+}
+
 router.get('/categoria/:id/regras', async (req, res) => {
   try {
     const [cat, acab, proc, cores, regras] = await Promise.all([
       supabase.from('CATEGORIAS').select('id, name')
         .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle(),
-      supabase.from('CONFIG_ACABAMENTOS').select('id, name, label_comercial, seq')
-        .eq('tenant_id', req.tenantId).eq('is_active', true).order('seq'),
-      supabase.from('CONFIG_PROCESSOS').select('id, name, max_cores, seq')
-        .eq('tenant_id', req.tenantId).eq('is_active', true).order('seq'),
+      // O PRECO VEM JUNTO. Quem esta ligando um tipo de impressao e
+      // quem sabe quanto ele custa — mandar a pessoa a outra tela so
+      // para digitar um numero e o tipo de ida e volta que faz o preco
+      // ficar desatualizado.
+      selectComFaixas('CONFIG_ACABAMENTOS', 'id, name, label_comercial, seq, preco_adicional, faixas', req.tenantId),
+      selectComFaixas('CONFIG_PROCESSOS', 'id, name, max_cores, seq, preco_adicional, faixas', req.tenantId),
       supabase.from('CONFIG_CORES').select('id, name, grupo, hex, seq')
         .eq('tenant_id', req.tenantId).eq('is_active', true).order('seq'),
       supabase.from('PRODUTO_COMPATIBILIDADE').select('tipo, ref_id, permitido')
@@ -195,6 +216,8 @@ router.get('/categoria/:id/regras', async (req, res) => {
       id: x.id,
       nome: x.label_comercial || x.name,
       permitido: mapa[tipo][x.id] === true,
+      preco_adicional: Number(x.preco_adicional) || 0,
+      faixas: Array.isArray(x.faixas) ? x.faixas : [],
       ...extra(x),
     }));
 
