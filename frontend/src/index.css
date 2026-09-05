@@ -398,6 +398,20 @@ html.dark .bg-orange-100 { background-color: #7c2d12 !important; }
    `text-gray-900` virava branco por outra regra: branco sobre creme,
    invisível. A tela de Reposição do Estoque era o caso mais visível —
    o nome do fornecedor sumia por completo. */
+/* BRANCO COM OPACIDADE tambem precisava de regra.
+   `html.dark [class~="bg-white"]` so pega o `bg-white` exato — a
+   variante `bg-white/80` e outra classe, e ficava branca de verdade
+   sobre o marinho. Sao as barras fixas de rodape (Despesas Variaveis,
+   Configuracoes, Sites) e qualquer painel que use o truque do
+   `backdrop-blur`: no escuro viravam uma faixa clara atravessando a
+   tela.
+   So as opacidades ALTAS entram aqui. `bg-white/5` e `bg-white/10` sao
+   veus de sobreposicao sobre foto, e no escuro funcionam como devem. */
+html.dark [class*="bg-white/6"],
+html.dark [class*="bg-white/7"],
+html.dark [class*="bg-white/8"],
+html.dark [class*="bg-white/9"] { background-color: #0a1130 !important; }
+
 html.dark .bg-amber-50   { background-color: #451a03 !important; }
 html.dark .bg-amber-100  { background-color: #78350f !important; }
 /* Os que sobraram, cada um com um punhado de usos, para nao voltar a

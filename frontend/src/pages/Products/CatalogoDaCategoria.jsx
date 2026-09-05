@@ -222,8 +222,13 @@ function ItemComPreco({ it, tipo, qc, categoryId, ligado, onLigar }) {
         </button>
       </div>
 
+      {/* O painel aberto NAO tem fundo proprio: a linha de cima ja
+          separa, e um fundo claro aqui vira uma faixa esbranquicada em
+          cima do card escuro — que e exatamente o que `bg-white/60`
+          fazia. (Comentario aqui fora: dentro do `&& (` ele viraria um
+          objeto literal e quebraria o build.) */}
       {aberto && (
-        <div className="px-2.5 pb-2.5 pt-1 border-t border-gray-100 space-y-2 bg-white/60">
+        <div className="px-2.5 pb-2.5 pt-1 border-t border-gray-200 space-y-2">
           <p className="text-[11px] text-gray-500">
             Vale para <b>todas as categorias</b> — o preço é do item, não desta
             categoria. Aqui se decide apenas se ele aparece.
