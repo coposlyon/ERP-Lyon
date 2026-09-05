@@ -40,6 +40,21 @@ import { lerRascunho, gravarRascunho, limparRascunho } from './rascunho';
 const HOJE = () => new Date().toISOString().slice(0, 10);
 
 /**
+ * COMO SE CHAMA A ENÉSIMA COR — pela PARTE DO COPO que ela pinta.
+ *
+ * "Cor 1, Cor 2, Cor 3" não diz onde cada uma vai parar, e a cliente
+ * escolhia às cegas: descobria a ordem só quando a peça chegava. Com
+ * duas, a primeira é a de baixo e a segunda a de cima; com três entra o
+ * meio entre elas — a mesma ordem que a prévia desenha.
+ */
+const NOME_DA_FAIXA = (i, total) => {
+  if (total < 2) return 'Cor';
+  if (i === 0) return 'Cor 1 · parte de baixo';
+  if (i === total - 1) return `Cor ${i + 1} · parte de cima`;
+  return `Cor ${i + 1} · meio`;
+};
+
+/**
  * O QUE ESTE ACABAMENTO ABRE PARA A CLIENTE.
  *
  * "Tricolor" não diz o que vai acontecer; "escolhe 3 cores (Cor 1, Cor
@@ -364,10 +379,11 @@ export default function Configurador() {
    * "2 cores", pagava por duas, e a producao recebia um pedido sem
    * dizer quais — e alguem ligava para perguntar.
    *
-   * As opcoes saem das cores de PINTURA liberadas para este modelo:
-   * sao as tintas que a serigrafia tem. Se o cadastro nao separou por
-   * grupo, cai no primeiro grupo que existir — melhor perguntar com a
-   * lista errada de grupo do que nao perguntar.
+   * AS OPCOES SAO AS CORES DA CATEGORIA, e nao uma paleta a parte. O
+   * servidor manda no grupo «pintura» exatamente as cores que ESTE
+   * modelo tem no cadastro — as mesmas da vitrine (ver `configuracaoDoModelo`).
+   * Antes eram doze nomes genericos que nao existem na fabrica, e o
+   * pedido saia com uma cor que ninguem consegue produzir.
    *
    * `max_cores` vazio = arte colorida (transfer, DTF): nao se escolhe
    * cor de tinta, a arte ja vem colorida.
@@ -749,8 +765,16 @@ export default function Configurador() {
                     <Rotulo>
                       {quantasCores === 1
                         ? 'Cor da arte'
-                        : `Cores da arte — escolha ${quantasCores}`}
+                        : `Cores — escolha ${quantasCores}, de baixo para cima`}
                     </Rotulo>
+                    {quantasCores > 1 && (
+                      <p className="text-[11px] mb-1.5" style={{ color: NEON.suave }}>
+                        A <b>Cor 1</b> é a parte de baixo do copo
+                        {quantasCores === 3 ? ', a Cor 2 é o meio' : ''} e a
+                        <b> Cor {quantasCores}</b> é a parte de cima. A prévia ao
+                        lado mostra na hora.
+                      </p>
+                    )}
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                       {Array.from({ length: quantasCores }).map((_, i) => {
                         const usadas = new Set(
@@ -760,12 +784,15 @@ export default function Configurador() {
                         const atual = opcoes.find(o => o.id === valor);
                         return (
                           <div key={i}>
+                            {quantasCores > 1 && (
+                              <Rotulo>{NOME_DA_FAIXA(i, quantasCores)}</Rotulo>
+                            )}
                             <div className="relative">
                               <Seletor value={valor}
                                 onChange={e => trocarCorArte(i, e.target.value)}
                                 style={{ paddingLeft: atual ? 30 : 12 }}>
                                 <option value="">
-                                  {quantasCores === 1 ? 'Selecione…' : `Cor ${i + 1}…`}
+                                  {quantasCores === 1 ? 'Selecione…' : `${NOME_DA_FAIXA(i, quantasCores)}…`}
                                 </option>
                                 {opcoes.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                               </Seletor>
@@ -781,7 +808,7 @@ export default function Configurador() {
                     </div>
                     {!coresDaTinta.length && (
                       <p className="text-[10.5px] mt-1" style={{ color: '#fca5a5' }}>
-                        Nenhuma cor de tinta liberada para este modelo — fale com um atendente.
+                        Nenhuma cor liberada para este modelo — fale com um atendente.
                       </p>
                     )}
                   </div>
@@ -1041,7 +1068,6 @@ export default function Configurador() {
                   fale com um atendente para montar a personalização.
                 </Nota>
               )}
-              )}
               </>)}
             </Painel>
           )}
@@ -1123,7 +1149,8 @@ export default function Configurador() {
 
               {/* O copo cinza sem cor escolhida parece defeito. Uma linha
                   explicando transforma "quebrou" em "falta escolher". */}
-              {!escolhaVisual.campos?.cor_base && !escolhaVisual.campos?.cor_produto && (
+              {!escolhaVisual.campos?.cor_base && !escolhaVisual.campos?.cor_produto
+                && !hexDasCoresArte.length && (
                 <p className="text-[11px] text-center mt-2" style={{ color: '#64748b' }}>
                   Escolha as cores ao lado para ver o copo como ele vai ficar.
                 </p>

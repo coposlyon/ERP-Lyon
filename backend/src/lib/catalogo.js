@@ -628,6 +628,41 @@ async function configDoModelo(tenantId, chave) {
     (cores[c.grupo] = cores[c.grupo] || []).push({ id: c.id, name: c.name, hex: c.hex });
   }
 
+  /**
+   * A PALETA DA PEÇA É A DA CATEGORIA — e não uma lista de nomes soltos.
+   *
+   * O grupo «pintura» nasceu com doze nomes genéricos (Amarelo, Azul
+   * Royal, Rosa, Roxo...) escritos no cadastro inicial. Nenhum deles é
+   * uma cor que a Lyon tem. O cliente abria o LONG DRINK TRADICIONAL —
+   * que a fábrica faz em vinte e tantas cores DE VERDADE: Amarelo
+   * Canário, Azul Bic, Pérola, Rubi Translúcido — e escolhia entre doze
+   * que não são nenhuma delas. O pedido saía com uma cor que não existe,
+   * e quem descobria era a produção.
+   *
+   * Agora quem manda é o cadastro do produto: as cores oferecidas para
+   * pintar a peça são EXATAMENTE as deste modelo, uma por uma, as
+   * mesmas que aparecem na vitrine.
+   *
+   * A EXCEÇÃO É O CAMPO QUE PEDE COR PELO NOME. A boca é «Gelo» ou
+   * «Transparente», e Gelo não é peça — é acabamento; ela não está e
+   * nem deveria estar na lista de cores do copo. Esses campos ganham
+   * grupo próprio, com a lista original, para que a paleta livre (Cor
+   * 1, Cor 2, Cor 3) continue sendo só a da categoria.
+   */
+  const paletaAntiga = cores.pintura || [];
+  if (cores.produto.length) cores.pintura = cores.produto;
+
+  for (const a of acabamentos) {
+    a.campos = (a.campos || []).map(campo => {
+      if (campo.grupo !== 'pintura') return campo;
+      if (!Array.isArray(campo.apenas) || !campo.apenas.length) return campo;
+      const querem = campo.apenas.map(x => String(x).toLowerCase());
+      const grupo = `pintura_${campo.key}`;
+      cores[grupo] = paletaAntiga.filter(c => querem.includes(String(c.name).toLowerCase()));
+      return { ...campo, grupo };
+    });
+  }
+
   // O PROCESSO NÃO É ESCOLHA DO CLIENTE. A tinta tem que casar com o
   // material do copo: PS pede tinta PS. O cliente escolhe a COR da arte;
   // a química quem determina é a ficha técnica.

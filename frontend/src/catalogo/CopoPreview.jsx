@@ -76,6 +76,31 @@ export function corDe(opcao, padrao = '#cbd5e1') {
 const ehVidro = opcao =>
   /transparente|cristal/i.test(String(opcao?.name || ''));
 
+// ── AS FAIXAS DE COR DO CORPO ────────────────────────────────
+//
+// UM COPO DE DUAS CORES TEM DUAS PARTES, e é assim que a dona da
+// fábrica descreve a peça: «a de baixo é a primeira cor, a de cima é a
+// segunda». Com três, a do meio entra entre elas. A prévia não mostrava
+// nada disso — o degradê ia da base ao topo por igual e a cor do MEIO
+// era simplesmente ignorada: o Tricolor aparecia com duas cores.
+//
+// A ORDEM É DE BAIXO PARA CIMA, sempre. Cor 1 é o fundo do copo, a
+// última é a boca. É a ordem em que a peça é montada e a ordem em que
+// os campos aparecem na tela — trocá-la aqui faria a prévia contradizer
+// os dois.
+//
+// SEM CAMPO DE COR NA PEÇA, QUEM PINTA É A IMPRESSÃO. «Serigrafia 2
+// cores» é o jeito que a Lyon vende o copo de duas cores: a cliente
+// escolhe as duas e espera ver o copo nelas. Enquanto o acabamento não
+// pedir as cores da peça, são essas que desenham as faixas.
+export function faixasDoCorpo(campos = {}, coresArte = []) {
+  const daPeca = [campos.cor_base, campos.cor_meio, campos.cor_topo]
+    .filter(Boolean).map(c => corDe(c));
+  if (daPeca.length >= 2) return { faixas: daPeca, daImpressao: false };
+  if (coresArte.length >= 2) return { faixas: coresArte, daImpressao: true };
+  return { faixas: [], daImpressao: false };
+}
+
 // ── A FOTO QUE COMBINA COM A COR ESCOLHIDA ───────────────────
 //
 // Pintura não tem foto: `cor_base` é tinta aplicada sobre a peça
@@ -268,6 +293,10 @@ function Desenho({
   const corTopo = corDe(topo, corBase);
   const corBorda = corDe(borda, '#d4af37');
 
+  // As faixas do corpo, de baixo para cima. Duas ou mais viram bandas
+  // de verdade; uma só continua sendo o corpo inteiro de uma cor.
+  const { faixas, daImpressao } = faixasDoCorpo(campos, coresArte);
+
   const id = `copo-${familia || 'padrao'}`;
   const vidro = ehVidro(base) && !topo;
 
@@ -291,10 +320,24 @@ function Desenho({
         aria-label="Prévia da peça"
         style={{ maxWidth: '100%', height: 'auto', transform: espelhar ? 'scaleX(-1)' : undefined }}>
         <defs>
+          {/* DUAS PARADAS POR FAIXA — é o que faz a troca de cor ser
+              uma LINHA e não um esfumado. Bicolor e Tricolor são peças
+              de partes coladas: a emenda é visível na peça de verdade,
+              e um degradê suave aqui mostraria um produto que a fábrica
+              não faz. */}
           <linearGradient id={`${id}-corpo`} x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor={corBase} stopOpacity={vidro ? 0.34 : 0.98} />
-            <stop offset={topo ? '58%' : '100%'} stopColor={corBase} stopOpacity={vidro ? 0.28 : 0.94} />
-            {topo && <stop offset="100%" stopColor={corTopo} stopOpacity={ehVidro(topo) ? 0.22 : 0.95} />}
+            {faixas.length >= 2 ? faixas.flatMap((hex, i) => ([
+              <stop key={`${i}a`} offset={`${(i / faixas.length) * 100}%`}
+                stopColor={hex} stopOpacity="0.96" />,
+              <stop key={`${i}b`} offset={`${((i + 1) / faixas.length) * 100}%`}
+                stopColor={hex} stopOpacity="0.96" />,
+            ])) : (
+              <>
+                <stop offset="0%" stopColor={corBase} stopOpacity={vidro ? 0.34 : 0.98} />
+                <stop offset={topo ? '58%' : '100%'} stopColor={corBase} stopOpacity={vidro ? 0.28 : 0.94} />
+                {topo && <stop offset="100%" stopColor={corTopo} stopOpacity={ehVidro(topo) ? 0.22 : 0.95} />}
+              </>
+            )}
           </linearGradient>
 
           <linearGradient id={`${id}-brilho`} x1="0" y1="0" x2="1" y2="0">
@@ -365,7 +408,12 @@ function Desenho({
             marcada nas cores escolhidas: é onde a tinta vai, e nela. */}
         {!arte && coresArte.length > 0 && (
           <g clipPath={`url(#${id}-recorte)`} opacity="0.9">
-            {coresArte.map((hex, i) => {
+            {/* SE AS CORES JÁ PINTARAM O COPO, NÃO SE PINTA DUAS VEZES.
+                Com as faixas no corpo, encher também a janela da arte
+                repete a mesma informação e some com a única coisa que a
+                janela tem para dizer: ONDE a impressão sai. Fica só o
+                tracejado. */}
+            {!daImpressao && coresArte.map((hex, i) => {
               const alturaFaixa = alturaArte / coresArte.length;
               return (
                 <rect key={i}
@@ -544,6 +592,85 @@ function recortarFundo(src) {
 // inclusive na elipse do aro — sem nenhum recorte escrito à mão.
 // ════════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════════
+// AS FAIXAS DE COR, PINTADAS NA FOTO.
+//
+// Mesmo mecanismo da borda, e pelo mesmo motivo de sempre: a Lyon tem
+// foto de quase tudo, então a prévia quase nunca cai no desenho — e o
+// copo de duas cores desenhado bonito no plano B não aparecia para
+// ninguém. `source-atop` faz a tinta parar na silhueta da peça, sem
+// recorte escrito à mão, e a altura de cada faixa sai da geometria que
+// o recorte de fundo já mediu NESTA foto (o aro e o fundo do copo),
+// não de uma porcentagem chutada que acerta no long drink e erra na
+// caneca.
+//
+// A TINTA É TRANSLÚCIDA DE PROPÓSITO. Chapar cor sólida sobre a foto
+// apaga o brilho, a sombra e o volume — vira um adesivo colorido com
+// formato de copo. Por baixo continua sendo a peça fotografada.
+// ════════════════════════════════════════════════════════════
+
+const CACHE_FAIXAS = new Map();
+
+/** Quanto da tinta deixa a foto aparecer por baixo. */
+const FORCA_DA_FAIXA = 0.82;
+
+/**
+ * A foto da peça repartida nas cores escolhidas, de baixo para cima.
+ *
+ * Devolve `null` sempre que não der certo — sem geometria, menos de
+ * duas cores, canvas sujo por CORS. Nunca lança: prévia sem faixa é
+ * prévia; prévia quebrada é tela branca.
+ */
+function pintarFaixas(fonte, geo, faixas) {
+  if (!fonte || !geo || !Array.isArray(faixas) || faixas.length < 2) {
+    return Promise.resolve(null);
+  }
+  const chave = `${fonte.slice(-64)}|${faixas.join('>')}`;
+  if (CACHE_FAIXAS.has(chave)) return CACHE_FAIXAS.get(chave);
+
+  const promessa = new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onerror = () => resolve(null);
+    img.onload = () => {
+      try {
+        const { naturalWidth: L, naturalHeight: A } = img;
+        if (!L || !A) return resolve(null);
+
+        const tela = document.createElement('canvas');
+        tela.width = L; tela.height = A;
+        const ctx = tela.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        const topo = geo.topo * A;
+        const altura = (geo.base - geo.topo) * A;
+        const faixa = altura / faixas.length;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.globalAlpha = FORCA_DA_FAIXA;
+        faixas.forEach((hex, i) => {
+          // `i` conta de BAIXO para cima: a primeira cor é o fundo do
+          // copo, a última é a boca.
+          const y = topo + altura - (i + 1) * faixa;
+          ctx.fillStyle = hex;
+          // Meio pixel de folga entre as faixas: sem isso o
+          // arredondamento deixa uma linha da foto original aparecendo
+          // na emenda, que parece defeito na peça.
+          ctx.fillRect(0, y - 0.5, L, faixa + 1);
+        });
+        ctx.restore();
+
+        resolve(tela.toDataURL('image/png'));
+      } catch { resolve(null); }
+    };
+    img.src = fonte;
+  });
+
+  CACHE_FAIXAS.set(chave, promessa);
+  return promessa;
+}
+
 const CACHE_BORDA = new Map();
 
 /** Quanto do copo a borda ocupa. Medida da faixa real das metalizadas. */
@@ -642,7 +769,7 @@ function pintarBorda(fonte, geo, borda) {
  * prévia que pisca em branco é pior que meio segundo com o fundo do
  * estúdio.
  */
-function FotoDaPeca({ src, espelhar, borda = null }) {
+function FotoDaPeca({ src, espelhar, borda = null, faixas = [] }) {
   const [pronta, setPronta] = useState(null);
   // TRABALHO INVISÍVEL PARECE TRAVAMENTO. Recortar o fundo e pintar o
   // aro são duas passadas de canvas sobre a foto inteira, e no celular
@@ -662,14 +789,18 @@ function FotoDaPeca({ src, espelhar, borda = null }) {
       .then(async r => {
         if (!vivo) return;
         if (!r) return;
-        const base = r.url || src;
-        if (!borda) { setPronta(r.url || null); return; }
-        const comBorda = await pintarBorda(base, r.geo, borda);
-        if (vivo) setPronta(comBorda || r.url || null);
+        // AS FAIXAS PRIMEIRO, A BORDA POR CIMA. A borda metalizada
+        // ocupa o aro, que é o topo da última faixa: pintá-la antes
+        // seria pintá-la e cobri-la em seguida.
+        let atual = r.url || src;
+        if (faixas.length >= 2) atual = (await pintarFaixas(atual, r.geo, faixas)) || atual;
+        if (!vivo) return;
+        if (borda) atual = (await pintarBorda(atual, r.geo, borda)) || atual;
+        if (vivo) setPronta(atual === src ? (r.url || null) : atual);
       })
       .finally(() => { clearTimeout(aviso); if (vivo) setOcupado(false); });
     return () => { vivo = false; clearTimeout(aviso); };
-  }, [src, borda?.foto, borda?.cor_hex, borda?.nome]); // eslint-disable-line
+  }, [src, borda?.foto, borda?.cor_hex, borda?.nome, faixas.join('>')]); // eslint-disable-line
 
   return (
     <>
@@ -735,6 +866,9 @@ export default function CopoPreview({
   // a tela segue.
   const espelhar = face !== 'verso';
 
+  // As faixas de cor do corpo, de baixo para cima — ver `faixasDoCorpo`.
+  const { faixas, daImpressao } = faixasDoCorpo(campos, coresArte);
+
   // A FOTO DA COR ESCOLHIDA, E A VERDADE SOBRE ELA.
   //
   // Há duas situações muito diferentes aqui, e a versão anterior tratava
@@ -761,7 +895,11 @@ export default function CopoPreview({
     .find(Boolean);
 
   const foto = decidiu?.achado?.url || fotoModelo || null;
-  const pintado = decidiu && decidiu.chave !== 'cor_produto';
+  // A COR QUE É UMA PEÇA DE VERDADE NÃO PRECISA DE RESSALVA.
+  // Desde que a paleta passou a ser a da categoria, «Cor 1 = Azul Bic»
+  // é a peça Azul Bic — o mesmo produto, a mesma foto. Chamar isso de
+  // "foto ilustrativa" põe dúvida onde não há nenhuma.
+  const pintado = decidiu && decidiu.chave !== 'cor_produto' && !decidiu.opcao.produto_id;
 
   // O aviso só existe quando a foto não é a peça. Peça de verdade não
   // precisa de nota de rodapé.
@@ -822,7 +960,7 @@ export default function CopoPreview({
           continua certa porque é toda em porcentagem. */}
       <div className="relative"
         style={{ width: altura * 0.78, maxWidth: '100%', aspectRatio: '0.78' }}>
-        <FotoDaPeca src={foto} espelhar={espelhar} borda={borda} />
+        <FotoDaPeca src={foto} espelhar={espelhar} borda={borda} faixas={faixas} />
 
         {/* A ARTE, na janela onde a impressão realmente sai. Vem como SVG
             e é embutida por dangerouslySetInnerHTML — o vetor é da Lyon,
@@ -855,7 +993,10 @@ export default function CopoPreview({
             height: `${janela.altura * 100}%`,
             outline: '1px dashed rgba(17,19,24,0.35)',
           }}>
-            {coresArte.map((hex, i) => (
+            {/* Com o corpo já pintado nessas mesmas cores, a janela
+                cheia só repete a informação e esconde a única coisa que
+                ela tem para dizer: onde a impressão sai. */}
+            {!daImpressao && coresArte.map((hex, i) => (
               <span key={i} style={{ background: hex, flex: 1, opacity: 0.88 }} />
             ))}
           </div>
