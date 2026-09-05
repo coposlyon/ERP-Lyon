@@ -552,36 +552,6 @@ async function configDoModelo(tenantId, chave) {
   const idsMembros = new Set(membros.map(m => m.id));
 
   /**
-   * O que este MODELO aceita.
-   *
-   * A regra da categoria abre; a regra de produto abre ou fecha por cima
-   * dela. E BLOQUEAR VENCE PERMITIR quando as cores do modelo discordam
-   * entre si: oferecer o que o cadastro fechou em algum lugar é vender o
-   * que a fábrica pode não fazer, e quem descobre é a produção — depois
-   * de pago. Sem esta regra a resposta dependia da ordem em que as
-   * linhas voltavam do banco, que é o mesmo que dizer "sorteio".
-   */
-  const permitidos = tipo => {
-    const daCategoria = new Set(), abertos = new Set(), fechados = new Set();
-    for (const r of compatRes.data || []) {
-      if (r.tipo !== tipo) continue;
-      if (r.product_id) {
-        if (!idsMembros.has(r.product_id)) continue;
-        (r.permitido ? abertos : fechados).add(r.ref_id);
-      } else if (r.category_id === categoryId && r.permitido) {
-        daCategoria.add(r.ref_id);
-      }
-    }
-    const fim = new Set([...daCategoria, ...abertos]);
-    for (const ref of fechados) fim.delete(ref);
-    return fim;
-  };
-
-  const okAcab = permitidos('acabamento');
-  const okCor  = permitidos('cor');
-  const okProc = permitidos('processo');
-
-  /**
    * O QUE CADA COR ACEITA — porque a regra por cor não é a regra do modelo.
    *
    * `permitidos` acima devolve a UNIÃO: tudo que alguma cor deste modelo
@@ -614,6 +584,48 @@ async function configDoModelo(tenantId, chave) {
     if (doProduto !== undefined) return doProduto;
     return regraDaCategoria.get(`${tipo}|${ref}`) === true;
   };
+
+  /**
+   * O QUE ESTE MODELO OFERECE — a lista, e só a lista.
+   *
+   * Aqui é a UNIÃO: entra o que ALGUMA cor do modelo aceita. Quem
+   * decide se aquela cor específica aceita é `aceita`, logo acima, e é
+   * o mapa `por_cor` que a tela consulta na hora que a cliente escolhe.
+   *
+   * ANTES ERA O CONTRÁRIO — "bloquear vence permitir" — e havia um bom
+   * motivo: a tela não perguntava a cor, então oferecer o que alguma
+   * cor fecha era vender o que a fábrica pode não fazer, e quem
+   * descobria era a produção depois de pago.
+   *
+   * Só que o remédio virou a doença. A Lyon liberou o Transfer no LONG
+   * DRINK TRANSPARENTE e o bloqueou nas outras 23; a regra apagava o
+   * Transfer do modelo INTEIRO, inclusive do transparente — a cor onde
+   * ela acabara de liberar. A opção sumia justamente de onde deveria
+   * estar.
+   *
+   * O motivo antigo caiu porque a tela agora pergunta a cor antes da
+   * impressão e filtra por ela, e o servidor confere o mesmo no
+   * fechamento. Uma cor fechada não vende mais nada — ela só não apaga
+   * as outras.
+   */
+  const permitidos = tipo => {
+    const candidatos = new Set();
+    for (const r of compatRes.data || []) {
+      if (r.tipo !== tipo || !r.permitido) continue;
+      if (r.product_id) { if (idsMembros.has(r.product_id)) candidatos.add(r.ref_id); }
+      else if (r.category_id === categoryId) candidatos.add(r.ref_id);
+    }
+    const fim = new Set();
+    for (const ref of candidatos) {
+      if (membros.some(m => aceita(tipo, ref, m.id))) fim.add(ref);
+    }
+    return fim;
+  };
+
+  const okAcab = permitidos('acabamento');
+  const okCor  = permitidos('cor');
+  const okProc = permitidos('processo');
+
 
   const acabamentos = (acabRes.data || [])
     .filter(a => okAcab.has(a.id) && a.no_catalogo !== false && !ehCombinacaoComBorda(a))
