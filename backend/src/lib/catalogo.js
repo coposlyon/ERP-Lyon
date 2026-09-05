@@ -703,6 +703,13 @@ function validarEscolha(config, escolha = {}) {
   const acab = (config.acabamentos || []).find(a => a.id === escolha.acabamento_id);
   if (!acab) return { ok: false, problemas: ['Escolha um acabamento liberado para este modelo.'] };
 
+  // A MESMA COR NAO ENTRA DUAS VEZES. Tricolor com as tres iguais e
+  // pagar por tres verdes: o cliente escolhe, a fabrica produz, e o que
+  // chega e um copo de uma cor so — com a conta de tres. A tela ja nao
+  // deixa escolher repetido; isto aqui e porque a tela e do cliente e a
+  // requisicao e de quem quiser.
+  const jaUsada = new Map();   // cor escolhida -> rotulo do campo
+
   for (const campo of acab.campos) {
     const valor = escolha.campos?.[campo.key];
     if (!valor) {
@@ -712,7 +719,14 @@ function validarEscolha(config, escolha = {}) {
     const disponiveis = config.cores?.[campo.grupo] || [];
     if (!disponiveis.some(c => c.id === valor)) {
       problemas.push(`${campo.label}: essa opção não está liberada para este modelo.`);
+      continue;
     }
+    if (jaUsada.has(valor)) {
+      const cor = disponiveis.find(c => c.id === valor)?.name || 'essa cor';
+      problemas.push(`${campo.label}: ${cor} já foi escolhida em ${jaUsada.get(valor)}. Cada campo pede uma cor diferente.`);
+      continue;
+    }
+    jaUsada.set(valor, campo.label);
   }
 
   if (escolha.tipo_pedido === 'liso') {

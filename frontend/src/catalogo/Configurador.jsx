@@ -550,7 +550,25 @@ export default function Configurador() {
               {acabamento?.campos?.length ? (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {acabamento.campos.map(campo => {
-                    const opcoes = opcoesDoCampo(campo);
+                    /**
+                      * A MESMA COR NÃO ENTRA DUAS VEZES.
+                      *
+                      * Tricolor com as três iguais é pagar por três
+                      * verdes: o cliente escolhe, a fábrica produz, e o
+                      * que chega é um copo de uma cor só — com a conta
+                      * de três. Escolhida numa ponta, a cor sai da lista
+                      * das outras.
+                      *
+                      * Sai só das OUTRAS: a do próprio campo continua
+                      * ali, senão o seletor abriria sem o valor que ele
+                      * mesmo está mostrando.
+                      */
+                    const usadas = new Set(
+                      Object.entries(estado.campos || {})
+                        .filter(([k, v]) => k !== campo.key && v)
+                        .map(([, v]) => v),
+                    );
+                    const opcoes = opcoesDoCampo(campo).filter(o => !usadas.has(o.id));
                     const valor = estado.campos?.[campo.key] || '';
                     const atual = opcoes.find(o => o.id === valor);
                     // O ERRO MORA NO CAMPO. Antes a lista "Falta informar: Cor
@@ -584,7 +602,15 @@ export default function Configurador() {
                         </div>
                         {!opcoes.length ? (
                           <p className="text-[10.5px] mt-1" style={{ color: '#fca5a5' }}>
-                            Sem opção liberada — fale com um atendente.
+                            {/* Duas causas, duas saídas: ou o cadastro
+                                não liberou cor nenhuma, ou as poucas
+                                liberadas já foram usadas nos outros
+                                campos. Dizer "fale com um atendente" no
+                                segundo caso manda a pessoa ligar por
+                                nada. */}
+                            {usadas.size > 0
+                              ? 'As cores liberadas já foram usadas nos outros campos.'
+                              : 'Sem opção liberada — fale com um atendente.'}
                           </p>
                         ) : faltando ? (
                           <p className="text-[10.5px] mt-1" style={{ color: '#fca5a5' }}>
