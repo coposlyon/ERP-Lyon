@@ -89,6 +89,12 @@ function montarPedidoDoCliente(venda, extra = {}) {
     id: i.id,
     personalizar: i.personalizar,
     arte_pronta: i.arte_pronta,
+    // A arte que ela ANEXOU (o arquivo do designer dela), separada da
+    // que ela MONTOU no editor: a tela precisa dizer qual das duas
+    // chegou, e mostrar o arquivo que subiu é a prova de que subiu o
+    // certo.
+    arte_anexada: i.arte_anexada,
+    arte_anexada_em: i.arte_anexada_em,
     modelo_chave: i.modelo_chave,
     codigo: i.codigo,
     produto: i.produto,

@@ -314,7 +314,13 @@ router.get('/:id', async (req, res) => {
         quantity: it.quantity, unit: it.PRODUTOS?.unit,
         color: it.customization?.cor || null,
         impressao: it.customization?.impressao || null,
-        art: it.customization?.preview || null,
+        // A ARTE QUE A CLIENTE ANEXOU VENCE A PRÉVIA. A prévia é o
+        // rascunho montado no configurador; o arquivo que ela enviou no
+        // portal é o que a fábrica vai gravar. Mostrar a prévia por
+        // cima dele é o caminho para imprimir o rascunho.
+        art: it.customization?.arte_cliente?.url
+          || it.customization?.arte?.preview_url
+          || it.customization?.preview || null,
         art_file: it.customization?.art_file || null,
         obs: it.customization?.notes || null,
       })),

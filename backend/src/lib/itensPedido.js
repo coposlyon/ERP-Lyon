@@ -129,7 +129,26 @@ function caracteristicasDoItem(item) {
     // recebida" — e o `modelo` é por onde o editor abre no copo certo.
     id: item.id,
     personalizar: !!c.personalizar,
-    arte_pronta: !!(c.arte?.projeto_id || c.projeto_arte),
+    /**
+     * DUAS PORTAS PARA A MESMA ARTE, e as duas contam como pronta.
+     *
+     * Uma parte das clientes MONTA a arte no editor (nomes, datas,
+     * frases); a outra chega com o arquivo do designer dela na mão e só
+     * quer ANEXAR. Aceitar só a primeira mandava a segunda para o
+     * WhatsApp do vendedor — e de lá o arquivo entrava no pedido à mão,
+     * quando entrava.
+     */
+    arte_pronta: !!(c.arte?.projeto_id || c.projeto_arte || c.arte_cliente?.url),
+    /**
+     * A ARTE ANEXADA POR ESTE ITEM.
+     *
+     * Fica no item, e não na venda (`artwork_url`), porque um pedido tem
+     * mais de uma: cem copos de um jeito e cem de outro são dois itens
+     * com dois desenhos. Enquanto ela morava só na venda, o segundo
+     * arquivo enviado apagava o primeiro.
+     */
+    arte_anexada: c.arte_cliente?.url || null,
+    arte_anexada_em: c.arte_cliente?.enviada_em || null,
     modelo_chave: c.modelo || null,
     acessorio: corBorda ? `Borda ${corBorda}` : (temBorda ? 'Borda' : null),
     quantidade: Number(item.quantity) || 0,

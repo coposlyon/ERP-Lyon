@@ -26,7 +26,7 @@ const P        = require('../lib/pedidoPublico');
 const A        = require('../lib/atencao');
 const { askClaude } = require('../lib/ai');
 // O comprovante mora em bucket privado: o portal entrega um link que expira.
-const { linkAssinado } = require('../lib/storage');
+const { linkAssinado, uploadDataUrl } = require('../lib/storage');
 
 const SEGREDO = process.env.PEDIDO_TOKEN_SECRET
   || process.env.JWT_SECRET
@@ -609,6 +609,114 @@ router.post('/pedido/:id/arte', exigirToken, async (req, res) => {
 
     res.json({ ok: true });
   } catch { res.status(500).json({ error: 'Não foi possível salvar sua arte agora.' }); }
+});
+
+/**
+ * A ARTE QUE A CLIENTE JÁ TINHA PRONTA — o arquivo do designer dela.
+ *
+ * A rota acima atende quem MONTA a arte no editor. Boa parte das
+ * clientes não monta nada: chega com o PDF ou o PNG que o designer
+ * mandou e só quer anexar. Sem esta porta, esse arquivo ia parar no
+ * WhatsApp do vendedor — e de lá entrava no pedido à mão, quando
+ * entrava.
+ *
+ * É POR ITEM, e é essa a razão de a rota levar o `itemId` no endereço.
+ * Cem copos de um jeito e cem de outro são dois itens com dois
+ * desenhos: a arte precisa saber em qual dos dois ela entra, e só a
+ * cliente sabe.
+ *
+ * TROCAR TEM HORA. Enquanto a arte não foi aprovada, trocar é trabalho
+ * normal — ela mandou o arquivo errado e percebeu. Do "arte aprovada"
+ * em diante o desenho já pode ter virado vegetal, tela e copo impresso,
+ * e a troca silenciosa é o caminho para mil peças saírem erradas sem
+ * ninguém saber quem mandou trocar. Aí a resposta é falar com o
+ * vendedor, que é quem consegue segurar a produção.
+ */
+const PASSO_ARTE_APROVADA = 7;   // 'arte_aprovada' no catálogo de status
+
+router.post('/pedido/:id/item/:itemId/arte-anexada', exigirToken, async (req, res) => {
+  try {
+    const saleId = await pedidoDoCliente(req.params.id, req.customerId);
+    if (!saleId) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    const arquivo = req.body?.arquivo;
+    if (typeof arquivo !== 'string' || !arquivo.startsWith('data:')) {
+      return res.status(400).json({ error: 'Escolha o arquivo da arte.' });
+    }
+    // O express corta o corpo em 10 MB e devolve um erro que ninguém
+    // entende. Aqui o arquivo grande recebe uma resposta que diz o
+    // tamanho e o que fazer — a base64 infla ~33%, então 8 MB de texto
+    // são cerca de 6 MB de arquivo.
+    if (arquivo.length > 8 * 1024 * 1024) {
+      return res.status(413).json({
+        error: 'A arte passa de 6 MB. Mande um arquivo menor ou envie pelo WhatsApp do vendedor.',
+      });
+    }
+
+    const { data: venda } = await supabase.from('VENDAS')
+      .select('id, number, status, artwork_url, production_log')
+      .eq('id', saleId).maybeSingle();
+    if (!venda) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    // O ITEM É DESTE PEDIDO? Sem esta conferência, trocar o id do item
+    // na chamada gravaria a arte no pedido de outra pessoa.
+    const { data: item } = await supabase.from('VENDA_ITENS')
+      .select('id, sale_id, product_name, customization')
+      .eq('id', req.params.itemId).maybeSingle();
+    if (!item || item.sale_id !== saleId) {
+      return res.status(404).json({ error: 'Item não encontrado.' });
+    }
+
+    const conf = item.customization || {};
+    if (!conf.personalizar) {
+      return res.status(400).json({ error: 'Este item não foi pedido com personalização.' });
+    }
+
+    const passo = A.infoStatus(venda.status)?.passo || 0;
+    if (conf.arte_cliente?.url && passo > PASSO_ARTE_APROVADA) {
+      return res.status(409).json({
+        error: 'A arte deste item já foi aprovada e está em produção.',
+        dica: 'Para trocar agora, fale com o vendedor pelo botão de atendimento.',
+      });
+    }
+
+    // Bucket PÚBLICO: produção, designer e a própria cliente precisam
+    // abrir a arte o tempo todo. É a mesma pasta em que a área do
+    // vendedor já grava as artes que ela anexa.
+    const url = await uploadDataUrl(arquivo, 'artes-pedido');
+    if (!url) return res.status(502).json({ error: 'Não consegui guardar o arquivo. Tente de novo.' });
+
+    const agora = new Date().toISOString();
+    const nome = String(req.body?.nome || '').trim().slice(0, 120) || null;
+
+    const { error: erroItem } = await supabase.from('VENDA_ITENS').update({
+      customization: { ...conf, arte_cliente: { url, nome, enviada_em: agora, por: 'cliente' } },
+    }).eq('id', item.id);
+    if (erroItem) throw erroItem;
+
+    // O PEDIDO TAMBÉM PRECISA APONTAR PARA UMA ARTE: é `artwork_url`
+    // que cumpre o requisito da etapa de Arte no fluxo e é o que o card
+    // "Arte" do ERP abre. A primeira arte anexada assume o posto; as
+    // seguintes não roubam o lugar dela — elas moram no item, que é
+    // onde a produção vai procurar a arte daquela peça.
+    const log = Array.isArray(venda.production_log) ? [...venda.production_log] : [];
+    log.push({
+      action: 'arte_anexada', at: agora, user: 'Cliente (portal)',
+      stage: 'documentos', item: item.product_name || null, nota: 'anexada pelo cliente',
+    });
+    const patch = { production_log: log };
+    if (!venda.artwork_url) patch.artwork_url = url;
+
+    const { error: erroVenda } = await supabase.from('VENDAS').update(patch).eq('id', venda.id);
+    // Perder o registro no histórico não pode desfazer o envio: a arte
+    // já está guardada e amarrada ao item.
+    if (erroVenda) console.error('[acompanhar:arte-anexada]', erroVenda.message);
+
+    res.json({ ok: true, url, enviada_em: agora });
+  } catch (err) {
+    console.error('[acompanhar:arte-anexada]', err?.message || err);
+    res.status(500).json({ error: 'Não foi possível enviar a arte agora.' });
+  }
 });
 
 module.exports = router;

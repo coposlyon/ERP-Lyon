@@ -369,10 +369,16 @@ export default function PedidoDetalhe() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" style={{ minWidth: 760 + colunasItem.length * 120 }}>
+              <table className="w-full text-sm" style={{ minWidth: 880 + colunasItem.length * 120 }}>
                 <thead>
                   <tr style={{ color: v.textMuted }}>
-                    {['Cód. Produto', 'Produto', 'Categoria', ...colunasItem, 'Linha', 'Acessório', 'Qtd', 'Valor Unit.', 'Valor Total']
+                    {/* "Arte" e POR ITEM porque a arte e por item: um pedido
+                        de cem copos de um jeito e cem de outro tem dois
+                        desenhos, cada um anexado pela cliente no portal
+                        de acompanhamento. Enquanto a coluna nao existia,
+                        a segunda arte chegava ao banco e nao aparecia em
+                        tela nenhuma. */}
+                    {['Cód. Produto', 'Produto', 'Categoria', ...colunasItem, 'Linha', 'Acessório', 'Arte', 'Qtd', 'Valor Unit.', 'Valor Total']
                       .map((h, i, todas) => (
                         <th key={h} className={`px-3 py-2.5 text-[11px] font-semibold whitespace-nowrap ${i >= todas.length - 3 ? 'text-right' : 'text-left'}`}
                           style={{ borderBottom: `1px solid ${v.divider}` }}>{h}</th>
@@ -382,7 +388,7 @@ export default function PedidoDetalhe() {
                 <tbody>
                   {itens.length === 0 ? (
                     <tr>
-                      <td colSpan={7 + colunasItem.length} className="text-center py-8" style={{ color: v.empty }}>
+                      <td colSpan={9 + colunasItem.length} className="text-center py-8" style={{ color: v.empty }}>
                         Sem itens
                       </td>
                     </tr>
@@ -405,6 +411,24 @@ export default function PedidoDetalhe() {
                           personalização, que é o que ela explica. */}
                       <td className="px-3 py-2.5" style={{ color: v.textMuted }}>{i.linha || '—'}</td>
                       <td className="px-3 py-2.5" style={{ color: v.textMuted }}>{i.acessorio || '—'}</td>
+                      <td className="px-3 py-2.5">
+                        {i.arte_anexada ? (
+                          <a href={i.arte_anexada} target="_blank" rel="noreferrer"
+                            title={i.arte_anexada_em
+                              ? `Anexada pela cliente em ${dataHora(i.arte_anexada_em)}`
+                              : 'Arte anexada pela cliente no portal'}
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap"
+                            style={{ color: '#4ade80' }}>
+                            <FileImage size={13} /> Ver arte
+                          </a>
+                        ) : i.arte_pronta ? (
+                          <span className="whitespace-nowrap" style={{ color: '#4ade80' }}>montada</span>
+                        ) : i.personalizar ? (
+                          <span className="whitespace-nowrap" style={{ color: '#fbbf24' }}>aguardando</span>
+                        ) : (
+                          <span style={{ color: v.empty }}>—</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5 text-right" style={{ color: v.textPrimary }}>{fmtUn(i.quantidade)}</td>
                       <td className="px-3 py-2.5 text-right" style={{ color: v.textMuted }}>{fmtBRL(i.valor_unitario)}</td>
                       <td className="px-3 py-2.5 text-right font-semibold" style={{ color: v.textPrimary }}>{fmtBRL(i.valor_total)}</td>

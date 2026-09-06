@@ -329,41 +329,10 @@ export default function PedidoCliente() {
             não escondido numa coluna: quem abre este pedido tem uma
             coisa a fazer, e ela precisa ser a primeira que se vê. */}
         {(p.itens || []).some(i => i.personalizar) && (
-          <Card Icon={PenTool} titulo="Sua personalização">
-            <div className="space-y-2.5">
-              {(p.itens || []).filter(i => i.personalizar).map(i => (
-                <div key={i.id} className="flex flex-wrap items-center gap-3 justify-between rounded-xl px-3.5 py-3"
-                  style={{ background: i.arte_pronta ? 'rgba(34,197,94,0.10)' : 'rgba(168,85,247,0.12)',
-                           border: `1px solid ${i.arte_pronta ? 'rgba(34,197,94,0.35)' : 'rgba(168,85,247,0.42)'}` }}>
-                  <div className="min-w-0">
-                    <p className="text-white text-[14px] font-semibold leading-tight">{i.produto}</p>
-                    <p className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.65)' }}>
-                      {i.arte_pronta
-                        ? 'Arte recebida — já está com a produção. Dá para trocar até a aprovação.'
-                        : `${i.quantidade} un. · falta montar a arte para a produção começar.`}
-                    </p>
-                  </div>
-                  {i.modelo_chave ? (
-                    <button type="button"
-                      onClick={() => navigate(
-                        `/personalizados/arte/${i.modelo_chave}?pedido=${id}&item=${i.id}`)}
-                      className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-[13.5px] shrink-0"
-                      style={{ background: i.arte_pronta ? 'rgba(255,255,255,0.10)' : 'linear-gradient(90deg,#a855f7,#6366f1)',
-                               color: '#fff' }}>
-                      <PenTool size={15} /> {i.arte_pronta ? 'Trocar a arte' : 'Montar minha arte'}
-                    </button>
-                  ) : (
-                    /* Pedido antigo, feito antes de a chave do modelo
-                       viajar junto: melhor mandar falar com a loja do
-                       que abrir o editor no copo errado. */
-                    <span className="text-[12px] shrink-0" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                      fale com um atendente para montar
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </Card>
+          <ArteDosItens pedidoId={id} token={token}
+            itens={(p.itens || []).filter(i => i.personalizar)}
+            onMontar={i => navigate(`/personalizados/arte/${i.modelo_chave}?pedido=${id}&item=${i.id}`)}
+            onEnviou={refetch} />
         )}
 
         {/* ── Quem vai retirar ────────────────────────────────── */}
@@ -619,6 +588,150 @@ function Balao({ passo }) {
         </span>
       )}
     </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// A PERSONALIZAÇÃO, ITEM POR ITEM.
+//
+// A personalização saiu do caminho da compra: no catálogo a cliente só
+// marca que QUER arte — montar nomes, datas e frases antes de saber se
+// vai comprar é a maior parte da tela e a maior parte da desistência.
+// Ela resolve aqui, com o pedido já pago e sem pressa.
+//
+// UM PEDIDO PODE TER DUAS ARTES. Cem copos de um jeito e cem de outro
+// são dois itens, cada um com o seu desenho — por isso cada item é uma
+// LINHA com os seus próprios botões. É a cliente quem escolhe em qual
+// deles a arte entra, porque só ela sabe.
+//
+// DUAS PORTAS, PORQUE SÃO DUAS CLIENTES. Uma monta a arte no editor;
+// a outra chega com o arquivo do designer dela na mão e só quer anexar.
+// Oferecer só o editor mandava a segunda para o WhatsApp do vendedor —
+// e de lá o arquivo entrava no pedido à mão, quando entrava.
+//
+// O ARQUIVO VAI DIRETO, SEM PERGUNTAR DE NOVO: escolher já é a
+// confirmação. Uma janela a mais entre o toque e o envio é onde o
+// celular perde gente.
+// ════════════════════════════════════════════════════════════
+const TAMANHO_MAX_ARTE = 6 * 1024 * 1024;
+
+function ArteDosItens({ pedidoId, token, itens, onMontar, onEnviou }) {
+  const [enviando, setEnviando] = useState(null);   // id do item em voo
+  const [erro, setErro] = useState('');
+
+  async function anexar(item, arquivo) {
+    setErro('');
+    if (arquivo.size > TAMANHO_MAX_ARTE) {
+      setErro('A arte passa de 6 MB. Mande um arquivo menor ou envie pelo WhatsApp do vendedor.');
+      return;
+    }
+    setEnviando(item.id);
+    try {
+      const dataUrl = await new Promise((ok, falha) => {
+        const leitor = new FileReader();
+        leitor.onload = () => ok(leitor.result);
+        leitor.onerror = () => falha(new Error('Não consegui ler o arquivo escolhido.'));
+        leitor.readAsDataURL(arquivo);
+      });
+      await api.post(`/acompanhar/pedido/${pedidoId}/item/${item.id}/arte-anexada`,
+        { arquivo: dataUrl, nome: arquivo.name },
+        { headers: { Authorization: `Bearer ${token}` } });
+      onEnviou?.();
+    } catch (err) {
+      setErro(err?.error || err?.message || 'Não foi possível enviar a arte agora.');
+    } finally {
+      setEnviando(null);
+    }
+  }
+
+  const faltando = itens.filter(i => !i.arte_pronta).length;
+
+  return (
+    <Card Icon={PenTool} titulo="Sua personalização">
+      {itens.length > 1 && (
+        <p className="text-[12.5px] mb-3" style={{ color: 'rgba(255,255,255,0.65)' }}>
+          Este pedido tem <b>{itens.length} itens personalizados</b> — cada um leva a sua arte.
+          Escolha abaixo em qual você quer montar ou anexar.
+          {faltando > 0 && <> Ainda {faltando === 1 ? 'falta 1' : `faltam ${faltando}`}.</>}
+        </p>
+      )}
+
+      {erro && (
+        <p className="text-[12.5px] mb-3 rounded-lg px-3 py-2"
+          style={{ background: 'rgba(248,113,113,0.12)', color: '#fca5a5' }} role="alert">{erro}</p>
+      )}
+
+      <div className="space-y-2.5">
+        {itens.map((i, idx) => (
+          <div key={i.id} className="flex flex-wrap items-center gap-3 justify-between rounded-xl px-3.5 py-3"
+            style={{ background: i.arte_pronta ? 'rgba(34,197,94,0.10)' : 'rgba(168,85,247,0.12)',
+                     border: `1px solid ${i.arte_pronta ? 'rgba(34,197,94,0.35)' : 'rgba(168,85,247,0.42)'}` }}>
+            <div className="min-w-0">
+              <p className="text-white text-[14px] font-semibold leading-tight">
+                {itens.length > 1 && <span style={{ color: '#c4b5fd' }}>{idx + 1}. </span>}
+                {i.produto}
+              </p>
+              <p className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.65)' }}>
+                {i.arte_pronta
+                  ? `Arte recebida${i.arte_anexada_em ? ` em ${dataHora(i.arte_anexada_em)}` : ''} — já está com a produção. Dá para trocar até a aprovação.`
+                  : `${i.quantidade} un. · falta a arte deste item para a produção começar.`}
+              </p>
+              {/* A prova de que subiu o arquivo certo. Sem ela, "arte
+                  recebida" é uma palavra em que a cliente tem que
+                  acreditar. */}
+              {i.arte_anexada && (
+                <a href={i.arte_anexada} target="_blank" rel="noreferrer"
+                  className="text-[12px] inline-flex items-center gap-1.5 mt-1" style={{ color: '#4ade80' }}>
+                  <FileImage size={12} /> ver o arquivo que você enviou
+                </a>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              {i.modelo_chave ? (
+                <button type="button" onClick={() => onMontar(i)}
+                  className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-[13.5px]"
+                  style={{ background: i.arte_pronta ? 'rgba(255,255,255,0.10)' : 'linear-gradient(90deg,#a855f7,#6366f1)',
+                           color: '#fff' }}>
+                  <PenTool size={15} /> {i.arte_pronta ? 'Trocar a arte' : 'Montar minha arte'}
+                </button>
+              ) : (
+                /* Pedido antigo, feito antes de a chave do modelo viajar
+                   junto: o editor abriria no copo errado. Anexar o
+                   arquivo continua funcionando — é o que salva o caso. */
+                <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                  para montar no editor, fale com um atendente
+                </span>
+              )}
+
+              {/* O input fica escondido dentro do próprio rótulo: no
+                  celular, um <input type=file> desenhado à mão é o campo
+                  que ninguém reconhece como botão. */}
+              <label className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-[13.5px] ${
+                enviando ? 'opacity-60' : 'cursor-pointer'}`}
+                style={{ background: 'rgba(255,255,255,0.08)', color: '#fff',
+                         border: '1px solid rgba(96,165,250,0.45)' }}>
+                {enviando === i.id
+                  ? <><Loader2 size={15} className="animate-spin" /> Enviando…</>
+                  : <><ImageUp size={15} /> {i.arte_anexada ? 'Trocar o arquivo' : 'Já tenho a arte'}</>}
+                <input type="file" className="hidden" disabled={!!enviando}
+                  accept="image/*,application/pdf,.svg,.ai,.cdr,.eps,.psd"
+                  onChange={e => {
+                    const arquivo = e.target.files?.[0];
+                    e.target.value = '';
+                    if (arquivo) anexar(i, arquivo);
+                  }} />
+              </label>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-[11px] mt-3" style={{ color: 'rgba(255,255,255,0.45)' }}>
+        Já tem a arte pronta? Anexe o arquivo — PNG, JPG, PDF, SVG ou o aberto do seu designer, até 6 MB.
+        Depois que a arte for aprovada e entrar em produção, a troca passa a ser com o vendedor.
+      </p>
+    </Card>
   );
 }
 
