@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Wallet, CheckCircle2, XCircle, Clock, ExternalLink, Copy, FileImage, AlertTriangle, RefreshCw,
+  MessageCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -45,6 +46,8 @@ export default function StorePayments() {
   const [confirmando, setConfirmando] = useState(null); // confirmar
   const [motivo, setMotivo] = useState('');
   const [busy, setBusy] = useState(false);
+  // O pedido recém-liberado, esperando a pergunta do WhatsApp.
+  const [avisar, setAvisar] = useState(null);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['store-payments', aba],
@@ -66,6 +69,19 @@ export default function StorePayments() {
       }
       setAberto(null); setConfirmando(null);
       qc.invalidateQueries({ queryKey: ['store-payments'] });
+
+      // ── E AGORA, AVISAR O CLIENTE ──────────────────────────
+      //
+      // A pergunta vem DEPOIS de liberar, e não como uma caixinha no
+      // modal de confirmação: quem confirma está olhando o extrato, e
+      // uma opção a mais naquela hora é uma coisa a mais para marcar
+      // errado. Liberado o pedido, a próxima pergunta é sempre a
+      // mesma — "o cliente já sabe?" — e ela merece a tela inteira.
+      //
+      // Sem telefone não há o que perguntar: a tela avisa e segue.
+      const fone = r.cliente_fone || p.cliente_fone || p.customer?.phone || p.CLIENTES?.phone;
+      if (fone) setAvisar({ ...p, numero: r.number, cliente_fone: fone });
+      else toast('Cliente sem telefone — não dá para avisar pelo WhatsApp.', { icon: '📵' });
     } catch (e) {
       toast.error(e.error || 'Não foi possível confirmar');
     } finally { setBusy(false); }
@@ -326,6 +342,11 @@ export default function StorePayments() {
         )}
       </Modal>
 
+      {/* ── AVISAR O CLIENTE ─────────────────────────────────
+          A pergunta que sempre vinha depois — "o cliente já sabe?" —
+          agora tem um botão. */}
+      {avisar && <AvisarWhatsApp pedido={avisar} onClose={() => setAvisar(null)} />}
+
       {/* ── REPROVAR ─────────────────────────────────────────
           Com comprovante anexado o motivo é OBRIGATÓRIO (o servidor
           também exige): o cliente mandou um documento e vai levar um
@@ -368,6 +389,102 @@ export default function StorePayments() {
         )}
       </Modal>
     </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// "AVISAR O CLIENTE NO WHATSAPP?"
+//
+// O QUE ELA RESOLVE. Confirmado o PIX, o cliente ficava sem saber até
+// alguém lembrar de mandar mensagem — e a mensagem, quando saía, era
+// digitada na hora, diferente a cada vez, quase sempre sem dizer o que
+// ele precisa fazer em seguida. A parte que mais falta é justamente a
+// última: onde anexar a arte.
+//
+// O TEXTO VEM DO SERVIDOR, e não daqui. Ele conhece o número do pedido,
+// os itens, o total e o endereço público desta instalação — montar isso
+// na tela seria montar de novo, com a chance de divergir.
+//
+// DOIS CAMINHOS, E OS DOIS TERMINAM NO CLIENTE. Com a API do WhatsApp
+// configurada, o envio é automático. Sem ela (ou se a Meta recusar), a
+// resposta traz o link do wa.me com o texto pronto — quem está
+// conferindo abre e manda pelo próprio aparelho. O que não pode
+// acontecer é o botão falhar e não sobrar saída nenhuma.
+// ════════════════════════════════════════════════════════════
+function AvisarWhatsApp({ pedido, onClose }) {
+  const [enviando, setEnviando] = useState(false);
+  const [feito, setFeito] = useState(null);   // resposta do servidor
+
+  async function enviar() {
+    setEnviando(true);
+    try {
+      const r = await api.post(`/store-payments/${pedido.id}/avisar-whatsapp`);
+      setFeito(r);
+      if (r.enviado) toast.success('Mensagem enviada ao cliente!');
+      else toast('WhatsApp automático indisponível — mande pelo link.', { icon: '📲' });
+    } catch (e) {
+      toast.error(e.error || 'Não foi possível avisar o cliente');
+    } finally { setEnviando(false); }
+  }
+
+  const nome = pedido.CLIENTES?.name || pedido.customer?.name || 'o cliente';
+
+  return (
+    <Modal isOpen onClose={() => !enviando && onClose()} size="sm"
+      title="Avisar o cliente no WhatsApp?">
+      <div className="space-y-4">
+        {!feito ? (
+          <>
+            <p className="text-sm text-gray-600">
+              Mandamos para <b>{nome}</b> ({pedido.cliente_fone}) a confirmação do pagamento,
+              o pedido completo e o link para <b>anexar a arte</b> e acompanhar a produção.
+            </p>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs text-gray-600 space-y-1">
+              <p className="font-semibold text-gray-800">O pagamento do seu pedido já foi confirmado!</p>
+              <p>
+                {pedido.numero ? `Pedido PV-${String(pedido.numero).padStart(6, '0')}` : 'Pedido'} ·
+                {' '}{fmt(pedido.total)} · itens do pedido
+              </p>
+              <p>+ link para entrar, anexar a arte de cada item e ver o status.</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={onClose} disabled={enviando} className="btn-secondary flex-1">
+                Agora não
+              </button>
+              <button onClick={enviar} disabled={enviando}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold py-2 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                <MessageCircle size={16} /> {enviando ? 'Enviando…' : 'Sim, avisar'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {feito.enviado ? (
+              <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                Mensagem entregue ao WhatsApp de {nome}.
+              </p>
+            ) : (
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                O envio automático não saiu{feito.erro ? ` (${feito.erro})` : ''}. Abra o WhatsApp
+                pelo botão abaixo — o texto já vai pronto.
+              </p>
+            )}
+            {/* O link fica mesmo quando o envio deu certo: reenviar pelo
+                aparelho é o que alguém vai querer quando o cliente
+                disser que não recebeu. */}
+            <a href={feito.link} target="_blank" rel="noreferrer"
+              className="w-full justify-center bg-[#25d366] hover:brightness-95 text-white font-semibold py-2.5 rounded-xl flex items-center gap-2 transition">
+              <MessageCircle size={16} /> Abrir no WhatsApp
+            </a>
+            <details className="text-xs text-gray-500">
+              <summary className="cursor-pointer">Ver a mensagem</summary>
+              <pre className="mt-2 whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded-xl p-3">{feito.mensagem}</pre>
+            </details>
+            <button onClick={onClose} className="btn-secondary w-full justify-center">Fechar</button>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 

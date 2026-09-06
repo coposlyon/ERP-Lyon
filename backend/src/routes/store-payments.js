@@ -13,8 +13,12 @@ const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { linkAssinado } = require('../lib/storage');
 const { criarVendaDoPedido, registrarRecebimento } = require('../lib/pedidoLoja');
+const { sendWhatsApp } = require('../lib/whatsapp');
 
 const STATUS = ['aguardando_pagamento', 'pago', 'expirado', 'cancelado'];
+
+const brl = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+  .format(Number(v) || 0);
 
 // Pedido vencido continua na fila (ninguém apaga venda potencial), mas
 // aparece marcado para quem estiver conferindo.
@@ -157,6 +161,117 @@ router.post('/:id/confirmar', async (req, res) => {
       ok: true, sale_id: sale.id, number: sale.number,
       // o pedido está liberado mesmo se o lançamento falhar; avisa a tela
       lancamento: lanc.ok ? 'criado' : 'falhou',
+      // A tela pergunta "avisar o cliente no WhatsApp?" logo depois, e
+      // precisa saber se há para quem mandar antes de perguntar.
+      cliente_fone: ped.customer?.phone || null,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+// AVISAR O CLIENTE — depois de confirmado, num clique.
+//
+// POR QUE É UMA ROTA SEPARADA e não um campo do "confirmar". Confirmar
+// cria a venda e o recebimento; avisar manda uma mensagem. Juntar as
+// duas faria um WhatsApp que falha derrubar uma confirmação que já deu
+// certo — e a pessoa clicaria de novo, com o dinheiro já lançado.
+// Separadas, avisar pode ser refeito quantas vezes for preciso.
+//
+// O TEXTO É O MESMO PARA TODO MUNDO, de propósito: pagamento
+// confirmado, o pedido inteiro escrito, e o caminho para anexar a arte.
+// É o que o cliente pergunta em seguida, sempre — e responder antes de
+// ele perguntar é o que tira a mensagem do "vou ver e te falo".
+//
+// SEM API CONFIGURADA A TELA NÃO FICA SEM SAÍDA. Quando o envio
+// automático não está de pé (ou falha), a resposta traz o link do
+// wa.me com o texto pronto: quem está conferindo abre e manda pelo
+// próprio WhatsApp, em vez de reescrever tudo à mão.
+// ════════════════════════════════════════════════════════════
+
+const soDigitos = v => String(v || '').replace(/\D/g, '');
+
+/** O endereço público desta instalação — a mesma conta do resto do ERP. */
+const enderecoBase = req => (process.env.APP_URL
+  || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+
+/**
+ * A MENSAGEM DO PAGAMENTO CONFIRMADO.
+ *
+ * O pedido inteiro escrito — item, quantidade e valor — porque o
+ * cliente vai conferir se é o dele antes de fazer qualquer coisa, e um
+ * "seu pedido foi confirmado" sem dizer qual pedido é o tipo de recado
+ * que ninguém sabe se é golpe.
+ */
+function mensagemDeConfirmacao(ped, numero, base) {
+  const nome = String(ped.customer?.name || '').trim().split(/\s+/)[0] || '';
+  const codigo = numero ? `PV-${String(numero).padStart(6, '0')}` : null;
+
+  const linhas = (Array.isArray(ped.items) ? ped.items : []).map(i => {
+    const qtd = Number(i.quantity) || 0;
+    const detalhe = [i.color, i.print_name].filter(Boolean).join(' · ');
+    return `• ${qtd}x ${i.product_name}${detalhe ? ` (${detalhe})` : ''} — ${brl(qtd * (Number(i.unit_price) || 0))}`;
+  });
+
+  return [
+    '✅ *O pagamento do seu pedido já foi confirmado!*',
+    '',
+    codigo ? `*Pedido ${codigo}*` : '*Seu pedido*',
+    nome ? `Cliente: ${ped.customer?.name}` : null,
+    '',
+    ...linhas,
+    Number(ped.freight) > 0 ? `Frete: ${brl(ped.freight)}` : null,
+    `*Total: ${brl(ped.total)}*`,
+    ped.event_date ? `Data do evento: ${String(ped.event_date).slice(0, 10).split('-').reverse().join('/')}` : null,
+    '',
+    '🎨 *Agora é a arte.*',
+    `Entre em ${base}/acompanhar e faça login com o seu CPF e a sua data de nascimento.`,
+    'Lá você anexa a arte de cada item do pedido — se você comprou peças diferentes, cada uma tem o seu espaço —',
+    'e acompanha o andamento e o status da produção pelo mesmo lugar, a qualquer hora.',
+    '',
+    'Qualquer dúvida é só responder por aqui. Obrigado pela preferência! 💙',
+  ].filter(l => l !== null).join('\n');
+}
+
+router.post('/:id/avisar-whatsapp', async (req, res) => {
+  try {
+    const { data: ped } = await supabase.from('PEDIDOS_LOJA').select('*')
+      .eq('tenant_id', req.tenantId).eq('id', req.params.id).maybeSingle();
+    if (!ped) return res.status(404).json({ error: 'Pedido não encontrado' });
+    if (ped.status !== 'pago') {
+      return res.status(409).json({ error: 'Este pedido ainda não foi confirmado.' });
+    }
+
+    // O telefone do cadastro vence o retrato do momento da compra: é o
+    // que foi corrigido se o cliente trocou de número desde então.
+    const porId = await clientesDe(req.tenantId, [ped]);
+    const fone = soDigitos(porId[ped.customer_id]?.phone || ped.customer?.phone);
+    if (!fone) {
+      return res.status(400).json({ error: 'Este cliente não tem telefone cadastrado.' });
+    }
+
+    let numero = null;
+    if (ped.sale_id) {
+      const { data: venda } = await supabase.from('VENDAS')
+        .select('number').eq('id', ped.sale_id).eq('tenant_id', req.tenantId).maybeSingle();
+      numero = venda?.number ?? null;
+    }
+
+    const texto = mensagemDeConfirmacao(ped, numero, enderecoBase(req));
+    const destino = fone.length <= 11 ? `55${fone}` : fone;
+    const link = `https://wa.me/${destino}?text=${encodeURIComponent(texto)}`;
+
+    const envio = await sendWhatsApp(fone, texto);
+    audit(req, 'notify', 'store-payments', ped.id, { canal: 'whatsapp', enviado: !!envio.ok });
+
+    res.json({
+      ok: true,
+      enviado: !!envio.ok,
+      // O motivo aparece na tela junto com o link manual: "não
+      // configurado" e "número inválido" pedem providências diferentes.
+      erro: envio.ok ? null : envio.error,
+      telefone: destino,
+      link,
+      mensagem: texto,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
