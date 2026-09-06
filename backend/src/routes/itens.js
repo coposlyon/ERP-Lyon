@@ -329,6 +329,193 @@ router.delete('/aplicacoes/:id', async (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// A CATEGORIA INTEIRA, DE UMA CHAVE SÓ.
+//
+// A aplicação em massa acima resolve o caminho ITEM → onde ele entra:
+// marco dezoito bordas e digo "no Long Drink". Só que a pergunta que o
+// comercial faz é a INVERSA — "esta categoria vende borda?" —, e ela
+// não tinha tela: para responder era preciso abrir as dezoito bordas
+// uma a uma e conferir se cada uma estava ligada naquela categoria.
+//
+// Aqui a linha é a CATEGORIA e a chave é "vende todas as bordas".
+// Ligar aplica as que faltam; desligar remove as daquele tipo — e só as
+// daquele tipo, para não levar junto o canudo que alguém ligou à mão.
+//
+// LIGAR NÃO REESCREVE O QUE JÁ EXISTE. Só insere o que falta: uma borda
+// já aplicada com consumo próprio ou marcada como "já está no preço"
+// continua como está. Um upsert cego devolveria todas elas para o valor
+// padrão, e ninguém saberia por que o preço mudou.
+//
+// CATEGORIA É O NOME, NÃO O id. O cadastro tem categorias repetidas com
+// o mesmo nome e id diferente, e os produtos estão espalhados entre
+// elas — ligar só no id canônico deixaria metade dos copos de fora.
+// ════════════════════════════════════════════════════════════
+
+/** As categorias do catálogo, agrupadas por nome, com todos os ids. */
+async function categoriasAgrupadas(tenantId) {
+  const { data, error } = await supabase.from('CATEGORIAS')
+    .select('id, name, PRODUTOS(id)').eq('tenant_id', tenantId).order('name');
+  if (error) throw error;
+
+  const OCULTAR = ['IMPRESSOS', 'IMPRESSO', 'IMPRESSA'];
+  const porNome = new Map();
+  for (const c of data || []) {
+    const nome = String(c.name || '').trim();
+    const chave = nome.toUpperCase();
+    if (!chave || OCULTAR.includes(chave)) continue;
+    const qtd = Array.isArray(c.PRODUTOS) ? c.PRODUTOS.length : 0;
+    const atual = porNome.get(chave);
+    if (!atual) porNome.set(chave, { id: c.id, name: nome, ids: [c.id], product_count: qtd });
+    else {
+      atual.ids.push(c.id);
+      atual.product_count += qtd;
+      if (c.id < atual.id) atual.id = c.id;
+    }
+  }
+  return [...porNome.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+}
+
+/** Os itens ativos de um tipo — é o "todas as bordas" da pergunta. */
+async function itensDoTipo(tenantId, kind) {
+  const { data, error } = await supabase.from('ITENS')
+    .select('id, name, color_name').eq('tenant_id', tenantId)
+    .eq('kind', kind).eq('is_active', true).order('seq').order('name');
+  if (error) throw error;
+  return data || [];
+}
+
+router.get('/cobertura', async (req, res) => {
+  const kind = KINDS.includes(req.query.kind) ? req.query.kind : 'borda';
+  try {
+    const [itens, categorias, aplic] = await Promise.all([
+      itensDoTipo(req.tenantId, kind),
+      categoriasAgrupadas(req.tenantId),
+      supabase.from('ITEM_APLICACOES').select('item_id, category_id, product_id')
+        .eq('tenant_id', req.tenantId),
+    ]);
+    if (aplic.error) throw aplic.error;
+
+    const doTipo = new Set(itens.map(i => i.id));
+
+    // Quantos itens DESTE tipo cada categoria já tem ligados. Aplicação
+    // de produto não entra na conta: ela é a exceção de um copo, não a
+    // regra da categoria — e contá-la faria a chave parecer meio ligada.
+    const porCategoria = new Map();
+    const geral = new Set();
+    for (const a of aplic.data || []) {
+      if (!doTipo.has(a.item_id) || a.product_id) continue;
+      if (a.category_id) {
+        if (!porCategoria.has(a.category_id)) porCategoria.set(a.category_id, new Set());
+        porCategoria.get(a.category_id).add(a.item_id);
+      } else geral.add(a.item_id);
+    }
+
+    const total = itens.length;
+    const geralLigado = total > 0 && geral.size === total;
+
+    res.json({
+      kind,
+      total,
+      itens: itens.map(i => ({ id: i.id, nome: i.color_name ? `${i.name} · ${i.color_name}` : i.name })),
+      geral: { aplicados: geral.size, ligado: geralLigado },
+      // O CURINGA CONTA PARA TODA CATEGORIA. Quem ligou as bordas em
+      // "todos os personalizados" já vende borda em toda parte, e a
+      // chave da categoria tem que dizer isso — senão a tela mostra
+      // "desligado" numa categoria que está vendendo.
+      categorias: categorias.map(c => {
+        const ligados = new Set(geral);
+        for (const id of c.ids) for (const item of porCategoria.get(id) || []) ligados.add(item);
+        return {
+          id: c.id, ids: c.ids, name: c.name, product_count: c.product_count,
+          aplicados: ligados.size,
+          ligado: total > 0 && ligados.size === total,
+          // Ligada só porque o curinga está ligado: a tela avisa, senão
+          // desligar a categoria pareceria não fazer efeito nenhum.
+          pelo_geral: geralLigado,
+        };
+      }),
+    });
+  } catch (err) {
+    if (faltaMigracao(res, err)) return;
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * LIGA OU DESLIGA UM TIPO INTEIRO NUM ALVO.
+ *
+ * `category_ids` vazio (ou ausente) é o curinga: todo o catálogo
+ * personalizado. `ligado: false` remove as aplicações daquele tipo
+ * naquele alvo — e nada além delas.
+ */
+router.post('/cobertura', async (req, res) => {
+  const kind = KINDS.includes(req.body?.kind) ? req.body.kind : null;
+  if (!kind) return res.status(400).json({ error: 'Tipo de item inválido.' });
+
+  const ligado = req.body?.ligado !== false;
+  const alvos = Array.isArray(req.body?.category_ids) && req.body.category_ids.length
+    ? [...new Set(req.body.category_ids.filter(Boolean))]
+    : (req.body?.category_id ? [req.body.category_id] : [null]);
+
+  try {
+    const itens = await itensDoTipo(req.tenantId, kind);
+    if (!itens.length) {
+      return res.status(400).json({ error: 'Não há itens ativos deste tipo para aplicar.' });
+    }
+    const ids = itens.map(i => i.id);
+
+    if (!ligado) {
+      for (const alvo of alvos) {
+        let q = supabase.from('ITEM_APLICACOES').delete()
+          .eq('tenant_id', req.tenantId).in('item_id', ids).is('product_id', null);
+        q = alvo ? q.eq('category_id', alvo) : q.is('category_id', null);
+        const { error } = await q;
+        if (error) throw error;
+      }
+      audit(req, 'delete', 'item-cobertura', kind, { alvos: alvos.length, itens: ids.length });
+      return res.json({ ok: true, ligado: false, itens: ids.length });
+    }
+
+    // SÓ O QUE FALTA. Reaplicar o que já existe apagaria o consumo
+    // próprio e o "já está no preço" de quem foi configurado à mão.
+    const { data: jaTem, error: erroLe } = await supabase.from('ITEM_APLICACOES')
+      .select('item_id, category_id').eq('tenant_id', req.tenantId)
+      .in('item_id', ids).is('product_id', null);
+    if (erroLe) throw erroLe;
+
+    const existe = new Set((jaTem || []).map(a => `${a.category_id || ''}|${a.item_id}`));
+    const linhas = [];
+    for (const alvo of alvos) {
+      for (const item_id of ids) {
+        if (existe.has(`${alvo || ''}|${item_id}`)) continue;
+        linhas.push({
+          tenant_id: req.tenantId, item_id,
+          category_id: alvo || null, product_id: null,
+          // Borda é escolha da cliente, nunca embutida no preço de
+          // tabela: `padrao` falso é o que a mantém opcional.
+          padrao: false, consumo: null,
+        });
+      }
+    }
+
+    let gravadas = 0;
+    for (let i = 0; i < linhas.length; i += 500) {
+      const { data, error } = await supabase.from('ITEM_APLICACOES')
+        .upsert(linhas.slice(i, i + 500), { onConflict: 'tenant_id,item_id,category_id,product_id' })
+        .select('id');
+      if (error) throw error;
+      gravadas += data?.length || 0;
+    }
+
+    audit(req, 'create', 'item-cobertura', kind, { alvos: alvos.length, novas: linhas.length });
+    res.json({ ok: true, ligado: true, itens: ids.length, novas: gravadas || linhas.length });
+  } catch (err) {
+    if (faltaMigracao(res, err)) return;
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /**
  * OS ADICIONAIS DE UM PRODUTO — o que a tela de venda e o catálogo leem.
  *

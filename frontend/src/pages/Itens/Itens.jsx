@@ -712,6 +712,136 @@ function OndeSeAplica({ item, aplicacoes, categorias, onClose, onMudou }) {
 }
 
 // ════════════════════════════════════════════════════════════
+// POR CATEGORIA — "esta categoria vende todas as bordas?"
+//
+// A tela de aplicar em massa responde o caminho ITEM → onde ele entra:
+// marco dezoito bordas e digo "no Long Drink". A pergunta do comercial
+// é a INVERSA — "o Long Drink vende borda?" — e ela não tinha tela:
+// para responder era preciso abrir as dezoito bordas, uma a uma, e ver
+// em quais categorias cada uma estava ligada.
+//
+// Aqui a LINHA É A CATEGORIA e a chave é uma só. Ligada, todas as
+// bordas do cadastro aparecem no configurador daquela categoria para a
+// cliente escolher e comprar. Desligada, nenhuma aparece.
+//
+// A CHAVE NÃO É UM SALVAR. Cada clique grava na hora — é uma decisão
+// por linha, e um botão "Salvar" no rodapé só criaria a chance de
+// alguém marcar seis categorias e fechar a janela sem gravar nenhuma.
+// ════════════════════════════════════════════════════════════
+function PorCategoria({ tipo, onClose }) {
+  const qc = useQueryClient();
+  const [gravando, setGravando] = useState(null);   // id da linha em voo
+
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['item-cobertura', tipo.kind],
+    queryFn: () => api.get('/itens/cobertura', { params: { kind: tipo.kind } }),
+  });
+
+  const total = data?.total || 0;
+
+  async function alternar(linha, ligado) {
+    setGravando(linha.chave);
+    try {
+      await api.post('/itens/cobertura', {
+        kind: tipo.kind,
+        category_ids: linha.ids || null,
+        ligado,
+      });
+      toast.success(ligado
+        ? `${tipo.label} à venda em ${linha.name}`
+        : `${tipo.label} fora de ${linha.name}`);
+      await refetch();
+      // A lista de aplicações da tela de trás mostra "em 3 categorias" —
+      // ela acabou de ficar velha.
+      qc.invalidateQueries({ queryKey: ['item-aplicacoes'] });
+    } catch (err) {
+      toast.error(err.error || 'Não consegui gravar');
+    } finally { setGravando(null); }
+  }
+
+  const geral = data?.geral;
+  const linhas = [
+    ...(geral ? [{
+      chave: 'geral', ids: null, name: 'Todos os copos personalizados',
+      dica: 'Vale para o catálogo inteiro, inclusive o que for cadastrado depois.',
+      aplicados: geral.aplicados, ligado: geral.ligado, pelo_geral: false,
+    }] : []),
+    ...(data?.categorias || []).map(c => ({
+      chave: c.id, ids: c.ids, name: c.name,
+      dica: `${c.product_count} ${c.product_count === 1 ? 'produto' : 'produtos'}`,
+      aplicados: c.aplicados, ligado: c.ligado, pelo_geral: c.pelo_geral,
+    })),
+  ];
+
+  return (
+    <Modal isOpen onClose={onClose} size="md"
+      title={`${tipo.label} por categoria`}
+      footer={<button className="btn-secondary" onClick={onClose}>Fechar</button>}>
+      <div className="space-y-3 text-sm">
+        <p className="text-xs text-gray-500">
+          Ligue a chave e <b>todas as {tipo.label.toLowerCase()} do cadastro</b> passam a aparecer
+          no catálogo personalizado daquela categoria, para a cliente escolher e comprar.
+          {total > 0 && <> Hoje são <b>{total}</b> {total === 1 ? 'cadastrada' : 'cadastradas'}.</>}
+        </p>
+
+        {isLoading ? (
+          <div className="py-10 text-center text-gray-400">
+            <Loader2 size={20} className="animate-spin mx-auto mb-2" /> Carregando…
+          </div>
+        ) : isError ? (
+          <div className="py-8 text-center">
+            <AlertTriangle size={20} className="mx-auto mb-2 text-amber-500" />
+            <p className="text-sm text-gray-600">{error?.error || 'Não foi possível carregar as categorias.'}</p>
+          </div>
+        ) : total === 0 ? (
+          <p className="py-8 text-center text-sm text-gray-500">
+            Nenhum item deste tipo cadastrado — cadastre as {tipo.label.toLowerCase()} primeiro.
+          </p>
+        ) : (
+          <div className="rounded-xl border border-gray-200 divide-y divide-gray-100">
+            {linhas.map(l => {
+              // PARCIAL É UM ESTADO DE VERDADE: alguém ligou seis das
+              // dezoito bordas à mão. Dizer só "desligado" apagaria o
+              // trabalho dessa pessoa da tela.
+              const parcial = !l.ligado && l.aplicados > 0;
+              return (
+                <div key={l.chave} className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-gray-800 truncate">{l.name}</p>
+                    <p className="text-[11px] text-gray-400">
+                      {l.dica}
+                      {parcial && ` · ${l.aplicados} de ${total} ligadas`}
+                      {l.ligado && l.pelo_geral && l.chave !== 'geral'
+                        && ' · vem da regra de todos os personalizados'}
+                    </p>
+                  </div>
+                  {gravando === l.chave ? (
+                    <Loader2 size={16} className="animate-spin text-gray-400 shrink-0" />
+                  ) : (
+                    <button type="button" onClick={() => alternar(l, !l.ligado)}
+                      title={l.ligado ? 'Tirar do catálogo desta categoria' : 'Colocar à venda nesta categoria'}
+                      className={`shrink-0 w-11 h-6 rounded-full transition-colors relative ${
+                        l.ligado ? 'bg-emerald-500' : parcial ? 'bg-amber-300' : 'bg-gray-200'}`}>
+                      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
+                        l.ligado ? 'left-[22px]' : 'left-0.5'}`} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <p className="text-[11px] text-gray-400">
+          Exceção de um copo continua na aplicação daquele item — o produto ganha da categoria,
+          e a categoria ganha da regra geral.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
 // A TELA
 // ════════════════════════════════════════════════════════════
 export default function Itens({ kind = null }) {
@@ -723,6 +853,7 @@ export default function Itens({ kind = null }) {
   const [aplicando, setAplicando] = useState(false);
   const [enviandoFotos, setEnviandoFotos] = useState(false);
   const [vendoAplicacoes, setVendoAplicacoes] = useState(null);
+  const [porCategoria, setPorCategoria] = useState(false);
 
   const tipoAtual = kind || aba;
 
@@ -786,7 +917,17 @@ export default function Itens({ kind = null }) {
             {t ? t.dica : 'Tudo que entra num copo — com o que se gasta e o que se cobra.'}
           </p>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 flex-wrap">
+          {/* POR CATEGORIA — a pergunta invertida. "Esta categoria vende
+              borda?" só se respondia abrindo item por item; aqui a
+              linha é a categoria e a chave liga todas de uma vez.
+              Só com um tipo escolhido: "todas as bordas" é uma frase
+              com sentido, "todos os itens" não é. */}
+          {t && (
+            <button className="btn-secondary" onClick={() => setPorCategoria(true)}>
+              <Layers size={16} /> Por categoria
+            </button>
+          )}
           {/* A PASTA INTEIRA DE UMA VEZ. Dezoito bordas são dezoito
               vezes abrir-enviar-salvar-fechar — o tipo de tarefa que
               para na sexta e as últimas ficam sem foto para sempre. */}
@@ -946,6 +1087,9 @@ export default function Itens({ kind = null }) {
             qc.invalidateQueries({ queryKey: ['adicionais-produto'] });
           }}
         />
+      )}
+      {porCategoria && t && (
+        <PorCategoria tipo={t} onClose={() => setPorCategoria(false)} />
       )}
       {enviandoFotos && (
         <FotosEmMassa
