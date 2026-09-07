@@ -122,6 +122,9 @@ const COLUNAS_ITENS = [
     texto: (it, ctx) => it.seller_name || ctx.vendedor || '' },
 ];
 
+// A lista das caixas de acabamento do lançamento. Sem uso enquanto o
+// bloco estiver fora da tela (ver o comentário no modal); fica aqui
+// porque é ela que volta junto no dia em que voltarem.
 const ACABAMENTOS = ['Cor degradê', 'Cor bicolor', 'Jateado', 'Borda metalizada', 'Pintura', 'Laser', 'Transfer', 'DTF'];
 
 // O produto tem borda? Lê da variação escolhida e, se não disser, das
@@ -1945,35 +1948,18 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             {/* Tinta (PP/PS) vem do cadastro do produto (product.ink_type) —
                 não se escolhe aqui. launch.ink já é inicializado a partir dele. */}
 
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Acabamentos <span className="text-gray-300">(opcionais)</span></label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                {ACABAMENTOS.map(a => (
-                  <label key={a} className={`flex items-center gap-2 text-sm rounded-lg border px-2 py-1.5 cursor-pointer ${launch.acab.includes(a) ? 'border-primary-300 bg-primary-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                    <input type="checkbox" className="w-4 h-4 accent-primary-600"
-                      checked={launch.acab.includes(a)} onChange={() => toggleAcab(a)} />
-                    <span className="truncate">{a}</span>
-                  </label>
-                ))}
-              </div>
-              {launch.acab.length > 0 && (
-                <div className="mt-2 space-y-1.5">
-                  {launch.acab.map(a => (
-                    <div key={a} className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 w-32 shrink-0 truncate">{a} <span className="text-red-500">*</span></span>
-                      <select className="input text-sm flex-1" value={launch.acabCor?.[a] || ''}
-                        onChange={e => setAcabCor(a, e.target.value)}>
-                        <option value="">Selecione a cor…</option>
-                        {(acabCatalog[a] || []).map(v => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                      <button type="button" title="Cadastrar cor"
-                        onClick={() => addAcabValor(a, v => setAcabCor(a, v))}
-                        className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm">+</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* OS ACABAMENTOS SAIRAM DO LANCAMENTO (07/09/2026).
+                Eram oito caixas — Cor degradê, Cor bicolor, Jateado,
+                Borda metalizada, Pintura, Laser, Transfer, DTF — e cada
+                uma marcada abria um seletor de cor obrigatório embaixo.
+                O Pablo pediu a tela simples, e por enquanto nenhuma
+                delas é usada no lançamento.
+
+                SÓ A TELA SAIU. `launch.acab`, `acabCor`, `toggleAcab` e
+                a gravação em `itemCustomization` continuam de pé: é o
+                que mantém legível o pedido ANTIGO, que tem acabamento
+                gravado e é lido pela produção e pela tela do cliente.
+                Devolver as caixas é recolocar este bloco. */}
 
             <div className="flex items-center justify-between border-t border-gray-100 pt-3">
               <div className="text-xs text-gray-400">
