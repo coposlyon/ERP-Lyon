@@ -191,7 +191,13 @@ export default function Sales() {
   // `whitespace-nowrap`: cabecalho de tabela que quebra em duas linhas
   // empurra o corpo inteiro para baixo e desalinha a leitura de cima a
   // baixo. As colunas de data ganharam a largura que o rotulo pede.
-  const th = 'text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap';
+  // `overflow-hidden` e a rede: o titulo tem `whitespace-nowrap`, entao
+  // quando nao cabe na largura da coluna ele TRANSBORDA e encosta no
+  // vizinho — foi assim que "CÓD. CLIENTE" virou "CÓD. CLIENTECLIENTE".
+  // As larguras abaixo ja foram medidas pelo titulo mais longo de cada
+  // coluna; isto aqui garante que titulo novo nao invada a coluna ao
+  // lado — ele corta, e cortar avisa que falta espaco.
+  const th = 'text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap overflow-hidden';
 
   return (
     <div className="space-y-4">
@@ -386,7 +392,7 @@ export default function Sales() {
               }}>
               <span className={`${th} w-20 shrink-0`}>Pedido</span>
               <span className={`${th} w-32 shrink-0`}>Data / Hora</span>
-              <span className={`${th} w-20 shrink-0`}>Cód. Cliente</span>
+              <span className={`${th} w-28 shrink-0`}>Cód. Cliente</span>
               <span className={`${th} flex-1 min-w-[150px]`}>Cliente</span>
               {/* "Valor Total" e "Valor Frete" por extenso: "Vr." era
                   economia de espaço que custava a leitura — ninguém
@@ -397,15 +403,15 @@ export default function Sales() {
                   largura. Mexer em um sem o outro desalinha a coluna. */}
               <span className={`${th} w-32 shrink-0 text-right`}>Valor Total</span>
               <span className={`${th} w-28 shrink-0 text-right`}>Valor Frete</span>
-              <span className={`${th} w-28 shrink-0`}>Data do evento</span>
-              <span className={`${th} w-28 shrink-0`}>Data de saída</span>
-              <span className={`${th} w-36 shrink-0`}>Previsão de entrega</span>
+              <span className={`${th} w-32 shrink-0`}>Data do evento</span>
+              <span className={`${th} w-32 shrink-0`}>Data de saída</span>
+              <span className={`${th} w-44 shrink-0`}>Previsão de entrega</span>
               <span className={`${th} w-32 shrink-0`}>Transportadora</span>
               <span className={`${th} w-24 shrink-0 text-right`}>Cotação</span>
               {/* w-56: cabe "Em processo de coleta / retirada", o rótulo
                   mais longo do fluxo, sem quebrar linha. */}
               <span className={`${th} w-56 shrink-0 text-center`}>Status</span>
-              <span className={`${th} w-16 shrink-0 text-center`}>Atenção</span>
+              <span className={`${th} w-20 shrink-0 text-center`}>Atenção</span>
               <span className={`${th} w-20 shrink-0 text-center`}>Ações</span>
             </div>
 
@@ -437,7 +443,7 @@ export default function Sales() {
                   <span className="w-32 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
                     {dataHora(row.operation_date ? `${row.operation_date}T12:00:00` : row.created_at)}
                   </span>
-                  <span className="w-20 shrink-0 font-mono text-[13px]" style={{ color: v.textMuted }}>
+                  <span className="w-28 shrink-0 font-mono text-[13px]" style={{ color: v.textMuted }}>
                     {codigoCliente(row.CLIENTES?.display_id) || '—'}
                   </span>
                   {/* O OLHO AO LADO DO NOME.
@@ -469,13 +475,13 @@ export default function Sales() {
                   {/* OS PRAZOS. Data do evento é a do cliente (o casamento,
                       a formatura); data de saída e previsão de entrega são
                       as nossas. Traço quando ninguém definiu. */}
-                  <span className="w-28 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
+                  <span className="w-32 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
                     {dia(row.event_date)}
                   </span>
-                  <span className="w-28 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
+                  <span className="w-32 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
                     {dia(row.ship_date)}
                   </span>
-                  <span className="w-36 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
+                  <span className="w-44 shrink-0 text-[13px]" style={{ color: v.textMuted }}>
                     {dia(row.delivery_date || row.max_delivery_date)}
                   </span>
                   <span className="w-32 shrink-0 truncate text-[13px]" style={{ color: v.textMuted }}
@@ -493,7 +499,7 @@ export default function Sales() {
                       {info?.label || saleStatusLabel(row.status)}
                     </span>
                   </span>
-                  <span className="w-16 shrink-0 flex justify-center">
+                  <span className="w-20 shrink-0 flex justify-center">
                     <SinalAtencao atencao={atencao} row={row} info={info} />
                   </span>
                   {/* Comprovante e envio ao cliente moram na tela do
