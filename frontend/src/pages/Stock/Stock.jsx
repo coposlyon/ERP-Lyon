@@ -307,74 +307,19 @@ function openSupplierWhatsApp(product) {
   window.open(`https://wa.me/${full}?text=${msg}`, '_blank');
 }
 
+/**
+ * Os status em que uma solicitação de reposição ainda está viva.
+ *
+ * 'respondido' conta tanto quanto 'pending': o fornecedor já disse o que
+ * tem, mas a mercadoria não chegou — o produto continua pedido. A mesma
+ * régua vale no servidor (routes/stock.js), e é ela que impede pedir
+ * duas vezes o mesmo copo.
+ */
+const EM_ABERTO = ['pending', 'respondido'];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Stock page
 // ─────────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-// Sugestão de Compra — itens no/abaixo do mínimo, agrupados por fornecedor
-// ─────────────────────────────────────────────────────────────────────────────
-function PurchaseSuggestion() {
-  const { data: groups = [], isLoading } = useQuery({
-    queryKey: ['purchase-suggestion'],
-    queryFn: () => api.get('/stock/purchase-suggestion'),
-  });
-
-  if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary-500" /></div>;
-  if (groups.length === 0) return (
-    <div className="text-center py-12">
-      <PackageCheck size={40} className="text-green-500 mx-auto mb-3" />
-      <p className="text-green-600 font-medium">Tudo em dia — nenhum produto abaixo do mínimo.</p>
-    </div>
-  );
-
-  return (
-    <div className="space-y-4 p-4">
-      {groups.map(g => (
-        <div key={g.supplier_id || 'none'} className="border border-gray-200 rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between bg-gray-50 px-4 py-3 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <Package size={16} className="text-indigo-600" />
-              <p className="font-semibold text-gray-800">{g.supplier_name}</p>
-              <span className="text-xs text-gray-400">· {g.items.length} {g.items.length === 1 ? 'item' : 'itens'}</span>
-            </div>
-            <span className="font-bold text-indigo-700">{fmt(g.total_estimado)}</span>
-          </div>
-          <table className="w-full">
-            <thead>
-              <tr className="text-xs text-gray-500 uppercase">
-                <th className="text-left px-4 py-2 font-semibold">Produto</th>
-                <th className="text-right px-4 py-2 font-semibold w-24">Estoque</th>
-                <th className="text-right px-4 py-2 font-semibold w-24">Mínimo</th>
-                <th className="text-right px-4 py-2 font-semibold w-28">Comprar</th>
-                <th className="text-right px-4 py-2 font-semibold w-28">Custo est.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {g.items.map(it => (
-                <tr key={it.id} className="border-t border-gray-50">
-                  <td className="px-4 py-2 text-sm">
-                    <span className="font-medium text-gray-800">{it.name}</span>
-                    <span className="text-xs text-gray-400 ml-2 font-mono">{id4(it.code)}</span>
-                  </td>
-                  <td className={`px-4 py-2 text-right text-sm font-medium ${it.current_stock < 0 ? 'text-red-600' : 'text-gray-600'}`}>
-                    {it.current_stock} {it.unit}
-                  </td>
-                  <td className="px-4 py-2 text-right text-sm text-gray-500">{it.min_stock}</td>
-                  <td className="px-4 py-2 text-right text-sm font-bold text-indigo-700">+{it.suggested_qty} {it.unit}</td>
-                  <td className="px-4 py-2 text-right text-sm text-gray-600">{fmt(it.estimated_cost)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
-      <p className="text-xs text-gray-400">
-        Sugestão para repor cada produto até o estoque mínimo. Use estes números para criar os pedidos de compra.
-      </p>
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Inventário — contagem física com ajuste automático das diferenças
 // ─────────────────────────────────────────────────────────────────────────────
@@ -574,7 +519,10 @@ export default function Stock() {
   const { tenant } = useAuth();
   const [tab, setTab]             = useState('position');
   const [page, setPage]           = useState(1);
-  const [showZeroOnly, setShowZeroOnly] = useState(false);
+  // ABRE NOS NEGATIVOS. A lista inteira são centenas de linhas, e quem
+  // entra em Estoque entra por causa do que está faltando — o resto é
+  // consulta, e continua a um clique daqui ("Ver todos").
+  const [showZeroOnly, setShowZeroOnly] = useState(true);
   const [perdaOpen, setPerdaOpen] = useState(false);
   const [productModal, setProductModal] = useState(null); // 'new' | produto p/ editar
   const [adjust, setAdjust] = useState(null);             // { p, dir }
@@ -643,19 +591,42 @@ export default function Stock() {
     enabled: tab === 'position' || tab === 'replenishment',
   });
 
-  // ── Pedidos de reposição pendentes ─────────────────────────────
+  // ── Solicitações em aberto ─────────────────────────────────────
+  //
+  // Lê TODAS e filtra aqui, em vez de pedir só `status=pending`:
+  // 'respondido' também é uma solicitação viva — o fornecedor já disse
+  // o que tem e a Lyon ainda não recebeu. Enquanto só 'pending' contava,
+  // o pedido respondido sumia da trava e os mesmos copos podiam ser
+  // pedidos de novo, com dois protocolos atrás da mesma reposição.
   const { data: pendingOrdersData } = useQuery({
     queryKey: ['replenishment-orders-pending'],
-    queryFn: () => api.get('/stock/replenishment-orders?status=pending'),
+    queryFn: () => api.get('/stock/replenishment-orders'),
   });
+
+  const openOrders = useMemo(
+    () => (pendingOrdersData?.data || []).filter(o => EM_ABERTO.includes(o.status)),
+    [pendingOrdersData]
+  );
 
   const pendingOrdersBySupplier = useMemo(() => {
     const map = {};
-    (pendingOrdersData?.data || []).forEach(o => {
-      if (o.supplier_id) map[o.supplier_id] = o;
-    });
+    openOrders.forEach(o => { if (o.supplier_id) map[o.supplier_id] = o; });
     return map;
-  }, [pendingOrdersData]);
+  }, [openOrders]);
+
+  /**
+   * OS PRODUTOS QUE JÁ ESTÃO NUMA SOLICITAÇÃO ABERTA.
+   *
+   * É por produto, e não por fornecedor: um copo novo que ficou
+   * negativo hoje precisa poder ser pedido, mesmo que o fornecedor dele
+   * já tenha uma solicitação correndo por outros itens. E o copo que já
+   * foi pedido não entra em nenhuma outra até chegar ou ser cancelado.
+   */
+  const jaSolicitados = useMemo(() => {
+    const ids = new Set();
+    for (const o of openOrders) for (const p of (o.products || [])) if (p?.id) ids.add(p.id);
+    return ids;
+  }, [openOrders]);
 
   // tipos para o filtro
   const { data: categories = [] } = useQuery({
@@ -734,6 +705,35 @@ export default function Stock() {
     });
   }, [negativeProducts]);
 
+  /**
+   * O QUE AINDA FALTA PEDIR, fornecedor a fornecedor.
+   *
+   * O GRUPO CONTINUA MOSTRANDO TUDO — inclusive o que já foi pedido —,
+   * porque é no cartão dele que fica "Reposição solicitada" e o botão de
+   * dar baixa quando chegar. Esconder o grupo esconderia junto o
+   * recebimento.
+   *
+   * O que muda é o que o botão MANDA: só as linhas que ainda não estão
+   * numa solicitação aberta. Sem isso, clicar de novo em "Solicitar
+   * Reposição Geral" repetia o pedido inteiro — dois protocolos atrás
+   * dos mesmos copos, e duas contas a pagar.
+   */
+  const faltaPedirPorGrupo = useMemo(() => {
+    const map = {};
+    for (const g of supplierGroups) {
+      map[g.id || '__none__'] = g.products.filter(p => !jaSolicitados.has(p.id));
+    }
+    return map;
+  }, [supplierGroups, jaSolicitados]);
+
+  const faltaPedir = g => faltaPedirPorGrupo[g.id || '__none__'] || [];
+
+  /** Quantos produtos negativos ainda não foram pedidos a ninguém. */
+  const totalAPedir = useMemo(
+    () => negativeProducts.filter(p => !jaSolicitados.has(p.id)).length,
+    [negativeProducts, jaSolicitados]
+  );
+
   function generateProtocol() {
     return String(Math.floor(Math.random() * 100000)).padStart(5, '0');
   }
@@ -744,7 +744,7 @@ export default function Stock() {
   }
 
   function buildOrderProducts(group) {
-    return group.products.map(p => ({
+    return faltaPedir(group).map(p => ({
       id: p.id, name: p.name, code: p.code || '',
       current_stock_at_request: p.current_stock,
       qty_to_replenish: Math.abs(p.current_stock),
@@ -769,14 +769,30 @@ export default function Stock() {
       const num  = group.phone.replace(/\D/g, '');
       const full = num.startsWith('55') ? num : `55${num}`;
 
-      const linhas = group.products.map(p => {
-        const qty = Math.abs(p.current_stock);
-        return [`📦 ${p.name}`, `   • UNIDADES: ${qty}`].join('\n');
-      }).join('\n\n');
+      // A MENSAGEM DIZ O QUE ESTE PEDIDO É, e não o que está negativo.
+      // Reenvio repete a lista do pedido que já existe; pedido novo leva
+      // só o que ainda não foi pedido. Antes as duas listavam todos os
+      // negativos, e o fornecedor recebia de novo os copos que já tinha
+      // aceitado mandar.
+      const itens = existingOrder
+        ? (existingOrder.products || []).map(p => ({
+            name: p.name, qtd: Math.abs(Number(p.qty_to_replenish ?? 0)), custo: Number(p.cost_price) || 0,
+          }))
+        : faltaPedir(group).map(p => ({
+            name: p.name, qtd: Math.abs(p.current_stock), custo: Number(p.cost_price) || 0,
+          }));
 
-      const totalGeral = group.products.reduce(
-        (s, p) => s + Math.abs(p.current_stock) * (Number(p.cost_price) || 0), 0
-      );
+      if (!itens.length) {
+        toast('Todos os produtos deste fornecedor já estão numa solicitação em aberto.', { icon: 'ℹ️' });
+        setSoliciting(false);
+        return;
+      }
+
+      const linhas = itens
+        .map(p => [`📦 ${p.name}`, `   • UNIDADES: ${p.qtd}`].join('\n'))
+        .join('\n\n');
+
+      const totalGeral = itens.reduce((s, p) => s + p.qtd * p.custo, 0);
 
       const msg = [
         `Olá ${group.name}! 👋`, ``,
@@ -804,13 +820,18 @@ export default function Stock() {
       qc.invalidateQueries({ queryKey: ['replenishment-orders-pending'] });
       qc.invalidateQueries({ queryKey: ['stock-movements'] });
       setReplenishModal(false);
-      setTab('movements');
+      // VAI PARA SOLICITAÇÕES, e não para Movimentações. Quem acabou de
+      // pedir quer ver o pedido — em Movimentações ele aparece como uma
+      // linha de ajuste de quantidade zero, que é o registro histórico,
+      // não a solicitação.
+      qc.invalidateQueries({ queryKey: ['solicitacoes-reposicao'] });
+      setTab('solicitacoes');
       setPage(1);
       if (payable) {
         qc.invalidateQueries({ queryKey: ['contas-month'] });
         toast.success(`✅ Solicitação enviada! Controle: ${protocol} — conta a pagar de ${fmt(payable.amount)} criada na Central de Contas.`, { duration: 6000 });
       } else {
-        toast.success(`✅ Solicitação enviada! Controle: ${protocol} — veja em Movimentações.`);
+        toast.success(`✅ Solicitação enviada! Controle: ${protocol} — veja em Solicitações.`);
       }
     } catch (err) {
       toast.error(`❌ ${err?.response?.data?.error || err?.message || 'Erro ao criar pedido'}`);
@@ -898,7 +919,6 @@ export default function Stock() {
     { key: 'position',      label: 'Lista Completa'  },
     { key: 'replenishment', label: '📦 Reposição'    },
     { key: 'solicitacoes',  label: '📨 Solicitações'  },
-    { key: 'suggestion',    label: '🛒 Sugestão de Compra' },
     { key: 'inventory',     label: '📋 Inventário'   },
     { key: 'movements',     label: 'Movimentações'   },
   ];
@@ -1058,7 +1078,6 @@ export default function Stock() {
         )}
 
         {/* ── Aba: Sugestão de Compra ───────────────────────────── */}
-        {tab === 'suggestion' && <PurchaseSuggestion />}
 
         {/* ── Aba: Inventário ───────────────────────────────────── */}
         {tab === 'inventory' && <InventoryCount />}
@@ -1101,13 +1120,23 @@ export default function Stock() {
                         {' '}produto{negativeProducts.length > 1 ? 's' : ''} com estoque negativo
                       </p>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        {supplierGroups.filter(g => g.id).length} fornecedor{supplierGroups.filter(g=>g.id).length !== 1 ? 'es' : ''} · clique abaixo para gerar os pedidos
+                        {supplierGroups.filter(g => g.id).length} fornecedor{supplierGroups.filter(g=>g.id).length !== 1 ? 'es' : ''}
+                        {totalAPedir === 0
+                          ? ' · tudo já solicitado, aguardando os fornecedores'
+                          : ` · ${totalAPedir} ainda sem solicitação`}
                       </p>
                     </div>
                   </div>
+                  {/* Desligado quando não falta pedir nada. Um botão que
+                      abre um modal vazio é pior do que um botão apagado:
+                      o apagado explica no title por que não dá. */}
                   <button
                     onClick={() => setReplenishModal(true)}
-                    className="btn-primary text-sm shrink-0">
+                    disabled={totalAPedir === 0}
+                    title={totalAPedir === 0
+                      ? 'Todos os produtos negativos já estão numa solicitação em aberto. Registre o recebimento ou cancele para pedir de novo.'
+                      : 'Gera a solicitação só do que ainda não foi pedido'}
+                    className="btn-primary text-sm shrink-0 disabled:opacity-45 disabled:cursor-not-allowed">
                     <FileText size={15} />
                     Solicitar Reposição Geral
                   </button>
@@ -1142,6 +1171,9 @@ export default function Stock() {
                           <p className="font-semibold text-gray-900 text-sm break-words">{group.name}</p>
                           <p className="text-xs text-gray-500 mt-0.5">
                             {group.products.length} produto{group.products.length > 1 ? 's' : ''} a repor
+                            {faltaPedir(group).length > 0 && faltaPedir(group).length < group.products.length && (
+                              <span className="text-amber-600"> · {faltaPedir(group).length} sem solicitação</span>
+                            )}
                             {group.phone
                               ? <span className="text-green-600 ml-2">📱 {group.phone}</span>
                               : !group.id ? null

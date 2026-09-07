@@ -238,16 +238,18 @@ export const menuItems = [
 
   // --- Módulos diretos (sem submenu) ---
   {
-    // Compras estava fora do menu: a tela existia, a rota existia, e
-    // só se chegava nela digitando o endereço. Fora do menu, ela
-    // também ficava fora da tela de permissões — acesso que ninguém
-    // consegue revisar. Entra aqui porque compra é o que alimenta o
-    // estoque.
+    // COMPRAS SAIU DO MENU. A entrada de mercadoria da Lyon acontece
+    // por Estoque → Reposição: pede-se ao fornecedor, ele responde pelo
+    // link, e o recebimento atualiza o saldo. A tela de Compras era um
+    // segundo caminho para o mesmo lugar, e dois caminhos para lançar a
+    // mesma entrada é o começo de duas contagens diferentes.
+    //
+    // A rota /purchases continua existindo — pedido antigo aberto por
+    // ela não vira link quebrado.
     label: 'Estoque',
     icon: Boxes,
     children: [
-      { label: 'Estoque',  path: '/stock',     icon: Boxes,        module: 'stock' },
-      { label: 'Compras',  path: '/purchases', icon: ShoppingCart, module: 'purchases' },
+      { label: 'Estoque', path: '/stock', icon: Boxes, module: 'stock' },
     ],
   },
 

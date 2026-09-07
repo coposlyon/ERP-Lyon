@@ -13,6 +13,17 @@ const upload = multer({
 });
 
 // ── Movimentações ─────────────────────────────────────────────────────────────
+/**
+ * OS STATUS EM QUE UMA SOLICITAÇÃO AINDA ESTÁ VIVA.
+ *
+ * 'pending' é a Lyon esperando o fornecedor; 'respondido' é o
+ * fornecedor tendo respondido e a Lyon ainda não tendo recebido. Nos
+ * dois casos o produto JÁ FOI PEDIDO — e é isso que impede de pedir de
+ * novo. 'completed' e 'cancelled' liberam o produto para uma
+ * solicitação nova, que é o que se quer: chegou, ou desistiram.
+ */
+const EM_ABERTO = ['pending', 'respondido'];
+
 router.get('/movements', async (req, res) => {
   const { page = 1, limit = 50, product_id, type, start_date, end_date } = req.query;
   const offset = (page - 1) * limit;
@@ -296,28 +307,55 @@ router.get('/replenishment-orders', async (req, res) => {
 // POST /stock/replenishment-orders — cria pedido (status=pending) + movimento histórico
 // Aceita campo opcional `html_content` (string) para salvar o documento no Storage
 router.post('/replenishment-orders', async (req, res) => {
-  const { supplier_id, supplier_name, products, html_content, protocol_number } = req.body;
+  // `products` é reatribuído abaixo, depois de tirar o que já está numa
+  // solicitação em aberto.
+  let { supplier_id, supplier_name, products, html_content, protocol_number } = req.body;
 
   if (!Array.isArray(products) || !products.length)
     return res.status(400).json({ error: 'Nenhum produto informado' });
 
   try {
-    // Impede duplicata: já existe pedido pending para este fornecedor?
-    if (supplier_id) {
-      const { data: existing } = await supabase
-        .from('PEDIDOS_REPOSICAO')
-        .select('id')
-        .eq('tenant_id', req.tenantId)
-        .eq('supplier_id', supplier_id)
-        .eq('status', 'pending')
-        .maybeSingle();
+    // ── NÃO SE PEDE DUAS VEZES A MESMA COISA ─────────────────
+    //
+    // O QUE ACONTECIA. A trava era `.maybeSingle()` procurando UM pedido
+    // pendente do fornecedor. Ela funciona enquanto não existe
+    // duplicata — e quebra no instante em que existe: com duas linhas,
+    // `maybeSingle` devolve erro e `data` nulo, o guarda entende "não
+    // achei nada" e cria a TERCEIRA. A trava que protege contra
+    // duplicata parava de funcionar por causa da primeira duplicata.
+    //
+    // E ela olhava só 'pending'. Respondido o pedido, o fornecedor
+    // sumia da trava e os mesmos copos podiam ser pedidos de novo,
+    // agora com dois protocolos correndo atrás da mesma reposição.
+    //
+    // A PERGUNTA CERTA É POR PRODUTO, e não por fornecedor: o que já
+    // está numa solicitação ABERTA não entra em outra. O que ainda não
+    // foi pedido segue normalmente — é para isso que serve clicar de
+    // novo depois de um copo novo ficar negativo.
+    const { data: abertos } = await supabase
+      .from('PEDIDOS_REPOSICAO')
+      .select('id, supplier_id, protocol_number, products, status')
+      .eq('tenant_id', req.tenantId)
+      .in('status', EM_ABERTO);
 
-      if (existing)
-        return res.status(409).json({
-          error: 'Já existe um pedido pendente para este fornecedor',
-          existing_id: existing.id,
-        });
+    const jaPedidos = new Set();
+    for (const o of abertos || []) {
+      for (const p of (o.products || [])) if (p?.id) jaPedidos.add(p.id);
     }
+
+    const novos = products.filter(p => !jaPedidos.has(p.id));
+    if (!novos.length) {
+      const doFornecedor = (abertos || []).find(o => o.supplier_id === supplier_id) || (abertos || [])[0];
+      return res.status(409).json({
+        error: 'Todos estes produtos já estão numa solicitação em aberto.',
+        dica: 'Veja em Solicitações. Para pedir de novo, cancele a solicitação anterior ou registre o recebimento dela.',
+        existing_id: doFornecedor?.id || null,
+        protocolo: doFornecedor?.protocol_number || null,
+      });
+    }
+
+    // Daqui para baixo, `products` é só o que ainda não foi pedido.
+    products = novos;
 
     // Upload do HTML como documento no Storage (quando enviado pelo "Gerar PDF")
     let pdf_url = null;
