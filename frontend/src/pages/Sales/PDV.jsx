@@ -437,6 +437,44 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     queryKey: ['acab-catalog'],
     queryFn: () => api.get('/settings/acabamentos'),
   });
+
+  /**
+   * AS BORDAS VÊM DO CADASTRO DE ITENS — que é onde elas moram.
+   *
+   * O seletor lia `acabamentos_catalog['__borda']`, um campo de
+   * `EMPRESAS.settings` alimentado só pelo botãozinho "+" desta tela. Ele
+   * está VAZIO, e por isso "Selecione a borda…" abria sem nenhuma opção:
+   * as dezoito bordas da Lyon estão em Produtos → Bordas (ITENS, kind
+   * 'borda'), com foto, custo e preço — o cadastro que o catálogo do
+   * site já usa.
+   *
+   * Eram duas listas para a mesma pergunta, e a que a tela lia era a que
+   * ninguém preenchia. Agora é uma só: cadastrou a borda em Itens, ela
+   * aparece aqui.
+   *
+   * O QUE FOI DIGITADO NO "+" NÃO SE PERDE. As duas listas se juntam, sem
+   * repetir — quem cadastrou uma borda pelo botão continua achando ela,
+   * e pedido antigo continua legível.
+   */
+  const { data: itensBorda = [] } = useQuery({
+    queryKey: ['itens', 'borda'],
+    queryFn: () => api.get('/itens', { params: { kind: 'borda' } }),
+  });
+
+  const bordasDisponiveis = useMemo(() => {
+    const nomes = new Set();
+    for (const i of itensBorda) {
+      // A cor é o que distingue uma borda da outra: o nome é "Borda
+      // Metalizada" nas dezoito. Sem cor cadastrada, vale o nome.
+      const nome = String(i.color_name || i.name || '').trim().toUpperCase();
+      if (nome) nomes.add(nome);
+    }
+    for (const v of acabCatalog['__borda'] || []) {
+      const nome = String(v || '').trim().toUpperCase();
+      if (nome) nomes.add(nome);
+    }
+    return [...nomes].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [itensBorda, acabCatalog]);
   // As tintas cadastradas, com o valor por ML de cada uma.
   const { data: tintas = [], refetch: refetchTintas } = useQuery({
     queryKey: ['tintas'],
@@ -1935,7 +1973,13 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                     <select className="input text-sm flex-1" value={launch.bordaTipo}
                       onChange={e => setLaunch(l => ({ ...l, bordaTipo: e.target.value }))}>
                       <option value="">Selecione a borda…</option>
-                      {(acabCatalog['__borda'] || []).map(v => <option key={v} value={v}>{v}</option>)}
+                      {bordasDisponiveis.map(v => <option key={v} value={v}>{v}</option>)}
+                      {/* Borda que veio de um pedido antigo e saiu do
+                          cadastro: continua visível em vez de o campo
+                          abrir vazio em cima de um pedido que existe. */}
+                      {launch.bordaTipo && !bordasDisponiveis.includes(launch.bordaTipo) && (
+                        <option value={launch.bordaTipo}>{launch.bordaTipo}</option>
+                      )}
                     </select>
                     <button type="button" title="Cadastrar borda"
                       onClick={() => addAcabValor('__borda', v => setLaunch(l => ({ ...l, bordaTipo: v })))}
