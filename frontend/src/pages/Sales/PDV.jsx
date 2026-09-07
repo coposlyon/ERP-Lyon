@@ -292,6 +292,26 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   });
   const searchRef = useRef();
 
+  /**
+   * UM CLIQUE, UM PEDIDO.
+   *
+   * `finalizeSale` é async e consulta o Contábil ANTES de gravar a
+   * venda. Nessa janela `saleMutation.isPending` ainda é false, o botão
+   * continua solto, e cada clique enfileira outro pedido — foi assim
+   * que dois cliques viraram doze vendas iguais.
+   *
+   * O ref trava na hora, sem esperar render: `disabled` depende do
+   * React redesenhar, e o segundo clique chega antes disso.
+   *
+   * A CHAVE É DO PEDIDO, NÃO DO CLIQUE. Ela nasce na primeira tentativa
+   * e sobrevive a erro de rede e a nova tentativa — é o que faz o
+   * servidor reconhecer "este é o mesmo pedido de novo" e devolver o
+   * que já existe em vez de criar outro. Zerada só quando a venda entra
+   * de verdade, e aí a próxima começa com chave nova.
+   */
+  const finalizando = useRef(false);
+  const chaveDoPedido = useRef(null);
+
   // Carrega todos os produtos ativos (o backend já devolve em ordem alfabética)
   // para mostrar a lista completa ao abrir, e filtra no cliente conforme digita.
   const { data: allProducts } = useQuery({
@@ -517,6 +537,10 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
         }).catch(() => {});
       }
       toast.success('Pedido confirmado!');
+      // O pedido entrou: a chave morre com ele, e a próxima venda
+      // começa com uma nova. Mantê-la faria o servidor devolver ESTE
+      // pedido quando o operador lançasse o próximo.
+      chaveDoPedido.current = null;
 
       // PIX: o pedido ja existe, e agora ele ganha a cobranca. E DEPOIS
       // de criado de proposito — o txid da cobranca e o id do pedido, e
@@ -1037,6 +1061,16 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
 
   // PASSO 2 — como vai ser pago, e aí sim o pedido nasce.
   async function finalizeSale() {
+    if (finalizando.current) return;      // o segundo clique não passa daqui
+    finalizando.current = true;
+    try {
+      await finalizarPedido();
+    } finally {
+      finalizando.current = false;
+    }
+  }
+
+  async function finalizarPedido() {
     if (items.length === 0) { toast.error('Adicione ao menos um produto'); return; }
     if (!selectedCustomer) { toast.error('Selecione o cliente (obrigatório)'); return; }
     if (!operationDate) { toast.error('Informe a Data da operação'); return; }
@@ -1071,7 +1105,11 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
         }
       } catch { /* módulo contábil indisponível → não trava a venda */ }
     }
+    if (!chaveDoPedido.current) {
+      chaveDoPedido.current = (crypto.randomUUID?.() || String(Date.now()) + Math.random());
+    }
     saleMutation.mutate({
+      idempotency_key: chaveDoPedido.current,
       customer_id: selectedCustomer.id,
       type: 'sale',
       operation_date: operationDate || null,

@@ -419,6 +419,37 @@ router.post('/', validate(saleSchema), async (req, res) => {
 async function legacyCreateSale(req, res) {
   const { customer_id, type, items, notes, discount, delivery_date, artwork_url, artwork_notes, payment_method, operation_date, freight, payment_adjustment } = req.body;
   try {
+    /**
+     * O MESMO PEDIDO CHEGANDO DUAS VEZES NÃO VIRA DOIS.
+     *
+     * Aconteceu de verdade: dois cliques em "Confirmar pedido" viraram
+     * doze vendas iguais. O botão tem `disabled`, mas a tela consulta o
+     * Contábil ANTES de gravar, e nessa janela ele ainda está solto.
+     *
+     * A trava do botão nunca seria suficiente, e é por isso que a
+     * proteção mora AQUI: duplo clique é só uma das formas de mandar o
+     * mesmo pedido duas vezes — as outras são a rede repetindo o POST,
+     * o F5 no meio da gravação e a segunda aba no mesmo carrinho.
+     *
+     * A tela manda uma chave por PEDIDO (não por clique). Se ela já
+     * existe, devolvemos a venda que existe em vez de criar outra: para
+     * quem clicou, o resultado é o mesmo — o pedido dele —, e é isso
+     * que se espera de um botão apertado duas vezes.
+     *
+     * Sem chave, nada muda: pedido antigo e pedido vindo de outro
+     * caminho (o do site) continuam entrando como sempre.
+     */
+    const idem = String(req.body?.idempotency_key || '').trim().slice(0, 100) || null;
+    if (idem) {
+      const { data: jaExiste } = await supabase.from('VENDAS')
+        .select('*, VENDA_ITENS(*)')
+        .eq('tenant_id', req.tenantId).eq('idempotency_key', idem).maybeSingle();
+      if (jaExiste) {
+        console.log(`[sales] pedido repetido ignorado (chave ${idem}) — devolvendo PV-${jaExiste.number}`);
+        return res.status(200).json(jaExiste);
+      }
+    }
+
     const { data: nextNumber } = await supabase
       .rpc('proximo_numero_venda', { p_tenant_id: req.tenantId });
 
@@ -433,6 +464,10 @@ async function legacyCreateSale(req, res) {
       .insert({
         tenant_id: req.tenantId,
         number: nextNumber,
+        // Grava a chave junto: é o índice único que segura a corrida
+        // quando dois cliques chegam ao servidor ao mesmo tempo e a
+        // consulta acima não vê nem um nem outro.
+        ...(idem ? { idempotency_key: idem } : {}),
         type: type || 'sale',
         customer_id,
         user_id: req.user.id,

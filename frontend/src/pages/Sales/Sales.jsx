@@ -379,8 +379,15 @@ export default function Sales() {
               <span className={`${th} w-32 shrink-0`}>Data / Hora</span>
               <span className={`${th} w-20 shrink-0`}>Cód. Cliente</span>
               <span className={`${th} flex-1 min-w-[150px]`}>Cliente</span>
-              <span className={`${th} w-28 shrink-0 text-right`}>Vr. Total</span>
-              <span className={`${th} w-20 shrink-0 text-right`}>Vr. Frete</span>
+              {/* "Valor Total" e "Valor Frete" por extenso: "Vr." era
+                  economia de espaço que custava a leitura — ninguém
+                  chama de "vr." fora daqui. A largura subiu junto (w-32
+                  e w-28), senão o nome novo espremeria o número: o
+                  cabeçalho é `text-right` e a célula também, então os
+                  dois só ficam alinhados enquanto tiverem a MESMA
+                  largura. Mexer em um sem o outro desalinha a coluna. */}
+              <span className={`${th} w-32 shrink-0 text-right`}>Valor Total</span>
+              <span className={`${th} w-28 shrink-0 text-right`}>Valor Frete</span>
               <span className={`${th} w-28 shrink-0`}>Data do evento</span>
               <span className={`${th} w-28 shrink-0`}>Data de saída</span>
               <span className={`${th} w-36 shrink-0`}>Previsão de entrega</span>
@@ -444,10 +451,10 @@ export default function Sales() {
                       </button>
                     )}
                   </span>
-                  <span className="w-28 shrink-0 text-right font-semibold" style={{ color: '#22d3ee' }}>
+                  <span className="w-32 shrink-0 text-right font-semibold" style={{ color: '#22d3ee' }}>
                     {fmt(row.total)}
                   </span>
-                  <span className="w-20 shrink-0 text-right text-[13px]" style={{ color: v.textMuted }}>
+                  <span className="w-28 shrink-0 text-right text-[13px]" style={{ color: v.textMuted }}>
                     {row.freight > 0 ? fmt(row.freight) : '\u2014'}
                   </span>
                   {/* OS PRAZOS. Data do evento é a do cliente (o casamento,
