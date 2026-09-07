@@ -1,36 +1,42 @@
 // ============================================================
-// TELA 2 — OS MODELOS DE UMA FAMÍLIA.
+// TELA 2 — COMO ESTA PEÇA PODE SER FEITA.
 //
-// A MESMA TELA PARA TODAS AS FAMÍLIAS. Canecas, Long Drink, Taças e o
-// que vier amanhã entram por aqui — a família muda no endereço, não no
-// código. Uma página por família seria dez páginas para consertar
-// quando o botão mudar de lugar.
+// A vitrine (tela 1) passou a ser uma PEÇA E UM TAMANHO — "Caneca Slim
+// 400 ml". Aqui vem a pergunta seguinte, que é o acabamento: Tradicional,
+// Degradê, Bicolor, Jateado, Preto Fosco, Borda Metalizada, Degradê com
+// Borda. A cor fica para o configurador, que é onde ela pode ser vista
+// no copo.
 //
-// CADA CARD É UM PRODUTO DO CADASTRO — uma cor, uma linha de Produtos,
-// com o nome que está lá: "CANECA TRADICIONAL - AZUL TRANSLUCIDO -
-// 450 ML".
+// ANTES ESTA TELA MOSTRAVA AS CORES, e por isso a decisão vinha ao
+// contrário: trinta e cinco cards de cor, e o acabamento escondido lá
+// dentro. Quem queria "a caneca jateada" tinha de escolher uma cor
+// primeiro para descobrir se jateado existia.
 //
-// Já foi base × acabamento (treze cards com nomes que não existiam em
-// lugar nenhum do sistema), e depois um card por modelo (e as catorze
-// cores da caneca sumiam atrás de um card só). O cadastro resolve os
-// dois: cor é produto — tem linha, código e foto —, acabamento não é,
-// e continua sendo escolhido dentro do configurador.
+// DUAS NATUREZAS NA MESMA LISTA, de propósito. Um acabamento pode ser
+// uma CATEGORIA de verdade (peça própria, foto e código próprios) ou uma
+// regra da matriz de compatibilidade (serviço aplicado sobre a peça).
+// A diferença é de cadastro, não da cliente — para ela as duas
+// respondem "como esse copo pode ser feito?", e é o servidor que junta.
+//
+// A MESMA TELA ATENDE LINK ANTIGO. Endereço de categoria ou de família
+// mandado por WhatsApp mês passado continua abrindo, e cai na grade de
+// cores de sempre — o servidor devolve `modelos` em vez de
+// `acabamentos`, e a tela desenha o que veio.
 // ============================================================
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { Search, Loader2, ArrowLeft, ShoppingCart, ImageOff, GlassWater } from 'lucide-react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { Search, Loader2, ArrowLeft, ShoppingCart, ImageOff } from 'lucide-react';
 import api from './api';
 import { CatalogoShell, NEON, bordaNeon, corComAlfa, Campo, brl } from './ui';
 import { useCarrinho } from './carrinhoContexto';
 
 /**
- * As fotos do modelo, alternando.
+ * As fotos, alternando.
  *
- * São as fotos do CADASTRO, uma por cor. Um modelo com 14 cores tem 14
- * fotos reais — mostrar só a primeira fazia a grade inteira parecer a
- * mesma caneca repetida. É o mesmo comportamento do card de categoria
- * da /loja.
+ * São as do CADASTRO, uma por cor. Um acabamento com 14 cores tem 14
+ * fotos reais — mostrar só a primeira faria a grade inteira parecer a
+ * mesma caneca repetida.
  */
 function FotoModelo({ imagens, imagem, alt }) {
   const fotos = (imagens && imagens.length ? imagens : [imagem]).filter(Boolean);
@@ -55,23 +61,13 @@ function FotoModelo({ imagens, imagem, alt }) {
   );
 }
 
-/** "550 ml" → 550, para ordenar do menor para o maior. */
-const emMl = c => {
-  const m = String(c || '').match(/([\d.,]+)/);
-  return m ? parseFloat(m[1].replace(',', '.')) : Infinity;
-};
+const ESPECTRO = [NEON.ciano, NEON.azul, NEON.roxo, NEON.magenta];
 
 export default function Modelos() {
   const { familia } = useParams();
   const navigate = useNavigate();
   const carrinho = useCarrinho();
   const [busca, setBusca] = useState('');
-  // O TAMANHO ESCOLHIDO MORA NO ENDEREÇO, e não num useState solto: o
-  // botão "voltar" do navegador devolve à escolha de tamanho em vez de
-  // sair da categoria, e o link que o cliente manda no WhatsApp já abre
-  // no tamanho de que ele estava falando.
-  const [params, setParams] = useSearchParams();
-  const tamanho = params.get('ml') || '';
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['catalogo', 'familia', familia],
@@ -79,56 +75,28 @@ export default function Modelos() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const acabamentos = data?.acabamentos || [];
   const modelos = data?.modelos || [];
   const nomeFamilia = data?.familia?.nome || '';
+  // Acabamento é o caminho novo; a grade de cores só aparece para os
+  // links antigos, que o servidor continua atendendo.
+  const porAcabamento = acabamentos.length > 0;
+
+  const lista = useMemo(() => {
+    const base = porAcabamento ? acabamentos : modelos;
+    const t = busca.trim().toLowerCase();
+    if (!t) return base;
+    return base.filter(m => String(m.nome || '').toLowerCase().includes(t));
+  }, [porAcabamento, acabamentos, modelos, busca]);
 
   /**
-   * OS TAMANHOS QUE ESTA CATEGORIA TEM.
+   * Abre o configurador já no que a cliente escolheu.
    *
-   * O Twister Tradicional tem 400 e 550 ml, e as duas capacidades
-   * chegavam misturadas na mesma grade — trinta e cinco cards em que
-   * "AZUL BIC 400" e "AZUL BIC 550" ficavam a quatro cards de distância
-   * um do outro. Quem quer o copo de 550 estava procurando o tamanho
-   * dentro do nome, card por card.
-   *
-   * Sai do próprio cadastro: a capacidade já vem lida do nome do
-   * produto pelo servidor. Categoria de tamanho único não ganha etapa
-   * nenhuma — a pergunta só existe quando há o que responder.
+   * O acabamento vai no endereço porque foi ELE que ela clicou — chegar
+   * no configurador e ter de escolher de novo é perguntar duas vezes a
+   * mesma coisa. A cor vai junto quando o card é uma cor (link antigo).
    */
-  const tamanhos = useMemo(() => {
-    const mapa = new Map();
-    for (const m of modelos) {
-      const c = m.capacidade || null;
-      if (!c) continue;
-      if (!mapa.has(c)) mapa.set(c, []);
-      mapa.get(c).push(m);
-    }
-    return [...mapa.entries()]
-      .map(([capacidade, itens]) => ({ capacidade, itens }))
-      .sort((a, b) => emMl(a.capacidade) - emMl(b.capacidade));
-  }, [modelos]);
-
-  // Um tamanho só (ou nenhum lido do nome) não vira pergunta.
-  const escolherTamanho = tamanhos.length > 1;
-
-  const filtrados = useMemo(() => {
-    const t = busca.trim().toLowerCase();
-    // A BUSCA VENCE O TAMANHO. Quem digitou "azul bic" quer ver as azul
-    // bic — travar o resultado no tamanho escolhido faria a busca
-    // parecer que não achou o que está ali.
-    if (t) return modelos.filter(m => m.nome.toLowerCase().includes(t));
-    if (escolherTamanho && tamanho) return modelos.filter(m => m.capacidade === tamanho);
-    return modelos;
-  }, [modelos, busca, tamanho, escolherTamanho]);
-
-  // A etapa do tamanho só aparece enquanto ninguém escolheu e ninguém
-  // está buscando.
-  const naEscolhaDoTamanho = escolherTamanho && !tamanho && !busca.trim();
-
   function abrir(m) {
-    // A cor vai no endereço para o configurador abrir já nela — quem
-    // clicou na AZUL TRANSLÚCIDO pediu a azul, e não "a caneca, e
-    // agora escolha a cor de novo".
     const q = new URLSearchParams();
     if (m.acabamento_id) q.set('acabamento', m.acabamento_id);
     if (m.cor) q.set('cor', m.cor);
@@ -136,25 +104,13 @@ export default function Modelos() {
     navigate(`/personalizados/configurar/${m.chave}${query}`);
   }
 
-  /** Troca (ou limpa) o tamanho sem carregar o resto da query. */
-  function irParaTamanho(c) {
-    const q = new URLSearchParams(params);
-    if (c) q.set('ml', c); else q.delete('ml');
-    setParams(q, { replace: false });
-  }
-
   return (
     <CatalogoShell
-      titulo={nomeFamilia ? `Categoria: ${nomeFamilia}` : 'Categoria'}
-      subtitulo={naEscolhaDoTamanho
-        ? 'Primeiro escolha o tamanho do copo.'
+      titulo={nomeFamilia || 'Catálogo'}
+      subtitulo={porAcabamento
+        ? 'Escolha o acabamento. A cor você escolhe na tela seguinte, vendo o copo.'
         : 'Escolha o modelo para configurar cores, acabamento e personalização.'}
-      trilha={[
-        { nome: 'Catálogo', para: '/personalizados' },
-        ...(naEscolhaDoTamanho || !tamanho
-          ? [{ nome: nomeFamilia || '…' }]
-          : [{ nome: nomeFamilia || '…', para: `/personalizados/${familia}` }, { nome: tamanho }]),
-      ]}>
+      trilha={[{ nome: 'Catálogo', para: '/personalizados' }, { nome: nomeFamilia || '…' }]}>
 
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <Link to="/personalizados"
@@ -163,22 +119,11 @@ export default function Modelos() {
           <ArrowLeft size={15} /> Voltar
         </Link>
 
-        {/* O TAMANHO ESCOLHIDO FICA VISÍVEL E CLICÁVEL. Sem ele, quem
-            filtrou 400 ml e não achou a cor que queria conclui que a
-            cor não existe — quando ela existe, no outro tamanho. */}
-        {!naEscolhaDoTamanho && escolherTamanho && tamanho && (
-          <button type="button" onClick={() => irParaTamanho(null)}
-            title="Escolher outro tamanho"
-            className="rounded-lg px-3.5 py-2.5 text-[13px] flex items-center gap-2 shrink-0"
-            style={{ ...bordaNeon(NEON.rosa), color: NEON.rosa }}>
-            <GlassWater size={15} /> {tamanho} · trocar
-          </button>
-        )}
-
         <div className="relative flex-1 min-w-[220px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: NEON.ciano }} />
           <Campo value={busca} onChange={e => setBusca(e.target.value)}
-            placeholder="Buscar modelo" aria-label="Buscar modelo" style={{ paddingLeft: 34 }} />
+            placeholder={porAcabamento ? 'Buscar acabamento' : 'Buscar modelo'}
+            aria-label="Buscar" style={{ paddingLeft: 34 }} />
         </div>
 
         {carrinho.pecas > 0 && (
@@ -196,64 +141,32 @@ export default function Modelos() {
         </div>
       ) : error ? (
         <p className="text-center py-20 text-sm" style={{ color: '#fca5a5' }}>{error.message}</p>
-      ) : naEscolhaDoTamanho ? (
-        /* ══ O TAMANHO, ANTES DA COR ═══════════════════════════
-           Poucos cards e grandes: são duas ou três opções, e esta é a
-           única pergunta da tela. A foto é de um copo daquele tamanho —
-           entre 400 e 550 ml a diferença se vê melhor do que se lê. */
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 max-w-3xl mx-auto">
-          {tamanhos.map((t, i) => {
-            const espectro = [NEON.ciano, NEON.magenta, NEON.roxo, NEON.azul];
-            const cor = espectro[i % espectro.length];
-            const fotos = [...new Set(t.itens.map(m => m.imagem).filter(Boolean))].slice(0, 6);
-            const menor = Math.min(...t.itens.map(m => m.preco_de || Infinity));
-            return (
-              <button key={t.capacidade} type="button" onClick={() => irParaTamanho(t.capacidade)}
-                className="text-left p-4 flex flex-col transition-transform active:scale-[0.985] hover:-translate-y-0.5"
-                style={bordaNeon(cor)}>
-                <span className="relative h-40 rounded-lg mb-3 flex items-center justify-center overflow-hidden"
-                  style={{ background: '#FFF7F1' }}>
-                  <FotoModelo imagens={fotos} imagem={fotos[0]} alt={t.capacidade} />
-                </span>
-                <span className="block font-bold text-[19px] leading-none" style={{ color: NEON.texto }}>
-                  {t.capacidade}
-                </span>
-                <span className="block text-[12px] mt-1.5" style={{ color: NEON.suave }}>
-                  {t.itens.length} {t.itens.length === 1 ? 'cor disponível' : 'cores disponíveis'}
-                </span>
-                <span className="mt-auto pt-3 flex items-baseline justify-between gap-2">
-                  {Number.isFinite(menor) && menor > 0 && (
-                    <span className="text-[11px]" style={{ color: NEON.suave }}>
-                      a partir de <b style={{ color: NEON.texto }}>{brl(menor)}</b>
-                    </span>
-                  )}
-                  <span className="text-[12.5px] font-semibold ml-auto shrink-0" style={{ color: cor }}>
-                    Escolher
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : !filtrados.length ? (
+      ) : !lista.length ? (
         <p className="text-center py-20 text-sm" style={{ color: NEON.suave }}>
-          {modelos.length ? 'Nenhum modelo com esse nome.' : 'Esta categoria ainda não tem modelos publicados.'}
+          {(porAcabamento ? acabamentos.length : modelos.length)
+            ? 'Nada com esse nome.'
+            : 'Esta peça ainda não tem acabamento liberado. Fale com um atendente.'}
         </p>
       ) : (
-        <div className="grid gap-3.5 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {filtrados.map((m, i) => {
-            const espectro = [NEON.ciano, NEON.azul, NEON.roxo, NEON.magenta];
-            const cor = espectro[i % espectro.length];
+        <div className={`grid gap-3.5 ${porAcabamento
+          // MENOS CARDS E MAIORES: são seis ou sete acabamentos, não
+          // trinta e cinco cores. Uma grade de cinco colunas para seis
+          // itens deixa a peça pequena justamente na tela em que ela é
+          // a decisão.
+          ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
+          : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'}`}>
+          {lista.map((m, i) => {
+            const cor = ESPECTRO[i % ESPECTRO.length];
             return (
-              <button key={m.produto_id || `${m.chave}-${m.acabamento_id || 'base'}`} type="button" onClick={() => abrir(m)}
+              <button key={m.id || m.produto_id || `${m.chave}-${i}`} type="button" onClick={() => abrir(m)}
                 className="text-left p-3.5 flex flex-col transition-transform active:scale-[0.985] hover:-translate-y-0.5"
                 style={bordaNeon(cor)}>
 
-                {/* Fundo CLARO atrás da foto. Os PNGs dos copos são
-                    recortados, sem fundo — sobre o azul-noite do catálogo
-                    o copo preto sumia e o branco virava um borrão. É o
-                    mesmo creme que a /loja usa atrás da mesma foto. */}
-                <span className="relative h-28 rounded-lg mb-3 flex items-center justify-center overflow-hidden"
+                {/* Fundo CLARO atrás da foto: os PNGs são recortados, e
+                    sobre o azul-noite o copo preto some e o branco vira
+                    um borrão. É o mesmo creme da /loja. */}
+                <span className={`relative rounded-lg mb-3 flex items-center justify-center overflow-hidden ${
+                  porAcabamento ? 'h-36' : 'h-28'}`}
                   style={{ background: '#FFF7F1' }}>
                   <FotoModelo imagens={m.imagens} imagem={m.imagem} alt={m.nome} />
                 </span>
@@ -262,18 +175,11 @@ export default function Modelos() {
                   {m.nome}
                 </span>
 
-                {/* O número de acabamentos entra aqui porque some da
-                     grade: a vitrine encolheu de catorze cards para um,
-                     e sem esta linha o cliente não fica sabendo que
-                     degradê, jateado e bicolor continuam existindo —
-                     agora dentro do configurador. */}
-                {/* O card agora É uma cor, então contar cores aqui não
-                     diz nada. O que ele precisa dizer é o código — que é
-                     como o produto é chamado no pedido e no estoque — e
-                     quantos acabamentos esperam lá dentro. */}
                 <span className="block text-[11px] mt-1" style={{ color: NEON.fraco }}>
-                  {[m.codigo, m.acabamentos > 1 ? `${m.acabamentos} acabamentos` : null]
-                    .filter(Boolean).join(' · ')}
+                  {porAcabamento
+                    ? `${m.cores} ${m.cores === 1 ? 'cor' : 'cores'}`
+                    : [m.codigo, m.acabamentos > 1 ? `${m.acabamentos} acabamentos` : null]
+                        .filter(Boolean).join(' · ')}
                 </span>
 
                 <span className="mt-auto pt-3 flex items-baseline justify-between gap-2">

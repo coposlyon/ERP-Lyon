@@ -232,6 +232,45 @@ const lerChave = chave => {
  * A tabela de famílias continua no banco — nada foi apagado — mas
  * deixou de decidir o que aparece.
  */
+/**
+ * O GRUPO DE VITRINE DE UMA CATEGORIA.
+ *
+ * "CANECA SLIM TRADICIONAL" e "CANECA SLIM DEGRADÊ" são a mesma peça
+ * com dois acabamentos, e na vitrine têm de ser um card só. Quem diz
+ * isso é `nome_catalogo` — o campo do cadastro —, e NÃO uma regex que
+ * tira a última palavra do nome quando ela parece um acabamento: essa
+ * derivação já foi tentada duas vezes e desfeita, porque a lista de
+ * acabamentos muda e a vitrine se reagrupa sozinha, errado e calada.
+ */
+const grupoDaCategoria = cat =>
+  String(cat?.nome_catalogo || '').trim() || nomeDaCategoria(cat) || '(sem categoria)';
+
+/** "Caneca Slim" + "400 ml" → "caneca-slim-400-ml" (a chave da tela 2). */
+const slugDoGrupo = (grupo, capacidade) =>
+  slugify(capacidade ? `${grupo} ${capacidade}` : grupo);
+
+/** "400 ml" → 400, para a vitrine ir do menor para o maior. */
+const emMl = c => {
+  const m = String(c || '').match(/([\d.,]+)/);
+  return m ? parseFloat(m[1].replace(',', '.')) : Infinity;
+};
+
+/**
+ * A VITRINE É UMA PEÇA E UM TAMANHO — "Caneca Slim 400 ml".
+ *
+ * Era um card por CATEGORIA, e isso dava duas telas erradas de uma vez.
+ * Para cima, "CANECA SLIM TRADICIONAL" e "CANECA SLIM DEGRADÊ" abriam
+ * duas portas para a mesma peça, obrigando o cliente a saber o
+ * acabamento antes de ver o copo. Para baixo, o Twister aparecia uma
+ * vez só e as duas capacidades (400 e 550) chegavam misturadas na tela
+ * seguinte, com "AZUL BIC 400" e "AZUL BIC 550" a quatro cards de
+ * distância — o tamanho tinha de ser procurado dentro do nome.
+ *
+ * Agora o Twister são dois cards e a Caneca Slim é um. O acabamento
+ * (Tradicional, Degradê, Bicolor, Jateado…) passa a ser a escolha de
+ * DENTRO, que é a ordem em que a cliente decide: primeiro a peça e o
+ * tamanho, depois como ela é feita, e a cor por último.
+ */
 async function familias(tenantId) {
   const [visiveis, catsRes] = await Promise.all([
     produtosPublicados(tenantId, 'id, name, category_id, image_url, photos, show_in_store'),
@@ -241,29 +280,44 @@ async function familias(tenantId) {
 
   const catPorId = Object.fromEntries((catsRes.data || []).map(c => [c.id, c]));
 
-  const porCategoria = new Map();
+  const grupos = new Map();
   for (const p of visiveis) {
     if (!p.category_id) continue;
-    if (!porCategoria.has(p.category_id)) porCategoria.set(p.category_id, []);
-    porCategoria.get(p.category_id).push(p);
+    const cat = catPorId[p.category_id];
+    if (!cat) continue;
+    const grupo = grupoDaCategoria(cat);
+    const { capacidade } = partesDoNome(p.name);
+    const chave = `${grupo}__${capacidade || 'unico'}`;
+    if (!grupos.has(chave)) {
+      grupos.set(chave, { grupo, capacidade, produtos: [], categorias: new Set() });
+    }
+    const g = grupos.get(chave);
+    g.produtos.push(p);
+    g.categorias.add(p.category_id);
   }
 
-  const lista = [...porCategoria.entries()].map(([catId, produtos]) => {
-    const cat = catPorId[catId];
-    const nome = nomeDaCategoria(cat) || '(sem categoria)';
-    return {
-      id: catId,
-      nome,
-      slug: slugify(cat?.name || nome),
-      descricao: null,
-      icone: null,
-      // A MESMA conta da loja: quantos produtos a categoria publica.
-      modelos: produtos.length,
-      imagem: produtos.map(primeiraFoto).find(Boolean) || null,
-    };
-  }).filter(f => f.modelos > 0);
+  const lista = [...grupos.values()].map(g => ({
+    // O id do card é o próprio slug: a tela 2 é aberta por ele, e não
+    // por um uuid de categoria — o grupo pode ter mais de uma.
+    id: slugDoGrupo(g.grupo, g.capacidade),
+    slug: slugDoGrupo(g.grupo, g.capacidade),
+    // "CANECA SLIM 400 ML" — o nome da peça e o tamanho na mesma linha,
+    // que é como a cliente pede no WhatsApp.
+    nome: [g.grupo, g.capacidade].filter(Boolean).join(' ').toUpperCase(),
+    grupo: g.grupo,
+    capacidade: g.capacidade,
+    descricao: null,
+    icone: null,
+    // Quantas peças (cores × acabamentos) esse card abre.
+    modelos: g.produtos.length,
+    acabamentos: g.categorias.size,
+    imagem: g.produtos.map(primeiraFoto).find(Boolean) || null,
+  })).filter(f => f.modelos > 0);
 
-  lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  // Pela peça, e dentro dela do menor tamanho para o maior: é a ordem
+  // em que a prateleira fica arrumada.
+  lista.sort((a, b) => a.grupo.localeCompare(b.grupo, 'pt-BR')
+    || emMl(a.capacidade) - emMl(b.capacidade));
   return { familias: lista };
 }
 
@@ -300,6 +354,110 @@ function produtosDaFamilia(familiaId, itens, produtos) {
  * lê. Fechar "Degradê + Borda" para o Long Drink faz o card sumir daqui
  * sem tocar em nenhuma tela.
  */
+/**
+ * OS ACABAMENTOS DE UM GRUPO DE VITRINE — a tela 2.
+ *
+ * Duas naturezas entram na mesma lista, e é de propósito:
+ *
+ *   CATEGORIA IRMÃ    "CANECA SLIM DEGRADÊ" é o Degradê da Caneca Slim.
+ *                     Tem produto próprio, foto própria e código
+ *                     próprio — é uma peça de fábrica diferente, não um
+ *                     serviço aplicado.
+ *   MATRIZ            Bicolor, Jateado, Preto Fosco. Não são peça: são
+ *                     acabamento aplicado sobre a peça da categoria,
+ *                     e quem diz quais valem é a compatibilidade.
+ *
+ * Misturar as duas é o que faz a tela responder à pergunta que a
+ * cliente faz — "como esse copo pode ser feito?" —, em vez de expor a
+ * diferença de cadastro, que é problema nosso e não dela.
+ *
+ * IRMÃ VENCE MATRIZ no nome repetido. Se existe a categoria Degradê E o
+ * acabamento Degradê liberado, quem entra é a categoria: ela leva às
+ * peças degradê de verdade, com as fotos delas.
+ */
+async function acabamentosDoGrupo(tenantId, produtos, catPorId) {
+  const porCategoria = new Map();
+  for (const p of produtos) {
+    if (!porCategoria.has(p.category_id)) porCategoria.set(p.category_id, []);
+    porCategoria.get(p.category_id).push(p);
+  }
+
+  const acabPorCategoria = await acabamentosPorCategoria(tenantId, [...porCategoria.keys()], { comBorda: true });
+
+  // A categoria com mais peças é a "base" do grupo: é sobre ela que os
+  // acabamentos da matriz se aplicam, e é a que responde quando o nome
+  // do acabamento não corresponde a nenhuma categoria irmã.
+  const base = [...porCategoria.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+
+  const lista = [];
+  const vistos = new Set();
+
+  /** O nome do acabamento que uma categoria representa. */
+  const acabamentoDaCategoria = (cat, grupo) => {
+    const nome = nomeDaCategoria(cat);
+    // "CANECA SLIM DEGRADÊ" menos "Caneca Slim" = "Degradê". A conta é
+    // sobre o GRUPO cadastrado, não sobre uma lista de palavras escrita
+    // aqui — é o cadastro que decide onde a peça acaba e o acabamento
+    // começa.
+    const semGrupo = nome.toUpperCase().startsWith(grupo.toUpperCase())
+      ? nome.slice(grupo.length).trim()
+      : nome;
+    return capitalizar(semGrupo || nome);
+  };
+
+  for (const [catId, itens] of porCategoria) {
+    const cat = catPorId[catId];
+    const grupo = grupoDaCategoria(cat);
+    const nome = acabamentoDaCategoria(cat, grupo);
+    const chaveNome = nome.toUpperCase();
+    if (vistos.has(chaveNome)) continue;
+    vistos.add(chaveNome);
+    const { capacidade } = partesDoNome(itens[0].name);
+    lista.push({
+      id: `cat:${catId}`,
+      nome,
+      // A peça é de verdade: leva a chave do modelo daquela categoria.
+      chave: chaveModelo(catId, capacidade),
+      acabamento_id: null,
+      cores: itens.length,
+      imagem: itens.map(primeiraFoto).find(Boolean) || null,
+      preco_de: Math.min(...itens.map(p => precoDe(p)).filter(v => v > 0), Infinity),
+      qtd_minima: Math.max(...itens.map(p => p.min_order_qty || 1)),
+      origem: 'peca',
+    });
+  }
+
+  if (base) {
+    const [baseId, baseItens] = base;
+    const { capacidade } = partesDoNome(baseItens[0].name);
+    for (const a of acabPorCategoria[baseId] || []) {
+      const nome = nomeDoAcabamento(a);
+      const chaveNome = nome.toUpperCase();
+      if (vistos.has(chaveNome)) continue;
+      vistos.add(chaveNome);
+      lista.push({
+        id: `acab:${a.id}`,
+        nome,
+        // Mesma peça da categoria base, com o acabamento já escolhido —
+        // o configurador abre nele.
+        chave: chaveModelo(baseId, capacidade),
+        acabamento_id: a.id,
+        cores: baseItens.length,
+        imagem: baseItens.map(primeiraFoto).find(Boolean) || null,
+        preco_de: Math.min(...baseItens.map(p => precoDe(p)).filter(v => v > 0), Infinity),
+        qtd_minima: Math.max(...baseItens.map(p => p.min_order_qty || 1)),
+        origem: 'acabamento',
+      });
+    }
+  }
+
+  // Peça de verdade primeiro (tem foto própria), depois os aplicados.
+  return lista
+    .map(a => ({ ...a, preco_de: Number.isFinite(a.preco_de) ? a.preco_de : null }))
+    .sort((a, b) => (a.origem === b.origem ? a.nome.localeCompare(b.nome, 'pt-BR')
+      : a.origem === 'peca' ? -1 : 1));
+}
+
 async function modelosDaFamilia(tenantId, slug) {
   const [publicados, catsRes] = await Promise.all([
     produtosPublicados(tenantId,
@@ -309,6 +467,41 @@ async function modelosDaFamilia(tenantId, slug) {
   if (catsRes.error) throw catsRes.error;
 
   const catPorId = Object.fromEntries((catsRes.data || []).map(c => [c.id, c]));
+
+  /**
+   * O SLUG AGORA É O GRUPO + O TAMANHO — "caneca-slim-400-ml".
+   *
+   * A vitrine passou a ter um card por peça e tamanho, e é esse o
+   * endereço que ela abre. As duas formas antigas continuam vivas
+   * logo abaixo: o slug da CATEGORIA, que é o que está nos links já
+   * mandados por WhatsApp, e o da família, que é mais antigo ainda.
+   * Link que o cliente guardou não pode morrer numa reorganização de
+   * vitrine.
+   */
+  const doGrupo = [];
+  for (const p of publicados) {
+    const c = catPorId[p.category_id];
+    if (!c) continue;
+    const { capacidade } = partesDoNome(p.name);
+    if (slugDoGrupo(grupoDaCategoria(c), capacidade) === slug) doGrupo.push(p);
+  }
+  if (doGrupo.length) {
+    const primeira = catPorId[doGrupo[0].category_id];
+    const capacidade = partesDoNome(doGrupo[0].name).capacidade;
+    return {
+      familia: {
+        nome: [grupoDaCategoria(primeira), capacidade].filter(Boolean).join(' ').toUpperCase(),
+        slug,
+        grupo: grupoDaCategoria(primeira),
+        capacidade,
+      },
+      // A TELA 2 PASSOU A SER O ACABAMENTO, e não mais a cor: é a
+      // pergunta que vem depois de "qual peça e qual tamanho", e a cor
+      // é a última, já dentro do configurador.
+      acabamentos: await acabamentosDoGrupo(tenantId, doGrupo, catPorId),
+      modelos: [],
+    };
+  }
 
   // O slug é o da CATEGORIA. Links antigos apontando para o slug de uma
   // família continuam abrindo: a família é procurada como segunda
@@ -446,7 +639,7 @@ const precoDe = p => {
  * Tela 2 pode ter 20 modelos, e 20 idas ao banco para responder a mesma
  * pergunta é como a tela fica lenta sem ninguém entender por quê.
  */
-async function acabamentosPorCategoria(tenantId, categoryIds) {
+async function acabamentosPorCategoria(tenantId, categoryIds, { comBorda = false } = {}) {
   const ids = [...new Set(categoryIds.filter(Boolean))];
   if (!ids.length) return {};
 
@@ -461,8 +654,15 @@ async function acabamentosPorCategoria(tenantId, categoryIds) {
   if (acabRes.error) { if (tabelaAusente(acabRes.error)) return {}; throw acabRes.error; }
   if (compatRes.error) throw compatRes.error;
 
+  // O COMBINADO COM BORDA VOLTA NA TELA DE ACABAMENTOS.
+  //
+  // No configurador ele continua escondido: lá a borda é ADICIONAL,
+  // marcada à parte, e oferecer "Degradê" e "Degradê com Borda" como
+  // dois cards seria duas portas para o mesmo lugar. Na vitrine é o
+  // contrário — "degradê metalizado" é como a peça é pedida, e some da
+  // prateleira se não tiver card.
   const acabPorId = Object.fromEntries((acabRes.data || [])
-    .filter(a => a.no_catalogo !== false && !ehCombinacaoComBorda(a))
+    .filter(a => a.no_catalogo !== false && (comBorda || !ehCombinacaoComBorda(a)))
     .map(a => [a.id, a]));
 
   const saida = {};
