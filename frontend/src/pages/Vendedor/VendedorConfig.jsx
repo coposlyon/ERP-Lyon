@@ -1,5 +1,5 @@
 // ============================================================
-// Administrativo do Painel do Vendedor.
+// Administrativo do Dashboard do Vendedor.
 //
 // É aqui que o gestor mexe no que o vendedor só lê: o plano de metas
 // (faixa, meta em unidades, bônus, comissão), o território de cada
@@ -33,7 +33,7 @@ export default function VendedorConfig() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: v.textPrimary }}>Administrar Painel do Vendedor</h1>
+          <h1 className="text-2xl font-bold" style={{ color: v.textPrimary }}>Administrar Dashboard do Vendedor</h1>
           <p className="text-sm mt-0.5" style={{ color: v.textSubtle }}>
             Meta, bônus, território e promoções — o vendedor apenas cumpre o que for definido aqui.
           </p>

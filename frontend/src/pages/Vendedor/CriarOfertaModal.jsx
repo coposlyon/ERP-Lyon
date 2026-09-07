@@ -280,7 +280,7 @@ export default function CriarOfertaModal({ open, onClose, customers = [], produt
                   <p className="text-sm flex items-start gap-2 mt-1" style={{ color: '#fbbf24' }}>
                     <Lock size={14} className="shrink-0 mt-0.5" />
                     Nenhuma promoção liberada. Peça ao Administrativo para criar uma em
-                    Painel do Vendedor → Administrar → Promoções.
+                    Dashboard do Vendedor → Administrar → Promoções.
                   </p>
                 )}
                 {promo && (
@@ -377,7 +377,7 @@ export default function CriarOfertaModal({ open, onClose, customers = [], produt
                       <p className="text-sm flex items-start gap-2" style={{ color: '#fbbf24' }}>
                         <Lock size={14} className="shrink-0 mt-0.5" />
                         Nenhuma arte liberada ainda. Peça ao Administrativo em
-                        Painel do Vendedor → Administrar → Artes.
+                        Dashboard do Vendedor → Administrar → Artes.
                       </p>
                     ) : (
                       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">

@@ -215,7 +215,7 @@ export function MigracaoPendente() {
       style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171' }}>
       <AlertTriangle size={15} className="shrink-0 mt-0.5" />
       <span>
-        As tabelas do Painel do Vendedor ainda não existem no banco. Confira{' '}
+        As tabelas do Dashboard do Vendedor ainda não existem no banco. Confira{' '}
         <b>/api/health</b> → <b>migrations</b>: se estiver <b>sem_database_url</b>, falta a
         variável <b>DATABASE_URL</b> no ambiente do servidor.
       </span>

@@ -46,7 +46,7 @@ export const menuItems = [
     label: 'Comercial',
     icon: ShoppingCart,
     children: [
-      { label: 'Painel do Vendedor', path: '/vendedor', icon: Target, module: 'vendedor' },
+      { label: 'Dashboard do Vendedor', path: '/vendedor', icon: Target, module: 'vendedor' },
       { label: 'Pedidos de Venda', path: '/sales', icon: ShoppingCart, module: 'sales' },
       // ORÇAMENTOS SAIU DAQUI e virou uma aba de Pagamentos da Loja, ao
       // lado de Cancelados. As duas telas respondem a mesma pergunta —
@@ -54,7 +54,10 @@ export const menuItems = [
       // obrigavam a escolher entre elas antes de saber qual das duas
       // tinha a resposta. A rota /quotes continua de pé para quem tem o
       // link salvo e para o F6 do Pedido de Venda.
-      { label: 'Pagamentos da Loja', path: '/store-payments', icon: Wallet, module: 'sales' },
+      // PAGAMENTOS DA LOJA MUDOU PARA O FINANCEIRO. Quem confere o PIX
+      // no extrato e libera o pedido é o financeiro, não quem vende — e
+      // o item vivia no grupo de quem vende. Veja no grupo Financeiro,
+      // ao lado da Central de Contas.
       // ESTÚDIO 3D e CUPONS DE DESCONTO saíram do menu. Nenhum dos dois
       // entrou na rotina da loja: o estúdio nunca passou de protótipo e
       // desconto quem dá é o vendedor, no pedido. As rotas seguem
@@ -91,6 +94,16 @@ export const menuItems = [
     label: 'Financeiro',
     icon: Wallet,
     children: [
+      // O DINHEIRO QUE ENTRA PELO SITE. Veio do grupo Comercial: quem
+      // confere o PIX no extrato e libera o pedido é o financeiro.
+      //
+      // O MÓDULO ACEITA OS DOIS ('sales' e 'financial') de propósito. A
+      // tela é a mesma de antes e a rota exige 'sales'; se o item
+      // passasse a pedir só 'financial', quem tinha acesso ontem
+      // clicaria hoje num item que a rota recusa — e quem tem só o
+      // financeiro veria um item que não abre. Um dos dois basta, e
+      // ninguém perde o caminho que já usava.
+      { label: 'Pagamentos da Loja', path: '/store-payments', icon: Wallet, module: ['sales', 'financial'] },
       { label: 'Central de Contas', path: '/contas', icon: CalendarDays, module: 'financial' },
       { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet, module: 'financial' },
       { label: 'Config. Financeira', path: '/financial-config', icon: Building2, module: 'financial' },

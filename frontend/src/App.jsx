@@ -249,7 +249,7 @@ function AppRoutes() {
             Uma linha aqui vale mais do que pedir Ctrl+Shift+R. */}
         <Route path="sales/:id/detalhe/documento" element={<LevaAoDocumento />} />
         <Route path="sales/:id" element={<Mod m="sales"><SaleForm /></Mod>} />
-        <Route path="store-payments" element={<Mod m="sales"><StorePayments /></Mod>} />
+        <Route path="store-payments" element={<Mod m={['sales', 'financial']}><StorePayments /></Mod>} />
         {/* Painel do Vendedor — a configuração (meta, território, promoções) é só de gestor */}
         <Route path="vendedor" element={<Mod m={['vendedor','sales','pdv','crm']}><VendedorDashboard /></Mod>} />
         <Route path="vendedor/config" element={<ManagerOnly><VendedorConfig /></ManagerOnly>} />

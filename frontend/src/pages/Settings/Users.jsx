@@ -16,7 +16,7 @@ const MODULOS = [
   { key: 'logistics',      label: 'Logística' },
   { key: 'price-tables',   label: 'Tabelas de Preço' },
   { key: 'sales',          label: 'Vendas' },
-  { key: 'vendedor',       label: 'Painel do Vendedor' },
+  { key: 'vendedor',       label: 'Dashboard do Vendedor' },
   { key: 'pdv',            label: 'PDV' },
   { key: 'quotes',         label: 'Orçamentos' },
   { key: 'customizations', label: 'Personalizações' },

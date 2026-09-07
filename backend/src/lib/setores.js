@@ -37,7 +37,7 @@ const supabase = require('../config/supabase');
 // volta a valer.
 const MODULOS = [
   { key: 'dashboard',        label: 'Dashboard',            grupo: 'Geral' },
-  { key: 'vendedor',         label: 'Painel do Vendedor',   grupo: 'Área do vendedor' },
+  { key: 'vendedor',         label: 'Dashboard do Vendedor',   grupo: 'Área do vendedor' },
   { key: 'pedidos-vendedor', label: 'Pedidos (carteira)',   grupo: 'Área do vendedor' },
   { key: 'catalogo',         label: 'Site / Catálogo',      grupo: 'Área do vendedor' },
   { key: 'agenda',           label: 'Agenda',               grupo: 'Área do vendedor' },

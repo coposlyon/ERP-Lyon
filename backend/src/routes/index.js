@@ -88,7 +88,10 @@ router.use('/area-vendedor', requireModules('pedidos-vendedor','agenda','comunic
 // saber o próprio layout); escrita só para admin, travada lá dentro.
 router.use('/setores', require('./setores'));
 // Fila de pedidos do site aguardando o PIX (vira venda ao confirmar)
-router.use('/store-payments', requireModules('sales'), require('./store-payments'));
+// PAGAMENTOS DA LOJA MUDOU PARA O GRUPO FINANCEIRO no menu: quem
+// confere o PIX no extrato e libera o pedido e o financeiro. Os DOIS
+// modulos abrem — tirar 'sales' tiraria a tela de quem ja a usava.
+router.use('/store-payments', requireModules('sales', 'financial'), require('./store-payments'));
 router.use('/purchases', requireModules('purchases'), purchasesRoutes);
 router.use('/stock',     requireModules('stock','purchases'), stockRoutes);
 router.use('/financial', requireModules('financial'), financialRoutes);
