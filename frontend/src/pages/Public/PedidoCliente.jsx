@@ -813,21 +813,9 @@ function marcoDoItem(item) {
  * aprender a não olhar.
  */
 function OlhoEtapas({ novidade, onClick }) {
-  const [dica, setDica] = useState(false);
-
-  useEffect(() => {
-    if (!novidade) { setDica(false); return; }
-    let n = 0;
-    let sumir = null;
-    const t = setInterval(() => {
-      n += 1;
-      if (n % 3 === 0) {
-        setDica(true);
-        sumir = setTimeout(() => setDica(false), 2400);
-      }
-    }, 1000);
-    return () => { clearInterval(t); clearTimeout(sumir); };
-  }, [novidade]);
+  // Sem estado próprio: o `dica`/`setDica` e o intervalo que moravam
+  // aqui existiam só para o balão flutuante, que foi removido. O piscar
+  // vem de `novidade`, calculado pela tela.
 
   return (
     <div className="relative flex items-center justify-center">
@@ -838,16 +826,18 @@ function OlhoEtapas({ novidade, onClick }) {
         }
       `}</style>
 
-      {dica && (
-        <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 whitespace-nowrap px-2.5 py-1.5 rounded-lg text-[11px] font-medium z-20"
-          style={{
-            background: 'rgba(34,211,238,0.15)', color: '#67e8f9',
-            border: '1px solid rgba(34,211,238,0.45)', boxShadow: '0 0 18px rgba(34,211,238,0.25)',
-          }}>
-          Clique aqui para acompanhar o status deste produto
-        </span>
-      )}
+      {/* O BALÃO FLUTUANTE SAIU.
+          Ele era `absolute` com `whitespace-nowrap` e nascia na PRIMEIRA
+          coluna da tabela: a frase inteira ("Clique aqui para acompanhar
+          o status deste produto") vazava para fora do card e passava por
+          cima do cabeçalho, cortada na borda. E aparecia em TODAS as
+          linhas ao mesmo tempo, piscando de três em três segundos.
 
+          A informação não se perdeu: o botão tem `title`, e a legenda
+          embaixo da linha do tempo já diz "clique no olho ao lado de
+          cada produto para ver as etapas dele" — dita uma vez, no lugar
+          certo, em vez de repetida sobre a tabela. O olho continua
+          piscando quando há novidade, que é o que chama a atenção. */}
       <button onClick={onClick}
         title={novidade ? 'Nova atualização — clique para acompanhar este produto' : 'Ver as etapas deste produto'}
         aria-label={novidade ? 'Nova atualização neste produto' : 'Ver as etapas deste produto'}

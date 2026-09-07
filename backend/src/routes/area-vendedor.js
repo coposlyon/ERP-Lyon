@@ -221,11 +221,19 @@ router.get('/pedidos/:id', async (req, res) => {
       retirada: A.ehRetirada(data) ? { autorizado: paraOBalcao(data.pickup_person) } : null,
       status_cor: info.cor,
       atencao: A.calcularAtencao(data, new Date(), alertas.get(data.id) || null),
-      // Uma bolinha por FASE, não por status: "aguardando arte" e "arte
-      // aprovada" são a mesma etapa em dois momentos, e desenhar as duas
-      // fazia o pedido parecer o dobro de longe do fim do que está.
-      // Pintura e borda só entram se os itens passarem por elas.
-      linha_do_tempo: A.fasesDoPedido(data, etapasDosItens(itens)),
+      // A MESMA REGUA DO CLIENTE, e nao mais uma resumida.
+      //
+      // Esta tela desenhava FASES (13) e a tela do cliente desenhava
+      // STATUS (24) — a mesma venda contada de dois jeitos. Quem
+      // atendia o telefone tinha o cliente dizendo "estou na etapa 8" e
+      // via a etapa 5 na frente, sem as duas estarem erradas: "aguardando
+      // arte" e "arte aprovada" eram uma bolinha aqui e duas la.
+      //
+      // Duas contagens para o mesmo pedido nao e detalhe de tela: e o
+      // vendedor e o cliente falando linguas diferentes sobre a mesma
+      // coisa. Agora e uma regua so. Pintura e borda continuam entrando
+      // apenas quando os itens passam por elas.
+      linha_do_tempo: A.linhaDoTempo(data, etapasDosItens(itens)),
       // A MESMA LINHA DO TEMPO, MAS COM O BOTAO. Desenhar as fases sem
       // dizer como passar delas era o que fazia esta tela um cartaz: o
       // pedido chegava em "Aguardando financeiro" e morava la. A ficha
