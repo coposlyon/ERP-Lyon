@@ -104,6 +104,14 @@ router.use('/insumos',   requireModules('financial','products','settings','produ
 // coisa, o que se gasta e o que se cobra. Fica no mesmo recorte de
 // insumos porque é a mesma pessoa que mexe nos dois.
 router.use('/itens',     requireModules('financial','products','settings','production'), require('./itens'));
+
+// AS LISTAS DO LANÇAMENTO DE PRODUTO — só leitura, e por isso aberta a
+// quem vende. O modal do PDV lia bordas em `/itens` e tintas em
+// `/settings`, duas rotas de CADASTRO: o setor Vendas levava 403 nas
+// duas e os seletores abriam vazios, sem erro na tela. Abrir aquelas
+// rotas resolveria e daria de brinde apagar borda e reescrever a
+// configuração da empresa. Aqui só se lê as três listas.
+router.use('/lancamento', requireModules('sales','pdv','products','settings','financial','production'), require('./lancamento'));
 router.use('/contabil',  requireModules('financial','fiscal','settings'), require('./contabil'));
 router.use('/fiscal',    requireModules('fiscal'), fiscalRoutes);
 router.use('/reports',   requireModules('reports'), reportsRoutes);

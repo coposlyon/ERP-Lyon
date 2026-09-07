@@ -157,7 +157,16 @@ function palpiteBorda(product, variantName) {
 // manda o cliente pela URL ao clicar na flecha de orçamento)
 export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const inModal = typeof onDone === 'function';
-  const { user } = useAuth();
+  const { user, hasModule } = useAuth();
+  /**
+   * QUEM VENDE LÊ AS LISTAS; QUEM CADASTRA É QUE ESCREVE NELAS.
+   *
+   * Os botõezinhos "+" ao lado de "Tinta" e "Borda" gravam em
+   * `/settings/*`, rota que o setor Vendas não alcança. Mostrá-los para
+   * o vendedor era oferecer um botão que só sabe responder 403 — some
+   * para quem não pode, e continua onde sempre esteve para quem pode.
+   */
+  const podeCadastrarListas = hasModule('settings');
 
   const isQuote = mode === 'quote';
   const [items, setItems] = useState([]);
@@ -455,7 +464,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   // Catálogo de cores/bordas por acabamento (cadastrável no lançamento)
   const { data: acabCatalog = {}, refetch: refetchAcab } = useQuery({
     queryKey: ['acab-catalog'],
-    queryFn: () => api.get('/settings/acabamentos'),
+    queryFn: () => api.get('/lancamento/acabamentos'),
   });
 
   /**
@@ -468,6 +477,12 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
    * 'borda'), com foto, custo e preço — o cadastro que o catálogo do
    * site já usa.
    *
+   * VEM POR `/lancamento/bordas`, E NÃO POR `/itens`. `/itens` é rota de
+   * cadastro e pede um módulo que o setor Vendas não tem: para o
+   * vendedor a chamada voltava 403, o padrão do useQuery entrava vazio e
+   * o seletor abria sem nenhuma borda outra vez — agora por permissão, e
+   * sem erro nenhum na tela.
+   *
    * Eram duas listas para a mesma pergunta, e a que a tela lia era a que
    * ninguém preenchia. Agora é uma só: cadastrou a borda em Itens, ela
    * aparece aqui.
@@ -477,8 +492,8 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
    * e pedido antigo continua legível.
    */
   const { data: itensBorda = [] } = useQuery({
-    queryKey: ['itens', 'borda'],
-    queryFn: () => api.get('/itens', { params: { kind: 'borda' } }),
+    queryKey: ['lancamento', 'bordas'],
+    queryFn: () => api.get('/lancamento/bordas'),
   });
 
   const bordasDisponiveis = useMemo(() => {
@@ -498,7 +513,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   // As tintas cadastradas, com o valor por ML de cada uma.
   const { data: tintas = [], refetch: refetchTintas } = useQuery({
     queryKey: ['tintas'],
-    queryFn: () => api.get('/settings/tintas'),
+    queryFn: () => api.get('/lancamento/tintas'),
   });
   const [novaTinta, setNovaTinta] = useState(null);   // { nome, valor_ml }
 
@@ -1985,9 +2000,11 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                       <option value={launch.color}>{launch.color}</option>
                     )}
                   </select>
-                  <button type="button" title="Cadastrar uma tinta"
-                    onClick={() => setNovaTinta({ nome: '', valor_ml: '' })}
-                    className="btn-secondary px-3">+</button>
+                  {podeCadastrarListas && (
+                    <button type="button" title="Cadastrar uma tinta"
+                      onClick={() => setNovaTinta({ nome: '', valor_ml: '' })}
+                      className="btn-secondary px-3">+</button>
+                  )}
                 </div>
                 {(() => {
                   const t = tintas.find(x => x.nome === launch.color);
@@ -2019,9 +2036,11 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                         <option value={launch.bordaTipo}>{launch.bordaTipo}</option>
                       )}
                     </select>
-                    <button type="button" title="Cadastrar borda"
-                      onClick={() => addAcabValor('__borda', v => setLaunch(l => ({ ...l, bordaTipo: v })))}
-                      className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm">+</button>
+                    {podeCadastrarListas && (
+                      <button type="button" title="Cadastrar borda"
+                        onClick={() => addAcabValor('__borda', v => setLaunch(l => ({ ...l, bordaTipo: v })))}
+                        className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm">+</button>
+                    )}
                   </div>
                 )}
               </div>

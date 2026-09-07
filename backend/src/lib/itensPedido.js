@@ -31,6 +31,38 @@ function capacidade(nome) {
  *
  * A fonte é o JSON de personalização gravado no lançamento do item.
  */
+/**
+ * A LINHA DA TINTA — PS, PP — do item.
+ *
+ * TRÊS FONTES, NESTA ORDEM, e a terceira é a que faltava.
+ *
+ * 1. `Tinta` na personalização, quando o PDV gravou.
+ * 2. `ink_type` no cadastro do produto.
+ * 3. O SUFIXO DA COR ESCOLHIDA.
+ *
+ * A terceira existe porque a segunda tem buraco: 63 dos 97 produtos
+ * ativos estão com `ink_type` vazio, e para eles a coluna Linha saía
+ * "—" mesmo com a tinta escolhida dizendo qual é. Na mesma tela, dois
+ * copos com "PRETO - PS" na cor mostravam PS num e traço no outro — a
+ * diferença não era o pedido, era o cadastro de um deles estar
+ * incompleto.
+ *
+ * As tintas da casa se chamam "PRETO - PS", "BRANCO": o que vem depois
+ * do travessão É a linha. Sem travessão não se inventa nada — "BRANCO"
+ * continua sem linha, que é a verdade, em vez de virar "BRANCO".
+ *
+ * Isto não conserta o cadastro, e não é para consertar: quem preencher
+ * `ink_type` volta a mandar pela fonte 2, que é a certa. Isto impede a
+ * tela de mentir enquanto o cadastro não é preenchido.
+ */
+function linhaDaTinta(c, item) {
+  if (c['Tinta']) return c['Tinta'];
+  if (item.PRODUTOS?.ink_type) return item.PRODUTOS.ink_type;
+  const cor = String(c['Cor da personalização'] || '');
+  const m = cor.match(/[-–—]\s*([A-Za-z]{2,4})\s*$/);
+  return m ? m[1].toUpperCase() : null;
+}
+
 function caracteristicasDoItem(item) {
   const c = item.customization || {};
   const nome = item.PRODUTOS?.name || item.product_name || 'Produto';
@@ -112,7 +144,7 @@ function caracteristicasDoItem(item) {
     codigo: c['Código'] || item.PRODUTOS?.code || null,
     produto: nome,
     capacidade: capacidade(nome),
-    linha: c['Tinta'] || item.PRODUTOS?.ink_type || null,
+    linha: linhaDaTinta(c, item),
     categoria,
     campos,
     // Sinalizadores de processo: quem decide se a etapa de borda e a de
