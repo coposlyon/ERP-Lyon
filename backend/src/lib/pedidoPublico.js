@@ -13,6 +13,12 @@
 // ============================================================
 const A = require('./atencao');
 const { capacidade, caracteristicasDoItem, etapasDosItens } = require('./itensPedido');
+// QUEM USA, IMPORTA. `paraOCliente` (o nome de quem retira, mascarado
+// para os olhos do cliente) estava importado na ROTA e chamado AQUI —
+// e a rota não empresta o escopo dela para a lib. Toda abertura de
+// pedido no portal caía no catch com "Não foi possível carregar o
+// pedido", que é a frase que esconde um ReferenceError.
+const { paraOCliente } = require('./retirada');
 
 const soDigitos = s => String(s || '').replace(/\D/g, '');
 
