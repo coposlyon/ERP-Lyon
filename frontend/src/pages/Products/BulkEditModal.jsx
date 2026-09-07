@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Loader2, Image as ImageIcon, AlertTriangle, Trash2, Check, PlusCircle } from 'lucide-react';
 import api from '@/lib/api';
@@ -69,6 +69,46 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const itensFiltrados = buscaAdic.trim()
     ? itensCad.filter(i => `${i.name} ${i.color_name || ''}`.toLowerCase().includes(buscaAdic.trim().toLowerCase()))
     : itensCad;
+
+  /**
+   * OS GRUPOS, TIRADOS DOS PRÓPRIOS ITENS.
+   *
+   * A lista chegava misturada — dezoito bordas, três canudos, duas
+   * tampas e vinte e cinco cores numa fieira só — e marcar "todas as
+   * bordas" era rolar e clicar dezoito vezes. Agora cada grupo é uma
+   * caixa: um clique marca o grupo inteiro.
+   *
+   * OS GRUPOS NÃO ESTÃO ESCRITOS AQUI. Sai do cadastro: dentro de um
+   * tipo, se há POUCOS nomes distintos, cada nome vira um grupo ("Borda
+   * Metalizada", "Tampa", "Canudo", e as tintas "PS" e "PP" no dia em
+   * que forem cadastradas); se há muitos — as vinte e cinco cores —, o
+   * grupo é o tipo inteiro, senão seriam vinte e cinco caixas de um
+   * item cada. Item novo aparece sozinho, sem deploy.
+   */
+  const gruposAdic = useMemo(() => {
+    const ROTULO = { cor: 'Cores', acessorio: 'Acessórios', borda: 'Bordas', tinta: 'Tintas', embalagem: 'Embalagem', outro: 'Outros' };
+    const LIMITE_DE_NOMES = 6;
+
+    const porTipo = new Map();
+    for (const i of itensFiltrados) {
+      if (!porTipo.has(i.kind)) porTipo.set(i.kind, new Map());
+      const nome = String(i.name || '').trim() || ROTULO[i.kind] || 'Outros';
+      const nomes = porTipo.get(i.kind);
+      if (!nomes.has(nome)) nomes.set(nome, []);
+      nomes.get(nome).push(i);
+    }
+
+    const out = [];
+    for (const [kind, nomes] of porTipo) {
+      if (nomes.size > LIMITE_DE_NOMES) {
+        out.push({ chave: `kind:${kind}`, rotulo: ROTULO[kind] || kind, itens: [...nomes.values()].flat() });
+      } else {
+        for (const [nome, lista] of nomes) out.push({ chave: `${kind}:${nome}`, rotulo: nome, itens: lista });
+      }
+    }
+    // Grupo grande primeiro: é o que se marca inteiro com mais frequência.
+    return out.sort((a, b) => b.itens.length - a.itens.length || a.rotulo.localeCompare(b.rotulo, 'pt-BR'));
+  }, [itensFiltrados]);
 
   // O tamanho NÃO entra na busca: como termo, o "400" casava com o código
   // (CT45-2400, que é 450 ML). Vai como volume=400, que o backend compara
@@ -350,34 +390,94 @@ export default function BulkEditModal({ isOpen, onClose }) {
                 </button>
               </div>
 
-              <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-50">
-                {itensFiltrados.map(i => {
-                  const marcado = adicionais.includes(i.id);
-                  return (
-                    <button key={i.id} type="button"
-                      onClick={() => setAdicionais(a => marcado ? a.filter(x => x !== i.id) : [...a, i.id])}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition ${
-                        marcado ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
-                      <span className={`w-4 h-4 rounded border grid place-items-center shrink-0 ${
-                        marcado ? 'bg-violet-600 border-violet-600 text-white' : 'border-gray-300'}`}>
-                        {marcado && <Check size={11} />}
-                      </span>
-                      {i.photo_url
-                        ? <img src={i.photo_url} alt="" className="w-7 h-7 rounded object-cover border border-gray-200 shrink-0" />
-                        : <span className="w-7 h-7 rounded border border-gray-200 shrink-0"
-                            style={{ background: i.color_hex || '#f3f4f6' }} />}
-                      <span className="flex-1 min-w-0">
-                        <span className="block text-gray-900 truncate">
-                          {i.color_name ? `${i.color_name} — ${i.name}` : i.name}
+              {/* ══ AS CAIXAS DE GRUPO ═══════════════════════════
+                  Um clique marca o grupo inteiro. É o que transforma
+                  "aplicar as dezoito bordas" de dezoito cliques em um —
+                  e é a razão de esta tela existir. */}
+              {gruposAdic.length > 1 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {gruposAdic.map(g => {
+                    const ids = g.itens.map(i => i.id);
+                    const marcados = ids.filter(id => adicionais.includes(id)).length;
+                    const todos = marcados === ids.length && ids.length > 0;
+                    // PARCIAL É UM ESTADO DE VERDADE: cinco das dezoito
+                    // marcadas à mão. Mostrar só "vazio" apagaria da
+                    // tela o que a pessoa acabou de fazer.
+                    const parcial = marcados > 0 && !todos;
+                    return (
+                      <button key={g.chave} type="button"
+                        title={todos ? `Desmarcar as ${ids.length}` : `Marcar as ${ids.length} de uma vez`}
+                        onClick={() => setAdicionais(a => (todos
+                          ? a.filter(x => !ids.includes(x))
+                          : [...new Set([...a, ...ids])]))}
+                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
+                          todos ? 'bg-violet-600 border-violet-600 text-white'
+                            : parcial ? 'bg-violet-50 border-violet-300 text-violet-800'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                        <span className={`w-3.5 h-3.5 rounded-[4px] border grid place-items-center shrink-0 ${
+                          todos ? 'bg-white border-white text-violet-700'
+                            : parcial ? 'border-violet-400 bg-white' : 'border-gray-300 bg-white'}`}>
+                          {todos ? <Check size={9} strokeWidth={4} />
+                            : parcial ? <span className="w-1.5 h-0.5 bg-violet-600 rounded-full" /> : null}
                         </span>
-                        <span className="block text-[11px] text-gray-400">
-                          custa R$ {Number(i.custo_na_peca || 0).toFixed(2).replace('.', ',')} ·
-                          cobra R$ {Number(i.preco_na_peca || 0).toFixed(2).replace('.', ',')}
+                        {g.rotulo}
+                        <span className={todos ? 'opacity-80' : 'text-gray-400'}>
+                          {parcial ? `${marcados}/${ids.length}` : ids.length}
                         </span>
-                      </span>
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* A lista, separada pelos mesmos grupos: sem o cabeçalho,
+                  dezoito bordas e vinte e cinco cores continuam sendo
+                  uma fieira só, e o chip de cima não teria a que
+                  corresponder na hora de conferir. */}
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-gray-200">
+                {gruposAdic.map(g => (
+                  <div key={g.chave}>
+                    {gruposAdic.length > 1 && (
+                      <p className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-400 border-y border-gray-100">
+                        {g.rotulo} · {g.itens.length}
+                      </p>
+                    )}
+                    <div className="divide-y divide-gray-50">
+                      {g.itens.map(i => {
+                        const marcado = adicionais.includes(i.id);
+                        return (
+                          <button key={i.id} type="button"
+                            onClick={() => setAdicionais(a => marcado ? a.filter(x => x !== i.id) : [...a, i.id])}
+                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition ${
+                              marcado ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
+                            <span className={`w-4 h-4 rounded border grid place-items-center shrink-0 ${
+                              marcado ? 'bg-violet-600 border-violet-600 text-white' : 'border-gray-300'}`}>
+                              {marcado && <Check size={11} />}
+                            </span>
+                            {/* A FOTO 25% MAIOR (28 → 35 px). Numa borda
+                                mosaico a escolha é feita no olho, e o
+                                quadradinho de 28 px não mostrava a
+                                diferença entre "Mosaico Vermelho" e
+                                "Mosaico Pink". */}
+                            {i.photo_url
+                              ? <img src={i.photo_url} alt="" className="w-[35px] h-[35px] rounded object-cover border border-gray-200 shrink-0" />
+                              : <span className="w-[35px] h-[35px] rounded border border-gray-200 shrink-0"
+                                  style={{ background: i.color_hex || '#f3f4f6' }} />}
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-gray-900 truncate">
+                                {i.color_name ? `${i.color_name} — ${i.name}` : i.name}
+                              </span>
+                              <span className="block text-[11px] text-gray-400">
+                                custa R$ {Number(i.custo_na_peca || 0).toFixed(2).replace('.', ',')} ·
+                                cobra R$ {Number(i.preco_na_peca || 0).toFixed(2).replace('.', ',')}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
                 {itensFiltrados.length === 0 && (
                   <p className="p-4 text-center text-xs text-gray-400">Nenhum item com esse termo.</p>
                 )}
