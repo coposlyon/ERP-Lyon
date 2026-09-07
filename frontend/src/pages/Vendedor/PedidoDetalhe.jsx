@@ -186,12 +186,57 @@ export default function PedidoDetalhe() {
       toast.success(r.substituiu
         ? 'Arte substituída — a troca ficou no histórico com quem autorizou'
         : r.avancou
-          ? 'Arte anexada — o pedido seguiu para Aguardando impressão de vegetal'
+          // O destino vem do servidor. Estava escrito aqui como
+          // "Aguardando impressão de vegetal", e um copo liso — que não
+          // passa por vegetal nenhum — via na tela uma etapa que a
+          // própria linha do tempo dele não mostra.
+          ? `Arte anexada — o pedido seguiu para ${r.status_label || 'a próxima etapa'}`
           : `${tipo === 'arte' ? 'Arte anexada' : 'Comprovante anexado'}`);
       setTrocarArte(null);
       qc.invalidateQueries({ queryKey: ['pedido-vendedor', id] });
     } catch (err) {
       toast.error(err.error || 'Não foi possível anexar');
+    } finally {
+      setEnviando(null);
+    }
+  }
+
+  /**
+   * A ARTE DE UM ITEM.
+   *
+   * Cem copos de um jeito e cem de outro são dois desenhos. Enquanto só
+   * existia o botão do PEDIDO, a segunda arte anexada apagava a
+   * primeira e metade da produção saía com o arquivo errado — e a
+   * coluna "Arte" mostrava traço nas duas linhas porque arte de item
+   * não existia.
+   *
+   * Trocar uma que já está lá passa pelo gerente, como em todo o resto:
+   * a arte antiga pode já ter virado vegetal, tela e copo impresso.
+   */
+  async function anexarArteDoItem(item, arquivo, autorizacao = null) {
+    if (!arquivo) return;
+    if (arquivo.size > 8 * 1024 * 1024) {
+      return toast.error('Arquivo muito grande. O limite é 8 MB.');
+    }
+    setEnviando(`item:${item.id}`);
+    try {
+      const dados = await new Promise((ok, erro) => {
+        const r = new FileReader();
+        r.onload = () => ok(r.result);
+        r.onerror = () => erro(new Error('Não consegui ler o arquivo'));
+        r.readAsDataURL(arquivo);
+      });
+      const r = await api.post(`/area-vendedor/pedidos/${id}/item/${item.id}/arte`, {
+        arquivo: dados, nome: arquivo.name,
+        ...(autorizacao ? { autorizador_email: autorizacao.email, autorizador_senha: autorizacao.senha } : {}),
+      });
+      toast.success(r.avancou
+        ? `Arte anexada — o pedido seguiu para ${r.status_label || 'a próxima etapa'}`
+        : r.substituiu ? 'Arte do item substituída — a troca ficou no histórico' : 'Arte anexada ao item');
+      setTrocarArte(null);
+      qc.invalidateQueries({ queryKey: ['pedido-vendedor', id] });
+    } catch (err) {
+      toast.error(err.error || 'Não foi possível anexar a arte deste item');
     } finally {
       setEnviando(null);
     }
@@ -480,22 +525,10 @@ export default function PedidoDetalhe() {
                       <td className="px-3 py-2.5" style={{ color: v.textMuted }}>{i.linha || '—'}</td>
                       <td className="px-3 py-2.5" style={{ color: v.textMuted }}>{i.acessorio || '—'}</td>
                       <td className="px-3 py-2.5">
-                        {i.arte_anexada ? (
-                          <a href={i.arte_anexada} target="_blank" rel="noreferrer"
-                            title={i.arte_anexada_em
-                              ? `Anexada pela cliente em ${dataHora(i.arte_anexada_em)}`
-                              : 'Arte anexada pela cliente no portal'}
-                            className="inline-flex items-center gap-1.5 whitespace-nowrap"
-                            style={{ color: '#4ade80' }}>
-                            <FileImage size={13} /> Ver arte
-                          </a>
-                        ) : i.arte_pronta ? (
-                          <span className="whitespace-nowrap" style={{ color: '#4ade80' }}>montada</span>
-                        ) : i.personalizar ? (
-                          <span className="whitespace-nowrap" style={{ color: '#fbbf24' }}>aguardando</span>
-                        ) : (
-                          <span style={{ color: v.empty }}>—</span>
-                        )}
+                        <ArteDoItem v={v} item={i}
+                          enviando={enviando === `item:${i.id}`}
+                          onAnexar={arq => anexarArteDoItem(i, arq)}
+                          onTrocar={() => setTrocarArte({ ...p, item: i })} />
                       </td>
                       <td className="px-3 py-2.5 text-right" style={{ color: v.textPrimary }}>{fmtUn(i.quantidade)}</td>
                       <td className="px-3 py-2.5 text-right" style={{ color: v.textMuted }}>{fmtBRL(i.valor_unitario)}</td>
@@ -753,9 +786,16 @@ export default function PedidoDetalhe() {
       {/* Trocar arte já anexada: passa pelo gerente. */}
       <SubstituirArteModal
         pedido={trocarArte}
-        enviando={enviando === 'arte'}
+        enviando={enviando === 'arte' || enviando === `item:${trocarArte?.item?.id}`}
         onClose={() => setTrocarArte(null)}
-        onConfirmar={({ arquivo, email, senha }) => anexar('arte', arquivo, { email, senha })}
+        onConfirmar={({ arquivo, email, senha }) => (
+          // O MESMO MODAL SERVE AOS DOIS, e o item é que decide qual.
+          // Uma segunda tela de senha, idêntica, seria a segunda a
+          // divergir no dia em que a regra de autorização mudar.
+          trocarArte?.item
+            ? anexarArteDoItem(trocarArte.item, arquivo, { email, senha })
+            : anexar('arte', arquivo, { email, senha })
+        )}
       />
 
       {/* A ficha do cliente — só leitura. Quem edita cadastro é o
@@ -796,6 +836,65 @@ export default function PedidoDetalhe() {
  * verde adiantado faz o vendedor prometer ao cliente uma etapa que a
  * fábrica ainda nem começou.
  */
+/**
+ * A COLUNA "ARTE" DE UMA LINHA DE ITEM.
+ *
+ * Um botão por item, e é esse o ponto: um pedido de cem copos de um
+ * jeito e cem de outro tem dois desenhos, e o botão único do pedido
+ * fazia a segunda arte apagar a primeira.
+ *
+ * O input de arquivo mora DENTRO do rótulo, escondido. Um
+ * `<input type="file">` desenhado à mão dentro de uma célula de tabela
+ * é o campo que ninguém reconhece como botão.
+ *
+ * Só aparece em item que leva arte. Copo liso não tem o que anexar, e
+ * um botão "Anexar" em cima dele é um convite a subir arquivo que vai
+ * parar em lugar nenhum.
+ */
+function ArteDoItem({ v, item, enviando, onAnexar, onTrocar }) {
+  const levaArte = !!(item.personalizar || item.tem_personalizacao);
+
+  if (enviando) {
+    return (
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap" style={{ color: v.textMuted }}>
+        <Loader2 size={13} className="animate-spin" /> enviando…
+      </span>
+    );
+  }
+
+  if (item.arte_anexada) {
+    return (
+      <span className="inline-flex items-center gap-2 whitespace-nowrap">
+        <a href={item.arte_anexada} target="_blank" rel="noreferrer"
+          title={item.arte_anexada_em ? `Anexada em ${dataHora(item.arte_anexada_em)}` : 'Arte anexada'}
+          className="inline-flex items-center gap-1.5" style={{ color: '#4ade80' }}>
+          <FileImage size={13} /> Ver arte
+        </a>
+        {/* Trocar passa pelo gerente — a arte antiga pode já ter virado
+            vegetal, tela e copo impresso. */}
+        <button type="button" onClick={onTrocar} title="Trocar a arte deste item (passa por autorização)"
+          className="p-0.5 rounded transition-opacity hover:opacity-70" style={{ color: v.textSubtle }}>
+          <PenLine size={12} />
+        </button>
+      </span>
+    );
+  }
+
+  if (item.arte_pronta) return <span className="whitespace-nowrap" style={{ color: '#4ade80' }}>montada</span>;
+  if (!levaArte) return <span style={{ color: v.empty }}>—</span>;
+
+  return (
+    <label className="inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer px-2 py-1 rounded-lg text-[12px]"
+      title="Anexar a arte deste item"
+      style={{ background: 'rgba(251,191,36,0.14)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.35)' }}>
+      <UploadCloud size={12} /> Anexar
+      <input type="file" className="hidden"
+        accept="image/*,application/pdf,.svg,.ai,.cdr,.eps,.psd"
+        onChange={e => { const a = e.target.files?.[0]; e.target.value = ''; if (a) onAnexar(a); }} />
+    </label>
+  );
+}
+
 function Balao({ v, fase, atrasado }) {
   const Icon = ICONES[fase.icone] || Circle;
   const cor = {

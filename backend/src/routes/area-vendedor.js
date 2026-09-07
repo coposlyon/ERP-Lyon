@@ -22,6 +22,10 @@ const F = require('../lib/fluxoPedido');
 // libera a etapa de Pagamento.
 const C = require('../lib/comprovante');
 const { uploadDataUrl, uploadPrivado, linkAssinado } = require('../lib/storage');
+// A arte que chega move o pedido, e quem decide para onde é o motor de
+// etapas — não um status escrito à mão nesta rota.
+const Auto = require('../lib/pedidoAutomacao');
+const { carregarParaFluxo, gravarPasso } = require('../lib/fluxoCarga');
 
 const isManager = req => ['admin', 'manager'].includes(req.userProfile?.role);
 const tabelaAusente = err =>
@@ -449,43 +453,183 @@ router.post('/pedidos/:id/anexar', async (req, res) => {
         : null,
     });
 
-    // ── A ARTE QUE CHEGA MOVE O PEDIDO ───────────────────────
+    // A ARTE QUE CHEGA MOVE O PEDIDO — mas quem decide PARA ONDE é o
+    // motor de etapas, mais abaixo, e não esta rota.
     //
-    // Antes não movia, e a consequência estava na tela: pedido com a
-    // arte anexada continuava escrito "Aguardando Anexo da Arte",
-    // porque o card lia o status e o status não sabia do arquivo.
-    // Alguém tinha que lembrar de avançar à mão, e ninguém lembrava.
+    // Aqui o destino era escrito à mão como 'aguardando_vegetal': certo
+    // para um copo com serigrafia, errado para um liso, que não passa
+    // por vegetal nenhum — o pedido ia parar numa etapa que a própria
+    // linha do tempo dele não mostra.
     //
-    // Só a PRIMEIRA arte avança, e só quando o pedido está parado
-    // esperando por ela. Substituição não mexe no status: o pedido já
-    // pode estar na pintura, e puxá-lo de volta para o vegetal seria
-    // reescrever uma etapa que aconteceu.
-    const avanca = tipo === 'arte' && !substituindo && venda.status === 'aguardando_arte';
-    if (avanca) {
-      // Duas linhas, não uma: 'arte_aprovada' é o que dá a data de
-      // conclusão da fase Arte na linha do tempo, e 'aguardando_vegetal'
-      // é onde o pedido passa a estar.
-      log.push({ action: 'arte_aprovada', at: agora, user: quem, stage: 'status' });
-      log.push({ action: 'aguardando_vegetal', at: agora, user: quem, stage: 'status' });
-    }
+    // Substituição continua não mexendo no status: o pedido já pode
+    // estar na pintura, e puxá-lo de volta seria reescrever uma etapa
+    // que aconteceu.
+    const avanca = tipo === 'arte' && !substituindo;
 
     const patch = {
       [campo]: url,
       production_log: log,
       ...(req.body?.notas && tipo === 'arte' ? { artwork_notes: req.body.notas } : {}),
-      ...(avanca ? { status: 'aguardando_vegetal' } : {}),
     };
 
     const { error } = await supabase.from('VENDAS')
       .update(patch).eq('id', venda.id).eq('tenant_id', req.tenantId);
     if (error) throw error;
 
+    let avancou = null;
+    if (avanca) {
+      try {
+        const carga = await carregarParaFluxo(req.tenantId, venda.id);
+        const passo = carga && await Auto.avancarAposArte(req.tenantId, carga.venda, carga.aplicaveis, req);
+        if (passo) {
+          await gravarPasso(req.tenantId, venda.id, passo);
+          avancou = passo.status;
+        }
+      } catch (e) {
+        // O arquivo já está guardado. O pedido ficar onde estava é
+        // recuperável no clique de sempre; perder o anexo, não.
+        console.error('[area-vendedor] avanco apos anexo:', e.message);
+      }
+    }
+
     audit(req, 'update', 'venda', venda.id, {
       anexo: tipo, substituiu: substituindo,
       autorizado_por: autorizacao?.email || null,
-      status_novo: avanca ? 'aguardando_vegetal' : null,
+      status_novo: avancou,
     });
-    res.json({ url, substituiu: substituindo, status: avanca ? 'aguardando_vegetal' : venda.status, avancou: avanca });
+    res.json({
+      url, substituiu: substituindo, avancou: !!avancou,
+      status: avancou || venda.status,
+      status_label: avancou ? A.infoStatus(avancou).label : null,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * A ARTE DE UM ITEM, E NÃO A ARTE DO PEDIDO.
+ *
+ * O QUE ESTAVA ERRADO. Existia UM botão "Anexar arte" para o pedido
+ * inteiro, gravando em `VENDAS.artwork_url`. Só que cem copos de um
+ * jeito e cem de outro são dois itens com dois desenhos: a segunda arte
+ * anexada apagava a primeira, e a produção ia buscar o arquivo errado
+ * para metade do pedido. Na tela, a coluna "Arte" mostrava traço nas
+ * duas linhas porque não havia arte de item nenhuma — só a do pedido.
+ *
+ * Agora cada item tem a sua, no mesmo lugar em que o portal do cliente
+ * já grava a dele: `customization.arte_cliente`. Uma pasta só, um campo
+ * só — o vendedor que sobe pelo ERP e a cliente que manda pelo portal
+ * enchem a mesma gaveta, e a produção olha um lugar só.
+ *
+ * `VENDAS.artwork_url` continua existindo e continua sendo o que a etapa
+ * de Arte do fluxo pergunta. A PRIMEIRA arte anexada assume o posto; as
+ * seguintes não roubam o lugar dela. Sem isso, um pedido de dois itens
+ * ficaria eternamente "sem arte" para o motor de etapas.
+ *
+ * TROCAR PEDE GERENTE, como em todo o resto: a arte antiga pode já ter
+ * virado vegetal, tela e copo impresso.
+ */
+router.post('/pedidos/:id/item/:itemId/arte', async (req, res) => {
+  try {
+    const arquivo = req.body?.arquivo;
+    if (typeof arquivo !== 'string' || !arquivo.startsWith('data:')) {
+      return res.status(400).json({ error: 'Envie um arquivo.' });
+    }
+    if (arquivo.length > 8 * 1024 * 1024) {
+      return res.status(413).json({ error: 'A arte passa de 6 MB. Mande um arquivo menor.' });
+    }
+
+    const { data: venda } = await supabase.from('VENDAS')
+      .select('id, number, user_id, status, artwork_url, production_log')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!venda) return res.status(404).json({ error: 'Pedido não encontrado' });
+    if (!isManager(req) && venda.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Este pedido não é da sua carteira' });
+    }
+
+    // O ITEM É DESTE PEDIDO? Sem esta conferência, trocar o id na
+    // chamada gravaria a arte no pedido de outra pessoa.
+    const { data: item } = await supabase.from('VENDA_ITENS')
+      .select('id, sale_id, product_name, customization')
+      .eq('id', req.params.itemId).maybeSingle();
+    if (!item || item.sale_id !== venda.id) {
+      return res.status(404).json({ error: 'Item não encontrado neste pedido.' });
+    }
+
+    const conf = item.customization || {};
+    const substituindo = !!conf.arte_cliente?.url;
+
+    let autorizacao = null;
+    if (substituindo) {
+      const r = await autorizar(
+        String(req.body?.autorizador_email || '').trim().toLowerCase(),
+        String(req.body?.autorizador_senha || ''),
+        req.tenantId,
+      );
+      if (!r.ok) {
+        return res.status(r.status).json({
+          error: r.motivo,
+          code: 'AUTORIZACAO_NECESSARIA',
+          dica: 'Trocar uma arte já anexada precisa da autorização de um gerente ou administrador.',
+        });
+      }
+      autorizacao = r.usuario;
+    }
+
+    const url = await uploadDataUrl(arquivo, 'artes-pedido');
+    if (!url) return res.status(502).json({ error: 'Não foi possível guardar o arquivo. Tente de novo.' });
+
+    const agora = new Date().toISOString();
+    const quem = req.userProfile?.name || req.user?.email || null;
+    const nome = String(req.body?.nome || '').trim().slice(0, 120) || null;
+
+    const { error: erroItem } = await supabase.from('VENDA_ITENS').update({
+      customization: { ...conf, arte_cliente: { url, nome, enviada_em: agora, por: quem || 'vendedor' } },
+    }).eq('id', item.id).eq('sale_id', venda.id);
+    if (erroItem) throw erroItem;
+
+    const log = Array.isArray(venda.production_log) ? [...venda.production_log] : [];
+    log.push({
+      action: 'arte_anexada', at: agora, user: quem, stage: 'documentos',
+      item: item.product_name || null,
+      nota: substituindo
+        ? `substituiu a arte do item — autorizado por ${autorizacao?.name || autorizacao?.email || 'gerente'}`
+        : null,
+    });
+
+    const patch = { production_log: log };
+    if (!venda.artwork_url) patch.artwork_url = url;
+    const { error } = await supabase.from('VENDAS')
+      .update(patch).eq('id', venda.id).eq('tenant_id', req.tenantId);
+    if (error) throw error;
+
+    // O PEDIDO ANDA SOZINHO SE A ARTE ERA O QUE FALTAVA. Antes o status
+    // era escrito à mão como 'aguardando_vegetal' — certo para um copo
+    // com serigrafia, errado para um liso, que não passa por vegetal
+    // nenhum. Quem decide o destino é o mesmo motor que a tela usa.
+    let avancou = null;
+    try {
+      const carga = await carregarParaFluxo(req.tenantId, venda.id);
+      const passo = carga && await Auto.avancarAposArte(req.tenantId, carga.venda, carga.aplicaveis, req);
+      if (passo) {
+        await gravarPasso(req.tenantId, venda.id, passo);
+        avancou = passo.status;
+      }
+    } catch (e) {
+      // A arte já está guardada. O pedido ficar onde estava é
+      // recuperável no clique de sempre; perder o arquivo, não.
+      console.error('[area-vendedor] avanco apos arte:', e.message);
+    }
+
+    audit(req, 'update', 'venda', venda.id, {
+      anexo: 'arte', item_id: item.id, substituiu: substituindo,
+      autorizado_por: autorizacao?.email || null, status_novo: avancou,
+    });
+
+    res.json({
+      url, substituiu: substituindo, avancou: !!avancou,
+      status: avancou || venda.status,
+      status_label: avancou ? A.infoStatus(avancou).label : null,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

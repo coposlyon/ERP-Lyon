@@ -328,9 +328,9 @@ export default function PedidoCliente() {
             É o passo que FALTA, então fica em cima da lista de itens e
             não escondido numa coluna: quem abre este pedido tem uma
             coisa a fazer, e ela precisa ser a primeira que se vê. */}
-        {(p.itens || []).some(i => i.personalizar) && (
+        {(p.itens || []).some(i => i.precisa_arte) && (
           <ArteDosItens pedidoId={id} token={token}
-            itens={(p.itens || []).filter(i => i.personalizar)}
+            itens={(p.itens || []).filter(i => i.precisa_arte)}
             onMontar={i => navigate(`/personalizados/arte/${i.modelo_chave}?pedido=${id}&item=${i.id}`)}
             onEnviou={refetch} />
         )}
@@ -896,6 +896,35 @@ function EtapasDoItem({ item, onClose }) {
           <p className="text-sm mt-3 mb-4" style={{ color: '#fbbf24' }}>
             Este produto está em: <b>{atual.label}</b>
           </p>
+        )}
+
+        {/* A ARTE DESTE PRODUTO, E DE MAIS NENHUM.
+            Num pedido de dois itens com dois desenhos, "sua arte foi
+            recebida" não diz QUAL foi recebida. Aqui a cliente vê a
+            imagem do item que ela abriu — e é assim que ela descobre
+            que subiu o arquivo trocado enquanto ainda dá para trocar. */}
+        {item.arte_anexada && (
+          <div className="mb-4 rounded-xl overflow-hidden"
+            style={{ border: '1px solid rgba(74,222,128,0.35)', background: 'rgba(34,197,94,0.07)' }}>
+            <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+              <p className="text-[12.5px] flex items-center gap-1.5" style={{ color: '#4ade80' }}>
+                <FileImage size={13} />
+                Arte deste produto{item.arte_anexada_em ? ` · enviada em ${dataHora(item.arte_anexada_em)}` : ''}
+              </p>
+              <a href={item.arte_anexada} target="_blank" rel="noreferrer"
+                className="text-[12px] shrink-0" style={{ color: '#93c5fd' }}>abrir em tamanho real</a>
+            </div>
+            {/* PDF, .ai e .cdr não viram <img>. Só a imagem é
+                pré-visualizada; o resto continua abrindo no link acima,
+                em vez de mostrar um quadrado quebrado. */}
+            {/\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(item.arte_anexada) && (
+              <a href={item.arte_anexada} target="_blank" rel="noreferrer" className="block">
+                <img src={item.arte_anexada} alt={`Arte de ${item.produto}`}
+                  className="w-full max-h-64 object-contain"
+                  style={{ background: 'rgba(255,255,255,0.04)' }} />
+              </a>
+            )}
+          </div>
         )}
 
         <div className="flex flex-wrap gap-x-2 gap-y-5">

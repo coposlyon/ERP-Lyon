@@ -94,6 +94,16 @@ function montarPedidoDoCliente(venda, extra = {}) {
     // ele nao abre porta nenhuma.
     id: i.id,
     personalizar: i.personalizar,
+    // ESTE ITEM LEVA ARTE?
+    //
+    // `personalizar` não responde isso: é uma marca que só o CATÁLOGO
+    // grava, a cliente dizendo na compra pelo site "monto a arte
+    // depois". Pedido digitado no balcão nunca teve o campo — e o bloco
+    // "Sua personalização" não aparecia, então a cliente abria o portal
+    // para mandar a arte e não achava onde. Um copo com "PRETO - PS" na
+    // cor da personalização é personalizado por definição, tenha ou não
+    // passado pelo site.
+    precisa_arte: !!(i.personalizar || i.tem_personalizacao),
     arte_pronta: i.arte_pronta,
     // A arte que ela ANEXOU (o arquivo do designer dela), separada da
     // que ela MONTOU no editor: a tela precisa dizer qual das duas

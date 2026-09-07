@@ -14,6 +14,11 @@ const { autorizar, excluirVenda } = require('../lib/excluirVenda');
 // O motor que move o pedido de etapa. A regua, os requisitos e quem pode
 // dar cada passo moram la - aqui so se le o pedido, chama e grava.
 const F = require('../lib/fluxoPedido');
+// A leitura do pedido para o motor de etapas e a gravação do passo
+// moram em lib/fluxoCarga.js: a tela do vendedor e o portal do cliente
+// também movem o pedido desde que a arte passou a avançá-lo, e três
+// cópias do mesmo `select` seriam três para divergir.
+const { carregarParaFluxo, gravarPasso } = require('../lib/fluxoCarga');
 const { etapasDosItens, caracteristicasDoItem } = require('../lib/itensPedido');
 const C = require('../lib/comprovante');
 // A cobranca PIX da chave da propria loja (Nubank). Sem gateway: o
@@ -572,62 +577,7 @@ async function legacyCreateSale(req, res) {
 // parcela no contas a receber, a parcela e virtual e o valor dela E o
 // total do pedido. (E uma lista do PostgREST, nao SQL: sem comentario
 // dentro.)
-const CAMPOS_FLUXO = `
-  id, number, status, total, production_log, delivery_mode, notes, created_at,
-  artwork_url, art_file, receipt_url, production_photos, carrier_id, tracking_code,
-  VENDA_ITENS ( id, product_name, quantity, unit_price, discount, total, customization,
-                PRODUTOS ( id, code, name, unit, ink_type ) )
-`;
-
-async function carregarParaFluxo(tenantId, id) {
-  let { data, error } = await supabase.from('VENDAS').select(CAMPOS_FLUXO)
-    .eq('id', id).eq('tenant_id', tenantId).maybeSingle();
-
-  // Base sem as colunas mais novas: o pedido tem que abrir do mesmo
-  // jeito — o fluxo só fica sem os requisitos que dependem delas.
-  if (error && /column|does not exist|schema cache/i.test(error.message || '')) {
-    const basico = CAMPOS_FLUXO.replace(', delivery_mode', '').replace(', tracking_code', '');
-    ({ data, error } = await supabase.from('VENDAS').select(basico)
-      .eq('id', id).eq('tenant_id', tenantId).maybeSingle());
-  }
-  if (error) throw error;
-  if (!data) return null;
-
-  const itens = (data.VENDA_ITENS || []).map(i => caracteristicasDoItem(i));
-
-  // OS COMPROVANTES ENTRAM NA FICHA porque agora sao eles que liberam a
-  // etapa de pagamento. Uma consulta a mais por leitura do fluxo — que
-  // e a tela de UM pedido, aberta por uma pessoa de cada vez.
-  const comprovante_quitado = await C.estaQuitada(tenantId, data);
-
-  return {
-    venda: { ...data, itens_qtd: itens.length, comprovante_quitado },
-    aplicaveis: etapasDosItens(itens),
-  };
-}
-
 const quemPergunta = req => ({ acesso: req.acesso, perfil: req.userProfile });
-
-/**
- * Grava o resultado de um passo do motor.
- *
- * O `production_log` veio numa migração mais nova que a tabela. Se ele
- * não existir, o status muda mesmo assim — perder o histórico é ruim,
- * travar a fábrica é pior.
- */
-async function gravarPasso(tenantId, id, passo) {
-  let { data, error } = await supabase.from('VENDAS')
-    .update({ status: passo.status, production_log: passo.log })
-    .eq('id', id).eq('tenant_id', tenantId).select('id, number, status').single();
-
-  if (error && /production_log|column|does not exist/i.test(error.message || '')) {
-    ({ data, error } = await supabase.from('VENDAS')
-      .update({ status: passo.status })
-      .eq('id', id).eq('tenant_id', tenantId).select('id, number, status').single());
-  }
-  if (error) throw error;
-  return data;
-}
 
 /** A ficha depois do passo — a tela redesenha sem pedir de novo. */
 async function fichaAtual(req) {

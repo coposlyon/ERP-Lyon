@@ -27,6 +27,14 @@ const A        = require('../lib/atencao');
 const { askClaude } = require('../lib/ai');
 // O comprovante mora em bucket privado: o portal entrega um link que expira.
 const { linkAssinado, uploadDataUrl } = require('../lib/storage');
+// `caracteristicasDoItem` responde se o item é personalizado — a mesma
+// conta que decide se a coluna "Cor da personalização" aparece na tela.
+// Uma segunda leitura do JSON aqui seria uma para discordar dela.
+const { caracteristicasDoItem } = require('../lib/itensPedido');
+// A arte que chega move o pedido, e quem decide para onde é o motor de
+// etapas — a mesma régua da tela do vendedor.
+const Auto = require('../lib/pedidoAutomacao');
+const { carregarParaFluxo, gravarPasso } = require('../lib/fluxoCarga');
 
 const SEGREDO = process.env.PEDIDO_TOKEN_SECRET
   || process.env.JWT_SECRET
@@ -581,8 +589,20 @@ router.post('/pedido/:id/arte', exigirToken, async (req, res) => {
     if (!item || item.sale_id !== saleId) return res.status(404).json({ error: 'Item não encontrado.' });
 
     const conf = item.customization || {};
-    if (!conf.personalizar) {
-      return res.status(400).json({ error: 'Este item não foi pedido com personalização.' });
+
+    // QUEM MANDA AQUI É "O ITEM É PERSONALIZADO", E NÃO `personalizar`.
+    //
+    // `personalizar` é uma marca que só o CATÁLOGO grava: é a cliente
+    // dizendo, na compra pelo site, "vou montar a arte depois". Pedido
+    // digitado no balcão nunca teve esse campo — e o portal respondia
+    // "este item não foi pedido com personalização" para um copo com
+    // "PRETO - PS" na cor da personalização, que é personalizado por
+    // definição. A cliente entrava para mandar a arte e não conseguia.
+    //
+    // A pergunta certa é a mesma que a tela faz para decidir se mostra a
+    // coluna de personalização, e ela mora numa função só.
+    if (!caracteristicasDoItem(item).tem_personalizacao && !conf.personalizar) {
+      return res.status(400).json({ error: 'Este item não leva arte.' });
     }
 
     const { data: proj } = await supabase.from('CATALOGO_PROJETOS')
@@ -712,7 +732,31 @@ router.post('/pedido/:id/item/:itemId/arte-anexada', exigirToken, async (req, re
     // já está guardada e amarrada ao item.
     if (erroVenda) console.error('[acompanhar:arte-anexada]', erroVenda.message);
 
-    res.json({ ok: true, url, enviada_em: agora });
+    // O PEDIDO ANDA. Antes não andava: a cliente mandava a arte e a
+    // linha do tempo continuava escrita "Aguardando anexo da arte" —
+    // ela via na própria tela que o sistema não tinha percebido o que
+    // ela acabara de fazer, e ligava para o vendedor perguntar.
+    let avancou = null;
+    try {
+      const { data: v2 } = await supabase.from('VENDAS')
+        .select('tenant_id').eq('id', venda.id).maybeSingle();
+      const carga = v2 && await carregarParaFluxo(v2.tenant_id, venda.id);
+      const passo = carga && await Auto.avancarAposArte(v2.tenant_id, carga.venda, carga.aplicaveis, req);
+      if (passo) {
+        await gravarPasso(v2.tenant_id, venda.id, passo);
+        avancou = passo.status;
+      }
+    } catch (e) {
+      // A arte já está guardada. O pedido ficar onde estava é
+      // recuperável; perder o arquivo da cliente, não.
+      console.error('[acompanhar:arte-anexada] avanco:', e?.message || e);
+    }
+
+    res.json({
+      ok: true, url, enviada_em: agora,
+      status: avancou || venda.status,
+      status_label: avancou ? A.infoStatus(avancou).label : null,
+    });
   } catch (err) {
     console.error('[acompanhar:arte-anexada]', err?.message || err);
     res.status(500).json({ error: 'Não foi possível enviar a arte agora.' });
