@@ -131,13 +131,32 @@ router.get('/invoices', async (req, res) => {
 });
 
 // Vendas confirmadas sem nota autorizada (para o modal de emissão)
+/**
+ * AS VENDAS QUE PODEM VIRAR NOTA.
+ *
+ * FILTRAVA POR `status = 'confirmed'`, E ESSE STATUS NÃO EXISTE. O fluxo
+ * do pedido usa `iniciando_pedido`, `pagamento_confirmado`,
+ * `aguardando_estoque` e mais uma dúzia (lib/atencao.js); 'confirmed' é
+ * resquício de um modelo antigo que sobrou em algumas contagens. O
+ * resultado é que a lista voltava SEMPRE VAZIA e a tela dizia "faça uma
+ * venda no PDV primeiro" com o pedido feito na frente — a emissão nunca
+ * funcionou por aqui.
+ *
+ * A pergunta certa não é "qual status?", é "esta venda ainda pode virar
+ * nota?". Pode toda venda que não foi cancelada e ainda não tem nota
+ * autorizada. O momento de emitir é decisão de quem fatura: tem quem
+ * emita ao fechar o pedido e quem emita só na saída da mercadoria, e o
+ * sistema não tem por que escolher por eles.
+ */
+const SEM_NOTA = ['cancelado', 'cancelada', 'canceled', 'cancelled', 'rascunho', 'draft'];
+
 router.get('/sales-pending', async (req, res) => {
   try {
     const { data: sales } = await supabase
       .from('VENDAS')
-      .select('id, number, total, created_at, CLIENTES(name, cpf_cnpj)')
+      .select('id, number, total, status, created_at, CLIENTES(name, cpf_cnpj)')
       .eq('tenant_id', req.tenantId)
-      .eq('status', 'confirmed')
+      .not('status', 'in', `(${SEM_NOTA.join(',')})`)
       .order('created_at', { ascending: false })
       .limit(30);
 
