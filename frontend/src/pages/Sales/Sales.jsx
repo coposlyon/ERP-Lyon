@@ -369,7 +369,16 @@ export default function Sales() {
                 O fundo precisa ser OPACO: o cartao e translucido, e com
                 ele as linhas passariam por tras do cabecalho. #0a1130 e
                 a mesma cor que o ERP ja usa em cabecalho de tabela. */}
-            <div className="flex items-center gap-2 px-3 py-2.5 sticky top-0 z-10"
+            {/* O MESMO `gap` E O MESMO `px` DA LINHA DE BAIXO.
+                O cabeçalho era gap-2/px-3 e a linha gap-3/px-4: 4px de
+                diferença por coluna, que se somam da esquerda para a
+                direita. Na quinta coluna já eram 20px, e o "R$ 550,00"
+                aparecia deslocado do "Valor Total" mesmo os dois sendo
+                `w-32 text-right` — as larguras batiam, o ponto de
+                partida não. Mexer na largura de uma coluna sem mexer na
+                outra, ou no espaçamento de uma das duas linhas, desfaz
+                o enquadramento de todas as colunas seguintes. */}
+            <div className="flex items-center gap-3 px-4 py-2.5 sticky top-0 z-10"
               style={{
                 borderBottom: `1px solid ${v.divider}`,
                 color: v.textMuted,
