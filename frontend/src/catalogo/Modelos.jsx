@@ -18,8 +18,8 @@
 // ============================================================
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Search, Loader2, ArrowLeft, ShoppingCart, ImageOff } from 'lucide-react';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { Search, Loader2, ArrowLeft, ShoppingCart, ImageOff, GlassWater } from 'lucide-react';
 import api from './api';
 import { CatalogoShell, NEON, bordaNeon, corComAlfa, Campo, brl } from './ui';
 import { useCarrinho } from './carrinhoContexto';
@@ -55,11 +55,23 @@ function FotoModelo({ imagens, imagem, alt }) {
   );
 }
 
+/** "550 ml" → 550, para ordenar do menor para o maior. */
+const emMl = c => {
+  const m = String(c || '').match(/([\d.,]+)/);
+  return m ? parseFloat(m[1].replace(',', '.')) : Infinity;
+};
+
 export default function Modelos() {
   const { familia } = useParams();
   const navigate = useNavigate();
   const carrinho = useCarrinho();
   const [busca, setBusca] = useState('');
+  // O TAMANHO ESCOLHIDO MORA NO ENDEREÇO, e não num useState solto: o
+  // botão "voltar" do navegador devolve à escolha de tamanho em vez de
+  // sair da categoria, e o link que o cliente manda no WhatsApp já abre
+  // no tamanho de que ele estava falando.
+  const [params, setParams] = useSearchParams();
+  const tamanho = params.get('ml') || '';
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['catalogo', 'familia', familia],
@@ -70,11 +82,48 @@ export default function Modelos() {
   const modelos = data?.modelos || [];
   const nomeFamilia = data?.familia?.nome || '';
 
+  /**
+   * OS TAMANHOS QUE ESTA CATEGORIA TEM.
+   *
+   * O Twister Tradicional tem 400 e 550 ml, e as duas capacidades
+   * chegavam misturadas na mesma grade — trinta e cinco cards em que
+   * "AZUL BIC 400" e "AZUL BIC 550" ficavam a quatro cards de distância
+   * um do outro. Quem quer o copo de 550 estava procurando o tamanho
+   * dentro do nome, card por card.
+   *
+   * Sai do próprio cadastro: a capacidade já vem lida do nome do
+   * produto pelo servidor. Categoria de tamanho único não ganha etapa
+   * nenhuma — a pergunta só existe quando há o que responder.
+   */
+  const tamanhos = useMemo(() => {
+    const mapa = new Map();
+    for (const m of modelos) {
+      const c = m.capacidade || null;
+      if (!c) continue;
+      if (!mapa.has(c)) mapa.set(c, []);
+      mapa.get(c).push(m);
+    }
+    return [...mapa.entries()]
+      .map(([capacidade, itens]) => ({ capacidade, itens }))
+      .sort((a, b) => emMl(a.capacidade) - emMl(b.capacidade));
+  }, [modelos]);
+
+  // Um tamanho só (ou nenhum lido do nome) não vira pergunta.
+  const escolherTamanho = tamanhos.length > 1;
+
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
-    if (!t) return modelos;
-    return modelos.filter(m => m.nome.toLowerCase().includes(t));
-  }, [modelos, busca]);
+    // A BUSCA VENCE O TAMANHO. Quem digitou "azul bic" quer ver as azul
+    // bic — travar o resultado no tamanho escolhido faria a busca
+    // parecer que não achou o que está ali.
+    if (t) return modelos.filter(m => m.nome.toLowerCase().includes(t));
+    if (escolherTamanho && tamanho) return modelos.filter(m => m.capacidade === tamanho);
+    return modelos;
+  }, [modelos, busca, tamanho, escolherTamanho]);
+
+  // A etapa do tamanho só aparece enquanto ninguém escolheu e ninguém
+  // está buscando.
+  const naEscolhaDoTamanho = escolherTamanho && !tamanho && !busca.trim();
 
   function abrir(m) {
     // A cor vai no endereço para o configurador abrir já nela — quem
@@ -87,11 +136,25 @@ export default function Modelos() {
     navigate(`/personalizados/configurar/${m.chave}${query}`);
   }
 
+  /** Troca (ou limpa) o tamanho sem carregar o resto da query. */
+  function irParaTamanho(c) {
+    const q = new URLSearchParams(params);
+    if (c) q.set('ml', c); else q.delete('ml');
+    setParams(q, { replace: false });
+  }
+
   return (
     <CatalogoShell
       titulo={nomeFamilia ? `Categoria: ${nomeFamilia}` : 'Categoria'}
-      subtitulo="Escolha o modelo para configurar cores, acabamento e personalização."
-      trilha={[{ nome: 'Catálogo', para: '/personalizados' }, { nome: nomeFamilia || '…' }]}>
+      subtitulo={naEscolhaDoTamanho
+        ? 'Primeiro escolha o tamanho do copo.'
+        : 'Escolha o modelo para configurar cores, acabamento e personalização.'}
+      trilha={[
+        { nome: 'Catálogo', para: '/personalizados' },
+        ...(naEscolhaDoTamanho || !tamanho
+          ? [{ nome: nomeFamilia || '…' }]
+          : [{ nome: nomeFamilia || '…', para: `/personalizados/${familia}` }, { nome: tamanho }]),
+      ]}>
 
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <Link to="/personalizados"
@@ -99,6 +162,18 @@ export default function Modelos() {
           style={{ ...bordaNeon(NEON.azul), color: NEON.azul }}>
           <ArrowLeft size={15} /> Voltar
         </Link>
+
+        {/* O TAMANHO ESCOLHIDO FICA VISÍVEL E CLICÁVEL. Sem ele, quem
+            filtrou 400 ml e não achou a cor que queria conclui que a
+            cor não existe — quando ela existe, no outro tamanho. */}
+        {!naEscolhaDoTamanho && escolherTamanho && tamanho && (
+          <button type="button" onClick={() => irParaTamanho(null)}
+            title="Escolher outro tamanho"
+            className="rounded-lg px-3.5 py-2.5 text-[13px] flex items-center gap-2 shrink-0"
+            style={{ ...bordaNeon(NEON.rosa), color: NEON.rosa }}>
+            <GlassWater size={15} /> {tamanho} · trocar
+          </button>
+        )}
 
         <div className="relative flex-1 min-w-[220px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: NEON.ciano }} />
@@ -121,6 +196,45 @@ export default function Modelos() {
         </div>
       ) : error ? (
         <p className="text-center py-20 text-sm" style={{ color: '#fca5a5' }}>{error.message}</p>
+      ) : naEscolhaDoTamanho ? (
+        /* ══ O TAMANHO, ANTES DA COR ═══════════════════════════
+           Poucos cards e grandes: são duas ou três opções, e esta é a
+           única pergunta da tela. A foto é de um copo daquele tamanho —
+           entre 400 e 550 ml a diferença se vê melhor do que se lê. */
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 max-w-3xl mx-auto">
+          {tamanhos.map((t, i) => {
+            const espectro = [NEON.ciano, NEON.magenta, NEON.roxo, NEON.azul];
+            const cor = espectro[i % espectro.length];
+            const fotos = [...new Set(t.itens.map(m => m.imagem).filter(Boolean))].slice(0, 6);
+            const menor = Math.min(...t.itens.map(m => m.preco_de || Infinity));
+            return (
+              <button key={t.capacidade} type="button" onClick={() => irParaTamanho(t.capacidade)}
+                className="text-left p-4 flex flex-col transition-transform active:scale-[0.985] hover:-translate-y-0.5"
+                style={bordaNeon(cor)}>
+                <span className="relative h-40 rounded-lg mb-3 flex items-center justify-center overflow-hidden"
+                  style={{ background: '#FFF7F1' }}>
+                  <FotoModelo imagens={fotos} imagem={fotos[0]} alt={t.capacidade} />
+                </span>
+                <span className="block font-bold text-[19px] leading-none" style={{ color: NEON.texto }}>
+                  {t.capacidade}
+                </span>
+                <span className="block text-[12px] mt-1.5" style={{ color: NEON.suave }}>
+                  {t.itens.length} {t.itens.length === 1 ? 'cor disponível' : 'cores disponíveis'}
+                </span>
+                <span className="mt-auto pt-3 flex items-baseline justify-between gap-2">
+                  {Number.isFinite(menor) && menor > 0 && (
+                    <span className="text-[11px]" style={{ color: NEON.suave }}>
+                      a partir de <b style={{ color: NEON.texto }}>{brl(menor)}</b>
+                    </span>
+                  )}
+                  <span className="text-[12.5px] font-semibold ml-auto shrink-0" style={{ color: cor }}>
+                    Escolher
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
       ) : !filtrados.length ? (
         <p className="text-center py-20 text-sm" style={{ color: NEON.suave }}>
           {modelos.length ? 'Nenhum modelo com esse nome.' : 'Esta categoria ainda não tem modelos publicados.'}
