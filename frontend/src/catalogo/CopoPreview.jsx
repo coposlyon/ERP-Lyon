@@ -924,12 +924,15 @@ export default function CopoPreview({
   // espelha junto — nome de casal ao contrário não é verso, é erro.
   // QUAL DAS DUAS FACES SAI ESPELHADA.
   //
-  // Era o verso. A dona da fabrica olhou e disse o contrario: a alca
-  // tem que estar do outro lado — na FRENTE ela fica de um jeito e no
-  // verso do outro, e a foto de catalogo da Lyon e tirada com a alca no
-  // lado oposto ao que estava saindo aqui. Quem conhece a peca e ela;
-  // a tela segue.
-  const espelhar = face !== 'verso';
+  // Ja mudou de lado duas vezes, e as duas por quem olha a peca de
+  // verdade: primeiro era o verso, depois a frente, e em 06/09/2026 o
+  // Pablo pediu para inverter as duas de novo — a foto de catalogo da
+  // Lyon tem a alca do lado oposto ao que estava saindo aqui.
+  //
+  // Este `===` e o interruptor inteiro: as duas imagens viram junto,
+  // porque frente e verso sao a MESMA peca e so uma das duas pode estar
+  // espelhada. Quem conhece a peca e a fabrica; a tela segue.
+  const espelhar = face === 'verso';
 
   // As faixas de cor do corpo, de baixo para cima — ver `faixasDoCorpo`.
   const faixas = faixasDoCorpo(campos, coresArte);

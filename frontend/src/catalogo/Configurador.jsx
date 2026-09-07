@@ -1346,12 +1346,12 @@ export default function Configurador() {
                 <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteFrente} face="frente" coresArte={coresEscolhidas}
                   borda={bordaEscolhida}
                   acessorios={acessoriosEscolhidos}
-                  gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 190 : 216} />
+                  gabarito={gabarito} altura={estado.posicao === 'frente_verso' ? 238 : 270} />
                 {personalizado && estado.posicao === 'frente_verso' && (
                   <CopoPreview escolha={escolhaVisual} familia={cfg.modelo.familia} fotoModelo={cfg.modelo.imagem} fotosPorCor={cfg.cores?.produto} arte={arteVerso} face="verso" coresArte={coresEscolhidas}
                     borda={bordaEscolhida}
                     acessorios={acessoriosEscolhidos}
-                    gabarito={gabarito} altura={190} />
+                    gabarito={gabarito} altura={238} />
                 )}
               </div>
 
