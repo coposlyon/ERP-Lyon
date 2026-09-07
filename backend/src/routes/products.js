@@ -1142,8 +1142,11 @@ router.post('/import-flat', async (req, res) => {
       : [];
   if (!rawItems.length) return res.status(400).json({ error: 'Nada para importar' });
 
+  // O "RML" FICA NO NOME. Ele era apagado aqui junto com o "NORMAL",
+  // como se fosse ruído da planilha — e não é: é parte de como a
+  // fábrica chama a peça, e sem ele o produto do sistema deixa de bater
+  // com a lista do fornecedor na mão de quem confere.
   const clean = s => String(s || '')
-    .replace(/\bRML\s*\d+\b/ig, '')
     .replace(/\bNORMAL\b/ig, '')
     .replace(/\s*-\s*/g, ' - ')
     .replace(/\s+/g, ' ')
@@ -1151,14 +1154,23 @@ router.post('/import-flat', async (req, res) => {
     .toUpperCase();
   const cleanCode = c => String(c || '').replace(/\s+/g, ' ').trim().toUpperCase();
 
-  // itens únicos por nome (mantém o primeiro)
-  const seenNames = new Set();
+  // ÚNICOS PELO CÓDIGO, e só na falta dele pelo nome.
+  //
+  // A chave era sempre o nome, e nome é o campo que MUDA: corrigir
+  // "AZUL BEBE" para "AZUL BEBÊ" na planilha fazia a mesma peça entrar
+  // como produto novo na importação seguinte. O código do fornecedor
+  // ("CS4 - 3649") é o que fica igual, e por isso é ele que responde
+  // "este já é aquele".
+  const vistos = new Set();
   const items = [];
   for (const it of rawItems) {
     const name = clean(it.name);
-    if (name.length < 3 || seenNames.has(name)) continue;
-    seenNames.add(name);
-    items.push({ name, code: cleanCode(it.code) });
+    const code = cleanCode(it.code);
+    if (name.length < 3) continue;
+    const chave = code ? `cod:${code}` : `nome:${name}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    items.push({ name, code });
   }
 
   // Categoria = MODELO completo do produto: todo o texto antes do primeiro
@@ -1182,33 +1194,77 @@ router.post('/import-flat', async (req, res) => {
   }
 
   try {
-    // nomes já existentes (para não duplicar) + maior sequência atual
-    const { data: existingRows } = await supabase.from('PRODUTOS').select('name, code').eq('tenant_id', req.tenantId).limit(50000);
-    const existingNames = new Set((existingRows || []).map(r => String(r.name || '').trim().toUpperCase()));
-    const usedCodes = new Set((existingRows || []).map(r => cleanCode(r.code)).filter(Boolean));
+    // O que já está cadastrado, pelos dois caminhos de identidade.
+    const { data: existingRows } = await supabase.from('PRODUTOS')
+      .select('id, name, code, category_id').eq('tenant_id', req.tenantId).limit(50000);
+    const porCodigo = new Map();
+    const porNome = new Map();
+    for (const r of existingRows || []) {
+      const c = cleanCode(r.code);
+      if (c) porCodigo.set(c, r);
+      porNome.set(String(r.name || '').trim().toUpperCase(), r);
+    }
+    const usedCodes = new Set([...porCodigo.keys()]);
     let seq = 0;
     for (const r of (existingRows || [])) {
       const m = String(r.code || '').trim().match(/(\d+)\s*$/);
       if (m) { const n = parseInt(m[1], 10); if (n > seq) seq = n; }
     }
 
-    let created = 0, skipped = 0;
+    /**
+     * REIMPORTAR ATUALIZA — NUNCA DUPLICA.
+     *
+     * A planilha é reimportada toda vez que a fábrica manda a lista
+     * nova, e é assim que ela deveria funcionar: o que já está
+     * cadastrado recebe o nome corrigido, o que não está entra. Antes o
+     * produto existente era apenas PULADO, e a correção do nome na
+     * planilha morria ali — a pessoa reimportava, via "41 já existiam"
+     * e ia arrumar os 41 à mão.
+     *
+     * A identidade é o CÓDIGO, com o nome como segunda porta para as
+     * linhas que vieram sem código. Sem isso, manter o "RML" no nome
+     * (que é o outro pedido desta mesma mudança) faria a próxima
+     * importação criar 41 cópias dos mesmos copos: o nome mudou, e o
+     * nome era a única chave.
+     *
+     * SÓ O NOME É REESCRITO. Preço, custo, estoque, foto e tudo o que
+     * alguém ajustou no cadastro depois da importação ficam de pé — a
+     * planilha do fornecedor sabe o nome da peça, não sabe por quanto a
+     * Lyon vende.
+     */
+    let created = 0, updated = 0, skipped = 0;
     const errors = [];
     const toInsert = [];
+    const toUpdate = [];
     for (const it of items) {
-      if (existingNames.has(it.name)) { skipped++; continue; }
       const base = it.name.split(' - ')[0].trim();
+      const jaExiste = (it.code && porCodigo.get(it.code)) || porNome.get(it.name) || null;
+
+      if (jaExiste) {
+        if (String(jaExiste.name || '').trim().toUpperCase() === it.name) { skipped++; continue; }
+        toUpdate.push({ id: jaExiste.id, name: it.name, category_id: jaExiste.category_id || await categoriaId(base || 'OUTROS') });
+        porNome.set(it.name, jaExiste);
+        continue;
+      }
+
       const catId = await categoriaId(base || 'OUTROS');
       let code = it.code;
       if (!code || usedCodes.has(code)) {            // sem código (ou repetido) → gera automático
         do { seq += 1; code = `${initials(base)} ${String(seq).padStart(4, '0')}`; } while (usedCodes.has(code));
       }
       usedCodes.add(code);
-      existingNames.add(it.name);
+      porNome.set(it.name, { id: null, name: it.name, code });
       toInsert.push({
         tenant_id: req.tenantId, name: it.name, unit: 'UN', category_id: catId, code,
         sale_price: 0, cost_price: 0, current_stock: 0, is_active: true, min_order_qty: 1,
       });
+    }
+
+    for (const u of toUpdate) {
+      const { error } = await supabase.from('PRODUTOS')
+        .update({ name: u.name, category_id: u.category_id, updated_at: new Date().toISOString() })
+        .eq('id', u.id).eq('tenant_id', req.tenantId);
+      if (error) errors.push(error.message); else updated++;
     }
 
     // insere em lotes (rápido); se min_order_qty não existir, tenta sem
@@ -1221,8 +1277,8 @@ router.post('/import-flat', async (req, res) => {
       if (error) errors.push(error.message); else created += chunk.length;
     }
 
-    audit(req, 'create', 'product_import_flat', null, { created, skipped });
-    res.json({ created, skipped, errors: errors.slice(0, 20), total: items.length });
+    audit(req, 'create', 'product_import_flat', null, { created, updated, skipped });
+    res.json({ created, updated, skipped, errors: errors.slice(0, 20), total: items.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

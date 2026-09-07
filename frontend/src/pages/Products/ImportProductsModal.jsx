@@ -6,10 +6,17 @@ import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import toast from 'react-hot-toast';
 
-// Limpa o nome do produto
+/**
+ * Limpa o nome do produto.
+ *
+ * O "RML" FICA. Ele era apagado aqui (`\bRML\s*\d+\b`) junto com o
+ * "NORMAL", como se fosse ruído da planilha — e não é: é parte de como
+ * a fábrica chama a peça, e sem ele o produto do sistema deixa de bater
+ * com o produto da lista do fornecedor. Quem confere pedido com a
+ * planilha na mão procurava por um nome que o sistema tinha reescrito.
+ */
 function cleanName(raw) {
   return String(raw || '')
-    .replace(/\bRML\s*\d+\b/ig, '')
     .replace(/\bNORMAL\b/ig, '')
     .replace(/\s*-\s*/g, ' - ')
     .replace(/\s+/g, ' ')
@@ -62,15 +69,26 @@ export default function ImportProductsModal({ isOpen, onClose }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
-  // junta planilha + texto, limpa e remove nomes repetidos
+  /**
+   * Junta planilha + texto, limpa e tira repetidos.
+   *
+   * O REPETIDO É O CÓDIGO, e só na falta dele é o nome. Antes a chave
+   * era sempre o nome — e nome é o campo que MUDA: corrigir "AZUL BEBE"
+   * para "AZUL BEBÊ" na planilha fazia a linha entrar como produto novo
+   * na importação seguinte. O código do fornecedor ("CS4 - 3649") é o
+   * que fica igual, e por isso é ele que responde "este já é aquele".
+   */
   const items = useMemo(() => {
-    const seen = new Set();
+    const vistos = new Set();
     const out = [];
     for (const it of [...fileItems, ...textToItems(text)]) {
       const name = cleanName(it.name);
-      if (name.length < 3 || name === 'PREENCHER' || seen.has(name)) continue;
-      seen.add(name);
-      out.push({ code: cleanCode(it.code) || null, name });
+      const code = cleanCode(it.code) || null;
+      if (name.length < 3 || name === 'PREENCHER') continue;
+      const chave = code ? `cod:${code}` : `nome:${name}`;
+      if (vistos.has(chave)) continue;
+      vistos.add(chave);
+      out.push({ code, name });
     }
     return out;
   }, [fileItems, text]);
@@ -115,7 +133,15 @@ export default function ImportProductsModal({ isOpen, onClose }) {
       setFileItems([]);
       qc.invalidateQueries(['products']);
       qc.invalidateQueries(['stock-report']);
-      toast.success(`${res.created} produtos criados · ${res.skipped} já existiam`);
+      // ATUALIZADO É RESULTADO, NÃO SOBRA. Antes o resumo só sabia
+      // dizer "já existiam", e reimportar a planilha corrigida parecia
+      // não ter feito nada — o número precisa mostrar que os nomes
+      // foram trocados.
+      toast.success([
+        res.created ? `${res.created} criado(s)` : null,
+        res.updated ? `${res.updated} atualizado(s)` : null,
+        res.skipped ? `${res.skipped} sem mudança` : null,
+      ].filter(Boolean).join(' · ') || 'Nada mudou');
     } catch (err) {
       toast.error(err.error || 'Erro ao importar');
     } finally { setLoading(false); }
@@ -182,7 +208,13 @@ export default function ImportProductsModal({ isOpen, onClose }) {
         {result && (
           <div className="border rounded-xl p-4 text-sm bg-green-50 border-green-200">
             <p className="font-semibold flex items-center gap-2 text-green-800"><CheckCircle2 size={16} /> Importação concluída!</p>
-            <p className="mt-1 text-green-700">{result.created} criados · {result.skipped} já existiam</p>
+            <p className="mt-1 text-green-700">
+              {result.created} criado(s) · {result.updated || 0} atualizado(s) · {result.skipped} sem mudança
+            </p>
+            <p className="mt-1 text-[11px] text-green-700/80">
+              Produto já cadastrado com o mesmo código é <b>atualizado</b>, nunca duplicado —
+              pode reimportar a planilha quantas vezes precisar.
+            </p>
             {result.errors?.length > 0 && (
               <details className="mt-2"><summary className="text-xs text-red-600 cursor-pointer">{result.errors.length} avisos</summary>
                 <ul className="text-xs text-red-500 mt-1 list-disc pl-4">{result.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
