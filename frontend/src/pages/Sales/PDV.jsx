@@ -107,7 +107,7 @@ const COLUNAS_ITENS = [
     texto: it => it.variant_code || '' },
   { key: 'nome', titulo: 'Nome do Produto', al: 'left', w: '',
     texto: it => it.name || '' },
-  { key: 'cor', titulo: 'Cor da personalização', al: 'left', w: 'w-36',
+  { key: 'cor', titulo: 'Personalização', al: 'left', w: 'w-36',
     texto: it => it.print_color || '' },
   { key: 'qtd', titulo: 'Quantidade', al: 'center', w: 'w-24',
     texto: it => String(it.quantity ?? ''), numero: it => Number(it.quantity) || 0 },
@@ -1880,8 +1880,16 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
+                {/* "Personalização", e não "Cor da personalização".
+                    O que se escolhe aqui é a tinta que vai na peça, e o
+                    rótulo comprido empurrava o campo para duas linhas no
+                    modal. A CHAVE GRAVADA continua 'Cor da
+                    personalização' (ver `itemCustomization`): é por ela
+                    que o backend decide se o pedido passa pela
+                    serigrafia, e renomeá-la deixaria todo pedido antigo
+                    sem personalização. Rótulo é tela; chave é dado. */}
                 <label className="text-xs font-medium text-gray-500 block mb-1">
-                  Cor da personalização <span className="text-red-500">*</span>
+                  Personalização <span className="text-red-500">*</span>
                 </label>
                 <div className="flex gap-2">
                   <select className="input text-sm flex-1" value={launch.color}
