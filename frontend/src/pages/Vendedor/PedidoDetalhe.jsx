@@ -24,7 +24,7 @@ import {
   Truck, Info, Plus, Eye, Download, UploadCloud, PenLine, CircleCheck, Star,
   Circle, Wallet, PenTool, FileImage, FlaskConical, Brush, CircleDashed,
   Settings, PackageOpen, ShieldCheck, Camera, PackageCheck, History, ExternalLink,
-  Loader2, Hourglass,
+  Loader2, Hourglass, PersonStanding,
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -343,8 +343,29 @@ export default function PedidoDetalhe() {
               {/* Estava na aba "Forma de Pagamento" do acordeão antigo e
                   não existia aqui. Trocar de tela não pode custar um dado. */}
               <Campo v={v} rotulo="Pagamento" valor={PAGAMENTO[p.payment_method] || p.payment_method || '—'} />
-              <Campo v={v} rotulo="Transportadora" valor={p.transportadora || '—'} />
-              <Campo v={v} rotulo="Cotação"        valor={p.freight_quote || '—'} mono />
+              {/* ENTREGA OU RETIRADA — A PERGUNTA QUE FALTAVA AQUI.
+                  Pedido para buscar na fábrica mostrava "Transportadora: —"
+                  e "Cotação: —", que é o mesmo que um pedido de entrega
+                  ainda sem transportadora definida. Duas situações
+                  opostas com a mesma cara: uma está resolvida, a outra
+                  está esperando alguém. Agora o card diz qual é. */}
+              <Campo v={v} rotulo="Entrega" valor={p.retirada
+                ? <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: '#22d3ee' }}>
+                    <PersonStanding size={14} /> Retirada no local
+                  </span>
+                : 'Entrega no endereço do cliente'} />
+              {/* Transportadora e cotação só existem em pedido que vai de
+                  caminhão. Em retirada elas não são "—": elas não se
+                  aplicam, e mostrar o traço faz procurar o que não falta. */}
+              {!p.retirada && (
+                <>
+                  <Campo v={v} rotulo="Transportadora" valor={p.transportadora || '—'} />
+                  <Campo v={v} rotulo="Cotação"        valor={p.freight_quote || '—'} mono />
+                </>
+              )}
+              {p.retirada?.autorizado?.nome && (
+                <Campo v={v} rotulo="Quem retira" valor={p.retirada.autorizado.nome} />
+              )}
             </Bloco>
 
             <Bloco v={v} Icon={DollarSign} titulo="Valores">
