@@ -17,7 +17,7 @@
 // consulta esses campos.
 // ============================================================
 import { useState, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft, Share2, User, FileText, DollarSign, CalendarDays, Package, Clock,
@@ -33,6 +33,7 @@ import { useVend, fmtBRL, fmtUn, fmtDate } from './ui';
 import { corStatus } from '@/lib/pedidoUi';
 import LogoOrigem from '@/components/UI/LogoOrigem';
 import SubstituirArteModal from '@/components/UI/SubstituirArteModal';
+import EditarPedidoModal from '@/components/UI/EditarPedidoModal';
 import PainelFluxo from './PainelFluxo';
 import ClienteFichaModal from './ClienteFichaModal';
 import VisualizarArteModal from '@/components/UI/VisualizarArteModal';
@@ -94,6 +95,7 @@ export default function PedidoDetalhe() {
   const [verArte, setVerArte] = useState(false);        // a arte aberta encaixada na tela
   const [enviando, setEnviando] = useState(null);   // 'arte' | 'comprovante'
   const [trocarArte, setTrocarArte] = useState(null); // pedido cuja arte se quer substituir
+  const [editando, setEditando] = useState(false);    // o modal de editar os itens
   const qc = useQueryClient();
   const inputArte = useRef(null);
   const inputComprovante = useRef(null);
@@ -105,6 +107,40 @@ export default function PedidoDetalhe() {
   const { data: p, isLoading, error } = useQuery({
     queryKey: ['pedido-vendedor', id],
     queryFn: () => api.get(`/area-vendedor/pedidos/${id}`),
+  });
+
+  /**
+   * EDITAR OS ITENS DO PEDIDO.
+   *
+   * Manda só o que MUDOU — quantidade nova, item tirado, item posto —
+   * e nunca a lista inteira de volta: a personalização de cada item
+   * (borda, cor, a arte que a cliente montou) não chega até esta tela,
+   * e devolvê-la em branco apagaria tudo na primeira edição.
+   *
+   * Quem faz a conta da diferença e gera a cobrança é o servidor. O
+   * aviso aqui é para quem editou saber, sem sair da tela, o que o
+   * cliente ainda deve.
+   */
+  const editarPedido = useMutation({
+    mutationFn: ({ alteracoes, remover, novos, motivo, email, senha }) =>
+      api.patch(`/sales/${id}/itens`, {
+        alteracoes, remover, novos, motivo,
+        autorizador_email: email, autorizador_senha: senha,
+      }),
+    onSuccess: r => {
+      setEditando(false);
+      qc.invalidateQueries({ queryKey: ['pedido-vendedor', id] });
+      qc.invalidateQueries({ queryKey: ['sales'] });
+      if (r?.diferenca > 0) {
+        toast.success(`Pedido atualizado. ${fmtBRL(r.diferenca)} a mais entrou no contas a receber.`);
+      } else if (r?.credito_do_cliente > 0) {
+        toast(`Pedido atualizado. Sobrou ${fmtBRL(r.credito_do_cliente)} de crédito com o cliente — acerte em Devoluções.`,
+          { icon: '⚠️', duration: 8000 });
+      } else {
+        toast.success('Pedido atualizado.');
+      }
+    },
+    onError: e => toast.error(e?.error || 'Não foi possível editar o pedido.'),
   });
 
   /**
@@ -285,6 +321,17 @@ export default function PedidoDetalhe() {
           <button onClick={() => navigate(voltarPara)} className="btn-secondary">
             <ArrowLeft size={15} /> Voltar
           </button>
+          {/* EDITAR O PEDIDO. O caso é o de sempre: a cliente liga
+              pedindo mais 20 copos. Antes disto a saída era cancelar e
+              refazer — outro número, outro PV mandado para ela, e a
+              produção já andada perdida no caminho. Pede senha porque
+              mexe no valor que ela deve. */}
+          {isManager && (
+            <button onClick={() => setEditando(true)} className="btn-secondary"
+              title="Mudar quantidade, tirar ou acrescentar item — o cliente paga só a diferença">
+              <PenLine size={15} /> Editar pedido
+            </button>
+          )}
           <button onClick={() => compartilhar(p, cli)}
             className="btn" style={{ background: '#16a34a', color: 'white' }}>
             <Share2 size={15} /> Compartilhar com o Cliente
@@ -521,6 +568,14 @@ export default function PedidoDetalhe() {
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ background: corStatus(h.cor) }} />
                     <span className="shrink-0" style={{ color: v.textSubtle }}>{dataHora(h.at)}</span>
                     <span className="truncate" style={{ color: v.textPrimary }}>{h.label}</span>
+                    {/* "Pedido editado" sozinho não diz nada — editado
+                        como? O de/para do valor vem junto na linha, que
+                        é o que se procura ao ver esse registro. */}
+                    {h.detalhe && (
+                      <span className="text-[11px] shrink-0 tabular-nums" style={{ color: '#facc15' }}>
+                        {h.detalhe}
+                      </span>
+                    )}
                     {h.user && <span className="text-[11px] shrink-0" style={{ color: v.textSubtle }}>· {h.user}</span>}
                   </div>
                 ))}
@@ -685,6 +740,15 @@ export default function PedidoDetalhe() {
           </p>
         </div>
       </div>
+
+      {/* Editar os itens: quantidade, tirar, acrescentar. O cliente
+          paga só a diferença, e a mudança fica no histórico. */}
+      <EditarPedidoModal
+        pedido={editando ? p : null}
+        salvando={editarPedido.isPending}
+        onClose={() => setEditando(false)}
+        onConfirmar={dados => editarPedido.mutate(dados)}
+      />
 
       {/* Trocar arte já anexada: passa pelo gerente. */}
       <SubstituirArteModal

@@ -272,7 +272,34 @@ const EVENTOS_DO_LOG = {
   pagamento_liberado:  { label: 'Pagamento liberado',  cor: 'verde' },
   pagamento_cancelado: { label: 'Liberacao cancelada', cor: 'vermelho' },
   arte_aprovada:       { label: 'Arte anexada e aprovada', cor: 'roxo' },
+  // Chave que este catalogo nao conhece SOME da tela (o filtro abaixo
+  // descarta o que nao tem info). Editar o pedido e designar vendedor
+  // gravam no mesmo log, e sem estas duas linhas a edicao que mudou o
+  // valor do pedido nao aparecia em lugar nenhum.
+  pedido_editado:      { label: 'Pedido editado',      cor: 'amarelo' },
+  vendedor_designado:  { label: 'Vendedor designado',  cor: 'azul' },
 };
+
+const emReais = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+/**
+ * A frase que explica a linha do historico, quando ela sozinha nao basta.
+ *
+ * "Pedido editado" nao diz nada — editado como? Aqui sai o de/para do
+ * valor, que e o que qualquer um procura ao ver essa linha.
+ *
+ * SO O QUE O CLIENTE JA VE. O motivo digitado por quem editou fica de
+ * fora de proposito: `historicoPedido` alimenta tambem o portal, e
+ * recado interno ("cliente reclamou do prazo") nao e para os olhos de
+ * quem comprou. Valor total ele ja tem na propria tela.
+ */
+function detalheDoEvento(e) {
+  const k = e.action || e.status;
+  if (k === 'pedido_editado' && e.total_antes != null && e.total_agora != null) {
+    return `${emReais(e.total_antes)} → ${emReais(e.total_agora)}`;
+  }
+  return null;
+}
 
 function historicoPedido(venda) {
   const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
@@ -285,7 +312,11 @@ function historicoPedido(venda) {
       // crua na tela do cliente.
       const info = STATUS[k] || EVENTOS_DO_LOG[k] || null;
       if (!info) return null;
-      return { key: k, label: info.label, cor: info.cor, at: e.at || null, user: e.user || null, stage: e.stage || null };
+      return {
+        key: k, label: info.label, cor: info.cor, at: e.at || null,
+        user: e.user || null, stage: e.stage || null,
+        detalhe: detalheDoEvento(e),
+      };
     })
     .filter(Boolean);
 

@@ -603,3 +603,12 @@ router.get('/recebidas/:chave/xml', async (req, res) => {
 });
 
 module.exports = router;
+
+// A RONDA PRECISA DA MESMA SINCRONIZAÇÃO QUE O BOTÃO.
+//
+// `lib/rondaFiscal.js` roda de hora em hora o que o "Buscar na SEFAZ"
+// faz à mão. Duas cópias da mesma função seriam duas regras de "o que
+// já entrou" — e a que roda sozinha é justamente a que ninguém olha
+// para perceber que divergiu.
+module.exports.sincronizarRecebidas = sincronizarRecebidas;
+module.exports.prontoParaRecebidas = prontoParaRecebidas;
