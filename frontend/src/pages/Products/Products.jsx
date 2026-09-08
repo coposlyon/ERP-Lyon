@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Download, Trash2, Loader2, AlertTriangle, FolderTree, Image as ImageIcon, Eye, ClipboardPaste, Palette, ChevronDown } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Download, Trash2, Loader2, AlertTriangle, RefreshCw, FolderTree, Image as ImageIcon, Eye, ClipboardPaste, Palette, ChevronDown } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
@@ -100,7 +100,7 @@ export default function Products() {
     } finally { setExporting(false); }
   }
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['products', page, effectiveSearch, borderParam, volumeParam, categoryId, sort, catalogo],
     queryFn: () => {
       let url = `/products?page=${page}&limit=50`;
@@ -660,7 +660,9 @@ export default function Products() {
           )
         ) : (
           <>
-            <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => openEdit(row)} />
+            {error
+              ? <FalhouAoCarregar erro={error} onTentar={refetch} oQue="os produtos" />
+              : <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => openEdit(row)} />}
             <Pagination page={page} total={data?.total || 0} limit={50} onPageChange={setPage} />
           </>
         )}
@@ -835,6 +837,37 @@ export default function Products() {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+/**
+ * "NENHUM CADASTRO" E "NÃO CONSEGUI PERGUNTAR" SÃO RESPOSTAS DIFERENTES.
+ *
+ * A tela dizia "0 cadastrados · Nenhum registro encontrado" nos dois
+ * casos — e o segundo é uma mentira que assusta: com 59 clientes no
+ * banco, intactos, a tela informou que não havia nenhum. Quem lê isso
+ * conclui que os dados foram apagados.
+ *
+ * A causa some, a mentira fica. Por isso o erro passa a aparecer com o
+ * texto que o servidor mandou, e com o botão de tentar de novo.
+ */
+function FalhouAoCarregar({ erro, onTentar, oQue }) {
+  return (
+    <div className="text-center py-12 px-4">
+      <AlertTriangle size={26} className="mx-auto mb-2 text-amber-500" />
+      <p className="text-sm font-semibold text-gray-700">Não consegui carregar {oQue}.</p>
+      <p className="text-xs text-gray-500 mt-1">
+        Os dados continuam no sistema — o que falhou foi a consulta.
+      </p>
+      {(erro?.error || erro?.message) && (
+        <p className="text-[11px] mt-2 inline-block rounded px-2 py-1 bg-red-50 text-red-600 font-mono">
+          {erro.error || erro.message}
+        </p>
+      )}
+      <button onClick={onTentar} className="btn-secondary text-sm mt-3 mx-auto">
+        <RefreshCw size={14} /> Tentar de novo
+      </button>
     </div>
   );
 }

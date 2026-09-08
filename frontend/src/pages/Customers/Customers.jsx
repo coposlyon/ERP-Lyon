@@ -126,7 +126,7 @@ export default function Customers() {
     finally { setDeleting(false); }
   }
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['customers', page, search, typeFilter, ratingFilter, stateFilter],
     queryFn: () => {
       let url = `/customers?page=${page}&limit=100`;
@@ -282,7 +282,9 @@ export default function Customers() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Clientes</h1>
-          <p className="text-sm text-gray-500 mt-1">{data?.total || 0} cadastrados</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {error ? '—' : `${data?.total || 0} cadastrados`}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => recomputeMut.mutate()} disabled={recomputeMut.isPending} className="btn-secondary disabled:opacity-50"
@@ -389,12 +391,18 @@ export default function Customers() {
           </form>
         </div>
 
-        <Table columns={columns} data={data?.data} loading={isLoading}
-          onRowClick={row => setSelectedId(prev => prev === row.id ? null : row.id)}
-          rowClassName={row => row.id === selectedId
-            ? '!bg-primary-50 shadow-[inset_3px_0_0_0_theme(colors.primary.600)]'
-            : ''} />
-        <Pagination page={page} total={data?.total || 0} limit={100} onPageChange={setPage} />
+        {error ? (
+          <FalhouAoCarregar erro={error} onTentar={refetch} oQue="os clientes" />
+        ) : (
+          <>
+            <Table columns={columns} data={data?.data} loading={isLoading}
+              onRowClick={row => setSelectedId(prev => prev === row.id ? null : row.id)}
+              rowClassName={row => row.id === selectedId
+                ? '!bg-primary-50 shadow-[inset_3px_0_0_0_theme(colors.primary.600)]'
+                : ''} />
+            <Pagination page={page} total={data?.total || 0} limit={100} onPageChange={setPage} />
+          </>
+        )}
       </div>
 
       <FichaClienteModal clienteId={fichaCliente} onClose={() => setFichaCliente(null)} />
@@ -462,6 +470,37 @@ export default function Customers() {
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+/**
+ * "NENHUM CADASTRO" E "NÃO CONSEGUI PERGUNTAR" SÃO RESPOSTAS DIFERENTES.
+ *
+ * A tela dizia "0 cadastrados · Nenhum registro encontrado" nos dois
+ * casos — e o segundo é uma mentira que assusta: com 59 clientes no
+ * banco, intactos, a tela informou que não havia nenhum. Quem lê isso
+ * conclui que os dados foram apagados.
+ *
+ * A causa some, a mentira fica. Por isso o erro passa a aparecer com o
+ * texto que o servidor mandou, e com o botão de tentar de novo.
+ */
+function FalhouAoCarregar({ erro, onTentar, oQue }) {
+  return (
+    <div className="text-center py-12 px-4">
+      <AlertTriangle size={26} className="mx-auto mb-2 text-amber-500" />
+      <p className="text-sm font-semibold text-gray-700">Não consegui carregar {oQue}.</p>
+      <p className="text-xs text-gray-500 mt-1">
+        Os dados continuam no sistema — o que falhou foi a consulta.
+      </p>
+      {(erro?.error || erro?.message) && (
+        <p className="text-[11px] mt-2 inline-block rounded px-2 py-1 bg-red-50 text-red-600 font-mono">
+          {erro.error || erro.message}
+        </p>
+      )}
+      <button onClick={onTentar} className="btn-secondary text-sm mt-3 mx-auto">
+        <RefreshCw size={14} /> Tentar de novo
+      </button>
     </div>
   );
 }
