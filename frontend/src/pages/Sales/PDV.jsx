@@ -184,7 +184,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [discount, setDiscount] = useState('');
   const [couponInput, setCouponInput] = useState('');
   const [coupon, setCoupon] = useState(null); // { coupon_id, code, discount_type, discount_value }
-  const [frete, setFrete] = useState(null); // { price, days, weightKg, uf }
   const [carrierId, setCarrierId] = useState(''); // transportadora desta venda
   const [freightInput, setFreightInput] = useState(''); // valor do frete (R$) — editável
   const [quoteNumber, setQuoteNumber] = useState(''); // nº da cotação do frete na transportadora
@@ -584,7 +583,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     setShowCustomerInfo(false);
     setDiscount('');
     setCoupon(null); setCouponInput('');
-    setFrete(null);
     setCarrierId(''); setFreightInput(''); setQuoteNumber('');
     setPayTerm(null);
     setReceivedAmount('');
@@ -650,25 +648,11 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const companyAccounts = (Array.isArray(bankAccounts) ? bankAccounts : [])
     .filter(a => a.is_active !== false && (!a.company_id || a.company_id === billingCompanyId));
 
-  // Calcular frete + prazo pelo estado/CEP do cliente
-  const freteMut = useMutation({
-    mutationFn: () => api.post('/shipping/quote', {
-      uf: selectedCustomer?.address?.state || null,
-      cep: selectedCustomer?.address?.zip || null,
-      qty: items.reduce((s, i) => s + i.quantity, 0),
-      subtotal,
-    }),
-    onSuccess: (data) => {
-      setFrete(data);
-      setFreightInput(data.free || !data.price ? '' : maskMoney(data.price));
-      // sugere a previsão de entrega = hoje + prazo
-      if (data.days && !deliveryDate) {
-        const d = new Date(); d.setDate(d.getDate() + Number(data.days));
-        setDeliveryDate(d.toISOString().split('T')[0]);
-      }
-    },
-    onError: (e) => { setFrete(null); toast.error(e.error || 'Não foi possível calcular o frete'); },
-  });
+  // A CONSULTA DE FRETE SAIU. Ela batia em /shipping/quote, preenchia
+  // o valor e sugeria a previsão de entrega como "hoje + prazo". A
+  // rota /shipping/quote continua de pé e sem chamador na tela; o frete
+  // aqui é o que a transportadora cotou, digitado por quem viu a
+  // cotação.
 
   // Aplicar cupom — valida no servidor (data, limite, cliente) e guarda o cupom
   const couponMut = useMutation({
@@ -1307,7 +1291,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 // tirar. Some zerado.
                 const c = (carriers?.data || []).find(x => x.id === e.target.value);
                 if (e.target.value === RETIRADA || c?.is_pickup) {
-                  setFreightInput(''); setQuoteNumber(''); setFrete(null);
+                  setFreightInput(''); setQuoteNumber('');
                 }
               }}>
               <option value="">— selecione —</option>
@@ -1724,33 +1708,21 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             </div>
           )}
 
-          {/* Frete + prazo automáticos */}
-          <div className="border-t border-gray-100 pt-2">
-            {frete ? (
-              <div className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-                <span className="text-sm text-blue-800">
-                  🚚 Frete {frete.uf ? `(${frete.uf})` : ''}: <b>{freteValue > 0 ? fmt(freteValue) : 'Grátis'}</b>
-                  {frete.days ? <> · chega em <b>{frete.days} dia{frete.days > 1 ? 's' : ''}</b></> : ''}
-                </span>
-                <button type="button" onClick={() => { setFrete(null); setFreightInput(''); }} className="text-gray-400 hover:text-red-500"><X size={15} /></button>
-              </div>
-            ) : (
-              <>
-                {freteValue > 0 && (
-                  <div className="flex justify-between text-sm text-gray-600 mb-1.5">
-                    <span>🚚 Frete</span>
-                    <span className="font-medium">{fmt(freteValue)}</span>
-                  </div>
-                )}
-                <button type="button" onClick={() => freteMut.mutate()}
-                  disabled={freteMut.isPending || items.length === 0 || !selectedCustomer}
-                  className="btn-secondary text-sm w-full disabled:opacity-50"
-                  title={!selectedCustomer ? 'Selecione o cliente para usar o estado/CEP dele' : 'Calcula o frete e o prazo pelo estado do cliente'}>
-                  {freteMut.isPending ? <Loader2 size={14} className="animate-spin" /> : '🚚'} Calcular frete e prazo
-                </button>
-              </>
-            )}
-          </div>
+          {/* O FRETE É INFORMADO À MÃO, e o valor só aparece aqui.
+              Havia um "Calcular frete e prazo" que consultava a tabela
+              por estado e preenchia o campo sozinho. A tabela é uma
+              estimativa; quem fecha o frete é a transportadora, por
+              cotação, e o número que vale é o que ela mandou. O botão
+              devolvia um valor plausível e errado — e o pedido saía com
+              ele porque ninguém confere um campo que veio preenchido.
+              O campo continua onde sempre esteve, na linha de cima:
+              "Valor do frete (R$)", ao lado da transportadora. */}
+          {freteValue > 0 && (
+            <div className="flex justify-between text-sm text-gray-600 border-t border-gray-100 pt-2">
+              <span>🚚 Frete</span>
+              <span className="font-medium">{fmt(freteValue)}</span>
+            </div>
+          )}
 
           <div className="flex justify-between font-bold text-2xl border-t border-gray-100 pt-2">
             <span>TOTAL</span>
