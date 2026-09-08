@@ -155,6 +155,19 @@ function palpiteBorda(product, variantName) {
 // mode: 'sale' (pedido de venda) | 'quote' (orçamento — salva e gera a foto PNG)
 // customerId: abre já com este cliente escolhido (a carteira do vendedor
 // manda o cliente pela URL ao clicar na flecha de orçamento)
+/**
+ * 12345678000190 → 12.345.678/0001-90
+ *
+ * Devolve null quando não são 14 dígitos, em vez de tentar formatar o
+ * que veio: cadastro incompleto tem de aparecer como incompleto, e não
+ * como um número quase certo que ninguém questiona.
+ */
+function formatarCnpj(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  if (d.length !== 14) return null;
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+
 export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const inModal = typeof onDone === 'function';
   const { user, hasModule } = useAuth();
@@ -2164,12 +2177,39 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 <label className="block text-xs text-gray-500 mb-0.5">Empresa Faturadora</label>
                 <select className="input text-sm w-full" value={billingCompanyId}
                   onChange={e => { setBillingCompanyId(e.target.value); setReceivingAccountId(''); }}>
+                  {/* O CNPJ VEM NA FRENTE, e não o nome fantasia.
+                      Esta escolha decide em qual CNPJ a nota sai e para
+                      onde o dinheiro entra. "Lyon Copos Personalizados"
+                      e "Lyon Copos Acrílicos" são duas empresas com
+                      nomes parecidos e limites de faturamento
+                      separados: escolher pelo nome é escolher pela
+                      metade que não identifica. O nome fica depois,
+                      para reconhecer. */}
                   {companiesOk.map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.nome_fantasia || c.razao_social}{Number(c.pct) > 0 ? ` · ${Number(c.pct).toFixed(0)}% do limite` : ''}
+                      {formatarCnpj(c.cnpj) || c.razao_social}
+                      {c.nome_fantasia || c.razao_social ? ` — ${c.nome_fantasia || c.razao_social}` : ''}
+                      {Number(c.pct) > 0 ? ` · ${Number(c.pct).toFixed(0)}% do limite` : ''}
                     </option>
                   ))}
                 </select>
+                {/* O <option> some assim que o menu fecha, e o que fica
+                    visível é só a linha escolhida. Repetir o CNPJ aqui
+                    é o que responde "quem vai receber?" sem reabrir o
+                    seletor. */}
+                {(() => {
+                  const c = companiesOk.find(x => x.id === billingCompanyId);
+                  const doc = formatarCnpj(c?.cnpj);
+                  return doc ? (
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Recebe no CNPJ <span className="font-mono text-gray-500">{doc}</span>
+                    </p>
+                  ) : c ? (
+                    <p className="text-[11px] text-amber-600 mt-1">
+                      Esta empresa está sem CNPJ no cadastro do Contábil.
+                    </p>
+                  ) : null;
+                })()}
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-0.5">Conta de Destino</label>
