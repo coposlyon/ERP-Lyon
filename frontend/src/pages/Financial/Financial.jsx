@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DollarSign, TrendingUp, TrendingDown, Check, Plus, Loader2, FileBarChart2,
   ArrowDownCircle, ArrowUpCircle, ChevronLeft, ChevronRight, MessageCircle,
-  FileCheck2, ShieldCheck, AlertTriangle, ExternalLink, Copy,
+  FileCheck2, ShieldCheck, AlertTriangle, ExternalLink, Copy, Undo2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
@@ -727,6 +727,61 @@ function CobrancaModal({ conta, onClose }) {
   );
 }
 
+/**
+ * DESFAZER O PAGAMENTO — com motivo, porque alguém vai perguntar.
+ *
+ * Serve para o engano de hoje e para as linhas que ficaram pagas quando
+ * anexar o comprovante ainda pagava: elas estão quitadas sem ninguém do
+ * financeiro ter olhado, e sem isto não há como trazê-las de volta.
+ */
+function DesfazerModal({ conta, onClose, onFeito }) {
+  const [motivo, setMotivo] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const semConfirmacao = !conta.paid_at;
+
+  async function desfazer() {
+    setEnviando(true);
+    try {
+      const r = await api.post(`/financial/receipts/${conta.id}/desfazer`, { motivo });
+      toast.success(`Pagamento de ${fmt(r.desfeito)} desfeito. A conta voltou para a fila.`);
+      onFeito();
+    } catch (e) {
+      toast.error(e.error || 'Não foi possível desfazer');
+    } finally { setEnviando(false); }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[13px] text-gray-700">
+        <b>{conta.description}</b> — pago {fmt(conta.paid_amount)} de {fmt(conta.amount)}
+        {conta.paid_by ? <> · confirmado por {conta.paid_by}</> : null}.
+      </p>
+
+      {semConfirmacao && (
+        <p className="text-[12.5px] rounded-xl px-3 py-2 bg-amber-50 border border-amber-200 text-amber-900">
+          Esta linha ficou paga <b>sem passar pelo financeiro</b> — é do tempo em que anexar o
+          comprovante já dava o pagamento por feito. Desfazer devolve ela para a fila de
+          conferência, com o comprovante intacto.
+        </p>
+      )}
+
+      <label className="block">
+        <span className="label">Motivo (fica na auditoria)</span>
+        <input className="input" value={motivo} onChange={e => setMotivo(e.target.value)}
+          placeholder="Ex.: linha paga pelo fluxo antigo, vou conferir o comprovante." />
+      </label>
+
+      <div className="flex justify-end gap-2">
+        <button className="btn-secondary" onClick={onClose} disabled={enviando}>Cancelar</button>
+        <button className="btn-primary" onClick={desfazer} disabled={enviando}>
+          {enviando ? <Loader2 size={14} className="animate-spin" /> : <Undo2 size={14} />}
+          Desfazer o pagamento
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Financial() {
   const [tab, setTab] = useState('receivable');
   const [page, setPage] = useState(1);
@@ -742,6 +797,16 @@ export default function Financial() {
   const [conferir, setConferir] = useState(null);
   const [confirmar, setConfirmar] = useState(null);
   const [cobranca, setCobranca] = useState(null);
+  const [desfazer, setDesfazer] = useState(null);
+
+  /** Abre o arquivo do comprovante (o link é assinado e expira). */
+  async function verComprovante(row) {
+    try {
+      const r = await api.get(`/financial/receipts/${row.id}/arquivo`);
+      if (r?.url) window.open(r.url, '_blank', 'noopener');
+      else toast.error('Não foi possível abrir o comprovante');
+    } catch (e) { toast.error(e.error || 'Não foi possível abrir o comprovante'); }
+  }
   const qc = useQueryClient();
 
   const de = iso(primeiroDia(mes));
@@ -806,51 +871,91 @@ export default function Financial() {
         </span>
       ) },
     ...(tab === 'receivable' ? [{
-      key: 'receipt_status', label: 'Comprovante', width: 150,
-      // O ESTADO DO PAPEL, EM UMA COLUNA. Antes não havia nenhuma: o
-      // financeiro não tinha como saber, olhando a lista, o que já tinha
-      // comprovante esperando por ele.
+      key: 'receipt_status', label: 'Comprovante', width: 180,
+      /**
+       * O SELO É O BOTÃO — porque "a conferir" sem como abrir o
+       * comprovante não serve para nada. Quem lê essa palavra quer ver
+       * o papel no clique seguinte, e não abrir outra janela para
+       * chegar até ele.
+       */
       render: (v, row) => {
         if (!row.receipt_url) {
           return row.paid_at
             ? <span className="badge badge-gray" title={`Confirmado por ${row.paid_by || '—'}`}>sem comprovante</span>
             : <span className="text-gray-300">—</span>;
         }
-        if (row.paid_at) {
-          return <span className="badge badge-green" title={`Confirmado por ${row.paid_by} em ${row.paid_at?.slice(0, 10)}`}>
-            confirmado
-          </span>;
-        }
-        if (v === 'conferido') return <span className="badge badge-blue">conferido · a confirmar</span>;
-        if (v === 'divergente') return <span className="badge badge-red">divergente</span>;
-        if (v === 'recusado') return <span className="badge badge-gray">recusado</span>;
-        return <span className="badge badge-yellow">a conferir</span>;
+        const selo = row.paid_at
+          ? { cls: 'badge-green', txt: 'confirmado', tit: `Confirmado por ${row.paid_by} em ${row.paid_at?.slice(0, 10)}` }
+          : v === 'conferido' ? { cls: 'badge-blue', txt: 'conferido · a confirmar', tit: `Conferido por ${row.receipt_by || '—'}` }
+          : v === 'divergente' ? { cls: 'badge-red', txt: 'divergente', tit: 'O valor lido não bate com o declarado' }
+          : v === 'recusado' ? { cls: 'badge-gray', txt: 'recusado', tit: 'Comprovante recusado' }
+          : { cls: 'badge-yellow', txt: 'a conferir', tit: `Anexado por ${row.receipt_by || '—'}` };
+        return (
+          <button onClick={() => verComprovante(row)} title={`${selo.tit} — clique para ver o comprovante`}
+            className={`badge ${selo.cls} hover:opacity-80 inline-flex items-center gap-1`}>
+            <ExternalLink size={11} /> {selo.txt}
+          </button>
+        );
       },
     }] : []),
     { key: 'installment', label: 'Parcela', width: 80,
       render: (v, row) => row.total_installments > 1 ? <span className="badge badge-gray">{v}/{row.total_installments}</span> : '—' },
     { key: 'amount', label: 'Total', width: 110, render: v => fmt(v) },
     { key: 'paid_amount', label: 'Pago', width: 110, render: v => <span className="text-green-600">{fmt(v)}</span> },
-    { key: 'status', label: 'Status', width: 100,
-      render: v => <span className={`badge ${statusClass[v] || 'badge-gray'}`}>{statusLabel[v] || v}</span> },
-    { key: 'id', label: '', width: 210,
+    { key: 'status', label: 'Status', width: 130,
+      // "Pago" sem `paid_at` é dinheiro que entrou no sistema sem passar
+      // pelo financeiro. A tela diz isso em vez de esconder atrás do
+      // mesmo selo verde de um pagamento conferido.
+      render: (v, row) => (
+        <span className="inline-flex items-center gap-1">
+          <span className={`badge ${statusClass[v] || 'badge-gray'}`}>{statusLabel[v] || v}</span>
+          {tab === 'receivable' && (Number(row.paid_amount) || 0) > 0 && !row.paid_at && (
+            <span className="badge badge-yellow" title="Pago pelo fluxo antigo, sem confirmação do financeiro">
+              sem confirmação
+            </span>
+          )}
+        </span>
+      ) },
+    { key: 'id', label: '', width: 250,
       render: (_, row) => {
         if (row.status === 'cancelled') return null;
         const temComprovante = !!row.receipt_url;
         const conferido = row.receipt_status === 'conferido';
-        const confirmado = !!row.paid_at || row.status === 'paid';
+        /**
+         * CONFIRMADO É `paid_at`, E NÃO `status === 'paid'`.
+         *
+         * As duas coisas pareciam a mesma e não são: existe linha PAGA
+         * que ninguém do financeiro confirmou — as que ficaram assim
+         * quando anexar o comprovante ainda pagava. Tratá-las como
+         * confirmadas escondia todos os botões delas: não dava para
+         * conferir o comprovante, não dava para desfazer, e a linha
+         * ficava parada num estado que ninguém escolheu.
+         */
+        const confirmado = !!row.paid_at;
+        const quitada = (Number(row.paid_amount) || 0) >= (Number(row.amount) || 0) - 0.005;
+        const pagoSemConfirmar = quitada && !confirmado;
         return (
           <div className="flex gap-1 justify-end flex-wrap">
             {/* A ORDEM DOS BOTÕES É A ORDEM DO TRABALHO: conferir o
                 papel, depois confirmar o dinheiro. */}
-            {tab === 'receivable' && temComprovante && !confirmado && !conferido && (
+            {tab === 'receivable' && temComprovante && !conferido && (
               <button onClick={() => setConferir(row)} className="btn-secondary btn-sm" title="Conferir o comprovante">
                 <FileCheck2 size={12} /> Conferir
               </button>
             )}
-            {tab === 'receivable' && !confirmado && (conferido || !temComprovante) && (
+            {tab === 'receivable' && !confirmado && !quitada && (conferido || !temComprovante) && (
               <button onClick={() => setConfirmar(row)} className="btn-primary btn-sm">
                 <Check size={12} /> Confirmar
+              </button>
+            )}
+            {/* A saída para a linha que está paga sem ninguém ter
+                confirmado, e para o engano de hoje. */}
+            {tab === 'receivable' && (Number(row.paid_amount) || 0) > 0 && (
+              <button onClick={() => setDesfazer(row)} className="btn-secondary btn-sm"
+                title={pagoSemConfirmar
+                  ? 'Esta linha foi paga sem passar pelo financeiro — desfazer devolve para a fila'
+                  : 'Desfazer o pagamento'}>
+                <Undo2 size={12} /> Desfazer
               </button>
             )}
             {tab === 'payable' && row.status !== 'paid' && (
@@ -858,7 +963,7 @@ export default function Financial() {
                 <Check size={12} /> Pagar
               </button>
             )}
-            {tab === 'receivable' && !confirmado && (
+            {tab === 'receivable' && !quitada && (
               <button onClick={() => setPixModal(row)} className="btn-secondary btn-sm" title="Gerar cobrança PIX">PIX</button>
             )}
           </div>
@@ -952,6 +1057,11 @@ export default function Financial() {
       <Modal isOpen={!!confirmar} onClose={() => setConfirmar(null)} title="Confirmar o pagamento" size="sm">
         {confirmar && <ConfirmarModal conta={confirmar} onClose={() => setConfirmar(null)}
           onFeito={() => { setConfirmar(null); qc.invalidateQueries({ queryKey: ['financial'] }); qc.invalidateQueries({ queryKey: ['financial-pendencias'] }); }} />}
+      </Modal>
+
+      <Modal isOpen={!!desfazer} onClose={() => setDesfazer(null)} title="Desfazer o pagamento" size="sm">
+        {desfazer && <DesfazerModal conta={desfazer} onClose={() => setDesfazer(null)}
+          onFeito={() => { setDesfazer(null); qc.invalidateQueries({ queryKey: ['financial'] }); qc.invalidateQueries({ queryKey: ['financial-pendencias'] }); }} />}
       </Modal>
 
       <Modal isOpen={!!cobranca} onClose={() => setCobranca(null)} title="Cobrança pelo WhatsApp" size="sm">

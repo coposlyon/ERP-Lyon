@@ -781,32 +781,21 @@ router.post('/:id/parcelas/:parcelaId/conferir', async (req, res) => {
 });
 
 /**
- * O FINANCEIRO CONFIRMA O PAGAMENTO DA PARCELA.
+ * A CONFIRMAÇÃO DO PAGAMENTO NÃO MORA AQUI — E É DE PROPÓSITO.
  *
- * Anexar era pagar, e não podia ser: quem sobe o print é o comercial ou
- * o cliente, e o que ele manda é uma AFIRMAÇÃO. Este é o passo seguinte
- * — o financeiro conferiu o comprovante e diz que o dinheiro entrou.
+ * Esta rota existiu por algumas horas e foi retirada. Ela deixava o
+ * pedido de venda confirmar o dinheiro, e é justamente isso que não
+ * pode acontecer: quem anexa o comprovante é o comercial, e o comercial
+ * conferindo o próprio comprovante é a mesma pessoa dos dois lados do
+ * caixa.
  *
- * O excedente escorre para as parcelas seguintes do MESMO pedido: pagou
- * 350 numa de 200, a primeira fecha e 150 abatem na segunda. Quem faz
- * essa conta é lib/comprovante.js, que é onde ela é testável.
+ * Anexar continua aqui (POST /:id/parcelas/comprovante) porque anexar é
+ * trabalho de quem está com o cliente. Conferir e confirmar são do
+ * Financeiro, na tela do Financeiro — e a rota de lá cobra o módulo
+ * `financial`, que o setor de Vendas não tem.
+ *
+ * Se um dia isto voltar, volta com a permissão junto.
  */
-router.post('/:id/parcelas/:parcelaId/confirmar', async (req, res) => {
-  try {
-    const r = await C.confirmarPagamento(req.tenantId, req.params.parcelaId, {
-      valor: req.body?.valor,
-      sem_comprovante: !!req.body?.sem_comprovante,
-      req,
-    });
-    if (r.erro) return res.status(400).json({ error: r.erro, code: r.code, dica: r.dica });
-
-    audit(req, 'payment', 'comprovante', req.params.parcelaId, {
-      confirmou: r.confirmado_por, aplicados: r.aplicados,
-      sobra: r.sobra, gerou_saldo: !!r.saldo,
-    });
-    res.json(r);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
 
 // Onde o pedido está, o que falta para ele seguir e qual é o botão.
 router.get('/:id/fluxo', async (req, res) => {

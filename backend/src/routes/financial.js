@@ -186,6 +186,60 @@ router.post('/receipts/:id/confirmar', async (req, res) => {
 });
 
 /**
+ * DESFAZER UM PAGAMENTO.
+ *
+ * Existe por dois motivos, e os dois são reais:
+ *
+ *   o engano de hoje    confirmou a linha errada, ou o valor errado. Sem
+ *                       desfazer, a saída seria um lançamento novo para
+ *                       compensar — e o extrato passa a ter duas linhas
+ *                       para um dinheiro que nunca entrou.
+ *
+ *   o passado           as parcelas que ficaram "pagas" quando ANEXAR
+ *                       ainda pagava. Elas estão quitadas sem ninguém do
+ *                       financeiro ter olhado, e sem isto não há como
+ *                       trazê-las de volta para a fila: já estão pagas,
+ *                       então nenhum botão aparece para elas.
+ *
+ * Devolve a parcela para "a conferir" com o comprovante intacto. Fica na
+ * auditoria com quem desfez e por quê — desfazer pagamento é o tipo de
+ * ato que alguém vai querer explicar depois.
+ */
+router.post('/receipts/:id/desfazer', async (req, res) => {
+  const motivo = String(req.body?.motivo || '').trim().slice(0, 300);
+  try {
+    const { data: conta } = await supabase.from('LANCAMENTOS')
+      .select('id, description, amount, paid_amount, status, paid_by, receipt_url')
+      .eq('tenant_id', req.tenantId).eq('id', req.params.id).maybeSingle();
+    if (!conta) return res.status(404).json({ error: 'Conta não encontrada' });
+    if (!(Number(conta.paid_amount) > 0)) {
+      return res.status(400).json({ error: 'Esta conta não tem pagamento para desfazer.' });
+    }
+
+    const quem = req.userProfile?.name || req.user?.email || 'Financeiro';
+    const { data, error } = await supabase.from('LANCAMENTOS').update({
+      paid_amount: 0,
+      status: 'pending',
+      paid_date: null,
+      paid_by: null,
+      paid_at: null,
+      // O comprovante continua lá, e volta para a fila de conferência:
+      // desfazer o dinheiro não apaga o papel que alguém anexou.
+      receipt_status: conta.receipt_url ? 'pendente' : null,
+      notes: [`Pagamento de ${(Number(conta.paid_amount) || 0).toFixed(2)} desfeito por ${quem}`,
+        motivo ? `— ${motivo}` : ''].join(' ').trim().slice(0, 500),
+    }).eq('id', conta.id).eq('tenant_id', req.tenantId).select().single();
+    if (error) throw error;
+
+    audit(req, 'update', 'financial', conta.id, {
+      desfez_pagamento: Number(conta.paid_amount) || 0,
+      era_de: conta.paid_by || '(fluxo antigo)', motivo: motivo || null,
+    });
+    res.json({ ok: true, conta: data, desfeito: Number(conta.paid_amount) || 0 });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
  * A COBRANÇA PELO WHATSAPP.
  *
  * Gera o Pix da conta (copia-e-cola + QR) e monta a mensagem pronta.
