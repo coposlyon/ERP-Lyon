@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, RefreshCw, FileInput, Filter, Search, FileText, X, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Eye, CheckCircle2, Siren, RotateCcw, Wrench, Maximize2, Minimize2, Wallet } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, Filter, Search, X, Loader2, ChevronRight, ChevronLeft, AlertTriangle, Eye, PenLine, CheckCircle2, Siren, RotateCcw, Maximize2, Minimize2, Wallet } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '@/lib/api';
+import EditarPedidoModal from '@/components/UI/EditarPedidoModal';
 import { useAuth } from '@/contexts/AuthContext';
 import ExcluirPedidoModal from '@/components/UI/ExcluirPedidoModal';
 import FichaClienteModal from '@/components/Cliente/FichaClienteModal';
@@ -23,19 +24,6 @@ const dia = iso => { if (!iso) return '\u2014'; try { return format(parseISO(Str
 
 const POR_PAGINA = [10, 25, 50, 100];
 
-// Botão da barra de ferramentas (mantém os atalhos F2..F6 de sempre)
-function TBtn({ icon: Icon, label, sub, onClick, disabled, danger }) {
-  const v = useVend();
-  return (
-    <button onClick={onClick} disabled={disabled} type="button"
-      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-80"
-      style={{ color: danger ? '#f87171' : v.textPrimary }}>
-      <Icon size={15} style={{ color: danger ? '#f87171' : '#60a5fa' }} /> {label}
-      {sub && <span className="text-[10px] font-normal" style={{ color: v.textSubtle }}>{sub}</span>}
-    </button>
-  );
-}
-
 export default function Sales() {
   const v = useVend();
   const [page, setPage] = useState(1);
@@ -51,11 +39,15 @@ export default function Sales() {
   // Relatórios). Os filtros não: filtro escondido é filtro que ninguém
   // usa, e depois se estranha que a pessoa role trezentos pedidos à mão
   // procurando um de agosto.
-  const [showTools, setShowTools] = useState(false);
   const [delTarget, setDelTarget] = useState(null);
   const { isAdmin, isManager } = useAuth();
   // Gestor apaga direto por aqui, confirmando com a propria senha.
   const podeExcluir = isAdmin || isManager;
+  // Editar pede a mesma coisa que excluir, e pela mesma razão: as duas
+  // mexem no valor do pedido. O servidor confere de novo (autorizar()
+  // só aceita gerente ou admin) — isto aqui é só não mostrar um botão
+  // que a pessoa não vai conseguir usar.
+  const podeEditar = isAdmin || isManager;
   const navigate = useNavigate();
   const qc = useQueryClient();
   const searchRef = useRef();
@@ -74,87 +66,54 @@ export default function Sales() {
    * se perdido. A faixa abaixo é a resposta, com o caminho junto.
    */
   /**
-   * O PAGAMENTO SE CONFIRMA SOZINHO?
+   * EDITAR O PEDIDO — o lápis ao lado do olho.
    *
-   * Na Lyon o dinheiro entra ANTES do pedido — paga no balcão, manda o
-   * PIX, combina o prazo — e só então alguém digita a venda. Com isto
-   * ligado, o pedido nasce com o pagamento cumprido e já cai na fila do
-   * estoque, em vez de ficar parado esperando alguém confirmar o que já
-   * aconteceu.
-   *
-   * O interruptor mora AQUI, e não em Configurações, porque quem
-   * convive com a consequência é quem olha esta lista.
+   * A lista não traz os itens de cada pedido (seriam catorze colunas e
+   * mais os itens de cem pedidos por página). Então o lápis BUSCA o
+   * pedido e só então abre o modal: um pedido de cada vez, quando
+   * alguém pede.
    */
-  const { data: configPedidos } = useQuery({
-    queryKey: ['sales-config'],
-    queryFn: () => api.get('/sales/config'),
-  });
-  const autoPagamento = !!configPedidos?.confirmar_pagamento_automatico;
+  const [editando, setEditando] = useState(null);   // o pedido carregado
+  const [abrindoEdicao, setAbrindoEdicao] = useState(null);  // id em voo
 
-  const salvarConfig = useMutation({
-    mutationFn: valor => api.put('/sales/config', { confirmar_pagamento_automatico: valor }),
-    onSuccess: r => {
-      qc.setQueryData(['sales-config'], r);
-      toast.success(r.confirmar_pagamento_automatico
-        ? 'Novos pedidos vão nascer com o pagamento confirmado'
-        : 'Novos pedidos vão esperar a confirmação do pagamento');
-    },
-    onError: e => toast.error(e.error || 'Não consegui salvar'),
-  });
-
-  const { data: fila } = useQuery({
-    queryKey: ['store-payments', 'aguardando_pagamento'],
-    queryFn: () => api.get('/store-payments?status=aguardando_pagamento'),
-    refetchInterval: 60000,
-    retry: false,
-  });
-  const aguardando = fila?.total || 0;
-  const comComprovante = fila?.com_comprovante || 0;
-
-  // O fluxo (label, cor e quem responde por cada etapa) vem do servidor —
-  // a mesma fonte que a carteira do vendedor lê, para as duas telas nunca
-  // discordarem sobre o que é "Aguardando estoque".
-  const { data: statusList = [] } = useQuery({
-    queryKey: ['fluxo-status'],
-    queryFn: () => api.get('/area-vendedor/status'),
-    staleTime: Infinity,
-  });
-  const statusInfo = useMemo(
-    () => Object.fromEntries(statusList.map(s => [s.key, s])),
-    [statusList],
-  );
-
-  const { data, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: ['sales', page, status, search, startDate, endDate, porPagina],
-    queryFn: () => {
-      let url = `/sales?page=${page}&limit=${porPagina}`;
-      if (status) url += `&status=${status}`;
-      if (search) url += `&search=${encodeURIComponent(search)}`;
-      if (startDate) url += `&start_date=${startDate}`;
-      if (endDate) url += `&end_date=${endDate}`;
-      return api.get(url);
-    },
-  });
-
-  const todas = data?.data || [];
-  // Pedido concluído sai da lista por padrão: quem abre a tela quer ver o
-  // que está acontecendo. O botão Finalizados traz o histórico de volta,
-  // que é o caminho da recompra.
-  const rows = finalizados ? todas : todas.filter(r => !ehFinal(r.status));
-  // A SOMA DA PAGINA SAIU. Ela repetia, numa segunda linha, os mesmos
-  // numeros que a coluna ja mostra - e com um pedido na tela dizia
-  // "R$ 550,00" duas vezes, uma embaixo da outra. A contagem de pedidos
-  // continua logo abaixo, na paginacao, que e onde se procura por ela.
-  const totalPaginas = Math.max(1, Math.ceil((data?.total || 0) / porPagina));
-
-
-  function handleSearch(e) { e?.preventDefault?.(); setSearch(searchInput); setPage(1); }
-  function clearFilters() {
-    setSearch(''); setSearchInput(''); setStatus(''); setStartDate(''); setEndDate('');
-    setFinalizados(false); setPage(1);
+  async function abrirEdicao(row) {
+    setAbrindoEdicao(row.id);
+    try {
+      setEditando(await api.get(`/area-vendedor/pedidos/${row.id}`));
+    } catch (err) {
+      toast.error(err.error || 'Não foi possível abrir o pedido para edição');
+    } finally {
+      setAbrindoEdicao(null);
+    }
   }
-  const hasFilters = search || status || startDate || endDate || finalizados;
 
+  const editarPedido = useMutation({
+    mutationFn: ({ alteracoes, remover, novos, motivo, email, senha }) =>
+      api.patch(`/sales/${editando.id}/itens`, {
+        alteracoes, remover, novos, motivo,
+        autorizador_email: email, autorizador_senha: senha,
+      }),
+    onSuccess: r => {
+      setEditando(null);
+      qc.invalidateQueries({ queryKey: ['sales'] });
+      if (r?.diferenca > 0) {
+        // O QUE FALTA FAZER, NA MENSAGEM. Salvar não cobrou ninguém: o
+        // cliente ainda tem de pagar e alguém tem de anexar o
+        // comprovante. Um "salvo com sucesso" seco faria o pedido
+        // parecer resolvido com dinheiro a receber pendurado.
+        toast.success(
+          `Pedido atualizado. Falta cobrar ${fmt(r.diferenca)} do cliente e anexar o comprovante em Parcelas.`,
+          { duration: 9000 },
+        );
+      } else if (r?.credito_do_cliente > 0) {
+        toast(`Pedido atualizado. Sobrou ${fmt(r.credito_do_cliente)} de crédito com o cliente — acerte em Devoluções.`,
+          { icon: '⚠️', duration: 9000 });
+      } else {
+        toast.success('Pedido atualizado.');
+      }
+    },
+    onError: e => toast.error(e.error || 'Não foi possível editar o pedido.'),
+  });
 
   /** Abrir o pedido. É o que o clique na linha faz, e o que F3 repete. */
   function abrirPedido(id) { navigate(`/sales/${id}/detalhe`); }
@@ -231,22 +190,16 @@ export default function Sales() {
             {telaCheia.ativo ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             <span className="hidden sm:inline">{telaCheia.ativo ? 'Sair da tela cheia' : 'Tela cheia'}</span>
           </button>
-          {/* O ESTADO ATUAL É O RÓTULO. Um interruptor que só diz
-              "confirmação automática" obriga a clicar para descobrir se
-              está ligado; este diz o que ACONTECE hoje com o próximo
-              pedido, e o clique inverte. */}
-          <button type="button" onClick={() => salvarConfig.mutate(!autoPagamento)}
-            disabled={salvarConfig.isPending}
-            title={autoPagamento
-              ? 'Hoje o pedido nasce com o pagamento já confirmado e vai direto para o estoque. Clique para passar a exigir a confirmação manual.'
-              : 'Hoje o pedido nasce esperando o financeiro confirmar o pagamento. Clique para confirmar automaticamente.'}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-[0.6rem] text-sm disabled:opacity-50"
-            style={{ background: v.control.background, color: v.textPrimary, border: v.control.border }}>
-            <Wallet size={15} style={{ color: autoPagamento ? '#22c55e' : '#f59e0b' }} />
-            <span className="hidden sm:inline">
-              {autoPagamento ? 'Pagamento automático' : 'Pagamento manual'}
-            </span>
-          </button>
+          {/* O INTERRUPTOR DE PAGAMENTO SAIU DAQUI.
+              Ele ligava e desligava a confirmação automática do
+              pagamento de TODO pedido novo — a política da empresa
+              inteira — num botão do cabeçalho da lista, ao alcance de
+              qualquer um que abrisse Pedidos de Venda. Quem não é do
+              financeiro passava a decidir se o dinheiro precisa ser
+              conferido antes de a fábrica começar.
+              A política continua valendo e continua gravada em
+              EMPRESAS.settings; quem precisa mudá-la usa
+              PUT /sales/config, que é do financeiro. */}
           <button onClick={() => navigate('/sales/new')} className="btn-primary">
             <Plus size={16} /> Novo Pedido
           </button>
@@ -319,31 +272,16 @@ export default function Sales() {
           style={{ background: v.control.background, color: v.textPrimary, border: v.control.border }}>
           <RotateCcw size={15} /> Limpar filtros
         </button>
-
-        <button onClick={() => setShowTools(x => !x)}
-          className="flex items-center gap-2 px-3 py-2.5 rounded-[0.6rem] text-sm"
-          title="Ferramentas do pedido (F2 incluir, F5 atualizar, F6 importar)"
-          style={{ background: v.control.background, color: v.textMuted, border: v.control.border }}>
-          <Wrench size={15} />
-          <ChevronRight size={13} style={{ transform: showTools ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
-        </button>
       </div>
 
-      {/* A CAIXA DE FERRAMENTAS — recolhida por padrão para não competir
-          com a tabela, e com os atalhos de sempre funcionando mesmo
-          fechada: quem usa F2 nunca precisou abrir isto aqui. */}
-      {showTools && (
-        <div style={{ ...v.card, padding: '0.75rem 1rem' }}>
-          <div className="flex items-center gap-1 flex-wrap">
-            <TBtn icon={Plus}      label="Incluir"   sub="F2" onClick={() => navigate('/sales/new')} />
-            <TBtn icon={RefreshCw} label="Atualizar" sub="F5" onClick={() => qc.invalidateQueries(['sales'])} />
-            <span className="w-px h-5 mx-1" style={{ background: v.divider }} />
-            <TBtn icon={FileInput} label="Importar Orçamento" sub="F6" onClick={() => navigate('/quotes')} />
-            <TBtn icon={FileText}  label="Relatórios" onClick={() => window.print()} />
-            <TBtn icon={X}         label="Fechar"    sub="ESC" onClick={() => navigate('/')} />
-          </div>
-        </div>
-      )}
+      {/* A CHAVE DE FERRAMENTAS SAIU DAQUI.
+          Ela abria uma faixa com Incluir, Atualizar, Importar Orçamento,
+          Relatórios e Fechar — cinco botões que repetiam o que já está
+          na tela ("Novo Pedido" no topo) ou o que ninguém procura num
+          menu (F5). Dois cliques para chegar a um atalho de uma tecla.
+          OS ATALHOS CONTINUAM: F2 inclui, F5 atualiza, F6 importa,
+          Ctrl+F busca e ESC fecha — ver o useEffect lá em cima. Eles
+          nunca dependeram deste painel. */}
 
       {/* ── Tabela ────────────────────────────────────────────── */}
       <div style={v.card}>
@@ -510,6 +448,15 @@ export default function Sales() {
                     {/* O mesmo destino do clique na linha. Fica porque a
                         linha inteira ser clicável não é visível, e o olho
                         é o que conta que dá para abrir. */}
+                    {/* O LÁPIS VEM ANTES DO OLHO — é a ação que muda
+                        alguma coisa, e a ordem da esquerda para a
+                        direita é a ordem em que se lê. */}
+                    {podeEditar && (
+                      <Acao titulo="Editar o pedido (pede sua senha)" cor="#f59e0b"
+                        Icon={abrindoEdicao === row.id ? Loader2 : PenLine}
+                        girando={abrindoEdicao === row.id}
+                        onClick={() => abrirEdicao(row)} />
+                    )}
                     <Acao titulo="Abrir o pedido" cor="#3b82f6" Icon={Eye}
                       onClick={() => abrirPedido(row.id)} />
                     {podeExcluir && (
@@ -585,6 +532,7 @@ export default function Sales() {
       <div style={{ ...v.card, padding: '0.85rem 1rem' }}
         className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm">
         <span style={{ color: v.textMuted }}>Legenda de ações:</span>
+        {podeEditar && <Legenda Icon={PenLine} cor="#f59e0b" texto="Editar o pedido" />}
         <Legenda Icon={Eye} cor="#3b82f6" texto="Abrir o pedido" />
       </div>
 
@@ -605,6 +553,15 @@ export default function Sales() {
       <ExcluirPedidoModal pedido={delTarget} modo="proprio"
         onClose={() => setDelTarget(null)}
         onExcluido={() => qc.invalidateQueries(['sales'])} />
+      {/* EDITAR O PEDIDO. Pede a senha na hora, recalcula o total e
+          cobra só a diferença — e diz isso antes, não depois. */}
+      <EditarPedidoModal
+        pedido={editando}
+        salvando={editarPedido.isPending}
+        onClose={() => setEditando(null)}
+        onConfirmar={dados => editarPedido.mutate(dados)}
+      />
+
     </div>
   );
 }
@@ -888,12 +845,12 @@ function Linha({ rotulo, valor }) {
   );
 }
 
-function Acao({ titulo, cor, Icon, onClick }) {
+function Acao({ titulo, cor, Icon, onClick, girando }) {
   return (
-    <button onClick={onClick} title={titulo}
-      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+    <button onClick={onClick} title={titulo} disabled={girando}
+      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 disabled:opacity-60"
       style={{ background: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}>
-      <Icon size={15} />
+      <Icon size={15} className={girando ? 'animate-spin' : undefined} />
     </button>
   );
 }

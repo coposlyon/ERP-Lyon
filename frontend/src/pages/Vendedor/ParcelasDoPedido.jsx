@@ -26,7 +26,7 @@ import toast from 'react-hot-toast';
 const brl = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
 const dataBR = d => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : null);
 
-export default function ParcelasDoPedido({ id, v }) {
+export default function ParcelasDoPedido({ id, v, foraDaFase = false }) {
   const qc = useQueryClient();
   const [alvo, setAlvo] = useState(null);      // parcela em que se está anexando
   const [valor, setValor] = useState('');
@@ -81,6 +81,23 @@ export default function ParcelasDoPedido({ id, v }) {
   }
 
   const parcelas = data?.parcelas || [];
+
+  /**
+   * FORA DA FASE DE PAGAMENTO, SÓ APARECE SE FALTA DINHEIRO.
+   *
+   * A lista morava só na fase do pagamento, e fazia sentido: nas outras
+   * doze telas o dinheiro não é a pergunta.
+   *
+   * Só que EDITAR O PEDIDO cria uma parcela nova depois dessa fase —
+   * acrescentou 20 copos, entra a diferença a cobrar. O pedido já
+   * estava na produção, a lista não aparecia, e não havia onde anexar o
+   * comprovante do que o cliente acabou de pagar. O saldo ficava aberto
+   * sem tela para fechá-lo.
+   *
+   * Agora, passada a fase, ela volta sozinha quando há saldo — e some
+   * de novo assim que o comprovante entra.
+   */
+  if (foraDaFase && !(Number(data?.em_aberto) > 0)) return null;
 
   return (
     <div className="space-y-2">

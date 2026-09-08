@@ -249,9 +249,13 @@ export default function PainelFluxo({ v, id, fluxo }) {
         )}
 
         {/* AS PARCELAS, com o comprovante de cada uma.
-            Só na fase de pagamento: nas outras o dinheiro não é a
-            pergunta, e a lista viraria ruído em treze telas. */}
-        {naFaseDoPagamento && <ParcelasDoPedido id={id} v={v} />}
+            Na fase de pagamento, sempre — é ela que destrava a etapa.
+            Fora dela, só quando sobra saldo a receber: editar o pedido
+            cria uma parcela nova DEPOIS dessa fase (acrescentou 20
+            copos, entra a diferença), e sem isto não havia onde anexar
+            o comprovante dessa cobrança. Quem decide é a própria peça,
+            que já sabe quanto está em aberto. */}
+        <ParcelasDoPedido id={id} v={v} foraDaFase={!naFaseDoPagamento} />
 
         {/* ── O que fazer ─────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2">

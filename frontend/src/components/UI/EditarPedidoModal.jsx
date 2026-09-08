@@ -23,7 +23,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Loader2, ShieldCheck, Plus, Trash2, Undo2, Search,
-  TrendingUp, TrendingDown, Minus,
+  TrendingUp, TrendingDown, Minus, TriangleAlert,
 } from 'lucide-react';
 import Modal from '@/components/UI/Modal';
 import api from '@/lib/api';
@@ -128,6 +128,26 @@ export default function EditarPedidoModal({ pedido, onClose, onConfirmar, salvan
     <Modal isOpen onClose={() => !salvando && onClose?.()}
       title={`Editar o pedido ${pedido.codigo || ''}`} size="lg" closeOnBackdrop={false}>
       <div className="space-y-4">
+
+        {/* O AVISO VEM ANTES, E NÃO DEPOIS.
+            Quem abre esta tela costuma estar com o cliente no telefone.
+            Descobrir depois de salvar que ainda falta cobrar e anexar
+            comprovante é descobrir tarde: a ligação já acabou. */}
+        <div className="flex gap-2.5 bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <TriangleAlert size={18} className="text-amber-500 mt-0.5 shrink-0" />
+          <div className="text-sm text-gray-700 space-y-1">
+            <p><b>Editar muda o valor que o cliente deve.</b></p>
+            <p>
+              Acrescentou 20 copos? O total é recalculado e a <b>diferença</b> — só ela —
+              entra como uma parcela nova no pedido. O que já foi pago fica onde está.
+            </p>
+            <p>
+              Depois de salvar, <b>o cliente paga essa diferença e você anexa o comprovante
+              dela</b> em Parcelas, dentro do pedido. Enquanto o comprovante não entrar, o
+              pedido fica com saldo em aberto.
+            </p>
+          </div>
+        </div>
 
         {/* ── Os itens que já estão no pedido ─────────────────── */}
         <div className="rounded-xl border border-gray-200 overflow-hidden">
@@ -259,9 +279,9 @@ export default function EditarPedidoModal({ pedido, onClose, onConfirmar, salvan
         </div>
 
         {conta.diferenca > 0 && (
-          <p className="text-[12px] text-gray-500">
-            Entra <b>{brl(conta.diferenca)}</b> no contas a receber deste pedido. O que já
-            foi pago fica como está — só a diferença é cobrada.
+          <p className="text-[12px] rounded-xl px-3 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800">
+            <b>{brl(conta.diferenca)}</b> a cobrar. Vira uma parcela nova deste pedido —
+            cobre do cliente e anexe o comprovante em <b>Parcelas</b>, na tela do pedido.
           </p>
         )}
         {conta.diferenca < 0 && (
