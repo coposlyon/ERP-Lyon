@@ -24,7 +24,24 @@ router.post('/login', async (req, res) => {
 
     const { data: userProfile } = await supabase
       .from('USUARIOS')
-      .select('*, EMPRESAS(*)')
+      // A RELAÇÃO VAI EXPLÍCITA: `EMPRESAS!USUARIOS_tenant_id_fkey`.
+      //
+      // `EMPRESAS(*)` sozinho parou de funcionar e derrubou TODA
+      // requisição autenticada do sistema com "Perfil de usuário não
+      // encontrado" — as telas de Clientes e Produtos mostrando zero
+      // cadastros como se os dados tivessem sumido.
+      //
+      // O motivo: o PostgREST monta o caminho entre duas tabelas pelas
+      // chaves estrangeiras, e qualquer tabela que aponte para USUARIOS
+      // E para EMPRESAS ao mesmo tempo é lida como tabela de ligação
+      // entre as duas. VENDAS, COMPRAS, ORCAMENTOS e outras cinco já
+      // eram; as duas do chat (migração 110) entraram na conta e, ao
+      // recarregar o cache de schema, ele passou a recusar: "more than
+      // one relationship was found".
+      //
+      // Nomear a chave encerra a dúvida — e continua encerrando no dia
+      // em que a nona tabela ligar as duas.
+      .select('*, EMPRESAS!USUARIOS_tenant_id_fkey(*)')
       .eq('id', data.user.id)
       .single();
 
