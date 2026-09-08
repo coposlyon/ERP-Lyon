@@ -473,7 +473,31 @@ router.get('/categories/list', async (req, res) => {
         if (c.id < e.id) e.id = c.id; // mantém o id mais antigo (canônico)
       }
     }
-    const result = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    /**
+     * CATEGORIA SEM PRODUTO NÃO É DEVOLVIDA.
+     *
+     * "Se tem 0 produtos, a categoria não existe" — e é literalmente
+     * isso aqui. Categoria vazia é resíduo: sobra quando os produtos
+     * dela são apagados, e a partir daí só aparece em seletor, levando
+     * quem escolhe a uma tela sem nenhum resultado.
+     *
+     * DÁ PARA FILTRAR NA FONTE porque ninguém cria categoria à mão: o
+     * cadastro de produto mostra a categoria como somente-leitura ("vem
+     * da importação e não é editável aqui"). Quem cria é a importação
+     * de produtos, e ela cria a categoria JUNTO com o produto — então
+     * uma categoria nunca precisa existir antes de ter o primeiro.
+     *
+     * A LINHA CONTINUA NO BANCO. Some da lista, não é apagada: importar
+     * um produto naquela categoria de novo a traz de volta inteira,
+     * com o mesmo id e o que estiver amarrado nele.
+     *
+     * `?incluir_vazias=1` devolve todas — é a saída para quem precisar
+     * conferir o que sobrou, sem ter de ir ao banco.
+     */
+    const todas = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    const result = req.query.incluir_vazias === '1'
+      ? todas
+      : todas.filter(c => c.product_count > 0);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });

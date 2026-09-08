@@ -343,7 +343,11 @@ router.get('/categorias', async (req, res) => {
     const media = xs => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
     const r2 = v => Math.round(v * 100) / 100;
 
-    res.json((cats || []).map(c => {
+    // Categoria sem produto não entra: não há a quem aplicar o preço, e
+    // escolhê-la só levaria a uma conta que não vale para ninguém.
+    const comProduto = (cats || []).filter(c => (porCat.get(c.id) || []).length > 0);
+
+    res.json(comProduto.map(c => {
       const lista = porCat.get(c.id) || [];
       const precos = lista.map(p => Number(p.sale_price) || 0).filter(v => v > 0);
       const custos = lista.map(p => Number(p.cost_price) || 0).filter(v => v > 0);
