@@ -42,11 +42,11 @@
 // responde por ele.
 // ============================================================
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Calculator, Save, Loader2, Printer, AlertCircle, CheckCircle2,
-  Package, Tag, ArrowRight, Layers,
+  Package, Tag, ArrowRight, Layers, Plus, Trash2, TrendingDown, Wand2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -61,9 +61,18 @@ const temValor = v => v !== '' && v != null && numInput(v) !== 0;
 
 export default function PriceFormation() {
   const qc = useQueryClient();
-  const [categoryId, setCategoryId] = useState('');
+  // `?categoria=<id>` abre a ficha já na categoria certa. É por onde a
+  // janela do modelo do produto manda quem clicou em "onde mudo isso" —
+  // cair na tela com o seletor vazio seria mandar a pessoa procurar de
+  // novo o que ela acabou de dizer que queria.
+  const [params] = useSearchParams();
+  const [categoryId, setCategoryId] = useState(params.get('categoria') || '');
   const [sheet, setSheet] = useState(null);
   const [previa, setPrevia] = useState(null);   // resultado do "simular" antes de aplicar
+  // O desconto por volume: linhas em edição (texto) e o mínimo do pedido.
+  // Elas viram `blocks.faixas` ao salvar e vão nos produtos ao aplicar.
+  const [linhas, setLinhas] = useState([]);
+  const [minimo, setMinimo] = useState('');
 
   const { data: fixed } = useQuery({
     queryKey: ['pricing-fixed-summary'],
@@ -96,8 +105,33 @@ export default function PriceFormation() {
   const carregada = useRef(null);
   useEffect(() => {
     if (!fixed) return;
+    // Categoria vinda da URL chega ANTES da lista de categorias. Marcar
+    // como carregada agora seria carregar a ficha sem `cat` — sem custo
+    // do cadastro e sem as faixas de hoje —, e o efeito não roda de
+    // novo, porque a ref já o teria dado por feito.
+    if (categoryId && !categorias.length) return;
     if (carregada.current === categoryId) return;
     carregada.current = categoryId;
+
+    /**
+     * AS FAIXAS COMEÇAM DE ONDE ELAS ESTÃO HOJE.
+     *
+     * Duas fontes, nesta ordem: a ficha (se já foi salva com faixas) e,
+     * na falta dela, o que os PRODUTOS da categoria já têm gravado —
+     * porque este bloco veio de outra tela, e as faixas escritas lá
+     * continuam valendo. Abrir a ficha em branco faria o primeiro
+     * "Aplicar" apagar, sem avisar, o desconto que já estava no ar.
+     */
+    const daFicha = fichas.find(f => f.category_id === categoryId)?.blocks?.faixas;
+    const fonte = (daFicha?.length ? daFicha : cat?.faixas) || [];
+    setLinhas(fonte
+      .slice()
+      .sort((a, b) => (Number(a.min_qty) || 0) - (Number(b.min_qty) || 0))
+      .map(t => ({ min: String(Number(t.min_qty) || ''), preco: String(Number(t.price) || '') })));
+    setMinimo(String(
+      fichas.find(f => f.category_id === categoryId)?.blocks?.min_pedido
+      || cat?.min_pedido || '',
+    ));
     const base = {
       overhead_unit: fixed.overhead_unit,
       tax_regime: fixed.tax_regime,
@@ -131,14 +165,35 @@ export default function PriceFormation() {
       });
     }
     setPrevia(null);
-  }, [categoryId, fixed, fichas, cat]);   // guardado pela ref acima
+  }, [categoryId, fixed, fichas, cat, categorias]);   // guardado pela ref acima
 
   const calc = useMemo(() => (sheet ? computeSheet(sheet) : null), [sheet]);
+
+  /**
+   * As linhas digitadas viram faixas: só as completas, em ordem, e o
+   * fim de cada uma sai do começo da seguinte — do lado do servidor,
+   * que é quem grava. Aqui só se manda "a partir de" e "por quanto".
+   */
+  const faixas = useMemo(() => linhas
+    .map(l => ({
+      min_qty: parseInt(l.min, 10),
+      price: Number(String(l.preco).replace(',', '.')),
+    }))
+    .filter(t => Number.isFinite(t.min_qty) && t.min_qty > 0
+              && Number.isFinite(t.price) && t.price >= 0)
+    .sort((a, b) => a.min_qty - b.min_qty), [linhas]);
+
+  const faixaRepetida = new Set(faixas.map(f => f.min_qty)).size !== faixas.length;
+  const minPedido = Math.max(1, parseInt(minimo, 10) || 1);
+  const faixaAbaixoDoMinimo = !!faixas.length && faixas[0].min_qty < minPedido;
 
   const salvar = useMutation({
     mutationFn: () => {
       const corpo = {
         ...sheet,
+        // A ficha guarda o desconto por volume junto da conta que o
+        // justifica: é o mesmo lote diluindo tela, tinta e frete.
+        blocks: { ...sheet.blocks, faixas, min_pedido: minPedido },
         category_id: categoryId,
         name: cat?.name || sheet.name,
         category: cat?.name || '',
@@ -156,25 +211,35 @@ export default function PriceFormation() {
     onError: e => toast.error(e.error || 'Não foi possível salvar'),
   });
 
+  // O preço de tabela E o desconto por volume vão no mesmo pedido: são
+  // a mesma decisão, e aplicá-los em dois cliques deixaria a categoria
+  // com o preço novo e a faixa velha no intervalo entre um e outro.
+  const corpoAplicar = () => ({
+    category_id: categoryId,
+    price: calc.price_ideal,
+    price_tiers: faixas,
+    min_order_qty: minPedido,
+  });
+
   const simular = useMutation({
-    mutationFn: () => api.post('/pricing/aplicar-categoria', {
-      category_id: categoryId, price: calc.price_ideal, simular: true,
-    }),
+    mutationFn: () => api.post('/pricing/aplicar-categoria', { ...corpoAplicar(), simular: true }),
     onSuccess: setPrevia,
     onError: e => toast.error(e.error || 'Não foi possível simular'),
   });
 
   const aplicar = useMutation({
-    mutationFn: () => api.post('/pricing/aplicar-categoria', {
-      category_id: categoryId, price: calc.price_ideal,
-    }),
+    mutationFn: () => api.post('/pricing/aplicar-categoria', corpoAplicar()),
     onSuccess: r => {
       setPrevia(null);
       qc.invalidateQueries({ queryKey: ['pricing-categorias'] });
       qc.invalidateQueries({ queryKey: ['products'] });
-      toast.success(r.alterados
+      const doPreco = r.alterados
         ? `${r.alterados} produto(s) de ${r.categoria} agora vendem a ${fmtBRL(r.preco)}`
-        : `Nenhum produto mudou — ${r.categoria} já estava a ${fmtBRL(r.preco)}`);
+        : `Nenhum produto mudou de preço — ${r.categoria} já estava a ${fmtBRL(r.preco)}`;
+      const daFaixa = r.faixas_alteradas
+        ? ` · ${r.faixas?.length ? `${r.faixas.length} faixa(s) de quantidade aplicada(s)` : 'faixas removidas'}`
+        : '';
+      toast.success(doPreco + daFaixa);
     },
     onError: e => toast.error(e.error || 'Não foi possível aplicar'),
   });
@@ -192,6 +257,30 @@ export default function PriceFormation() {
     setSheet(s => ({ ...s, blocks: { ...s.blocks, tintas: [{ label: 'Tinta', amount: valor }] } }));
     setPrevia(null);
   };
+
+  // Mexeu na faixa, a prévia deixa de valer: ela foi calculada com os
+  // números de antes, e um "ver o que vai mudar" desatualizado é pior
+  // que nenhum.
+  const mudarLinha = (i, k, v) => {
+    setLinhas(l => l.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+    setPrevia(null);
+  };
+  const tirarLinha = i => { setLinhas(l => l.filter((_, j) => j !== i)); setPrevia(null); };
+  const somarLinha = () => { setLinhas(l => [...l, { min: '', preco: '' }]); setPrevia(null); };
+
+  /**
+   * O PREÇO QUE A PRÓPRIA CONTA DÁ PARA AQUELA QUANTIDADE.
+   *
+   * É por isso que este bloco mora AQUI e não numa tela de cadastro: a
+   * ficha já sabe que tela, tinta e frete são divididos pelo lote — um
+   * pedido de 500 dilui a mesma tela por 500 peças. Dá para descobrir
+   * quanto o copo custa em cada faixa refazendo a conta com aquele
+   * lote, em vez de chutar o desconto.
+   *
+   * É sugestão, não imposição: preenche o campo e quem decide o preço
+   * continua sendo quem responde por ele.
+   */
+  const precoPelaConta = qtd => computeSheet({ ...sheet, calc_quantity: qtd }).price_ideal;
 
   const b = sheet.blocks;
   const lote = Math.max(1, parseInt(sheet.calc_quantity) || 1);
@@ -352,6 +441,99 @@ export default function PriceFormation() {
                   </p>
                 </div>
               </Bloco>
+
+              {/* ── 4. O desconto por volume ──────────────────────
+                  ELE MOROU NA TELA DO MODELO DO PRODUTO, e ali era uma
+                  segunda conta em outro lugar: o preço de tabela saía
+                  daqui e o "de 100 para cima sai a tanto" saía de lá,
+                  sem nenhuma das duas telas saber da outra. Preço é uma
+                  pergunta só, e agora tem uma porta só.
+
+                  E aqui ele ganha o que não tinha lá: a conta que o
+                  justifica. A ficha sabe que tela, tinta e frete são
+                  divididos pelo lote — então sabe dizer quanto o copo
+                  custa em 500 e em 1000, em vez de deixar o desconto no
+                  chute. */}
+              <Bloco n={4} titulo="Quanto o preço cai quando o pedido é grande?"
+                ajuda="O desconto por volume desta categoria. Sem faixa, todo pedido sai pelo preço de tabela."
+                direita={<span className="text-[11px] text-gray-400">vai junto no “Aplicar”</span>}>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="label">Mínimo do pedido (un)</label>
+                    <input className="input w-40" type="number" min={1} value={minimo}
+                      placeholder="10"
+                      onChange={e => { setMinimo(e.target.value); setPrevia(null); }} />
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      Abaixo disso o catálogo não deixa fechar — ele sobe a quantidade para o mínimo.
+                    </p>
+                  </div>
+
+                  {cat?.faixas_divergem && (
+                    <p className="text-[11.5px] text-amber-600 flex items-start gap-1.5">
+                      <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                      Hoje os produtos desta categoria têm faixas diferentes entre si. Aplicar iguala todos.
+                    </p>
+                  )}
+
+                  <div className="space-y-2">
+                    {linhas.map((l, i) => {
+                      const qtd = parseInt(l.min, 10);
+                      const sugestao = Number.isFinite(qtd) && qtd > 0 ? precoPelaConta(qtd) : null;
+                      return (
+                        <div key={i} className="flex flex-wrap items-end gap-2">
+                          <div className="w-36">
+                            <label className="label">A partir de</label>
+                            <div className="relative">
+                              <input className="input pr-8" type="number" min={1} value={l.min}
+                                placeholder="500" onChange={e => mudarLinha(i, 'min', e.target.value)} />
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">un</span>
+                            </div>
+                          </div>
+                          <div className="w-36">
+                            <label className="label">Cada peça sai a</label>
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">R$</span>
+                              <input className="input pl-8" type="number" step="0.01" min={0} value={l.preco}
+                                placeholder="1,80" onChange={e => mudarLinha(i, 'preco', e.target.value)} />
+                            </div>
+                          </div>
+                          {sugestao != null && (
+                            <button type="button" title={`A conta desta ficha, refeita para um lote de ${fmtQty(qtd)} peças`}
+                              onClick={() => mudarLinha(i, 'preco', sugestao.toFixed(2))}
+                              className="btn-secondary btn-sm mb-0.5">
+                              <Wand2 size={13} /> usar a conta ({fmtBRL(sugestao)})
+                            </button>
+                          )}
+                          <button type="button" onClick={() => tirarLinha(i)}
+                            className="btn-secondary btn-sm mb-0.5" title="Tirar esta faixa">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <button type="button" onClick={somarLinha} className="btn-secondary btn-sm">
+                      <Plus size={14} /> {linhas.length ? 'Mais uma faixa' : 'Criar uma faixa'}
+                    </button>
+                  </div>
+
+                  {faixaRepetida && (
+                    <p className="text-[11.5px] text-red-600 flex items-start gap-1.5">
+                      <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                      Duas faixas começam na mesma quantidade — são dois preços para o mesmo pedido.
+                    </p>
+                  )}
+                  {faixaAbaixoDoMinimo && (
+                    <p className="text-[11.5px] text-red-600 flex items-start gap-1.5">
+                      <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                      A primeira faixa começa em {faixas[0].min_qty} un, abaixo do mínimo do pedido
+                      ({minPedido} un) — ela nunca seria alcançada.
+                    </p>
+                  )}
+
+                  <ComoFicaNoCatalogo faixas={faixas} minPedido={minPedido} tabela={calc.price_ideal} />
+                </div>
+              </Bloco>
             </>
           )}
         </div>
@@ -363,6 +545,8 @@ export default function PriceFormation() {
           {categoryId && temMateria && (
             <AplicarNaCategoria
               cat={cat} preco={calc.price_ideal} previa={previa}
+              faixas={faixas} minPedido={minPedido}
+              impedido={faixaRepetida || faixaAbaixoDoMinimo}
               simulando={simular.isPending} aplicando={aplicar.isPending}
               onSimular={() => simular.mutate()}
               onAplicar={() => aplicar.mutate()}
@@ -490,6 +674,56 @@ function Preco({ calc, cat, lote, temMateria }) {
   );
 }
 
+/**
+ * O QUE O CLIENTE VAI VER, ESCRITO POR EXTENSO.
+ *
+ * Os campos acima são o que se digita; isto é o que eles SIGNIFICAM. É
+ * aqui que um "500 mais caro que 200" salta aos olhos — antes de ir
+ * para o catálogo, e não depois de um cliente perguntar.
+ */
+function ComoFicaNoCatalogo({ faixas, minPedido, tabela }) {
+  const fora = faixas.some((f, i) => i > 0 && f.price > faixas[i - 1].price);
+  return (
+    <div className="rounded-xl border border-gray-200 p-3">
+      <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+        <TrendingDown size={13} className="text-primary-600" /> Como vai ficar no catálogo
+      </p>
+      {!faixas.length ? (
+        <p className="text-xs text-gray-500">
+          Sem faixa, todo pedido sai por <b>{fmtBRL(tabela)}</b> a peça (o preço de tabela desta ficha).
+        </p>
+      ) : (
+        <ul className="text-xs text-gray-600 space-y-1">
+          {minPedido < faixas[0].min_qty && (
+            <li>
+              De <b>{minPedido}</b> a <b>{faixas[0].min_qty - 1}</b> un — <b>{fmtBRL(tabela)}</b> cada
+              <span className="text-gray-400"> (preço de tabela)</span>
+            </li>
+          )}
+          {faixas.map((f, i) => {
+            const ate = i + 1 < faixas.length ? faixas[i + 1].min_qty - 1 : null;
+            return (
+              <li key={f.min_qty}>
+                {ate == null
+                  ? <>De <b>{f.min_qty}</b> un para cima — </>
+                  : <>De <b>{f.min_qty}</b> a <b>{ate}</b> un — </>}
+                <b>{fmtBRL(f.price)}</b> cada
+                <span className="text-gray-400"> ({fmtBRL(f.price * f.min_qty)} em {f.min_qty} un)</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {fora && (
+        <p className="text-[11.5px] text-amber-600 mt-2 flex items-start gap-1.5">
+          <AlertCircle size={13} className="mt-0.5 shrink-0" />
+          Uma faixa maior está mais cara que a anterior — o cliente pagaria mais por comprar mais.
+        </p>
+      )}
+    </div>
+  );
+}
+
 const Faixa = ({ rot, v }) => (
   <div className="rounded-lg border border-gray-200 p-2 text-center">
     <p className="text-[10px] text-gray-500">{rot}</p>
@@ -505,8 +739,22 @@ const Faixa = ({ rot, v }) => (
  * dezenas de produtos sem ver o de/para antes é o tipo de clique que só
  * se descobre errado quando o cliente reclama da nota.
  */
-function AplicarNaCategoria({ cat, preco, previa, simulando, aplicando, onSimular, onAplicar, onCancelar }) {
+function AplicarNaCategoria({
+  cat, preco, previa, faixas = [], minPedido, impedido,
+  simulando, aplicando, onSimular, onAplicar, onCancelar,
+}) {
   if (!cat) return null;
+
+  // O CLIQUE MEXE EM DUAS COISAS, e as duas são ditas antes.
+  const oQueVai = (
+    <p className="text-[11.5px] text-gray-500 mt-1">
+      {faixas.length
+        ? <>Junto vão <b>{faixas.length}</b> faixa{faixas.length !== 1 ? 's' : ''} de quantidade
+            (a partir de {faixas[0].min_qty} un) e o mínimo de <b>{minPedido}</b> un por pedido.</>
+        : <>Sem faixas de quantidade: todo pedido sai por este preço, com mínimo
+            de <b>{minPedido}</b> un.</>}
+    </p>
+  );
 
   if (!previa) {
     return (
@@ -515,7 +763,13 @@ function AplicarNaCategoria({ cat, preco, previa, simulando, aplicando, onSimula
           Pôr <b>{fmtBRL(preco)}</b> em todos os <b>{cat.produtos}</b> produto
           {cat.produtos !== 1 ? 's' : ''} de <b>{cat.name}</b>.
         </p>
-        <button onClick={onSimular} disabled={simulando || !cat.produtos}
+        {oQueVai}
+        {impedido && (
+          <p className="text-[11.5px] text-red-600 mt-2">
+            Corrija as faixas acima antes de aplicar.
+          </p>
+        )}
+        <button onClick={onSimular} disabled={simulando || !cat.produtos || impedido}
           className="btn-secondary text-sm w-full justify-center mt-3 disabled:opacity-45">
           {simulando ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
           Ver o que vai mudar
@@ -524,13 +778,24 @@ function AplicarNaCategoria({ cat, preco, previa, simulando, aplicando, onSimula
     );
   }
 
+  // Faixa que muda sem preço que muda é motivo suficiente para aplicar:
+  // a categoria pode já estar no preço certo e sem desconto nenhum.
+  const mexeEmAlgo = previa.alterados > 0 || previa.faixas_alteradas > 0;
+
   return (
     <div className="card p-4">
       <p className="text-[13px] font-semibold text-gray-800">
         {previa.alterados === 0
-          ? `Nada muda — os ${previa.produtos} produtos já estão a ${fmtBRL(previa.preco)}.`
+          ? `Nenhum preço muda — os ${previa.produtos} produtos já estão a ${fmtBRL(previa.preco)}.`
           : `${previa.alterados} de ${previa.produtos} produtos mudam de preço.`}
       </p>
+      {previa.faixas_alteradas > 0 && (
+        <p className="text-[12px] text-gray-600 mt-1">
+          {previa.faixas?.length
+            ? <><b>{previa.faixas_alteradas}</b> produto(s) recebem as {previa.faixas.length} faixa(s) de quantidade.</>
+            : <><b>{previa.faixas_alteradas}</b> produto(s) ficam <b>sem</b> faixa de quantidade.</>}
+        </p>
+      )}
 
       {previa.alterados > 0 && (
         <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
@@ -546,7 +811,7 @@ function AplicarNaCategoria({ cat, preco, previa, simulando, aplicando, onSimula
 
       <div className="flex gap-2 mt-3">
         <button onClick={onCancelar} className="btn-secondary text-sm flex-1 justify-center">Cancelar</button>
-        <button onClick={onAplicar} disabled={aplicando || previa.alterados === 0}
+        <button onClick={onAplicar} disabled={aplicando || !mexeEmAlgo}
           className="btn-primary text-sm flex-1 justify-center disabled:opacity-45">
           {aplicando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
           Aplicar

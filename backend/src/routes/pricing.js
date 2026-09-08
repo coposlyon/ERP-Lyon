@@ -327,7 +327,8 @@ router.get('/categorias', async (req, res) => {
   try {
     const [{ data: cats, error: e1 }, { data: prods, error: e2 }] = await Promise.all([
       supabase.from('CATEGORIAS').select('id, name').eq('tenant_id', req.tenantId).order('name'),
-      supabase.from('PRODUTOS').select('id, category_id, sale_price, cost_price, is_active')
+      supabase.from('PRODUTOS')
+        .select('id, category_id, sale_price, cost_price, is_active, price_tiers, min_order_qty')
         .eq('tenant_id', req.tenantId).eq('is_active', true).limit(5000),
     ]);
     if (e1) throw e1;
@@ -366,6 +367,23 @@ router.get('/categorias', async (req, res) => {
         // O custo do cadastro é um bom chute inicial para a matéria-prima:
         // é o que se paga pelo copo cru. A tela oferece, não impõe.
         custo_medio: r2(media(custos)),
+        // AS FAIXAS QUE JÁ VALEM HOJE — o ponto de partida do bloco de
+        // desconto por volume na ficha. Elas foram escritas antes, na
+        // tela do modelo, e recomeçar do zero faria a ficha apagar sem
+        // querer o que já estava no ar.
+        //
+        // `divergem` é a verdade quando os produtos da categoria não
+        // concordam entre si: mostrar uma das listas calado seria
+        // esconder que as outras existem.
+        ...(() => {
+          const listas = lista.map(p => JSON.stringify(p.price_tiers || []));
+          const minimos = lista.map(p => Number(p.min_order_qty) || 0).filter(v => v > 0);
+          return {
+            faixas: lista.find(p => (p.price_tiers || []).length)?.price_tiers || [],
+            faixas_divergem: new Set(listas).size > 1,
+            min_pedido: minimos.length ? Math.max(...minimos) : 0,
+          };
+        })(),
       };
     }));
   } catch (err) {
@@ -382,6 +400,46 @@ router.get('/categorias', async (req, res) => {
  * de alguém confirmar. Sem isso, a única forma de saber o tamanho da
  * mudança é fazê-la.
  */
+/**
+ * AS FAIXAS DE QUANTIDADE, ARRUMADAS PELO SERVIDOR.
+ *
+ * A tela pergunta duas coisas por linha — "a partir de quantos" e "por
+ * quanto" — e o FIM de cada faixa é calculado do começo da seguinte.
+ * Pedir as duas pontas à mão é como nascem faixas que se sobrepõem
+ * (100–200 e 150–300) e um preço que depende da ordem em que as linhas
+ * foram lidas.
+ *
+ * Duas faixas começando na mesma quantidade é recusa, e não "a última
+ * vence": são dois preços para o mesmo pedido, e escolher um calado é
+ * escolher errado metade das vezes.
+ *
+ * Lista vazia é uma ordem legítima — significa TIRAR as faixas e voltar
+ * a vender tudo pelo preço de tabela.
+ */
+function normalizarFaixas(lista) {
+  const limpas = (Array.isArray(lista) ? lista : [])
+    .map(t => ({
+      min: parseInt(t?.min_qty ?? t?.min, 10),
+      price: Number(String(t?.price ?? '').toString().replace(',', '.')),
+    }))
+    .filter(t => Number.isFinite(t.min) && t.min > 0 && Number.isFinite(t.price) && t.price >= 0)
+    .sort((a, b) => a.min - b.min);
+
+  if (new Set(limpas.map(t => t.min)).size !== limpas.length) {
+    return { erro: 'Duas faixas começam na mesma quantidade.' };
+  }
+  return {
+    faixas: limpas.map((t, i) => ({
+      min_qty: t.min,
+      max_qty: i + 1 < limpas.length ? limpas[i + 1].min - 1 : null,
+      price: Math.round(t.price * 100) / 100,
+    })),
+  };
+}
+
+/** Duas listas de faixas são a mesma coisa? (ordem já normalizada) */
+const mesmasFaixas = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
+
 router.post('/aplicar-categoria', async (req, res) => {
   const categoryId = String(req.body?.category_id || '').trim();
   const preco = Number(req.body?.price);
@@ -392,13 +450,45 @@ router.post('/aplicar-categoria', async (req, res) => {
     return res.status(400).json({ error: 'O preço tem de ser maior que zero.' });
   }
 
+  /**
+   * O DESCONTO POR VOLUME VEM JUNTO — quando a tela mandar.
+   *
+   * Ele morava na tela do modelo do produto, e ali era outra conta em
+   * outro lugar: o preço de tabela saía daqui, e o "de 100 para cima
+   * sai a tanto" saía de lá, sem nenhuma das duas telas saber da outra.
+   * Preço é uma pergunta só — e por isso as faixas passaram a ser
+   * escritas na mesma ficha, e aplicadas no mesmo clique.
+   *
+   * `undefined` significa "não mexa nas faixas" (chamada antiga, ou
+   * quem só quer trocar o preço de tabela). Lista vazia significa
+   * "tire as faixas". Os dois casos existem, e são diferentes.
+   */
+  const mexeFaixa = req.body?.price_tiers !== undefined;
+  const { faixas, erro: erroFaixa } = mexeFaixa
+    ? normalizarFaixas(req.body.price_tiers)
+    : { faixas: null };
+  if (erroFaixa) return res.status(400).json({ error: erroFaixa });
+
+  const minimo = req.body?.min_order_qty === undefined
+    ? null
+    : Math.max(1, parseInt(req.body.min_order_qty, 10) || 1);
+
+  // Faixa que começa abaixo do mínimo do pedido nunca é alcançada: o
+  // catálogo já sobe a quantidade para o mínimo antes de procurar a
+  // faixa. Recusar aqui é mais honesto que gravar uma linha morta.
+  if (faixas?.length && minimo && faixas[0].min_qty < minimo) {
+    return res.status(400).json({
+      error: `A primeira faixa começa em ${faixas[0].min_qty} un, abaixo do mínimo do pedido (${minimo} un).`,
+    });
+  }
+
   try {
     const { data: cat } = await supabase.from('CATEGORIAS')
       .select('id, name').eq('id', categoryId).eq('tenant_id', req.tenantId).maybeSingle();
     if (!cat) return res.status(404).json({ error: 'Categoria não encontrada.' });
 
     const { data: prods, error } = await supabase.from('PRODUTOS')
-      .select('id, code, name, sale_price')
+      .select('id, code, name, sale_price, price_tiers, min_order_qty')
       .eq('tenant_id', req.tenantId).eq('category_id', categoryId).eq('is_active', true)
       .order('name').limit(5000);
     if (error) throw error;
@@ -408,29 +498,47 @@ router.post('/aplicar-categoria', async (req, res) => {
       id: p.id, code: p.code, name: p.name,
       de: Math.round((Number(p.sale_price) || 0) * 100) / 100,
       para: novo,
+      faixa_muda: mexeFaixa && !mesmasFaixas(p.price_tiers, faixas),
+      minimo_muda: minimo != null && (Number(p.min_order_qty) || 0) !== minimo,
     }));
     // Produto que já está no preço não entra na conta do que muda: dizer
     // "35 produtos alterados" quando 12 ficaram iguais é inflar o
     // resultado de um botão que mexe em preço.
     const mudam = alvo.filter(x => x.de !== x.para);
+    const mudamFaixa = alvo.filter(x => x.faixa_muda || x.minimo_muda);
+    // O que faz o botão valer a pena apertar: preço OU faixa.
+    const mexeEmAlgo = mudam.length > 0 || mudamFaixa.length > 0;
+
+    const resumoFaixa = {
+      faixas: faixas || null,
+      min_order_qty: minimo,
+      faixas_alteradas: mudamFaixa.length,
+    };
 
     if (simular) {
       return res.json({
         simulado: true, categoria: cat.name,
         produtos: alvo.length, alterados: mudam.length,
         preco: novo, itens: mudam.slice(0, 200),
+        ...resumoFaixa,
       });
     }
 
-    if (!mudam.length) {
-      return res.json({ ok: true, categoria: cat.name, produtos: alvo.length, alterados: 0, preco: novo });
+    if (!mexeEmAlgo) {
+      return res.json({
+        ok: true, categoria: cat.name, produtos: alvo.length, alterados: 0, preco: novo, ...resumoFaixa,
+      });
     }
 
     // UM UPDATE PARA TODOS, e não um por produto: são dezenas de
     // linhas, e o meio do caminho de um laço que falha deixa metade da
     // categoria num preço e metade no outro.
+    const patch = { sale_price: novo, updated_at: new Date().toISOString() };
+    if (mexeFaixa) patch.price_tiers = faixas;
+    if (minimo != null) patch.min_order_qty = minimo;
+
     const { error: erroUp } = await supabase.from('PRODUTOS')
-      .update({ sale_price: novo, updated_at: new Date().toISOString() })
+      .update(patch)
       .eq('tenant_id', req.tenantId).eq('category_id', categoryId).eq('is_active', true);
     if (erroUp) throw erroUp;
 
@@ -438,9 +546,15 @@ router.post('/aplicar-categoria', async (req, res) => {
       preco_por_categoria: cat.name, preco: novo,
       produtos: alvo.length, alterados: mudam.length,
       de_ate: mudam.length ? [Math.min(...mudam.map(x => x.de)), Math.max(...mudam.map(x => x.de))] : null,
+      faixas: mexeFaixa ? faixas : undefined,
+      faixas_alteradas: mexeFaixa ? mudamFaixa.length : undefined,
+      min_order_qty: minimo ?? undefined,
     });
 
-    res.json({ ok: true, categoria: cat.name, produtos: alvo.length, alterados: mudam.length, preco: novo });
+    res.json({
+      ok: true, categoria: cat.name, produtos: alvo.length,
+      alterados: mudam.length, preco: novo, ...resumoFaixa,
+    });
   } catch (err) {
     console.error('[pricing/aplicar-categoria]', err.message);
     res.status(500).json({ error: err.message });
