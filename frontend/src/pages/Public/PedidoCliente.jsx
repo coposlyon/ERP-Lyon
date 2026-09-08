@@ -19,6 +19,7 @@ import {
   FileCheck, FlaskConical, Brush, CircleDashed, GlassWater, Settings,
   PackageOpen, ShieldQuestion, ShieldCheck, Camera, ImageUp, PackageSearch,
   PackageCheck, ShoppingCart, Eye, PersonStanding, IdCard, MessageCircle,
+  ThumbsUp, ThumbsDown, AlertTriangle, Lock,
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -609,52 +610,181 @@ function Balao({ passo }) {
 // Oferecer só o editor mandava a segunda para o WhatsApp do vendedor —
 // e de lá o arquivo entrava no pedido à mão, quando entrava.
 //
-// O ARQUIVO VAI DIRETO, SEM PERGUNTAR DE NOVO: escolher já é a
-// confirmação. Uma janela a mais entre o toque e o envio é onde o
-// celular perde gente.
+// E EXISTE UMA TERCEIRA PORTA, que é a da LOJA. Quando o desenho vem de
+// cá — o designer da Lyon montou, o vendedor anexou —, ele não vale por
+// combinado: a cliente vê e diz se é aquilo. Antes disso não existia:
+// a arte entrava, o pedido seguia para a serigrafia e a cliente
+// descobria o desenho na foto do produto pronto. A hora de descobrir
+// que o nome está escrito errado não é depois de mil copos impressos.
+//
+// O ENVIO PASSOU A PERGUNTAR DE NOVO — e é uma mudança de ideia
+// deliberada. Aqui dizia "escolher já é a confirmação; uma janela a
+// mais entre o toque e o envio é onde o celular perde gente", e isso
+// valia enquanto enviar a arte fosse reversível. Deixou de ser: o envio
+// (e a confirmação) DISPARA a personalização, e dali em diante a troca
+// só existe falando com um atendente. Uma janela a mais custa um toque;
+// mil copos com a arte errada custam o pedido inteiro.
 // ════════════════════════════════════════════════════════════
 const TAMANHO_MAX_ARTE = 6 * 1024 * 1024;
+
+// A frase que precede todo caminho sem volta desta tela. Ela diz O QUE
+// COMEÇA e O QUE DEIXA DE SER POSSÍVEL — "tem certeza?" sozinho não
+// informa nada a quem já clicou por engano uma vez.
+const AVISO_SEM_VOLTA =
+  'Ao confirmar, a personalização deste item COMEÇA: a arte vira vegetal, tela e copo impresso. '
+  + 'Desse ponto em diante o processo não pode ser interrompido, e trocar a arte só falando com um atendente.';
+
+/**
+ * A SEGUNDA PERGUNTA.
+ *
+ * Toda ação irreversível desta tela passa por aqui: enviar a arte,
+ * confirmar a que a loja mandou, reprovar. O botão faz o pedido; esta
+ * janela é onde a pessoa lê o que vai acontecer e decide de novo.
+ *
+ * O botão de confirmar nasce à DIREITA e o de cancelar à esquerda, e o
+ * de fechar no canto — quem tocar em qualquer lugar por engano cancela,
+ * que é o resultado seguro.
+ */
+function ConfirmacaoDupla({ titulo, pergunta, aviso, rotulo, Icone, cor, carregando, onConfirmar, onCancelar, children }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      style={{ background: 'rgba(3,6,18,0.85)' }} onClick={carregando ? undefined : onCancelar}>
+      <div className="w-full max-w-lg rounded-2xl p-5" onClick={e => e.stopPropagation()}
+        style={{ background: 'linear-gradient(180deg,#0b1024 0%,#080d1e 100%)',
+                 border: `1px solid ${cor}66`, boxShadow: `0 0 30px ${cor}26` }}>
+
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-white font-bold text-[17px] flex items-center gap-2">
+            <Icone size={18} style={{ color: cor }} /> {titulo}
+          </h3>
+          <button onClick={onCancelar} disabled={carregando} className="p-1 rounded-lg shrink-0"
+            style={{ color: 'rgba(255,255,255,0.55)' }} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <p className="text-[14px] mt-3 text-white">{pergunta}</p>
+
+        {aviso && (
+          <p className="text-[12.5px] mt-3 rounded-xl px-3.5 py-2.5 flex gap-2"
+            style={{ background: 'rgba(245,158,11,0.12)', color: '#fcd34d',
+                     border: '1px solid rgba(245,158,11,0.35)' }}>
+            <AlertTriangle size={15} className="shrink-0 mt-0.5" /> <span>{aviso}</span>
+          </p>
+        )}
+
+        {children}
+
+        <div className="flex items-center justify-end gap-2 mt-5">
+          <button onClick={onCancelar} disabled={carregando}
+            className="rounded-xl px-4 py-2.5 text-[13.5px] font-semibold"
+            style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)' }}>
+            Voltar
+          </button>
+          <button onClick={onConfirmar} disabled={carregando}
+            className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-bold"
+            style={{ background: cor, color: '#0b1024', opacity: carregando ? 0.7 : 1 }}>
+            {carregando ? <Loader2 size={15} className="animate-spin" /> : <Icone size={15} />}
+            {carregando ? 'Registrando…' : rotulo}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A cara de cada estado da arte — cor, título e o que dizer embaixo. */
+const ESTADO_ARTE = {
+  sem_arte: {
+    cor: '#a855f7', fundo: 'rgba(168,85,247,0.12)', borda: 'rgba(168,85,247,0.42)',
+    Icone: PenTool, titulo: 'Falta a arte deste item',
+  },
+  aguardando_cliente: {
+    cor: '#fbbf24', fundo: 'rgba(245,158,11,0.14)', borda: 'rgba(245,158,11,0.5)',
+    Icone: Eye, titulo: 'Veja e confirme a arte',
+  },
+  aprovada: {
+    cor: '#4ade80', fundo: 'rgba(34,197,94,0.10)', borda: 'rgba(34,197,94,0.35)',
+    Icone: CircleCheck, titulo: 'Arte confirmada',
+  },
+  reprovada: {
+    cor: '#f87171', fundo: 'rgba(248,113,113,0.12)', borda: 'rgba(248,113,113,0.45)',
+    Icone: ThumbsDown, titulo: 'Arte reprovada por você',
+  },
+};
 
 function ArteDosItens({ pedidoId, token, itens, onMontar, onEnviou }) {
   const [enviando, setEnviando] = useState(null);   // id do item em voo
   const [erro, setErro] = useState('');
+  // A pergunta em aberto: { tipo: 'enviar'|'aprovar'|'reprovar', item, arquivo }
+  const [pergunta, setPergunta] = useState(null);
+  const [motivo, setMotivo] = useState('');
 
-  async function anexar(item, arquivo) {
+  function abrir(tipo, item, arquivo) {
     setErro('');
-    if (arquivo.size > TAMANHO_MAX_ARTE) {
+    if (tipo === 'enviar' && arquivo.size > TAMANHO_MAX_ARTE) {
       setErro('A arte passa de 6 MB. Mande um arquivo menor ou envie pelo WhatsApp do vendedor.');
       return;
     }
+    setMotivo('');
+    setPergunta({ tipo, item, arquivo });
+  }
+
+  async function anexar(item, arquivo) {
+    const dataUrl = await new Promise((ok, falha) => {
+      const leitor = new FileReader();
+      leitor.onload = () => ok(leitor.result);
+      leitor.onerror = () => falha(new Error('Não consegui ler o arquivo escolhido.'));
+      leitor.readAsDataURL(arquivo);
+    });
+    await api.post(`/acompanhar/pedido/${pedidoId}/item/${item.id}/arte-anexada`,
+      { arquivo: dataUrl, nome: arquivo.name },
+      { headers: { Authorization: `Bearer ${token}` } });
+  }
+
+  async function decidir(item, decisao) {
+    await api.post(`/acompanhar/pedido/${pedidoId}/item/${item.id}/arte-decisao`,
+      { decisao, motivo: decisao === 'reprovar' ? motivo : undefined },
+      { headers: { Authorization: `Bearer ${token}` } });
+  }
+
+  async function confirmar() {
+    const { tipo, item, arquivo } = pergunta;
     setEnviando(item.id);
+    setErro('');
     try {
-      const dataUrl = await new Promise((ok, falha) => {
-        const leitor = new FileReader();
-        leitor.onload = () => ok(leitor.result);
-        leitor.onerror = () => falha(new Error('Não consegui ler o arquivo escolhido.'));
-        leitor.readAsDataURL(arquivo);
-      });
-      await api.post(`/acompanhar/pedido/${pedidoId}/item/${item.id}/arte-anexada`,
-        { arquivo: dataUrl, nome: arquivo.name },
-        { headers: { Authorization: `Bearer ${token}` } });
+      if (tipo === 'enviar') await anexar(item, arquivo);
+      else await decidir(item, tipo);
+      setPergunta(null);
       onEnviou?.();
     } catch (err) {
-      setErro(err?.error || err?.message || 'Não foi possível enviar a arte agora.');
+      setPergunta(null);
+      // A dica do servidor é a metade útil da recusa: ela diz o que
+      // fazer ("fale com um atendente"), e não só que não deu.
+      setErro([err?.error || err?.message || 'Não foi possível registrar isso agora.', err?.dica]
+        .filter(Boolean).join(' '));
     } finally {
       setEnviando(null);
     }
   }
 
-  const faltando = itens.filter(i => !i.arte_pronta).length;
+  const aConfirmar = itens.filter(i => i.arte_estado === 'aguardando_cliente').length;
+  const faltando = itens.filter(i => i.arte_estado === 'sem_arte').length;
 
   return (
     <Card Icon={PenTool} titulo="Sua personalização">
-      {itens.length > 1 && (
-        <p className="text-[12.5px] mb-3" style={{ color: 'rgba(255,255,255,0.65)' }}>
-          Este pedido tem <b>{itens.length} itens personalizados</b> — cada um leva a sua arte.
-          Escolha abaixo em qual você quer montar ou anexar.
-          {faltando > 0 && <> Ainda {faltando === 1 ? 'falta 1' : `faltam ${faltando}`}.</>}
-        </p>
-      )}
+      <p className="text-[12.5px] mb-3" style={{ color: 'rgba(255,255,255,0.65)' }}>
+        {itens.length > 1
+          ? <>Este pedido tem <b>{itens.length} itens personalizados</b> — cada um leva a sua arte.</>
+          : <>Este item leva arte personalizada.</>}
+        {aConfirmar > 0 && (
+          <b style={{ color: '#fbbf24' }}>
+            {' '}{aConfirmar === 1 ? 'Uma arte está esperando você ver e confirmar.'
+                                   : `${aConfirmar} artes estão esperando você ver e confirmar.`}
+          </b>
+        )}
+        {faltando > 0 && <> Ainda {faltando === 1 ? 'falta 1 arte' : `faltam ${faltando} artes`}.</>}
+      </p>
 
       {erro && (
         <p className="text-[12.5px] mb-3 rounded-lg px-3 py-2"
@@ -662,75 +792,175 @@ function ArteDosItens({ pedidoId, token, itens, onMontar, onEnviou }) {
       )}
 
       <div className="space-y-2.5">
-        {itens.map((i, idx) => (
-          <div key={i.id} className="flex flex-wrap items-center gap-3 justify-between rounded-xl px-3.5 py-3"
-            style={{ background: i.arte_pronta ? 'rgba(34,197,94,0.10)' : 'rgba(168,85,247,0.12)',
-                     border: `1px solid ${i.arte_pronta ? 'rgba(34,197,94,0.35)' : 'rgba(168,85,247,0.42)'}` }}>
-            <div className="min-w-0">
-              <p className="text-white text-[14px] font-semibold leading-tight">
-                {itens.length > 1 && <span style={{ color: '#c4b5fd' }}>{idx + 1}. </span>}
-                {i.produto}
-              </p>
-              <p className="text-[12px] mt-0.5" style={{ color: 'rgba(255,255,255,0.65)' }}>
-                {i.arte_pronta
-                  ? `Arte recebida${i.arte_anexada_em ? ` em ${dataHora(i.arte_anexada_em)}` : ''} — já está com a produção. Dá para trocar até a aprovação.`
-                  : `${i.quantidade} un. · falta a arte deste item para a produção começar.`}
-              </p>
-              {/* A prova de que subiu o arquivo certo. Sem ela, "arte
-                  recebida" é uma palavra em que a cliente tem que
-                  acreditar. */}
-              {i.arte_anexada && (
+        {itens.map((i, idx) => {
+          const estado = ESTADO_ARTE[i.arte_estado] || ESTADO_ARTE.sem_arte;
+          const travado = i.arte_estado === 'aprovada';
+          const emVoo = enviando === i.id;
+          const daLoja = i.arte_estado === 'aguardando_cliente';
+
+          return (
+            <div key={i.id} className="rounded-xl px-3.5 py-3"
+              style={{ background: estado.fundo, border: `1px solid ${estado.borda}` }}>
+
+              <div className="flex flex-wrap items-start gap-3 justify-between">
+                <div className="min-w-0">
+                  <p className="text-white text-[14px] font-semibold leading-tight">
+                    {itens.length > 1 && <span style={{ color: '#c4b5fd' }}>{idx + 1}. </span>}
+                    {i.produto}
+                  </p>
+                  <p className="text-[12px] mt-0.5 flex items-center gap-1.5" style={{ color: estado.cor }}>
+                    <estado.Icone size={13} /> {estado.titulo}
+                  </p>
+                  <p className="text-[12px] mt-1" style={{ color: 'rgba(255,255,255,0.65)' }}>
+                    {i.arte_estado === 'sem_arte' && (
+                      <>{i.quantidade} un. · monte a sua arte aqui ou envie o arquivo pronto.</>
+                    )}
+                    {daLoja && (
+                      <>Preparamos esta arte para os {i.quantidade} itens. Confira o desenho, os nomes e as
+                        datas: depois da sua confirmação a personalização começa.</>
+                    )}
+                    {travado && (
+                      <>Confirmada{i.arte_aprovada_em ? ` em ${dataHora(i.arte_aprovada_em)}` : ''} — a
+                        personalização já começou. Para mudar alguma coisa, fale com um atendente.</>
+                    )}
+                    {i.arte_estado === 'reprovada' && (
+                      <>Reprovada{i.arte_reprovada_em ? ` em ${dataHora(i.arte_reprovada_em)}` : ''}. A loja
+                        vai preparar outra — ou você pode enviar a sua agora.
+                        {i.arte_reprovada_motivo && <> Você escreveu: “{i.arte_reprovada_motivo}”.</>}</>
+                    )}
+                  </p>
+                  {i.arte_anexada && (
+                    <a href={i.arte_anexada} target="_blank" rel="noreferrer"
+                      className="text-[12px] inline-flex items-center gap-1.5 mt-1" style={{ color: estado.cor }}>
+                      <FileImage size={12} /> abrir a arte em tamanho real
+                    </a>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  {/* ── ARTE DA LOJA: ver, confirmar ou reprovar ──── */}
+                  {daLoja && (
+                    <>
+                      <button type="button" onClick={() => abrir('aprovar', i)} disabled={emVoo}
+                        className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-bold text-[13.5px]"
+                        style={{ background: '#22c55e', color: '#062012' }}>
+                        <ThumbsUp size={15} /> Confirmar a arte
+                      </button>
+                      <button type="button" onClick={() => abrir('reprovar', i)} disabled={emVoo}
+                        className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-[13.5px]"
+                        style={{ background: 'rgba(248,113,113,0.14)', color: '#fca5a5',
+                                 border: '1px solid rgba(248,113,113,0.5)' }}>
+                        <ThumbsDown size={15} /> Reprovar
+                      </button>
+                    </>
+                  )}
+
+                  {/* ── SEM ARTE OU REPROVADA: as duas portas dela ─── */}
+                  {!travado && !daLoja && (
+                    <>
+                      <button type="button" onClick={() => onMontar(i)} disabled={emVoo || !i.modelo_chave}
+                        title={i.modelo_chave ? undefined
+                          : 'Este produto ainda não tem gabarito de arte cadastrado — um atendente monta com você.'}
+                        className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-[13.5px]"
+                        style={{ background: i.modelo_chave ? 'linear-gradient(90deg,#a855f7,#6366f1)' : 'rgba(255,255,255,0.06)',
+                                 color: i.modelo_chave ? '#fff' : 'rgba(255,255,255,0.45)',
+                                 cursor: i.modelo_chave ? 'pointer' : 'not-allowed' }}>
+                        <PenTool size={15} /> Criar minha arte aqui
+                      </button>
+
+                      {/* O input fica escondido dentro do próprio rótulo:
+                          no celular, um <input type=file> desenhado à mão
+                          é o campo que ninguém reconhece como botão. */}
+                      <label className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-[13.5px] ${
+                        emVoo ? 'opacity-60' : 'cursor-pointer'}`}
+                        style={{ background: 'rgba(255,255,255,0.08)', color: '#fff',
+                                 border: '1px solid rgba(96,165,250,0.45)' }}>
+                        {emVoo
+                          ? <><Loader2 size={15} className="animate-spin" /> Enviando…</>
+                          : <><ImageUp size={15} /> {i.arte_anexada ? 'Trocar o arquivo' : 'Já tenho a arte'}</>}
+                        <input type="file" className="hidden" disabled={emVoo}
+                          accept="image/*,application/pdf,.svg,.ai,.cdr,.eps,.psd"
+                          onChange={e => {
+                            const arquivo = e.target.files?.[0];
+                            e.target.value = '';
+                            if (arquivo) abrir('enviar', i, arquivo);
+                          }} />
+                      </label>
+                    </>
+                  )}
+
+                  {/* ── CONFIRMADA: acabou o que ela decide aqui ───── */}
+                  {travado && (
+                    <span className="inline-flex items-center gap-2 text-[12.5px] px-3 py-2 rounded-xl"
+                      style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)' }}>
+                      <Lock size={14} /> em produção — troca só com atendente
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* A ARTE, GRANDE, ONDE A DECISÃO É TOMADA.
+                  Um link "ver o arquivo" obriga a sair da tela para
+                  decidir e voltar — e quem sai não volta. Ela olha o
+                  desenho e os dois botões na mesma linha de visão. */}
+              {daLoja && i.arte_anexada && /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(i.arte_anexada) && (
                 <a href={i.arte_anexada} target="_blank" rel="noreferrer"
-                  className="text-[12px] inline-flex items-center gap-1.5 mt-1" style={{ color: '#4ade80' }}>
-                  <FileImage size={12} /> ver o arquivo que você enviou
+                  className="block mt-3 rounded-xl overflow-hidden"
+                  style={{ border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(255,255,255,0.04)' }}>
+                  <img src={i.arte_anexada} alt={`Arte de ${i.produto}`}
+                    className="w-full max-h-72 object-contain" />
                 </a>
               )}
             </div>
-
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              {i.modelo_chave ? (
-                <button type="button" onClick={() => onMontar(i)}
-                  className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-[13.5px]"
-                  style={{ background: i.arte_pronta ? 'rgba(255,255,255,0.10)' : 'linear-gradient(90deg,#a855f7,#6366f1)',
-                           color: '#fff' }}>
-                  <PenTool size={15} /> {i.arte_pronta ? 'Trocar a arte' : 'Montar minha arte'}
-                </button>
-              ) : (
-                /* Pedido antigo, feito antes de a chave do modelo viajar
-                   junto: o editor abriria no copo errado. Anexar o
-                   arquivo continua funcionando — é o que salva o caso. */
-                <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                  para montar no editor, fale com um atendente
-                </span>
-              )}
-
-              {/* O input fica escondido dentro do próprio rótulo: no
-                  celular, um <input type=file> desenhado à mão é o campo
-                  que ninguém reconhece como botão. */}
-              <label className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-[13.5px] ${
-                enviando ? 'opacity-60' : 'cursor-pointer'}`}
-                style={{ background: 'rgba(255,255,255,0.08)', color: '#fff',
-                         border: '1px solid rgba(96,165,250,0.45)' }}>
-                {enviando === i.id
-                  ? <><Loader2 size={15} className="animate-spin" /> Enviando…</>
-                  : <><ImageUp size={15} /> {i.arte_anexada ? 'Trocar o arquivo' : 'Já tenho a arte'}</>}
-                <input type="file" className="hidden" disabled={!!enviando}
-                  accept="image/*,application/pdf,.svg,.ai,.cdr,.eps,.psd"
-                  onChange={e => {
-                    const arquivo = e.target.files?.[0];
-                    e.target.value = '';
-                    if (arquivo) anexar(i, arquivo);
-                  }} />
-              </label>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <p className="text-[11px] mt-3" style={{ color: 'rgba(255,255,255,0.45)' }}>
-        Já tem a arte pronta? Anexe o arquivo — PNG, JPG, PDF, SVG ou o aberto do seu designer, até 6 MB.
-        Depois que a arte for aprovada e entrar em produção, a troca passa a ser com o vendedor.
+        Já tem a arte pronta? Envie o arquivo — PNG, JPG, PDF, SVG ou o aberto do seu designer, até 6 MB.
+        Enviar ou confirmar uma arte dá início à personalização: a partir daí o processo não pode ser
+        interrompido, e a troca passa a ser com um atendente.
       </p>
+
+      {/* ── A segunda pergunta, uma por vez ──────────────────── */}
+      {pergunta?.tipo === 'enviar' && (
+        <ConfirmacaoDupla
+          titulo="Enviar esta arte?" Icone={ImageUp} cor="#60a5fa" rotulo="Sim, enviar e começar"
+          carregando={!!enviando} onCancelar={() => setPergunta(null)} onConfirmar={confirmar}
+          pergunta={<>Você tem certeza que deseja enviar <b>{pergunta.arquivo?.name}</b> como a arte
+            de <b>{pergunta.item.produto}</b> ({pergunta.item.quantidade} un.)?</>}
+          aviso={AVISO_SEM_VOLTA} />
+      )}
+
+      {pergunta?.tipo === 'aprovar' && (
+        <ConfirmacaoDupla
+          titulo="Confirmar a arte?" Icone={ThumbsUp} cor="#22c55e" rotulo="Sim, confirmar a arte"
+          carregando={!!enviando} onCancelar={() => setPergunta(null)} onConfirmar={confirmar}
+          pergunta={<>Você tem certeza que deseja CONFIRMAR a arte de <b>{pergunta.item.produto}</b> ({pergunta.item.quantidade} un.)?
+            Confira o desenho, os nomes e as datas antes de seguir.</>}
+          aviso={AVISO_SEM_VOLTA} />
+      )}
+
+      {pergunta?.tipo === 'reprovar' && (
+        <ConfirmacaoDupla
+          titulo="Reprovar a arte?" Icone={ThumbsDown} cor="#f87171" rotulo="Sim, reprovar a arte"
+          carregando={!!enviando} onCancelar={() => setPergunta(null)} onConfirmar={confirmar}
+          pergunta={<>Você tem certeza que deseja REPROVAR a arte de <b>{pergunta.item.produto}</b>?
+            Nada será produzido com ela, e a loja vai preparar outra.</>}>
+          {/* O motivo é opcional de propósito: obrigar a escrever faz
+              gente digitar "não gostei" para conseguir clicar. Uma linha
+              dita aqui poupa o telefonema que o vendedor daria. */}
+          <label className="block mt-4">
+            <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              O que precisa mudar? (opcional, mas ajuda muito)
+            </span>
+            <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={3} maxLength={500}
+              placeholder="Ex.: o nome está escrito Marina, o certo é Mariana."
+              className="w-full mt-1.5 rounded-xl px-3 py-2 text-[13.5px] text-white outline-none"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(96,165,250,0.35)' }} />
+          </label>
+        </ConfirmacaoDupla>
+      )}
     </Card>
   );
 }
@@ -883,7 +1113,7 @@ function EtapasDoItem({ item, onClose }) {
             </p>
             <h2 className="text-lg font-bold text-white leading-tight">{item.produto}</h2>
             <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
-              {[item.capacidade, item.categoria, `${item.quantidade} un.`].filter(Boolean).join(' · ')}
+              {[item.codigo, item.capacidade, item.categoria].filter(Boolean).join(' · ')}
             </p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg shrink-0"
@@ -892,9 +1122,72 @@ function EtapasDoItem({ item, onClose }) {
           </button>
         </div>
 
-        {atual && (
+        {/* QUAL PRODUTO, QUANTOS E QUANTO.
+            A janela dizia só o nome e a capacidade. Num pedido de cinco
+            linhas, o cliente que abre o olho da terceira precisa saber
+            QUE compra é essa antes de ler etapa nenhuma — e "100 un." e
+            "R$ 690,00" são o que fazem ele reconhecer o item. As
+            características contratadas (cor do copo, cor da gravação)
+            vêm junto pelo mesmo motivo: é o que diferencia duas linhas
+            do mesmo copo em cores diferentes. */}
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { r: 'Quantidade', v: `${item.quantidade} un.` },
+            { r: 'Valor unitário', v: brl(item.valor_unitario) },
+            { r: 'Valor total', v: brl(item.valor_total), destaque: true },
+            ...(item.linha ? [{ r: 'Linha da tinta', v: item.linha }] : []),
+          ].map(c => (
+            <div key={c.r} className="rounded-xl px-3 py-2"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(96,165,250,0.22)' }}>
+              <p className="text-[10.5px] uppercase tracking-wide" style={{ color: 'rgba(147,197,253,0.75)' }}>{c.r}</p>
+              <p className="font-bold" style={{ color: c.destaque ? '#22d3ee' : '#fff' }}>{c.v}</p>
+            </div>
+          ))}
+        </div>
+
+        {(item.campos || []).length > 0 && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2.5 text-[12.5px]">
+            {item.campos.map(c => (
+              <span key={c.rotulo} style={{ color: 'rgba(255,255,255,0.6)' }}>
+                {c.rotulo}: <b className="text-white">{c.valor}</b>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {atual ? (
           <p className="text-sm mt-3 mb-4" style={{ color: '#fbbf24' }}>
             Este produto está em: <b>{atual.label}</b>
+          </p>
+        ) : (
+          /* SEM ETAPA ATUAL NÃO É ERRO — é o pedido misto funcionando.
+             O copo liso não passa por vegetal nem revelação: enquanto o
+             pedido está numa dessas, ele não está em etapa nenhuma. Sem
+             esta frase a janela abria sem dizer nada, e "nada" se lê
+             como parado ou esquecido. */
+          <p className="text-sm mt-3 mb-4" style={{ color: 'rgba(147,197,253,0.85)' }}>
+            Este produto já cumpriu as etapas dele até aqui e está aguardando os demais itens do
+            pedido, que passam por etapas que ele não tem.
+          </p>
+        )}
+
+        {/* O QUE ESTE PRODUTO ESPERA DE VOCÊ. A janela mostrava a arte
+            anexada, mas não dizia se ela ainda precisava do sim do
+            cliente — e é justamente aqui, com o desenho na frente, que
+            essa resposta é fácil de dar. */}
+        {item.arte_estado === 'aguardando_cliente' && (
+          <p className="text-[12.5px] mb-3 rounded-xl px-3.5 py-2.5 flex gap-2"
+            style={{ background: 'rgba(245,158,11,0.12)', color: '#fcd34d',
+                     border: '1px solid rgba(245,158,11,0.35)' }}>
+            <Eye size={15} className="shrink-0 mt-0.5" />
+            <span>Esta arte foi preparada pela loja e está esperando você confirmar. Feche esta janela e
+              use os botões <b>Confirmar a arte</b> / <b>Reprovar</b> no bloco “Sua personalização”.</span>
+          </p>
+        )}
+        {item.arte_estado === 'aprovada' && item.arte_anexada && (
+          <p className="text-[12.5px] mb-3 flex items-center gap-2" style={{ color: '#4ade80' }}>
+            <Lock size={14} /> Arte confirmada{item.arte_aprovada_em ? ` em ${dataHora(item.arte_aprovada_em)}` : ''} —
+            a personalização começou e a troca passa a ser com um atendente.
           </p>
         )}
 
@@ -932,8 +1225,9 @@ function EtapasDoItem({ item, onClose }) {
         </div>
 
         <p className="text-[11px] mt-5" style={{ color: 'rgba(255,255,255,0.4)' }}>
-          As etapas mudam de produto para produto: pintura só aparece em degradê, bicolor ou jateado,
-          e a aplicação de borda só em quem tem borda contratada.
+          As etapas mudam de produto para produto: arte, vegetal e revelação só existem em produto
+          personalizado — o copo liso vai do estoque para a produção sem passar por elas. A pintura só
+          aparece em degradê, bicolor ou jateado, e a aplicação de borda só em quem tem borda contratada.
         </p>
       </div>
     </div>

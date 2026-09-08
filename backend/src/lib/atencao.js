@@ -184,11 +184,12 @@ const PASSOS = Object.entries(STATUS)
  * inteiro na tela quer o resumo, e para esse existe fasesDoPedido().
  *
  * @param venda      linha de VENDAS (status + production_log)
- * @param aplicaveis { borda, pintura } — de etapasDosItens()
+ * @param aplicaveis { borda, pintura, personalizado } — de etapasDosItens()
+ * @param opcoes     { doItem } — a régua de UM item, e não a do pedido
  * @returns [{ passo, key, label, icone, cor, estado, at, user }]
  *          estado: 'concluido' | 'atual' | 'pendente'
  */
-function linhaDoTempo(venda, aplicaveis = {}) {
+function linhaDoTempo(venda, aplicaveis = {}, opcoes = {}) {
   const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
 
   // Quando cada etapa aconteceu. Primeira ocorrência vence: se o pedido
@@ -209,9 +210,23 @@ function linhaDoTempo(venda, aplicaveis = {}) {
   // Pintura e borda só entram quando o pedido passa por elas. Um pedido
   // tradicional sem borda que mostrasse as duas apagadas faria o cliente
   // esperar por uma etapa que nunca vai acontecer.
+  //
+  // A SERIGRAFIA ENTRA NA MESMA REGRA — e faltava aqui.
+  //
+  // `fasesVisiveis` (a régua resumida, do vendedor) já sabia que arte,
+  // vegetal e revelação só existem onde há o que gravar. Esta, a régua
+  // detalhada que o CLIENTE lê, não sabia: ela só conhecia pintura e
+  // borda, e por isso um copo liso mostrava "Aguardando anexo da arte",
+  // "Vegetal impresso" e "Revelação finalizada" na linha do tempo dele.
+  // O cliente de cem copos lisos ficava esperando uma arte que ninguém
+  // ia pedir. Duas réguas, duas respostas para a mesma pergunta — e a
+  // que o cliente via era a errada.
   const OPCIONAIS = {
-    aguardando_pintura: 'pintura', pintura_finalizada: 'pintura',
-    aguardando_borda:   'borda',   borda_finalizada:   'borda',
+    aguardando_arte:      'personalizado', arte_aprovada:        'personalizado',
+    aguardando_vegetal:   'personalizado', vegetal_impresso:     'personalizado',
+    aguardando_revelacao: 'personalizado', revelacao_finalizada: 'personalizado',
+    aguardando_pintura:   'pintura',       pintura_finalizada:   'pintura',
+    aguardando_borda:     'borda',         borda_finalizada:     'borda',
   };
   const retirada = ehRetirada(venda);
 
@@ -222,7 +237,22 @@ function linhaDoTempo(venda, aplicaveis = {}) {
     if (retirada && SO_NA_ENTREGA.includes(p.key) && !quando.has(p.key) && p.key !== venda?.status) return false;
     const grupo = OPCIONAIS[p.key];
     if (!grupo) return true;
-    return aplicaveis[grupo] || quando.has(p.key) || p.key === venda?.status;
+    if (aplicaveis[grupo]) return true;
+    /**
+     * A RÉGUA DE UM ITEM É O CONTRATO DELE, E SÓ.
+     *
+     * No pedido inteiro, o histórico manda mais que a regra: se ele
+     * passou por uma etapa, ela aparece — mesmo que hoje nenhum item
+     * peça aquilo (item excluído, pedido antigo, correção de rota).
+     *
+     * Num ITEM isso é falso. O pedido misto — três personalizados e
+     * dois lisos — está em "Aguardando anexo da arte" por causa dos
+     * três, e com essa regra a etapa aparecia também na linha do tempo
+     * dos dois lisos, que não têm arte nenhuma. O copo liso não passa
+     * pela serigrafia porque o pedido passa.
+     */
+    if (opcoes.doItem) return false;
+    return quando.has(p.key) || p.key === venda?.status;
   });
 
   return visiveis.map((p, i) => {

@@ -30,7 +30,7 @@ const { linkAssinado, uploadDataUrl } = require('../lib/storage');
 // `caracteristicasDoItem` responde se o item é personalizado — a mesma
 // conta que decide se a coluna "Cor da personalização" aparece na tela.
 // Uma segunda leitura do JSON aqui seria uma para discordar dela.
-const { caracteristicasDoItem } = require('../lib/itensPedido');
+const { caracteristicasDoItem, estadoDaArte } = require('../lib/itensPedido');
 // A arte que chega move o pedido, e quem decide para onde é o motor de
 // etapas — a mesma régua da tela do vendedor.
 const Auto = require('../lib/pedidoAutomacao');
@@ -605,6 +605,16 @@ router.post('/pedido/:id/arte', exigirToken, async (req, res) => {
       return res.status(400).json({ error: 'Este item não leva arte.' });
     }
 
+    // A mesma trava da rota de anexo: arte confirmada é arte combinada,
+    // e montar outra no editor a substituiria sem ninguém saber.
+    if (estadoDaArte(conf).estado === 'aprovada') {
+      return res.status(409).json({
+        error: 'Você já confirmou a arte deste item e a personalização começou.',
+        dica: 'Para trocar agora, fale com um atendente.',
+        code: 'ARTE_CONFIRMADA',
+      });
+    }
+
     const { data: proj } = await supabase.from('CATALOGO_PROJETOS')
       .select('id, posicao, gabarito, faces, preview_url')
       .eq('tenant_id', req.tenantId).eq('id', projeto_id).maybeSingle();
@@ -688,8 +698,35 @@ router.post('/pedido/:id/item/:itemId/arte-anexada', exigirToken, async (req, re
     }
 
     const conf = item.customization || {};
-    if (!conf.personalizar) {
-      return res.status(400).json({ error: 'Este item não foi pedido com personalização.' });
+    // A mesma pergunta que a rota do editor faz e que a tela usa para
+    // decidir se mostra o bloco: pedido digitado no balcão não tem
+    // `personalizar`, e continua sendo personalizado.
+    if (!caracteristicasDoItem(item).tem_personalizacao && !conf.personalizar) {
+      return res.status(400).json({ error: 'Este item não leva arte.' });
+    }
+
+    /**
+     * DEPOIS DE CONFIRMADA, NÃO SE TROCA MAIS AQUI.
+     *
+     * A trava era o PASSO DO PEDIDO: só barrava depois que ele saía da
+     * etapa de arte. Num pedido de cinco itens isso é frouxo — o pedido
+     * fica na etapa da arte enquanto UM item ainda espera, e nesse
+     * tempo o desenho já confirmado de outro item podia ser trocado sem
+     * ninguém saber.
+     *
+     * Agora quem tranca é a confirmação do próprio item, que é o que
+     * significa "combinado". A partir dela o desenho vira vegetal, tela
+     * e copo impresso, e a troca em silêncio é o caminho para mil peças
+     * saírem erradas. O passo do pedido continua valendo como segunda
+     * trava, para a arte antiga que nunca passou por confirmação.
+     */
+    const arte = estadoDaArte(conf);
+    if (arte.estado === 'aprovada') {
+      return res.status(409).json({
+        error: 'Você já confirmou a arte deste item e a personalização começou.',
+        dica: 'Para trocar agora, fale com um atendente pelo botão de atendimento.',
+        code: 'ARTE_CONFIRMADA',
+      });
     }
 
     const passo = A.infoStatus(venda.status)?.passo || 0;
@@ -709,8 +746,16 @@ router.post('/pedido/:id/item/:itemId/arte-anexada', exigirToken, async (req, re
     const agora = new Date().toISOString();
     const nome = String(req.body?.nome || '').trim().slice(0, 120) || null;
 
+    // `aprovada_em` já sai preenchida: a arte que o próprio cliente
+    // escolhe não volta para ele confirmar — perguntar de novo pelo
+    // arquivo que ele acabou de mandar seria a mesma pergunta duas
+    // vezes. O aviso de que a personalização começa e não se interrompe
+    // é dado ANTES do envio, na tela, que é onde ainda dá para desistir.
     const { error: erroItem } = await supabase.from('VENDA_ITENS').update({
-      customization: { ...conf, arte_cliente: { url, nome, enviada_em: agora, por: 'cliente' } },
+      customization: {
+        ...conf,
+        arte_cliente: { url, nome, enviada_em: agora, por: 'cliente', aprovada_em: agora },
+      },
     }).eq('id', item.id);
     if (erroItem) throw erroItem;
 
@@ -760,6 +805,137 @@ router.post('/pedido/:id/item/:itemId/arte-anexada', exigirToken, async (req, re
   } catch (err) {
     console.error('[acompanhar:arte-anexada]', err?.message || err);
     res.status(500).json({ error: 'Não foi possível enviar a arte agora.' });
+  }
+});
+
+/**
+ * O CLIENTE VÊ A ARTE QUE A LOJA MANDOU E DIZ SE É AQUILO.
+ *
+ * O QUE FALTAVA. A loja anexava a arte pelo ERP e o pedido seguia
+ * sozinho para a serigrafia. O cliente descobria o desenho quando a
+ * foto do produto pronto chegava — e a hora de descobrir que o nome
+ * está escrito errado não é depois de mil copos impressos.
+ *
+ * DUAS RESPOSTAS, DOIS CAMINHOS:
+ *
+ *   confirmar  a arte passa a valer como combinada. Daqui o cliente não
+ *              troca mais sozinho (a rota de anexo recusa), porque o
+ *              desenho vai virar vegetal, tela e copo — e o pedido, que
+ *              estava parado esperando esta resposta, anda.
+ *
+ *   reprovar   o item fica marcado, o pedido NÃO anda e a etapa de arte
+ *              passa a ter um requisito não cumprido no painel do
+ *              vendedor. Quem conserta é a loja, anexando outra arte —
+ *              e a arte nova nasce sem aprovação nenhuma, esperando o
+ *              cliente de novo.
+ *
+ * O MOTIVO DA RECUSA É OPCIONAL E VAI PARA O HISTÓRICO. Obrigar a
+ * escrever faria gente inventar "não gostei" para conseguir clicar; sem
+ * campo nenhum, o vendedor liga para perguntar o que já podia estar
+ * escrito.
+ *
+ * A CONFIRMAÇÃO DUPLA MORA NA TELA, e é lá que ela faz sentido: aqui a
+ * decisão chega uma vez só, e repetir a pergunta no servidor não
+ * protegeria de nada.
+ */
+router.post('/pedido/:id/item/:itemId/arte-decisao', exigirToken, async (req, res) => {
+  try {
+    const saleId = await pedidoDoCliente(req.params.id, req.customerId);
+    if (!saleId) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    const decisao = String(req.body?.decisao || '').trim().toLowerCase();
+    if (!['aprovar', 'reprovar'].includes(decisao)) {
+      return res.status(400).json({ error: 'Diga se você confirma ou reprova a arte.' });
+    }
+    const motivo = String(req.body?.motivo || '').trim().slice(0, 500) || null;
+
+    const { data: venda } = await supabase.from('VENDAS')
+      .select('id, tenant_id, status, production_log').eq('id', saleId).maybeSingle();
+    if (!venda) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    const { data: item } = await supabase.from('VENDA_ITENS')
+      .select('id, sale_id, product_name, customization')
+      .eq('id', req.params.itemId).maybeSingle();
+    if (!item || item.sale_id !== saleId) {
+      return res.status(404).json({ error: 'Item não encontrado.' });
+    }
+
+    const conf = item.customization || {};
+    const arte = estadoDaArte(conf);
+
+    if (arte.estado === 'sem_arte') {
+      return res.status(409).json({ error: 'Este item ainda não tem arte para confirmar.' });
+    }
+    // Já respondida: a resposta que vale é a primeira. Sem isto, um
+    // duplo toque no celular viraria aprovar-e-reprovar, e o histórico
+    // ficaria com as duas.
+    if (arte.estado === 'aprovada') {
+      return res.status(409).json({
+        error: 'Você já confirmou a arte deste item.',
+        dica: 'Para mudar alguma coisa agora, fale com um atendente.',
+        code: 'ARTE_CONFIRMADA',
+      });
+    }
+    if (arte.estado === 'reprovada' && decisao === 'reprovar') {
+      return res.status(409).json({ error: 'Você já reprovou esta arte. A loja vai mandar outra.' });
+    }
+
+    const agora = new Date().toISOString();
+    const anexo = conf.arte_cliente || {};
+    const arteNova = decisao === 'aprovar'
+      ? { ...anexo, aprovada_em: agora, reprovada_em: null, motivo: null }
+      : { ...anexo, reprovada_em: agora, aprovada_em: null, motivo };
+
+    const { error: erroItem } = await supabase.from('VENDA_ITENS')
+      .update({ customization: { ...conf, arte_cliente: arteNova } })
+      .eq('id', item.id);
+    if (erroItem) throw erroItem;
+
+    const log = Array.isArray(venda.production_log) ? [...venda.production_log] : [];
+    log.push({
+      stage: 'documentos',
+      action: decisao === 'aprovar' ? 'arte_confirmada_cliente' : 'arte_reprovada_cliente',
+      at: agora,
+      user: 'Cliente (portal)',
+      item: item.product_name || null,
+      nota: decisao === 'aprovar'
+        ? 'cliente confirmou a arte'
+        : `cliente reprovou a arte${motivo ? `: ${motivo}` : ''}`,
+    });
+    const { error: erroVenda } = await supabase.from('VENDAS')
+      .update({ production_log: log }).eq('id', venda.id);
+    // O histórico é importante, a decisão é mais: ela já está gravada no
+    // item, e é ela que trava a troca e solta o pedido.
+    if (erroVenda) console.error('[acompanhar:arte-decisao]', erroVenda.message);
+
+    // O PEDIDO ANDA SE ERA ISTO QUE FALTAVA. Com a última arte
+    // confirmada, a etapa de arte passa a estar cumprida — e quem move
+    // o pedido é o mesmo motor da tela do vendedor, para a linha do
+    // tempo ficar igual à de um pedido tocado no clique.
+    let avancou = null;
+    if (decisao === 'aprovar') {
+      try {
+        const carga = await carregarParaFluxo(venda.tenant_id, venda.id);
+        const passo = carga && await Auto.avancarAposArte(venda.tenant_id, carga.venda, carga.aplicaveis, req);
+        if (passo) {
+          await gravarPasso(venda.tenant_id, venda.id, passo);
+          avancou = passo.status;
+        }
+      } catch (e) {
+        console.error('[acompanhar:arte-decisao] avanco:', e?.message || e);
+      }
+    }
+
+    res.json({
+      ok: true,
+      decisao,
+      em: agora,
+      status: avancou || venda.status,
+      status_label: A.infoStatus(avancou || venda.status).label,
+    });
+  } catch (err) {
+    console.error('[acompanhar:arte-decisao]', err?.message || err);
+    res.status(500).json({ error: 'Não foi possível registrar sua resposta agora.' });
   }
 });
 

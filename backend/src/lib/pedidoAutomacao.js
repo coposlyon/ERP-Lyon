@@ -78,13 +78,21 @@ async function confirmaPagamentoSozinho(tenantId) {
  *              alguém confirmasse uma baixa que ninguém pode desfazer
  *              clicando ali.
  *
- *   arte       SÓ SE O ARQUIVO ESTIVER LÁ. É a única condicional das
- *              quatro, e por isso recebe a venda: sem arte anexada a
- *              etapa continua sendo o que sempre foi — o pedido para e
- *              espera. Com a arte já anexada (o cliente que mandou pelo
- *              portal, o vendedor que subiu junto com a venda), segurar
- *              o pedido em "Aguardando anexo da arte" é mostrar na tela
- *              uma espera que não existe.
+ *   arte       SÓ SE O ARQUIVO ESTIVER LÁ E O CLIENTE TIVER DITO SIM.
+ *              É a única condicional das quatro, e por isso recebe a
+ *              venda: sem arte anexada a etapa continua sendo o que
+ *              sempre foi — o pedido para e espera.
+ *
+ *              A SEGUNDA METADE DA CONDIÇÃO É NOVA, e existe porque
+ *              "existe arquivo" deixou de significar "está combinado".
+ *              Quando é a LOJA que anexa a arte, ela ainda vai ao
+ *              cliente para ver e confirmar; passar sozinho por cima
+ *              dessa espera era mandar para a serigrafia um desenho que
+ *              o cliente nunca viu — e quem descobre o erro depois do
+ *              vegetal descobre em cima de mil copos impressos.
+ *
+ *              A arte que o PRÓPRIO cliente manda nasce aprovada, então
+ *              para ela nada muda: chegou, o pedido anda.
  *
  * O QUE NUNCA ENTRA AQUI: nada da fábrica. Vegetal, revelação, pintura,
  * borda, produção, qualidade e embalagem são trabalho de mão humana, e
@@ -94,7 +102,9 @@ const CUMPRIDA_SOZINHA = {
   realizado: () => true,
   pagamento: (v, o) => !!o.pagamentoAutomatico,
   estoque:   () => true,
-  arte:      v => !!(v.artwork_url || v.art_file),
+  arte:      v => !!(v.artwork_url || v.art_file)
+                  && !(v.arte_resumo?.aguardando > 0)
+                  && !(v.arte_resumo?.reprovadas > 0),
 };
 
 /**

@@ -122,10 +122,41 @@ const REQUISITOS = {
           + 'não estiver coberto, o financeiro não tem lastro do que entrou.' },
   ],
 
+  /**
+   * A ARTE, E O SIM DO CLIENTE.
+   *
+   * São três exigências e elas têm forças diferentes de propósito:
+   *
+   *   anexada     obrigatória. Sem arquivo não há o que gravar.
+   *
+   *   reprovada   obrigatória. O cliente olhou e disse que não é
+   *               aquilo. Seguir daqui é imprimir o desenho recusado —
+   *               não existe leitura em que isso seja o certo.
+   *
+   *   confirmada  AVISO, e não trava. O certo é esperar o cliente ver a
+   *               arte que a loja mandou, e é isso que o avanço
+   *               automático faz: ele não passa por cima. Mas cliente
+   *               some — viaja, troca de número, some por uma semana —
+   *               e uma trava aqui pararia a fábrica esperando alguém
+   *               que talvez já tenha confirmado por WhatsApp. Quem
+   *               está com o pedido na mão decide, vendo escrito na
+   *               tela que o cliente ainda não respondeu.
+   */
   arte: v => [
     { chave: 'arte', label: 'Arte anexada',
       ok: !!(v.artwork_url || v.art_file),
       como: 'Anexe o arquivo no card "Arte". Produção em cima de uma arte que ninguém viu é retrabalho garantido.' },
+    // O rótulo descreve o que precisa ESTAR FEITO, e não a falta: a
+    // tela monta "Falta: <rótulo>", e "Falta: nenhuma arte reprovada"
+    // sai ao contrário do que quer dizer.
+    { chave: 'arte_reprovada', label: 'Arte corrigida depois da reprovação do cliente',
+      ok: !(v.arte_resumo?.reprovadas > 0),
+      como: 'O cliente reprovou a arte de um dos itens no portal. Anexe a arte corrigida '
+          + 'no item — a nova volta para ele confirmar, e o pedido segue.' },
+    { chave: 'arte_confirmada', label: 'Cliente confirmou a arte', obrigatorio: false,
+      ok: !(v.arte_resumo?.aguardando > 0),
+      como: `${v.arte_resumo?.aguardando || 0} arte(s) esperando o cliente ver e confirmar no portal. `
+          + 'O pedido não anda sozinho enquanto isso; se ele já confirmou por fora, siga daqui.' },
   ],
 
   foto: v => [

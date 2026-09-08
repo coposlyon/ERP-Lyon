@@ -73,6 +73,11 @@ export default function CriarArte() {
   const [busca, setBusca] = useState('');
   const [face, setFace] = useState('frente');
   const [salvando, setSalvando] = useState(false);
+  // A segunda pergunta, só para quem está montando a arte de um pedido
+  // JÁ PAGO: ali o "confirmar" não volta ao carrinho, dispara a
+  // personalização. Quem está montando um rascunho de catálogo continua
+  // confirmando num clique — não há o que interromper.
+  const [confirmandoPedido, setConfirmandoPedido] = useState(false);
 
   // O estado das duas faces, com histórico. Desfazer/refazer (§21) só
   // significa alguma coisa se as duas faces andarem juntas — desfazer na
@@ -182,14 +187,31 @@ export default function CriarArte() {
   }
 
   // ── Confirmar arte e voltar (§23) ─────────────────────────
-  async function confirmar() {
+  /**
+   * O QUE O BOTÃO FAZ DEPENDE DE ONDE ELE FOI APERTADO.
+   *
+   * Vindo do catálogo, confirmar guarda o rascunho e devolve ao
+   * configurador — reversível, e por isso um clique basta.
+   *
+   * Vindo de um PEDIDO PAGO (a URL traz `?pedido=&item=`), confirmar
+   * MANDA a arte para a produção: ela vira vegetal, tela e copo, e a
+   * troca a partir dali só existe falando com um atendente. Aí a
+   * pergunta é feita de novo, com o que acontece escrito na frente —
+   * é a mesma regra do portal, e as duas portas precisam avisar igual.
+   */
+  function aoConfirmar() {
     if (!svgFrente) { toast.error('Escolha um modelo de arte para a frente.'); return; }
     if (duasFaces && !svgVerso) { toast.error('Escolha também a arte do verso.'); return; }
     if (estouro.length) {
       toast.error('Um dos textos passou da área segura. Encurte o texto ou reduza a arte.');
       return;
     }
+    if (doPedido && doItem) { setConfirmandoPedido(true); return; }
+    confirmar();
+  }
 
+  async function confirmar() {
+    setConfirmandoPedido(false);
     setSalvando(true);
     try {
       // O servidor grava o gabarito VIGENTE junto do projeto e devolve o
@@ -481,17 +503,51 @@ export default function CriarArte() {
           </Painel>
 
           <div className="space-y-2.5">
-            <Botao cheio icone={Check} onClick={confirmar}
+            <Botao cheio icone={Check} onClick={aoConfirmar}
               disabled={salvando || !svgFrente || (duasFaces && !svgVerso) || estouro.length > 0}>
-              {salvando ? 'Salvando…' : 'Confirmar arte e voltar'}
+              {salvando ? 'Salvando…'
+                : doPedido ? 'Enviar esta arte para a produção'
+                : 'Confirmar arte e voltar'}
             </Botao>
             <Botao cor={NEON.azul} icone={ArrowLeft}
-              onClick={() => navigate(`/personalizados/configurar/${chave}`)}>
+              onClick={() => (doPedido ? navigate(`/acompanhar/pedido/${doPedido}`) : navigate(`/personalizados/configurar/${chave}`))}>
               Voltar sem salvar
             </Botao>
           </div>
         </div>
       </div>
+
+      {/* ── A SEGUNDA PERGUNTA, só no caminho sem volta ──────── */}
+      {confirmandoPedido && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ background: 'rgba(3,6,18,0.85)' }} onClick={() => setConfirmandoPedido(false)}>
+          <div className="w-full max-w-lg rounded-2xl p-5" onClick={e => e.stopPropagation()}
+            style={{ background: 'linear-gradient(180deg,#0b1024 0%,#080d1e 100%)',
+                     border: bordaNeon(NEON.magenta), boxShadow: `0 0 30px ${corComAlfa(NEON.magenta, 0.15)}` }}>
+            <h3 className="text-white font-bold text-[17px] flex items-center gap-2">
+              <Send size={18} style={{ color: NEON.magenta }} /> Enviar esta arte para a produção?
+            </h3>
+            <p className="text-[14px] mt-3 text-white">
+              Você tem certeza que deseja enviar a arte que montou? Confira os nomes, as datas e as
+              frases — é exatamente este desenho que vai para o copo.
+            </p>
+            <p className="text-[12.5px] mt-3 rounded-xl px-3.5 py-2.5 flex gap-2"
+              style={{ background: corComAlfa(NEON.magenta, 0.12), color: '#fcd34d',
+                       border: bordaNeon(NEON.magenta, 0.35) }}>
+              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+              <span>Ao confirmar, a personalização deste item COMEÇA: a arte vira vegetal, tela e copo
+                impresso. Desse ponto em diante o processo não pode ser interrompido, e trocar a arte
+                só falando com um atendente.</span>
+            </p>
+            <div className="flex items-center justify-end gap-2 mt-5">
+              <Botao cor={NEON.azul} onClick={() => setConfirmandoPedido(false)}>Voltar e revisar</Botao>
+              <Botao cheio icone={Check} onClick={confirmar} disabled={salvando}>
+                {salvando ? 'Enviando…' : 'Sim, enviar para a produção'}
+              </Botao>
+            </div>
+          </div>
+        </div>
+      )}
     </CatalogoShell>
   );
 }

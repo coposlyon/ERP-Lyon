@@ -63,8 +63,59 @@ function linhaDaTinta(c, item) {
   return m ? m[1].toUpperCase() : null;
 }
 
+/**
+ * EM QUE PÉ ESTÁ A ARTE DESTE ITEM.
+ *
+ * Quatro estados, e a diferença entre eles é QUEM mandou o desenho:
+ *
+ *   sem_arte            ninguém mandou nada. A produção não começa.
+ *   aguardando_cliente  a LOJA mandou. O cliente precisa ver e dizer
+ *                       se é aquilo mesmo antes de virar tela e copo.
+ *   aprovada            o desenho está combinado. Daqui não se troca
+ *                       mais sozinho — só falando com um atendente.
+ *   reprovada           o cliente disse que não é. A loja manda outra.
+ *
+ * A ARTE QUE O PRÓPRIO CLIENTE MANDA NASCE APROVADA, e não é atalho:
+ * pedir que ele confirme o arquivo que ele acabou de escolher é
+ * perguntar duas vezes a mesma coisa. O aviso de que a personalização
+ * começa e não volta atrás é dado ANTES do envio, na tela — que é onde
+ * ele ainda pode desistir.
+ *
+ * A APROVAÇÃO MORA DENTRO DA ARTE, e é de propósito: trocar o desenho
+ * substitui o objeto inteiro, então arte nova nasce sem aprovação
+ * nenhuma. Guardá-la fora seria a porta para um pedido ficar com a
+ * aprovação do desenho velho colada no desenho novo.
+ */
+function estadoDaArte(c = {}) {
+  const anexo = c.arte_cliente || null;
+  const montada = !!(c.arte?.projeto_id || c.projeto_arte);
+
+  // Sem arquivo anexado: ou não há arte, ou ela foi MONTADA no editor
+  // pelo próprio cliente — e essa é dele, não há o que confirmar.
+  if (!anexo) {
+    return montada
+      ? { estado: 'aprovada', por: 'cliente', aprovada_em: c.arte?.enviada_em || null, reprovada_em: null, motivo: null }
+      : { estado: 'sem_arte', por: null, aprovada_em: null, reprovada_em: null, motivo: null };
+  }
+
+  const por = anexo.por || null;
+  const base = { por, aprovada_em: anexo.aprovada_em || null,
+                 reprovada_em: anexo.reprovada_em || null, motivo: anexo.motivo || null };
+
+  if (anexo.reprovada_em) return { ...base, estado: 'reprovada' };
+  if (anexo.aprovada_em) return { ...base, estado: 'aprovada' };
+  // Sem decisão registrada: só espera o cliente o que veio da LOJA.
+  // Anexo antigo do próprio cliente (de antes desta regra) continua
+  // valendo como combinado — não é para o pedido de ontem acordar hoje
+  // pedindo uma confirmação que ninguém sabia que existia.
+  return por === 'cliente'
+    ? { ...base, estado: 'aprovada', aprovada_em: anexo.enviada_em || null }
+    : { ...base, estado: 'aguardando_cliente' };
+}
+
 function caracteristicasDoItem(item) {
   const c = item.customization || {};
+  const arte = estadoDaArte(c);
   const nome = item.PRODUTOS?.name || item.product_name || 'Produto';
 
   // "Cor degradê: AZUL/ROSA" → { tipo: 'Cor degradê', valor: 'AZUL/ROSA' }
@@ -181,6 +232,14 @@ function caracteristicasDoItem(item) {
      */
     arte_anexada: c.arte_cliente?.url || null,
     arte_anexada_em: c.arte_cliente?.enviada_em || null,
+    // O estado da arte, aberto em campos: a tela do cliente decide entre
+    // "confirmar" e "trocar" com ele, e a do vendedor mostra que o
+    // pedido está esperando o cliente e não a fábrica.
+    arte_estado: arte.estado,
+    arte_por: arte.por,
+    arte_aprovada_em: arte.aprovada_em,
+    arte_reprovada_em: arte.reprovada_em,
+    arte_reprovada_motivo: arte.motivo,
     modelo_chave: c.modelo || null,
     acessorio: corBorda ? `Borda ${corBorda}` : (temBorda ? 'Borda' : null),
     quantidade: Number(item.quantity) || 0,
@@ -210,4 +269,25 @@ function etapasDosItens(itens) {
   };
 }
 
-module.exports = { capacidade, caracteristicasDoItem, etapasDosItens };
+/**
+ * A ARTE DO PEDIDO INTEIRO, contada por item.
+ *
+ * O pedido tem UMA etapa de arte e pode ter várias artes. Quem decide
+ * se essa etapa está cumprida não é "existe algum arquivo" — é NÃO
+ * SOBRAR NENHUMA ESPERANDO o cliente e NENHUMA REPROVADA. Produzir com
+ * uma arte que o cliente ainda não viu (ou que ele recusou) é retrabalho
+ * garantido, e retrabalho de serigrafia se mede em milheiro de copo.
+ */
+function resumoDaArte(itens) {
+  const lista = (itens || []).map(i => (i.arte_estado === undefined ? caracteristicasDoItem(i) : i))
+    .filter(i => i.tem_personalizacao);
+  return {
+    total:      lista.length,
+    aguardando: lista.filter(i => i.arte_estado === 'aguardando_cliente').length,
+    reprovadas: lista.filter(i => i.arte_estado === 'reprovada').length,
+    sem_arte:   lista.filter(i => i.arte_estado === 'sem_arte').length,
+    aprovadas:  lista.filter(i => i.arte_estado === 'aprovada').length,
+  };
+}
+
+module.exports = { capacidade, caracteristicasDoItem, etapasDosItens, estadoDaArte, resumoDaArte };

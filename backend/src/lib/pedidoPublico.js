@@ -111,6 +111,19 @@ function montarPedidoDoCliente(venda, extra = {}) {
     // certo.
     arte_anexada: i.arte_anexada,
     arte_anexada_em: i.arte_anexada_em,
+    // ── O QUE O CLIENTE PRECISA DECIDIR ───────────────────────
+    //
+    // Quando a LOJA manda a arte, ela não vale por combinada: o cliente
+    // vê e diz se é aquilo. Enquanto ele não diz, o item fica em
+    // `aguardando_cliente` e a tela mostra os dois botões; depois de
+    // aprovada, some o botão de trocar — dali em diante o desenho vira
+    // vegetal, tela e copo, e trocar em silêncio é o caminho para mil
+    // peças saírem erradas sem ninguém saber quem mandou trocar.
+    arte_estado: i.arte_estado,
+    arte_por: i.arte_por,
+    arte_aprovada_em: i.arte_aprovada_em,
+    arte_reprovada_em: i.arte_reprovada_em,
+    arte_reprovada_motivo: i.arte_reprovada_motivo,
     modelo_chave: i.modelo_chave,
     codigo: i.codigo,
     produto: i.produto,
@@ -133,7 +146,17 @@ function montarPedidoDoCliente(venda, extra = {}) {
     // Vem CALCULADA daqui, e não como `tem_borda`/`tem_pintura` soltos:
     // esses dois são processo interno, e a regra desta função é campo a
     // campo — o que sai é o que a tela do cliente precisa, nada além.
-    linha_do_tempo: A.linhaDoTempo(venda, { borda: i.tem_borda, pintura: i.tem_pintura }),
+    //
+    // `personalizado` faltava nesta lista, e a falta aparecia na tela:
+    // o copo liso de um pedido misto mostrava arte, vegetal e revelação
+    // na linha do tempo dele, porque o PEDIDO estava na etapa da arte.
+    // `doItem` é o que diz à régua que aqui a pergunta é outra — o
+    // caminho deste copo, não o do pedido.
+    linha_do_tempo: A.linhaDoTempo(
+      venda,
+      { borda: i.tem_borda, pintura: i.tem_pintura, personalizado: i.tem_personalizacao },
+      { doItem: true },
+    ),
   }));
 
   return {

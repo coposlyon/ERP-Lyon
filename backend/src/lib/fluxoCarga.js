@@ -14,7 +14,7 @@
 // divergir.
 // ============================================================
 const supabase = require('../config/supabase');
-const { caracteristicasDoItem, etapasDosItens } = require('./itensPedido');
+const { caracteristicasDoItem, etapasDosItens, resumoDaArte } = require('./itensPedido');
 const C = require('./comprovante');
 
 const CAMPOS_FLUXO = `
@@ -45,8 +45,14 @@ async function carregarParaFluxo(tenantId, id) {
   // e a tela de UM pedido, aberta por uma pessoa de cada vez.
   const comprovante_quitado = await C.estaQuitada(tenantId, data);
 
+  // A ARTE ENTRA NA FICHA porque a etapa dela deixou de ser "existe
+  // arquivo": a arte que a LOJA manda ainda precisa do sim do cliente,
+  // e a que ele reprovou não pode virar tela. Quem responde isso é o
+  // conjunto dos itens, não a coluna `artwork_url` da venda.
+  const arte_resumo = resumoDaArte(itens);
+
   return {
-    venda: { ...data, itens_qtd: itens.length, comprovante_quitado },
+    venda: { ...data, itens_qtd: itens.length, comprovante_quitado, arte_resumo },
     aplicaveis: etapasDosItens(itens),
   };
 }

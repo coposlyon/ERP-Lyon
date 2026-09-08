@@ -14,7 +14,7 @@ const { paraOBalcao } = require('../lib/retirada');
 const { ORIGENS } = require('../lib/origens');
 const { autorizar, excluirVenda } = require('../lib/excluirVenda');
 const { audit } = require('../lib/audit');
-const { caracteristicasDoItem, etapasDosItens } = require('../lib/itensPedido');
+const { caracteristicasDoItem, etapasDosItens, resumoDaArte } = require('../lib/itensPedido');
 // A ficha de fluxo (onde o pedido esta, o que falta, qual e o botao) sai
 // do mesmo motor que o modulo de Vendas usa para mover o pedido.
 const F = require('../lib/fluxoPedido');
@@ -249,7 +249,13 @@ router.get('/pedidos/:id', async (req, res) => {
       // quitado logo acima — o painel do fluxo acertava, esta nao,
       // porque cada uma carrega a venda do seu jeito.
       fluxo: F.fichaDeFluxo(
-        { ...data, itens_qtd: itens.length, comprovante_quitado: await C.estaQuitada(req.tenantId, data) },
+        // `arte_resumo` entra pelo mesmo motivo que o comprovante: e
+        // ele que responde se a etapa de Arte esta cumprida, agora que
+        // a arte da loja espera o sim do cliente. Sem ele esta tela
+        // ofereceria "Aprovar a arte" num pedido cuja arte o cliente
+        // acabou de reprovar no portal.
+        { ...data, itens_qtd: itens.length, arte_resumo: resumoDaArte(itens),
+          comprovante_quitado: await C.estaQuitada(req.tenantId, data) },
         etapasDosItens(itens),
         { acesso: req.acesso, perfil: req.userProfile },
       ),
@@ -591,9 +597,16 @@ router.post('/pedidos/:id/item/:itemId/arte', async (req, res) => {
     log.push({
       action: 'arte_anexada', at: agora, user: quem, stage: 'documentos',
       item: item.product_name || null,
+      // A arte que sai daqui é a da LOJA, e ela ainda não está
+      // combinada: o cliente vai vê-la no portal e dizer se é aquilo.
+      // Escrever isso no histórico é o que explica, seis meses depois,
+      // por que o pedido ficou parado na etapa de arte com o arquivo já
+      // anexado — ele não estava esperando a fábrica, estava esperando
+      // o cliente.
       nota: substituindo
-        ? `substituiu a arte do item — autorizado por ${autorizacao?.name || autorizacao?.email || 'gerente'}`
-        : null,
+        ? `substituiu a arte do item (aguardando a confirmação do cliente) — `
+          + `autorizado por ${autorizacao?.name || autorizacao?.email || 'gerente'}`
+        : 'aguardando a confirmação do cliente no portal',
     });
 
     const patch = { production_log: log };
