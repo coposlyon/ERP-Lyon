@@ -84,6 +84,11 @@ router.use('/vendedor',  requireModules('vendedor','sales','pdv','crm'), require
 // Área do vendedor: carteira de pedidos, agenda, comunicação com o
 // gerente e o alerta que os outros setores também enxergam.
 router.use('/area-vendedor', requireModules('pedidos-vendedor','agenda','comunicacao','vendedor','sales'), require('./area-vendedor'));
+
+// O MÓDULO COMUNICAÇÃO — o mural do que aconteceu, o chat da empresa e
+// o calendário. Aberto a quem tem comunicação OU agenda: são as duas
+// telas do módulo, e quem tem uma costuma precisar da outra.
+router.use('/comunicacao', requireModules('comunicacao', 'agenda'), require('./comunicacao'));
 // Permissões por setor — leitura para todo usuário logado (a tela precisa
 // saber o próprio layout); escrita só para admin, travada lá dentro.
 router.use('/setores', require('./setores'));

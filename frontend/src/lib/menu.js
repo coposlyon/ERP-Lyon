@@ -236,6 +236,20 @@ export const menuItems = [
   //
   // PARA VOLTAR: devolva este bloco. As telas nunca saíram do lugar.
 
+  // COMUNICAÇÃO — o que aconteceu e o que se combinou.
+  //
+  // Fica fora do Comercial de propósito: o mural registra o que TODO
+  // mundo fez (estoque, produção, financeiro) e a sala é da empresa
+  // inteira. Pendurado em Comercial, metade da fábrica não acharia.
+  {
+    label: 'Comunicação',
+    icon: MessageSquare,
+    children: [
+      { label: 'Comunicação', path: '/comunicacao', icon: MessageSquare, module: ['comunicacao', 'agenda'] },
+      { label: 'Agenda',      path: '/agenda',      icon: CalendarDays,  module: ['agenda', 'comunicacao'] },
+    ],
+  },
+
   // --- Módulos diretos (sem submenu) ---
   {
     // COMPRAS SAIU DO MENU. A entrada de mercadoria da Lyon acontece

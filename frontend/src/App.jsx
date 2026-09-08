@@ -39,6 +39,11 @@ const DocumentoPedido    = lazy(() => import('@/pages/Vendedor/DocumentoPedido')
 const Catalogo           = lazy(() => import('@/pages/Vendedor/Catalogo'));
 const AgendaVendedor     = lazy(() => import('@/pages/Vendedor/Agenda'));
 const Comunicacao        = lazy(() => import('@/pages/Vendedor/Comunicacao'));
+// O MÓDULO COMUNICAÇÃO — mural do que aconteceu + chat da empresa, e o
+// calendário. As telas do vendedor acima continuam de pé: a dele é a
+// caixa com o gerente sobre um pedido; esta é a sala inteira.
+const ComunicacaoGeral   = lazy(() => import('@/pages/Comunicacao/Comunicacao'));
+const AgendaGeral        = lazy(() => import('@/pages/Comunicacao/Agenda'));
 const DadosVendedor      = lazy(() => import('@/pages/Vendedor/DadosVendedor'));
 const Permissoes         = lazy(() => import('@/pages/Settings/Permissoes'));
 const Purchases          = lazy(() => import('@/pages/Purchases/Purchases'));
@@ -258,6 +263,12 @@ function AppRoutes() {
         <Route path="vendedor/catalogo" element={<Mod m={['catalogo','vendedor','sales']}><Catalogo /></Mod>} />
         <Route path="vendedor/agenda" element={<Mod m={['agenda','vendedor','sales']}><AgendaVendedor /></Mod>} />
         <Route path="vendedor/comunicacao" element={<Mod m={['comunicacao','vendedor','sales']}><Comunicacao /></Mod>} />
+
+        {/* Módulo Comunicação: a sala da empresa e o calendário de
+            todos. Aberto a quem tem comunicação OU agenda — são as duas
+            telas do módulo, e quem tem uma costuma precisar da outra. */}
+        <Route path="comunicacao" element={<Mod m={['comunicacao','agenda']}><ComunicacaoGeral /></Mod>} />
+        <Route path="agenda" element={<Mod m={['agenda','comunicacao']}><AgendaGeral /></Mod>} />
         <Route path="vendedor/perfil" element={<Mod m={['vendedor','pedidos-vendedor','sales']}><DadosVendedor /></Mod>} />
         {/* Detalhe do pedido. A Tela 2 completa ainda será especificada;
             esta versão sustenta o "Visualizar detalhes" sem expor custo. */}

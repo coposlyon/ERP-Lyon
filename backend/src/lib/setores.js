@@ -40,8 +40,8 @@ const MODULOS = [
   { key: 'vendedor',         label: 'Dashboard do Vendedor',   grupo: 'Área do vendedor' },
   { key: 'pedidos-vendedor', label: 'Pedidos (carteira)',   grupo: 'Área do vendedor' },
   { key: 'catalogo',         label: 'Site / Catálogo',      grupo: 'Área do vendedor' },
-  { key: 'agenda',           label: 'Agenda',               grupo: 'Área do vendedor' },
-  { key: 'comunicacao',      label: 'Comunicação',          grupo: 'Área do vendedor' },
+  { key: 'agenda',           label: 'Agenda',               grupo: 'Comunicação' },
+  { key: 'comunicacao',      label: 'Comunicação',          grupo: 'Comunicação' },
   { key: 'sales',            label: 'Pedidos de Venda',     grupo: 'Comercial' },
   { key: 'pdv',              label: 'PDV',                  grupo: 'Comercial' },
   { key: 'quotes',           label: 'Orçamentos',           grupo: 'Comercial' },
@@ -74,7 +74,14 @@ const MODULO_KEYS = new Set(MODULOS.map(m => m.key));
 // Eles aparecem na tela de Permissões numa seção própria, em vez de
 // sumirem: um acesso que existe na API e não aparece em lugar nenhum
 // para configurar é um acesso que ninguém revisa.
-const MODULOS_SEM_TELA = ['dashboard', 'pdv', 'purchases', 'vendedor', 'pedidos-vendedor', 'catalogo', 'agenda', 'comunicacao'];
+//
+// AGENDA E COMUNICAÇÃO SAÍRAM DESTA LISTA. Elas estavam aqui enquanto
+// só existiam dentro do layout do vendedor — um menu à parte, que a
+// árvore de telas do ERP não alcança. Agora o módulo Comunicação tem
+// dois itens no menu lateral (/comunicacao e /agenda), então marcá-los
+// na árvore libera de verdade, e listá-los aqui os mandaria para a
+// seção "sem tela" da tela de Permissões, onde ninguém procuraria.
+const MODULOS_SEM_TELA = ['dashboard', 'pdv', 'purchases', 'vendedor', 'pedidos-vendedor', 'catalogo'];
 
 // Dois jeitos de o ERP se apresentar. 'erp' é o sistema inteiro; 'vendedor'
 // é a área enxuta de cinco itens do layout aprovado.
