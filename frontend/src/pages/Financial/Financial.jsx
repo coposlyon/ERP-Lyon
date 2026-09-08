@@ -628,6 +628,7 @@ function ConfirmarModal({ conta, onClose, onFeito }) {
 function CobrancaModal({ conta, onClose }) {
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState('');
+  const [abriu, setAbriu] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -644,48 +645,80 @@ function CobrancaModal({ conta, onClose }) {
     </p>;
   }
 
+  const copiar = (texto, oque) => {
+    navigator.clipboard?.writeText(texto || '');
+    toast.success(`${oque} copiado`);
+  };
+
   return (
     <div className="space-y-3">
       <p className="text-[13px] text-gray-600">
         Cobrança de <b>{fmt(dados.valor)}</b> para <b>{dados.cliente || 'o cliente'}</b>
-        {dados.telefone ? <> · {dados.telefone}</> : <> · <span className="text-amber-700">sem telefone cadastrado</span></>}
+        {dados.telefone
+          ? <> · {dados.telefone}</>
+          : <> · <span className="text-amber-700">sem telefone cadastrado</span></>}
       </p>
 
       {dados.qr_base64 && (
         <img src={`data:image/png;base64,${dados.qr_base64}`} alt="QR Code do Pix"
-          className="mx-auto rounded-xl border border-gray-200" style={{ width: 220, height: 220 }} />
+          className="mx-auto rounded-xl border border-gray-200" style={{ width: 200, height: 200 }} />
       )}
 
+      {/* O CÓDIGO EM CAMPO PRÓPRIO, com o rótulo em cima — é assim que
+          ele vai na mensagem também. Um Pix colado no meio do texto é
+          um Pix que o cliente seleciona pela metade. */}
       <div>
-        <span className="label">Pix copia e cola</span>
+        <span className="label">Chave Pix (copia e cola)</span>
         <div className="flex gap-2">
-          <input className="input font-mono text-[11px]" readOnly value={dados.copia_e_cola || ''} />
-          <button className="btn-secondary btn-sm shrink-0" title="Copiar"
-            onClick={() => { navigator.clipboard?.writeText(dados.copia_e_cola || ''); toast.success('Copiado'); }}>
+          <input className="input font-mono text-[11px]" readOnly value={dados.copia_e_cola || ''}
+            onFocus={e => e.target.select()} />
+          <button className="btn-secondary btn-sm shrink-0" title="Copiar a chave"
+            onClick={() => copiar(dados.copia_e_cola, 'Pix')}>
             <Copy size={14} />
           </button>
         </div>
       </div>
 
       <div>
-        <span className="label">Mensagem</span>
-        <textarea className="input text-[12.5px]" rows={5} readOnly value={dados.mensagem} />
+        <span className="label">Mensagem que vai para o cliente</span>
+        <textarea className="input text-[12.5px]" rows={6} readOnly value={dados.mensagem} />
       </div>
 
-      {dados.envio?.enviado ? (
+      {dados.envio?.modo === 'automatico' ? (
         <p className="text-[12.5px] rounded-xl px-3 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800">
           Enviado pelo WhatsApp automaticamente.
         </p>
       ) : (
         <>
-          <p className="text-[12.5px] rounded-xl px-3 py-2 bg-amber-50 border border-amber-200 text-amber-800">
-            Envio automático indisponível ({dados.envio?.motivo}). Abra a conversa — a mensagem já vai escrita.
+          {/* O CAMINHO NORMAL, e não um aviso de erro.
+              Mandar sozinho exige a API oficial da Meta (número
+              verificado e template aprovado para mensagem que a empresa
+              inicia). Até lá o envio é meio automático: o WhatsApp abre
+              com tudo escrito e a pessoa aperta enviar. */}
+          <p className="text-[12.5px] rounded-xl px-3 py-2.5 flex gap-2
+                        bg-blue-50 border border-blue-200 text-blue-900">
+            <MessageCircle size={15} className="shrink-0 mt-0.5" />
+            <span>
+              O WhatsApp abre com a mensagem e o Pix já escritos —
+              <b> é só apertar enviar</b>. {dados.envio?.motivo ? `(${dados.envio.motivo})` : ''}
+            </span>
           </p>
-          <div className="flex justify-end gap-2">
-            <button className="btn-secondary" onClick={onClose}>Fechar</button>
+
+          {abriu && (
+            <p className="text-[12.5px] rounded-xl px-3 py-2 bg-gray-50 border border-gray-200 text-gray-700">
+              Abriu numa aba nova. Se não abriu, o navegador pode ter bloqueado a janela —
+              copie a mensagem e mande pelo WhatsApp.
+            </p>
+          )}
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <button className="btn-secondary" onClick={() => copiar(dados.mensagem, 'Mensagem')}>
+              <Copy size={14} /> Copiar mensagem
+            </button>
             <button className="btn-primary" disabled={!dados.wa_link}
-              onClick={() => window.open(dados.wa_link, '_blank', 'noopener')}>
-              <MessageCircle size={14} /> Abrir no WhatsApp
+              title={dados.wa_link ? 'Abre a conversa com a mensagem escrita' : 'Cliente sem telefone cadastrado'}
+              onClick={() => { window.open(dados.wa_link, '_blank', 'noopener'); setAbriu(true); }}>
+              <MessageCircle size={14} /> Abrir o WhatsApp e enviar
             </button>
           </div>
         </>

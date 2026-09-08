@@ -229,11 +229,25 @@ router.post('/:id/cobranca-whatsapp', async (req, res) => {
     // montado na tela porque a mesma cobrança sai daqui pelo envio
     // automático — e duas redações da mesma mensagem viram duas Lyons.
     const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    /**
+     * O CÓDIGO FICA SEPARADO DO RECADO.
+     *
+     * Ele saía colado no fim do texto, e no WhatsApp isso é um parágrafo
+     * de 130 caracteres sem espaço que o cliente tenta selecionar com o
+     * dedo — pegando meia frase junto e colando um Pix inválido no app
+     * do banco.
+     *
+     * Agora vai embaixo de um rótulo, com uma linha em branco antes: o
+     * bloco fica isolado, dá para tocar e segurar em cima dele, e quem
+     * lê sabe o que é aquela parede de números.
+     */
+    const codigo = cobranca.copy_paste || cobranca.copia_e_cola || '';
     const mensagem = [
       'Olá! Financeiro da Lyon copos aqui, segue o Pix copia e cola para pagamento da sua fatura conosco!',
       `No valor de *${brl(valor)}*, por gentileza envie o comprovante quando possível.`,
       '',
-      cobranca.copy_paste || cobranca.copia_e_cola || '',
+      'CHAVE PIX (copia e cola):',
+      codigo,
     ].filter(Boolean).join('\n');
 
     const fone = normalizarNumero(conta.CLIENTES?.mobile || conta.CLIENTES?.phone);
@@ -245,12 +259,26 @@ router.post('/:id/cobranca-whatsapp', async (req, res) => {
       pix_qr: cobranca.qr_base64 || null,
     }).eq('id', conta.id).eq('tenant_id', req.tenantId);
 
-    let envio = { enviado: false, motivo: 'WhatsApp automático não configurado' };
-    if (fone && process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID) {
+    /**
+     * O ENVIO É MEIO AUTOMÁTICO, E ISSO NÃO É UM DEFEITO.
+     *
+     * Mandar sozinho exige a API oficial da Meta (token + número
+     * verificado + template aprovado para mensagem que a empresa
+     * INICIA). Enquanto isso não existe, o caminho é abrir a conversa
+     * com tudo escrito e a pessoa apertar enviar — dois cliques em vez
+     * de dez minutos montando a mensagem e conferindo o Pix.
+     *
+     * `modo` diz qual dos dois aconteceu, para a tela falar a verdade
+     * em vez de mostrar um aviso de erro no caminho normal.
+     */
+    let envio = { modo: 'manual', enviado: false };
+    if (!fone) {
+      envio = { modo: 'sem_telefone', enviado: false, motivo: 'Cliente sem telefone cadastrado' };
+    } else if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID) {
       const r = await sendWhatsApp(fone, mensagem);
-      envio = r.ok ? { enviado: true, id: r.id } : { enviado: false, motivo: r.error };
-    } else if (!fone) {
-      envio = { enviado: false, motivo: 'Cliente sem telefone cadastrado' };
+      envio = r.ok
+        ? { modo: 'automatico', enviado: true, id: r.id }
+        : { modo: 'manual', enviado: false, motivo: r.error };
     }
 
     audit(req, 'update', 'financial', conta.id, { cobranca_whatsapp: valor, enviado: envio.enviado });
