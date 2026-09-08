@@ -33,6 +33,9 @@ const { uploadPrivado, linkAssinado } = require('./storage');
 
 const centavos = v => Math.round((Number(v) || 0) * 100);
 const doisDecimais = v => Math.round((Number(v) || 0) * 100) / 100;
+// Para o texto que fica na observacao da parcela — quem le a linha
+// precisa ver "R$ 150,00", e nao 150.
+const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const tabelaAusente = err =>
   /42P01|PGRST(002|205)|does not exist|schema cache|column/i.test(`${err?.code || ''} ${err?.message || ''}`);
@@ -40,7 +43,8 @@ const tabelaAusente = err =>
 /** Os campos da parcela que a tela precisa. */
 const CAMPOS = `id, description, amount, paid_amount, due_date, paid_date, status,
                 installment, total_installments, payment_method, document_number,
-                receipt_url, receipt_read, receipt_status, receipt_at, receipt_by, boleto_url`;
+                receipt_url, receipt_read, receipt_status, receipt_at, receipt_by, boleto_url,
+                receipt_amount, paid_by, paid_at, reference_id, customer_id, notes`;
 
 /**
  * AS PARCELAS DESTE PEDIDO.
@@ -209,87 +213,207 @@ async function anexarComprovante(tenantId, venda, parcelaId, { arquivo, valor, r
 
   // A ordem da verdade: o que a pessoa confirmou, depois o que a maquina
   // leu, depois a parcela inteira. Nunca o contrario.
-  const pago = valor != null && valor !== ''
+  const declarado = valor != null && valor !== ''
     ? doisDecimais(valor)
     : (leitura.ok && leitura.valor != null ? leitura.valor : doisDecimais(parcela.amount));
 
-  const esperado = doisDecimais(parcela.amount);
-  const jaPago = doisDecimais(parcela.paid_amount);
-  const totalPago = doisDecimais(jaPago + pago);
-  const quitou = centavos(totalPago) >= centavos(esperado);
-
-  // Divergente quando a MAQUINA leu um valor diferente do confirmado.
-  // Nao trava: entra assim mesmo e a conciliacao de sexta olha.
+  // Divergente quando a MAQUINA leu um valor diferente do declarado.
+  // Nao trava: entra assim mesmo, marcado, e o financeiro olha.
   const divergente = leitura.ok && leitura.valor != null
-    && centavos(leitura.valor) !== centavos(pago);
+    && centavos(leitura.valor) !== centavos(declarado);
 
+  /**
+   * ANEXAR NAO PAGA — e esta e a mudanca.
+   *
+   * Antes esta funcao gravava `paid_amount` na hora: o vendedor subia o
+   * print e a parcela aparecia PAGA no Financeiro, sem ninguem do
+   * financeiro ter aberto o extrato. O print de uma transferencia
+   * AGENDADA, o comprovante de outro pedido e o valor digitado errado
+   * entravam todos como dinheiro na conta.
+   *
+   * O que entra aqui e uma AFIRMACAO com valor declarado. O dinheiro so
+   * muda de coluna em `confirmarPagamento`, que e do financeiro.
+   */
   const patch = {
     receipt_url: caminho,
     receipt_read: leitura.ok ? leitura : { erro: leitura.motivo },
     receipt_status: divergente ? 'divergente' : 'pendente',
     receipt_at: new Date().toISOString(),
     receipt_by: req?.user?.name || req?.user?.email || 'Usuario',
-    paid_amount: totalPago,
-    status: quitou ? 'paid' : 'partial',
-    paid_date: quitou ? (leitura.data || new Date().toISOString().split('T')[0]) : parcela.paid_date,
+    receipt_amount: declarado,
   };
 
   const { data: salva, error } = await supabase.from('LANCAMENTOS')
     .update(patch).eq('id', parcela.id).eq('tenant_id', tenantId).select(CAMPOS).single();
   if (error) throw error;
 
-  // PAGOU MENOS QUE A PARCELA? Abre a linha do saldo.
-  //
-  // E aqui que a entrada de 50% vira duas parcelas sem ninguem cadastrar
-  // nada: quem pagou 500 de 1000 ja sai desta chamada com a segunda
-  // linha esperando o comprovante do resto.
+  return {
+    ok: true,
+    parcela: enriquecer(salva),
+    // Nada de saldo aqui: quebrar a parcela em duas e consequencia do
+    // dinheiro que ENTROU, e ainda nao entrou nada.
+    saldo: null,
+    leitura,
+    divergente,
+    declarado,
+    aguardando_financeiro: true,
+  };
+}
+
+/**
+ * O FINANCEIRO CONFIRMA — e o dinheiro entra.
+ *
+ * Este e o unico lugar em que o `paid_amount` de uma parcela de pedido
+ * muda. Ele faz tres coisas que antes ninguem fazia:
+ *
+ * 1. EXIGE A CONFERENCIA. Sem o comprovante marcado como conferido nao
+ *    confirma — a nao ser que quem confirma diga explicitamente que
+ *    esta recebendo SEM comprovante (dinheiro no balcao), o que fica
+ *    registrado como tal.
+ *
+ * 2. ESPALHA O QUE SOBRA NAS PARCELAS SEGUINTES. Pagou 350 numa parcela
+ *    de 200 de um pedido em 2x? A primeira fecha e 150 abatem na
+ *    segunda, que fica devendo 50. Antes o excedente ficava parado numa
+ *    parcela "paga a mais" e a segunda continuava inteira — o cliente
+ *    pagava e o sistema continuava cobrando.
+ *
+ * 3. GUARDA QUEM CONFIRMOU. `paid_by`/`paid_at`, separados de
+ *    `receipt_by`/`receipt_at`: "quem olhou a imagem" e "quem disse que
+ *    o dinheiro entrou" sao duas perguntas diferentes.
+ */
+async function confirmarPagamento(tenantId, parcelaId, { valor, sem_comprovante, req } = {}) {
+  const { data: parcela, error } = await supabase.from('LANCAMENTOS').select(CAMPOS)
+    .eq('tenant_id', tenantId).eq('id', parcelaId).maybeSingle();
+  if (error) throw error;
+  if (!parcela) return { erro: 'Parcela nao encontrada' };
+
+  const temComprovante = !!parcela.receipt_url;
+  if (temComprovante && parcela.receipt_status !== 'conferido') {
+    return { erro: 'Confira o comprovante antes de confirmar o pagamento.', code: 'FALTA_CONFERIR' };
+  }
+  if (!temComprovante && !sem_comprovante) {
+    return {
+      erro: 'Esta parcela nao tem comprovante anexado.',
+      code: 'SEM_COMPROVANTE',
+      dica: 'Se o pagamento foi em dinheiro no balcao, confirme marcando "sem comprovante".',
+    };
+  }
+
+  const pago = doisDecimais(
+    valor != null && valor !== '' ? valor
+      : (parcela.receipt_amount != null ? parcela.receipt_amount
+        : doisDecimais(parcela.amount) - doisDecimais(parcela.paid_amount)),
+  );
+  if (!(pago > 0)) return { erro: 'Informe o valor recebido.' };
+
+  const agora = new Date().toISOString();
+  const hoje = agora.split('T')[0];
+  const quem = req?.userProfile?.name || req?.user?.name || req?.user?.email || 'Financeiro';
+
+  // As parcelas irmas, para onde o excedente escorre. So as do MESMO
+  // pedido: dinheiro de um pedido nao abate a divida de outro.
+  let irmas = [];
+  if (parcela.reference_id) {
+    const { data } = await supabase.from('LANCAMENTOS').select(CAMPOS)
+      .eq('tenant_id', tenantId).eq('reference_type', 'sale')
+      .eq('reference_id', parcela.reference_id).neq('id', parcela.id)
+      .order('installment');
+    irmas = (data || []).filter(x => doisDecimais(x.amount) - doisDecimais(x.paid_amount) > 0.005);
+  }
+
+  const aplicados = [];
+  let restante = pago;
+
+  // 1) A parcela que recebeu o comprovante vem primeiro.
+  const cabeNela = Math.max(0, doisDecimais(parcela.amount) - doisDecimais(parcela.paid_amount));
+  const naParcela = doisDecimais(Math.min(restante, cabeNela));
+  restante = doisDecimais(restante - naParcela);
+  const pagoNaParcela = doisDecimais(doisDecimais(parcela.paid_amount) + naParcela);
+  const quitou = centavos(pagoNaParcela) >= centavos(doisDecimais(parcela.amount));
+
+  const { data: salva, error: e1 } = await supabase.from('LANCAMENTOS').update({
+    paid_amount: pagoNaParcela,
+    status: quitou ? 'paid' : 'partial',
+    paid_date: quitou ? (parcela.receipt_read?.data || hoje) : parcela.paid_date,
+    paid_by: quem,
+    paid_at: agora,
+    ...(sem_comprovante && !temComprovante ? { receipt_status: 'sem_comprovante' } : {}),
+  }).eq('id', parcela.id).eq('tenant_id', tenantId).select(CAMPOS).single();
+  if (e1) throw e1;
+  aplicados.push({ id: parcela.id, parcela: parcela.installment, valor: naParcela, quitou });
+
+  // 2) O que sobrou escorre para as seguintes, na ordem das parcelas.
+  for (const irma of irmas) {
+    if (restante <= 0.005) break;
+    const cabe = Math.max(0, doisDecimais(irma.amount) - doisDecimais(irma.paid_amount));
+    const aplica = doisDecimais(Math.min(restante, cabe));
+    if (aplica <= 0.005) continue;
+    const novoPago = doisDecimais(doisDecimais(irma.paid_amount) + aplica);
+    const fechou = centavos(novoPago) >= centavos(doisDecimais(irma.amount));
+    await supabase.from('LANCAMENTOS').update({
+      paid_amount: novoPago,
+      status: fechou ? 'paid' : 'partial',
+      paid_date: fechou ? hoje : irma.paid_date,
+      paid_by: quem,
+      paid_at: agora,
+      notes: [irma.notes, 'Abatido de ' + brl(aplica) + ' pelo comprovante da parcela '
+        + (parcela.installment || 1) + '.'].filter(Boolean).join(' ').slice(0, 500),
+    }).eq('id', irma.id).eq('tenant_id', tenantId);
+    restante = doisDecimais(restante - aplica);
+    aplicados.push({ id: irma.id, parcela: irma.installment, valor: aplica, quitou: fechou });
+  }
+
+  /**
+   * PAGOU MENOS QUE A PARCELA? Abre a linha do saldo.
+   *
+   * E aqui que a entrada de 50% vira duas parcelas sem ninguem cadastrar
+   * nada: quem pagou 500 de 1000 ja sai desta chamada com a segunda
+   * linha esperando o proximo comprovante.
+   */
   let saldo = null;
-  const falta = doisDecimais(esperado - totalPago);
+  const falta = doisDecimais(doisDecimais(parcela.amount) - pagoNaParcela);
   if (falta > 0.005) {
     const total = (parcela.total_installments || 1) + 1;
     const { data: nova, error: erroNova } = await supabase.from('LANCAMENTOS').insert({
       tenant_id: tenantId,
       user_id: req?.user?.id || null,
-      description: `${parcela.description || `Venda #${venda.number}`} — saldo`,
-      document_number: parcela.document_number || `Venda #${venda.number}`,
+      description: (parcela.description || 'Parcela') + ' — saldo',
+      document_number: parcela.document_number || null,
       type: 'receivable',
       amount: falta,
       paid_amount: 0,
-      due_date: parcela.due_date || new Date().toISOString().split('T')[0],
+      due_date: parcela.due_date || hoje,
       status: 'pending',
-      customer_id: venda.customer_id || null,
-      payment_method: venda.payment_method || null,
+      customer_id: parcela.customer_id || null,
+      payment_method: parcela.payment_method || null,
       installment: total, total_installments: total,
-      reference_type: 'sale', reference_id: venda.id,
+      reference_type: 'sale', reference_id: parcela.reference_id || null,
     }).select(CAMPOS).single();
     if (erroNova) throw erroNova;
     saldo = nova;
 
     // A parcela que gerou o saldo passa a valer o que foi pago nela: sem
     // isso o pedido somaria 1.500 (1.000 + 500) no contas a receber.
-    //
-    // E, valendo o que foi pago, ela esta QUITADA — nao 'partial'. O
-    // 'partial' de um minuto atras era verdade sobre a divida antiga, de
-    // 1.000; depois da divisao essa divida nao existe mais. Deixa-lo
-    // ficaria com uma parcela eternamente "paga pela metade" que nunca
-    // mais recebe nada, porque o resto virou outra linha.
-    await supabase.from('LANCAMENTOS')
-      .update({
-        amount: totalPago, total_installments: total,
-        status: 'paid',
-        paid_date: patch.paid_date || new Date().toISOString().split('T')[0],
-      })
-      .eq('id', parcela.id).eq('tenant_id', tenantId);
+    await supabase.from('LANCAMENTOS').update({
+      amount: pagoNaParcela, total_installments: total,
+      status: 'paid', paid_date: hoje,
+    }).eq('id', parcela.id).eq('tenant_id', tenantId);
   }
 
   return {
     ok: true,
     parcela: enriquecer(saldo
-      ? { ...salva, amount: totalPago, status: 'paid', total_installments: salva.total_installments + 1 }
+      ? { ...salva, amount: pagoNaParcela, status: 'paid' }
       : salva),
     saldo: saldo ? enriquecer(saldo) : null,
-    leitura,
-    divergente,
+    aplicados,
+    // O que sobrou depois de cobrir tudo do pedido. Nao vira lancamento
+    // negativo: credito com o cliente se acerta na devolucao ou no
+    // proximo pedido, e inventar uma linha aqui sujaria o contas a
+    // receber com algo que ninguem cobra.
+    sobra: restante > 0.005 ? restante : 0,
+    confirmado_por: quem,
+    confirmado_em: agora,
   };
 }
 
@@ -373,6 +497,6 @@ async function estaConferida(tenantId, venda) {
 }
 
 module.exports = {
-  parcelasDaVenda, anexarComprovante, lerComprovante, conferir,
+  parcelasDaVenda, anexarComprovante, confirmarPagamento, lerComprovante, conferir,
   linkDoComprovante, enriquecer, estaQuitada, estaConferida,
 };

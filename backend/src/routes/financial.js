@@ -7,6 +7,11 @@ const { createPix } = require('../lib/pix');
 // com fallback nas env PIX_*. Se houver chave, usa PIX estático (dinheiro direto
 // na conta, sem retenção); senão cai no Mercado Pago (createPix).
 const { gerarCobrancaPix } = require('../lib/pixCobranca');
+// A conferência e a confirmação do comprovante moram numa lib só — a
+// mesma que a tela do pedido usa. Duas cópias da regra de "quanto foi
+// pago" seriam dois saldos diferentes para o mesmo cliente.
+const C = require('../lib/comprovante');
+const { sendWhatsApp, normalizarNumero } = require('../lib/whatsapp');
 
 router.get('/receivables', async (req, res) => {
   const { page = 1, limit = 50, status, start_date, end_date } = req.query;
@@ -96,6 +101,174 @@ router.post('/pay/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+/**
+ * QUANTAS CONTAS DESTE MÊS AINDA ESPERAM O FINANCEIRO.
+ *
+ * É o número que segura o clique de passar o mês. Passar de mês com
+ * comprovante por conferir é como o dinheiro de setembro aparece em
+ * outubro: ninguém volta para trás para procurar o que ficou.
+ *
+ * Duas filas diferentes, e as duas contam:
+ *   a conferir   comprovante anexado que ninguém abriu ainda
+ *   a confirmar  comprovante conferido, dinheiro ainda não lançado
+ */
+router.get('/pendencias', async (req, res) => {
+  const { start_date, end_date } = req.query;
+  try {
+    let q = supabase.from('LANCAMENTOS')
+      .select('id, description, due_date, amount, receipt_status, paid_at, CLIENTES(name)')
+      .eq('tenant_id', req.tenantId).eq('type', 'receivable')
+      .not('receipt_url', 'is', null)
+      .order('due_date');
+    if (start_date) q = q.gte('due_date', start_date);
+    if (end_date) q = q.lte('due_date', end_date);
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    const linhas = data || [];
+    const aConferir = linhas.filter(l => !['conferido', 'recusado'].includes(l.receipt_status));
+    const aConfirmar = linhas.filter(l => l.receipt_status === 'conferido' && !l.paid_at);
+
+    res.json({
+      a_conferir: aConferir.length,
+      a_confirmar: aConfirmar.length,
+      total: aConferir.length + aConfirmar.length,
+      itens: [...aConferir, ...aConfirmar].slice(0, 50).map(l => ({
+        id: l.id, descricao: l.description, vencimento: l.due_date,
+        valor: Number(l.amount) || 0, cliente: l.CLIENTES?.name || null,
+        situacao: l.receipt_status === 'conferido' ? 'a_confirmar' : 'a_conferir',
+      })),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/** O link temporário para ver o comprovante (o arquivo é privado). */
+router.get('/receipts/:id/arquivo', async (req, res) => {
+  try {
+    const { data } = await supabase.from('LANCAMENTOS').select('receipt_url')
+      .eq('tenant_id', req.tenantId).eq('id', req.params.id).maybeSingle();
+    if (!data?.receipt_url) return res.status(404).json({ error: 'Esta conta não tem comprovante.' });
+    const url = await C.linkDoComprovante(data.receipt_url);
+    if (!url) return res.status(502).json({ error: 'Não foi possível abrir o comprovante agora.' });
+    res.json({ url });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/** A conferência: o financeiro olhou o papel e disse o que é. */
+router.post('/receipts/:id/conferir', async (req, res) => {
+  try {
+    const r = await C.conferir(req.tenantId, req.params.id, {
+      status: req.body?.status, nota: req.body?.nota, req,
+    });
+    if (r.erro) return res.status(400).json({ error: r.erro });
+    audit(req, 'update', 'comprovante', req.params.id, { conferencia: req.body?.status });
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/** A confirmação: o dinheiro entrou, e fica registrado quem disse isso. */
+router.post('/receipts/:id/confirmar', async (req, res) => {
+  try {
+    const r = await C.confirmarPagamento(req.tenantId, req.params.id, {
+      valor: req.body?.valor,
+      sem_comprovante: !!req.body?.sem_comprovante,
+      req,
+    });
+    if (r.erro) return res.status(400).json({ error: r.erro, code: r.code, dica: r.dica });
+    audit(req, 'payment', 'financial', req.params.id, {
+      confirmou: r.confirmado_por, aplicados: r.aplicados, sobra: r.sobra,
+    });
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * A COBRANÇA PELO WHATSAPP.
+ *
+ * Gera o Pix da conta (copia-e-cola + QR) e monta a mensagem pronta.
+ *
+ * SOBRE "CHAVE ALEATÓRIA": o sistema não cria chave Pix — quem cria é o
+ * banco, uma vez, e ela fica cadastrada. O que muda a cada cobrança é o
+ * TXID, que é o que identifica este pagamento no extrato. A chave usada
+ * é a da empresa (Configurações → Pix); se a Lyon quiser receber pela
+ * chave aleatória do Nubank, é lá que ela entra, e todas as cobranças
+ * passam a sair por ela.
+ *
+ * O ENVIO: com WHATSAPP_TOKEN configurado, o servidor manda sozinho.
+ * Sem ele, devolve a mensagem e o link `wa.me` para a tela abrir a
+ * conversa já escrita — que é o que o vendedor faz hoje à mão, com a
+ * diferença de que o Pix vai junto e certo.
+ */
+router.post('/:id/cobranca-whatsapp', async (req, res) => {
+  try {
+    const { data: conta } = await supabase.from('LANCAMENTOS')
+      .select('*, CLIENTES(name, phone, mobile)')
+      .eq('tenant_id', req.tenantId).eq('id', req.params.id).maybeSingle();
+    if (!conta) return res.status(404).json({ error: 'Conta não encontrada' });
+
+    const falta = Math.round(((Number(conta.amount) || 0) - (Number(conta.paid_amount) || 0)) * 100) / 100;
+    const valor = Number(req.body?.valor) > 0 ? Number(req.body.valor) : falta;
+    if (!(valor > 0)) return res.status(400).json({ error: 'Esta conta já está quitada.' });
+
+    const cobranca = await gerarCobrancaPix({
+      tenantId: req.tenantId,
+      amount: valor,
+      txid: `COB${String(conta.document_number || conta.id).replace(/\W/g, '').slice(-20)}`,
+    });
+    if (!cobranca) {
+      return res.status(400).json({
+        error: 'Sem chave Pix configurada.',
+        dica: 'Cadastre a chave em Configurações → Pix para gerar a cobrança.',
+      });
+    }
+
+    // O texto é o combinado com a Lyon, palavra por palavra. Ele não é
+    // montado na tela porque a mesma cobrança sai daqui pelo envio
+    // automático — e duas redações da mesma mensagem viram duas Lyons.
+    const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const mensagem = [
+      'Olá! Financeiro da Lyon copos aqui, segue o Pix copia e cola para pagamento da sua fatura conosco!',
+      `No valor de *${brl(valor)}*, por gentileza envie o comprovante quando possível.`,
+      '',
+      cobranca.copy_paste || cobranca.copia_e_cola || '',
+    ].filter(Boolean).join('\n');
+
+    const fone = normalizarNumero(conta.CLIENTES?.mobile || conta.CLIENTES?.phone);
+
+    // O Pix fica guardado na conta: quem abrir a linha amanhã vê a mesma
+    // cobrança, em vez de gerar outra com txid diferente.
+    await supabase.from('LANCAMENTOS').update({
+      pix_copy_paste: cobranca.copy_paste || cobranca.copia_e_cola || null,
+      pix_qr: cobranca.qr_base64 || null,
+    }).eq('id', conta.id).eq('tenant_id', req.tenantId);
+
+    let envio = { enviado: false, motivo: 'WhatsApp automático não configurado' };
+    if (fone && process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID) {
+      const r = await sendWhatsApp(fone, mensagem);
+      envio = r.ok ? { enviado: true, id: r.id } : { enviado: false, motivo: r.error };
+    } else if (!fone) {
+      envio = { enviado: false, motivo: 'Cliente sem telefone cadastrado' };
+    }
+
+    audit(req, 'update', 'financial', conta.id, { cobranca_whatsapp: valor, enviado: envio.enviado });
+
+    res.json({
+      ok: true,
+      valor,
+      cliente: conta.CLIENTES?.name || null,
+      telefone: fone,
+      mensagem,
+      copia_e_cola: cobranca.copy_paste || cobranca.copia_e_cola || null,
+      qr_base64: cobranca.qr_base64 || null,
+      // Para a tela abrir a conversa já escrita quando o envio automático
+      // não estiver ligado.
+      wa_link: fone ? `https://wa.me/${fone}?text=${encodeURIComponent(mensagem)}` : null,
+      envio,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Criar lançamento avulso

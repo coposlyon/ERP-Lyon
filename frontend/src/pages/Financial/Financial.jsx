@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DollarSign, TrendingUp, TrendingDown, Check, Plus, Loader2, FileBarChart2, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import {
+  DollarSign, TrendingUp, TrendingDown, Check, Plus, Loader2, FileBarChart2,
+  ArrowDownCircle, ArrowUpCircle, ChevronLeft, ChevronRight, MessageCircle,
+  FileCheck2, ShieldCheck, AlertTriangle, ExternalLink, Copy,
+} from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
@@ -366,6 +370,330 @@ function CashflowView() {
 }
 
 // ─── Principal ────────────────────────────────────────────────────
+/* ══ O MÊS, E O QUE FICA PARA TRÁS QUANDO ELE VIRA ═══════════ */
+
+const primeiroDia = d => new Date(d.getFullYear(), d.getMonth(), 1);
+const ultimoDia = d => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const nomeDoMes = d => d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+/**
+ * A BARRA DOS MESES.
+ *
+ * A tela mostrava tudo de uma vez, em ordem de vencimento — e "tudo" é
+ * o ano inteiro depois de dois meses de uso. Quem fecha o mês precisa
+ * ver O MÊS: o que venceu, o que entrou e o que ficou.
+ */
+function MesNavegador({ mes, onMudar, pendencias }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-gray-100">
+      <button className="btn-secondary btn-sm" onClick={() => onMudar(-1)} title="Mês anterior">
+        <ChevronLeft size={15} />
+      </button>
+      <span className="text-sm font-semibold capitalize min-w-[170px] text-center">{nomeDoMes(mes)}</span>
+      <button className="btn-secondary btn-sm" onClick={() => onMudar(1)} title="Próximo mês">
+        <ChevronRight size={15} />
+      </button>
+      <button className="btn-secondary btn-sm" onClick={() => onMudar(0)}>Mês atual</button>
+
+      {pendencias?.total > 0 && (
+        <span className="ml-auto inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-lg
+                         bg-amber-50 border border-amber-300 text-amber-800">
+          <AlertTriangle size={13} />
+          {pendencias.a_conferir > 0 && <>{pendencias.a_conferir} a conferir</>}
+          {pendencias.a_conferir > 0 && pendencias.a_confirmar > 0 && ' · '}
+          {pendencias.a_confirmar > 0 && <>{pendencias.a_confirmar} a confirmar</>}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * O AVISO DE VIRAR O MÊS.
+ *
+ * Passar de mês com comprovante por conferir é como o dinheiro de
+ * setembro aparece em outubro: ninguém volta para trás para procurar o
+ * que ficou. O aviso não impede — quem fecha o caixa às vezes precisa
+ * olhar o mês que vem antes de terminar este —, mas obriga a ver a
+ * lista antes de seguir.
+ */
+function AvisoDeVirada({ mes, pendencias, onFicar, onSeguir }) {
+  return (
+    <Modal isOpen onClose={onFicar} title="Antes de passar o mês" size="md">
+      <div className="space-y-3">
+        <p className="flex gap-2 text-sm rounded-xl px-3 py-2.5 bg-amber-50 border border-amber-300 text-amber-900">
+          <AlertTriangle size={17} className="shrink-0 mt-0.5" />
+          <span>
+            <b>AINDA FALTAM CONTAS A SEREM CONFIRMADAS, VERIFIQUE-AS ANTES DE PASSAR O MÊS.</b>
+            <span className="block mt-1 font-normal capitalize">{nomeDoMes(mes)}</span>
+          </span>
+        </p>
+
+        <div className="flex gap-3 text-[13px]">
+          {pendencias.a_conferir > 0 && (
+            <span className="px-2.5 py-1 rounded-lg bg-gray-100">
+              <b>{pendencias.a_conferir}</b> comprovante(s) a conferir
+            </span>
+          )}
+          {pendencias.a_confirmar > 0 && (
+            <span className="px-2.5 py-1 rounded-lg bg-gray-100">
+              <b>{pendencias.a_confirmar}</b> pagamento(s) a confirmar
+            </span>
+          )}
+        </div>
+
+        <div className="max-h-56 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
+          {(pendencias.itens || []).map(i => (
+            <div key={i.id} className="flex items-center gap-2 px-3 py-2 text-[12.5px]">
+              <span className={`badge ${i.situacao === 'a_confirmar' ? 'badge-blue' : 'badge-yellow'}`}>
+                {i.situacao === 'a_confirmar' ? 'confirmar' : 'conferir'}
+              </span>
+              <span className="min-w-0 flex-1 truncate">{i.cliente || i.descricao}</span>
+              <span className="tabular-nums text-gray-500">{fmt(i.valor)}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button className="btn-secondary" onClick={onFicar}>Ficar e verificar</button>
+          <button className="btn-primary" onClick={onSeguir}>Passar assim mesmo</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * A CONFERÊNCIA DO COMPROVANTE — o financeiro olhando o papel.
+ *
+ * Ela é separada da confirmação de propósito: conferir é dizer "este
+ * documento é o que diz ser"; confirmar é dizer "o dinheiro entrou".
+ * Juntar as duas em um clique é como o print de uma transferência
+ * agendada vira caixa.
+ */
+function ConferirModal({ conta, onClose, onFeito }) {
+  const [nota, setNota] = useState('');
+  const [carregando, setCarregando] = useState(null);
+  const leitura = conta.receipt_read || {};
+
+  async function abrirArquivo() {
+    try {
+      const r = await api.get(`/financial/receipts/${conta.id}/arquivo`);
+      if (r?.url) window.open(r.url, '_blank', 'noopener');
+    } catch (e) { toast.error(e.error || 'Não foi possível abrir o comprovante'); }
+  }
+
+  async function decidir(status) {
+    setCarregando(status);
+    try {
+      await api.post(`/financial/receipts/${conta.id}/conferir`, { status, nota });
+      toast.success(status === 'conferido' ? 'Comprovante conferido' : `Marcado como ${status}`);
+      onFeito();
+    } catch (e) {
+      toast.error(e.error || 'Não foi possível registrar a conferência');
+    } finally { setCarregando(null); }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-gray-200 p-3 text-[13px] space-y-1">
+        <p className="font-semibold text-gray-800">{conta.description}</p>
+        <p className="text-gray-500">
+          Declarado no anexo: <b className="text-gray-800">{fmt(conta.receipt_amount ?? conta.amount)}</b>
+          {conta.receipt_by && <> · anexado por {conta.receipt_by}</>}
+        </p>
+        {leitura?.valor != null && (
+          <p className="text-gray-500">
+            A leitura da imagem achou <b className="text-gray-800">{fmt(leitura.valor)}</b>
+            {leitura.data ? ` em ${leitura.data}` : ''}{leitura.banco ? ` · ${leitura.banco}` : ''}
+            {leitura.pagador ? ` · pagador: ${leitura.pagador}` : ''}
+          </p>
+        )}
+        {conta.receipt_status === 'divergente' && (
+          <p className="text-amber-700 flex items-center gap-1.5">
+            <AlertTriangle size={13} /> O valor lido é diferente do declarado — olhe com atenção.
+          </p>
+        )}
+        <button className="btn-secondary btn-sm mt-1" onClick={abrirArquivo}>
+          <ExternalLink size={13} /> Abrir o comprovante
+        </button>
+      </div>
+
+      <label className="block">
+        <span className="label">Observação (fica no histórico)</span>
+        <input className="input" value={nota} onChange={e => setNota(e.target.value)}
+          placeholder="Ex.: confere com o extrato do dia 08." />
+      </label>
+
+      <div className="flex flex-wrap justify-end gap-2">
+        <button className="btn-secondary" disabled={!!carregando} onClick={() => decidir('recusado')}>
+          Recusar
+        </button>
+        <button className="btn-secondary" disabled={!!carregando} onClick={() => decidir('divergente')}>
+          Marcar divergente
+        </button>
+        <button className="btn-primary" disabled={!!carregando} onClick={() => decidir('conferido')}>
+          {carregando === 'conferido' ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+          Conferido
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A CONFIRMAÇÃO DO PAGAMENTO — o dinheiro entrando.
+ *
+ * O valor vem preenchido com o que foi declarado, e é EDITÁVEL: quando
+ * o cliente paga 350 numa parcela de 200, o que sobra escorre para as
+ * parcelas seguintes do mesmo pedido. Quem faz essa conta é o servidor;
+ * aqui só se diz quanto entrou.
+ */
+function ConfirmarModal({ conta, onClose, onFeito }) {
+  const falta = Math.max(0, (Number(conta.amount) || 0) - (Number(conta.paid_amount) || 0));
+  const [valor, setValor] = useState(String(conta.receipt_amount ?? falta ?? ''));
+  const [enviando, setEnviando] = useState(false);
+  const semComprovante = !conta.receipt_url;
+  const excedente = Math.max(0, (Number(String(valor).replace(',', '.')) || 0) - falta);
+
+  async function confirmar() {
+    setEnviando(true);
+    try {
+      const r = await api.post(`/financial/receipts/${conta.id}/confirmar`, {
+        valor: Number(String(valor).replace(',', '.')),
+        sem_comprovante: semComprovante,
+      });
+      const extra = [];
+      if ((r.aplicados || []).length > 1) extra.push(`${r.aplicados.length - 1} parcela(s) seguinte(s) abatida(s)`);
+      if (r.saldo) extra.push(`saldo de ${fmt(r.saldo.amount)} em aberto`);
+      if (r.sobra > 0) extra.push(`sobrou ${fmt(r.sobra)} de crédito com o cliente`);
+      toast.success(`Pagamento confirmado por ${r.confirmado_por}${extra.length ? ` — ${extra.join(', ')}` : ''}`,
+        { duration: 8000 });
+      onFeito();
+    } catch (e) {
+      toast.error([e.error, e.dica].filter(Boolean).join(' '));
+    } finally { setEnviando(false); }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-gray-200 p-3 text-[13px] space-y-1">
+        <p className="font-semibold text-gray-800">{conta.description}</p>
+        <p className="text-gray-500">Em aberto nesta conta: <b className="text-gray-800">{fmt(falta)}</b></p>
+        {conta.receipt_by && (
+          <p className="text-gray-500">Comprovante anexado por {conta.receipt_by} · conferido por {conta.receipt_by}</p>
+        )}
+      </div>
+
+      <label className="block">
+        <span className="label">Quanto entrou</span>
+        <input className="input w-44" type="number" step="0.01" min={0}
+          value={valor} onChange={e => setValor(e.target.value)} />
+      </label>
+
+      {excedente > 0 && (
+        <p className="text-[12.5px] rounded-xl px-3 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800">
+          <b>{fmt(excedente)}</b> a mais do que esta conta — o excedente abate as parcelas seguintes
+          do mesmo pedido, na ordem. O que sobrar depois de cobrir tudo fica como crédito do cliente.
+        </p>
+      )}
+      {semComprovante && (
+        <p className="text-[12.5px] rounded-xl px-3 py-2 bg-amber-50 border border-amber-200 text-amber-800">
+          Esta conta não tem comprovante. Confirmando assim, fica registrado que o pagamento
+          entrou <b>sem comprovante</b> — e com o seu nome.
+        </p>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <button className="btn-secondary" onClick={onClose} disabled={enviando}>Cancelar</button>
+        <button className="btn-primary" onClick={confirmar} disabled={enviando || !(Number(String(valor).replace(',', '.')) > 0)}>
+          {enviando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+          Confirmar pagamento
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A COBRANÇA PELO WHATSAPP.
+ *
+ * Um clique ao lado do nome: gera o Pix da conta, monta a mensagem
+ * combinada e manda. Com o WhatsApp da Meta configurado, o servidor
+ * envia sozinho; sem ele, abre a conversa já escrita — que é o que o
+ * vendedor faz hoje à mão, com a diferença de que o Pix vai junto e
+ * certo.
+ */
+function CobrancaModal({ conta, onClose }) {
+  const [dados, setDados] = useState(null);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    let vivo = true;
+    api.post(`/financial/${conta.id}/cobranca-whatsapp`, {})
+      .then(r => { if (vivo) setDados(r); })
+      .catch(e => { if (vivo) setErro([e.error, e.dica].filter(Boolean).join(' ')); });
+    return () => { vivo = false; };
+  }, [conta.id]);
+
+  if (erro) return <p className="text-sm text-red-600">{erro}</p>;
+  if (!dados) {
+    return <p className="flex items-center gap-2 text-sm text-gray-500 py-6 justify-center">
+      <Loader2 size={15} className="animate-spin" /> Gerando a cobrança…
+    </p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[13px] text-gray-600">
+        Cobrança de <b>{fmt(dados.valor)}</b> para <b>{dados.cliente || 'o cliente'}</b>
+        {dados.telefone ? <> · {dados.telefone}</> : <> · <span className="text-amber-700">sem telefone cadastrado</span></>}
+      </p>
+
+      {dados.qr_base64 && (
+        <img src={`data:image/png;base64,${dados.qr_base64}`} alt="QR Code do Pix"
+          className="mx-auto rounded-xl border border-gray-200" style={{ width: 220, height: 220 }} />
+      )}
+
+      <div>
+        <span className="label">Pix copia e cola</span>
+        <div className="flex gap-2">
+          <input className="input font-mono text-[11px]" readOnly value={dados.copia_e_cola || ''} />
+          <button className="btn-secondary btn-sm shrink-0" title="Copiar"
+            onClick={() => { navigator.clipboard?.writeText(dados.copia_e_cola || ''); toast.success('Copiado'); }}>
+            <Copy size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <span className="label">Mensagem</span>
+        <textarea className="input text-[12.5px]" rows={5} readOnly value={dados.mensagem} />
+      </div>
+
+      {dados.envio?.enviado ? (
+        <p className="text-[12.5px] rounded-xl px-3 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800">
+          Enviado pelo WhatsApp automaticamente.
+        </p>
+      ) : (
+        <>
+          <p className="text-[12.5px] rounded-xl px-3 py-2 bg-amber-50 border border-amber-200 text-amber-800">
+            Envio automático indisponível ({dados.envio?.motivo}). Abra a conversa — a mensagem já vai escrita.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button className="btn-secondary" onClick={onClose}>Fechar</button>
+            <button className="btn-primary" disabled={!dados.wa_link}
+              onClick={() => window.open(dados.wa_link, '_blank', 'noopener')}>
+              <MessageCircle size={14} /> Abrir no WhatsApp
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Financial() {
   const [tab, setTab] = useState('receivable');
   const [page, setPage] = useState(1);
@@ -373,13 +701,52 @@ export default function Financial() {
   const [newModal, setNewModal] = useState(null);
   const [pixModal, setPixModal] = useState(null);
   const [status, setStatus] = useState('');
+  // O mês em que a tela está. As contas passaram a ser lidas mês a mês:
+  // "tudo" vira o ano inteiro depois de dois meses de uso, e quem fecha
+  // o caixa precisa ver O MÊS.
+  const [mes, setMes] = useState(() => primeiroDia(new Date()));
+  const [virada, setVirada] = useState(null);   // { destino } enquanto o aviso está aberto
+  const [conferir, setConferir] = useState(null);
+  const [confirmar, setConfirmar] = useState(null);
+  const [cobranca, setCobranca] = useState(null);
   const qc = useQueryClient();
 
+  const de = iso(primeiroDia(mes));
+  const ate = iso(ultimoDia(mes));
+
   const { data, isLoading } = useQuery({
-    queryKey: ['financial', tab, page, status],
-    queryFn: () => api.get(`/financial/${tab === 'receivable' ? 'receivables' : 'payables'}?page=${page}&limit=20${status ? `&status=${status}` : ''}`),
+    queryKey: ['financial', tab, page, status, de, ate],
+    queryFn: () => api.get(`/financial/${tab === 'receivable' ? 'receivables' : 'payables'}`
+      + `?page=${page}&limit=20&start_date=${de}&end_date=${ate}${status ? `&status=${status}` : ''}`),
     enabled: tab === 'receivable' || tab === 'payable',
   });
+
+  // O que ainda espera o financeiro NESTE mês — é o número que segura o
+  // clique de passar de mês.
+  const { data: pendencias } = useQuery({
+    queryKey: ['financial-pendencias', de, ate],
+    queryFn: () => api.get(`/financial/pendencias?start_date=${de}&end_date=${ate}`),
+    enabled: tab === 'receivable',
+  });
+
+  /**
+   * TROCAR DE MÊS PASSA PELO AVISO.
+   *
+   * `passo` é -1, +1 ou 0 (voltar para o mês atual). Havendo comprovante
+   * por conferir ou pagamento por confirmar, a janela aparece antes —
+   * ela não impede, mas obriga a ver a lista.
+   */
+  function mudarMes(passo, forcar = false) {
+    const destino = passo === 0
+      ? primeiroDia(new Date())
+      : new Date(mes.getFullYear(), mes.getMonth() + passo, 1);
+    if (!forcar && tab === 'receivable' && pendencias?.total > 0) {
+      setVirada({ destino });
+      return;
+    }
+    setMes(destino);
+    setPage(1);
+  }
 
   const statusClass = { pending: 'badge-yellow', partial: 'badge-blue', paid: 'badge-green', overdue: 'badge-red', cancelled: 'badge-gray' };
   const statusLabel = { pending: 'Pendente', partial: 'Parcial', paid: 'Pago', overdue: 'Vencido', cancelled: 'Cancelado' };
@@ -388,24 +755,82 @@ export default function Financial() {
     { key: 'due_date', label: 'Vencimento', width: 100,
       render: v => { try { const d = parseISO(v); const overdue = d < new Date() ? 'text-red-600 font-medium' : ''; return <span className={overdue}>{format(d, 'dd/MM/yyyy', { locale: ptBR })}</span>; } catch { return v; } } },
     { key: 'description', label: 'Descrição' },
-    { key: tab === 'receivable' ? 'CLIENTES' : 'FORNECEDORES', label: tab === 'receivable' ? 'Cliente' : 'Fornecedor', render: v => v?.name || '—' },
+    { key: tab === 'receivable' ? 'CLIENTES' : 'FORNECEDORES',
+      label: tab === 'receivable' ? 'Cliente' : 'Fornecedor',
+      // O BOTÃO DE COBRAR FICA NO NOME, e não numa coluna de ações no
+      // fim da linha: cobrar é uma coisa que se faz PARA UMA PESSOA, e é
+      // o nome dela que a pessoa procura na tela.
+      render: (v, row) => (
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          <span className="truncate">{v?.name || '—'}</span>
+          {tab === 'receivable' && v?.name && row.status !== 'paid' && (
+            <button onClick={() => setCobranca(row)} title="Cobrar pelo WhatsApp (Pix + mensagem)"
+              className="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center
+                         bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100">
+              <MessageCircle size={13} />
+            </button>
+          )}
+        </span>
+      ) },
+    ...(tab === 'receivable' ? [{
+      key: 'receipt_status', label: 'Comprovante', width: 150,
+      // O ESTADO DO PAPEL, EM UMA COLUNA. Antes não havia nenhuma: o
+      // financeiro não tinha como saber, olhando a lista, o que já tinha
+      // comprovante esperando por ele.
+      render: (v, row) => {
+        if (!row.receipt_url) {
+          return row.paid_at
+            ? <span className="badge badge-gray" title={`Confirmado por ${row.paid_by || '—'}`}>sem comprovante</span>
+            : <span className="text-gray-300">—</span>;
+        }
+        if (row.paid_at) {
+          return <span className="badge badge-green" title={`Confirmado por ${row.paid_by} em ${row.paid_at?.slice(0, 10)}`}>
+            confirmado
+          </span>;
+        }
+        if (v === 'conferido') return <span className="badge badge-blue">conferido · a confirmar</span>;
+        if (v === 'divergente') return <span className="badge badge-red">divergente</span>;
+        if (v === 'recusado') return <span className="badge badge-gray">recusado</span>;
+        return <span className="badge badge-yellow">a conferir</span>;
+      },
+    }] : []),
     { key: 'installment', label: 'Parcela', width: 80,
       render: (v, row) => row.total_installments > 1 ? <span className="badge badge-gray">{v}/{row.total_installments}</span> : '—' },
     { key: 'amount', label: 'Total', width: 110, render: v => fmt(v) },
     { key: 'paid_amount', label: 'Pago', width: 110, render: v => <span className="text-green-600">{fmt(v)}</span> },
     { key: 'status', label: 'Status', width: 100,
       render: v => <span className={`badge ${statusClass[v] || 'badge-gray'}`}>{statusLabel[v] || v}</span> },
-    { key: 'id', label: '', width: 130,
-      render: (_, row) => row.status !== 'paid' && row.status !== 'cancelled' ? (
-        <div className="flex gap-1 justify-end">
-          {tab === 'receivable' && (
-            <button onClick={() => setPixModal(row)} className="btn-secondary btn-sm" title="Gerar cobrança PIX">PIX</button>
-          )}
-          <button onClick={() => setPayModal(row)} className="btn-primary btn-sm">
-            <Check size={12} /> Pagar
-          </button>
-        </div>
-      ) : null },
+    { key: 'id', label: '', width: 210,
+      render: (_, row) => {
+        if (row.status === 'cancelled') return null;
+        const temComprovante = !!row.receipt_url;
+        const conferido = row.receipt_status === 'conferido';
+        const confirmado = !!row.paid_at || row.status === 'paid';
+        return (
+          <div className="flex gap-1 justify-end flex-wrap">
+            {/* A ORDEM DOS BOTÕES É A ORDEM DO TRABALHO: conferir o
+                papel, depois confirmar o dinheiro. */}
+            {tab === 'receivable' && temComprovante && !confirmado && !conferido && (
+              <button onClick={() => setConferir(row)} className="btn-secondary btn-sm" title="Conferir o comprovante">
+                <FileCheck2 size={12} /> Conferir
+              </button>
+            )}
+            {tab === 'receivable' && !confirmado && (conferido || !temComprovante) && (
+              <button onClick={() => setConfirmar(row)} className="btn-primary btn-sm">
+                <Check size={12} /> Confirmar
+              </button>
+            )}
+            {tab === 'payable' && row.status !== 'paid' && (
+              <button onClick={() => setPayModal(row)} className="btn-primary btn-sm">
+                <Check size={12} /> Pagar
+              </button>
+            )}
+            {tab === 'receivable' && !confirmado && (
+              <button onClick={() => setPixModal(row)} className="btn-secondary btn-sm" title="Gerar cobrança PIX">PIX</button>
+            )}
+          </div>
+        );
+      } },
   ];
 
   const summary = (data?.data || []).reduce((acc, t) => {
@@ -464,6 +889,7 @@ export default function Financial() {
           <div className="card-body"><DREView /></div>
         ) : (
           <>
+            <MesNavegador mes={mes} onMudar={mudarMes} pendencias={tab === 'receivable' ? pendencias : null} />
             <div className="px-4 py-2 border-b border-gray-100">
               <select className="input max-w-[160px] text-sm" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}>
                 <option value="">Todos os status</option>
@@ -484,6 +910,26 @@ export default function Financial() {
       <Modal isOpen={!!pixModal} onClose={() => setPixModal(null)} title="Cobrança PIX" size="sm">
         {pixModal && <PixModal transaction={pixModal} onClose={() => setPixModal(null)} />}
       </Modal>
+
+      <Modal isOpen={!!conferir} onClose={() => setConferir(null)} title="Conferir o comprovante" size="md">
+        {conferir && <ConferirModal conta={conferir} onClose={() => setConferir(null)}
+          onFeito={() => { setConferir(null); qc.invalidateQueries({ queryKey: ['financial'] }); qc.invalidateQueries({ queryKey: ['financial-pendencias'] }); }} />}
+      </Modal>
+
+      <Modal isOpen={!!confirmar} onClose={() => setConfirmar(null)} title="Confirmar o pagamento" size="sm">
+        {confirmar && <ConfirmarModal conta={confirmar} onClose={() => setConfirmar(null)}
+          onFeito={() => { setConfirmar(null); qc.invalidateQueries({ queryKey: ['financial'] }); qc.invalidateQueries({ queryKey: ['financial-pendencias'] }); }} />}
+      </Modal>
+
+      <Modal isOpen={!!cobranca} onClose={() => setCobranca(null)} title="Cobrança pelo WhatsApp" size="sm">
+        {cobranca && <CobrancaModal conta={cobranca} onClose={() => setCobranca(null)} />}
+      </Modal>
+
+      {virada && (
+        <AvisoDeVirada mes={mes} pendencias={pendencias}
+          onFicar={() => setVirada(null)}
+          onSeguir={() => { const d = virada.destino; setVirada(null); setMes(d); setPage(1); }} />
+      )}
 
       <Modal isOpen={!!newModal} onClose={() => setNewModal(null)}
         title={newModal === 'receivable' ? 'Nova Conta a Receber' : 'Nova Conta a Pagar'} size="md">
