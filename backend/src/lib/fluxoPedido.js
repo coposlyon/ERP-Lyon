@@ -115,11 +115,36 @@ const REQUISITOS = {
    * caminho: pedidos liberados à mão ANTES desta mudança ficariam
    * presos numa exigência que não existia quando passaram por aqui.
    */
+  /**
+   * DUAS EXIGÊNCIAS, PORQUE SÃO DOIS ATOS.
+   *
+   * Anexar o comprovante é uma AFIRMAÇÃO — "paguei" — e quem a faz é o
+   * comercial ou o próprio cliente. Conferir é o financeiro abrindo o
+   * extrato e dizendo que o dinheiro está lá.
+   *
+   * A etapa se contentava com a primeira, e por isso a fábrica começava
+   * a produzir em cima de uma afirmação: o print de uma transferência
+   * AGENDADA, o comprovante de outro pedido e o valor digitado errado
+   * passam todos pelo anexo. Nenhum passa pela conferência.
+   *
+   * As duas aparecem separadas de propósito: "falta anexar" e "falta o
+   * financeiro conferir" mandam a pessoa a lugares diferentes.
+   *
+   * `pagamento.liberado` continua valendo pelas duas — é o financeiro
+   * dizendo que libera assim mesmo, com nome e hora no histórico. Sem
+   * essa porta, venda paga em dinheiro no balcão (que não tem
+   * comprovante nenhum) travaria para sempre.
+   */
   pagamento: v => [
     { chave: 'comprovante', label: 'Comprovante do pagamento anexado',
       ok: !!v.comprovante_quitado || !!v.pagamento?.liberado,
       como: 'Anexe o comprovante na parcela, aqui em cima. Enquanto o valor do pedido '
           + 'não estiver coberto, o financeiro não tem lastro do que entrou.' },
+    { chave: 'conferido', label: 'Comprovante conferido pelo financeiro',
+      ok: !!v.comprovante_conferido || !!v.pagamento?.liberado,
+      como: 'O financeiro abre a parcela e marca o comprovante como conferido. '
+          + 'Anexar é dizer que pagou; conferir é ver o dinheiro na conta — e é isso '
+          + 'que solta a produção.' },
   ],
 
   /**

@@ -255,7 +255,12 @@ router.get('/pedidos/:id', async (req, res) => {
         // ofereceria "Aprovar a arte" num pedido cuja arte o cliente
         // acabou de reprovar no portal.
         { ...data, itens_qtd: itens.length, arte_resumo: resumoDaArte(itens),
-          comprovante_quitado: await C.estaQuitada(req.tenantId, data) },
+          comprovante_quitado: await C.estaQuitada(req.tenantId, data),
+          // A conferência do financeiro entra junto: ela virou requisito
+          // da etapa de Pagamento, e sem ela esta tela mostraria
+          // "Confirmar o pagamento" liberado num pedido que o financeiro
+          // ainda não olhou.
+          comprovante_conferido: await C.estaConferida(req.tenantId, data) },
         etapasDosItens(itens),
         { acesso: req.acesso, perfil: req.userProfile },
       ),

@@ -122,9 +122,9 @@ export default function PedidoDetalhe() {
    * cliente ainda deve.
    */
   const editarPedido = useMutation({
-    mutationFn: ({ alteracoes, remover, novos, motivo, email, senha }) =>
+    mutationFn: ({ alteracoes, remover, novos, motivo, email, senha, freight }) =>
       api.patch(`/sales/${id}/itens`, {
-        alteracoes, remover, novos, motivo,
+        alteracoes, remover, novos, motivo, freight,
         autorizador_email: email, autorizador_senha: senha,
       }),
     onSuccess: r => {
@@ -138,6 +138,13 @@ export default function PedidoDetalhe() {
           { icon: '⚠️', duration: 8000 });
       } else {
         toast.success('Pedido atualizado.');
+      }
+      // O QUE ACONTECEU COM A PRODUÇÃO. Mudar o valor devolve o pedido
+      // ao financeiro, e quem editou precisa saber por que a fábrica
+      // parou — em vez de descobrir procurando o pedido na fila.
+      if (r?.voltou_ao_financeiro) {
+        toast('O pedido voltou para "Aguardando financeiro". A produção só segue quando o '
+            + 'financeiro conferir o comprovante.', { icon: '💰', duration: 9000 });
       }
     },
     onError: e => toast.error(e?.error || 'Não foi possível editar o pedido.'),

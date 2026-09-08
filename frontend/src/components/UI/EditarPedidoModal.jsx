@@ -41,6 +41,10 @@ export default function EditarPedidoModal({ pedido, onClose, onConfirmar, salvan
   const [motivo, setMotivo] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  // O frete digitado à mão. Enquanto ninguém toca nele, o campo mostra a
+  // sugestão proporcional e ela acompanha a quantidade a cada tecla.
+  const [freteTxt, setFreteTxt] = useState('');
+  const [freteTocado, setFreteTocado] = useState(false);
 
   const aberto = !!pedido;
 
@@ -48,6 +52,7 @@ export default function EditarPedidoModal({ pedido, onClose, onConfirmar, salvan
     if (!aberto) {
       setQuantidades({}); setRemovidos({}); setNovos([]);
       setBusca(''); setMotivo(''); setEmail(''); setSenha('');
+      setFreteTxt(''); setFreteTocado(false);
     }
   }, [aberto]);
 
@@ -61,29 +66,61 @@ export default function EditarPedidoModal({ pedido, onClose, onConfirmar, salvan
 
   const itens = pedido?.itens || [];
 
+  /**
+   * A CONTA, COM O FRETE ACOMPANHANDO A QUANTIDADE.
+   *
+   * O frete ficava parado: acrescentar 100 copos mudava o total dos
+   * produtos e mantinha o frete de 100 — e a caixa a mais viajava de
+   * graça, com o prejuízo aparecendo na fatura da transportadora um mês
+   * depois. A régua é a PEÇA, e não o valor: transportadora cobra peso e
+   * volume, e o dobro de copos ocupa o dobro de caixa.
+   *
+   * A sugestão cede ao número certo: quem tem a cotação nova na mão
+   * digita por cima, e daí em diante o campo é dele.
+   */
   const conta = useMemo(() => {
     const totalAntes = Number(pedido?.total) || 0;
-    const frete = Number(pedido?.freight) || 0;
+    const freteAntes = Number(pedido?.freight) || 0;
     const desconto = Number(pedido?.discount) || 0;
 
     let produtos = 0;
+    let pecas = 0;
     for (const i of itens) {
       if (removidos[i.id]) continue;
       const qtd = quantidades[i.id] != null ? Number(quantidades[i.id]) || 0 : Number(i.quantidade) || 0;
       produtos += qtd * (Number(i.valor_unitario) || 0);
+      pecas += qtd;
     }
-    for (const n of novos) produtos += (Number(n.quantidade) || 0) * (Number(n.preco) || 0);
+    for (const n of novos) {
+      produtos += (Number(n.quantidade) || 0) * (Number(n.preco) || 0);
+      pecas += Number(n.quantidade) || 0;
+    }
+
+    const pecasAntes = itens.reduce((s, i) => s + (Number(i.quantidade) || 0), 0);
+    const sugerido = (freteAntes > 0 && pecasAntes > 0)
+      ? Math.round((freteAntes * pecas / pecasAntes) * 100) / 100
+      : freteAntes;
+
+    const frete = freteTocado
+      ? Math.max(0, Number(String(freteTxt).replace(',', '.')) || 0)
+      : sugerido;
 
     const total = Math.round(Math.max(0, produtos - desconto + frete) * 100) / 100;
-    return { totalAntes, total, diferenca: Math.round((total - totalAntes) * 100) / 100 };
-  }, [pedido, itens, quantidades, removidos, novos]);
+    return {
+      totalAntes, total, frete, freteAntes, sugerido, pecas, pecasAntes,
+      diferenca: Math.round((total - totalAntes) * 100) / 100,
+    };
+  }, [pedido, itens, quantidades, removidos, novos, freteTxt, freteTocado]);
 
   const mudou = useMemo(() => (
     novos.some(n => n.quantidade > 0)
     || Object.keys(removidos).some(k => removidos[k])
     || itens.some(i => quantidades[i.id] != null
       && Number(quantidades[i.id]) !== Number(i.quantidade))
-  ), [itens, quantidades, removidos, novos]);
+    // Só o frete também é uma edição: a cotação que voltou mais cara não
+    // mexe em item nenhum.
+    || conta.frete !== conta.freteAntes
+  ), [itens, quantidades, removidos, novos, conta]);
 
   const sobraram = itens.filter(i => !removidos[i.id]).length + novos.filter(n => n.quantidade > 0).length;
   const pode = mudou && sobraram > 0 && email.trim() && senha.trim() && !salvando;
@@ -117,6 +154,11 @@ export default function EditarPedidoModal({ pedido, onClose, onConfirmar, salvan
       novos: novos.filter(n => n.quantidade > 0).map(n => ({
         product_id: n.product_id, quantity: Number(n.quantidade), unit_price: Number(n.preco),
       })),
+      // O frete vai explícito, e é o que está escrito na tela — a
+      // sugestão proporcional ou o que a pessoa digitou por cima. Deixar
+      // o servidor recalcular sozinho faria a tela prometer um total e o
+      // pedido gravar outro.
+      freight: conta.frete,
       motivo, email, senha,
     });
   }
@@ -145,6 +187,15 @@ export default function EditarPedidoModal({ pedido, onClose, onConfirmar, salvan
               Depois de salvar, <b>o cliente paga essa diferença e você anexa o comprovante
               dela</b> em Parcelas, dentro do pedido. Enquanto o comprovante não entrar, o
               pedido fica com saldo em aberto.
+            </p>
+            {/* O QUE ACONTECE COM A PRODUÇÃO, dito antes de acontecer.
+                Mudar o valor devolve o pedido ao financeiro — quem edita
+                com o cliente no telefone precisa saber que a fábrica
+                para até a conferência, e não descobrir na tela seguinte. */}
+            <p>
+              <b>O pedido volta para “Aguardando financeiro”.</b> A produção só volta a andar
+              quando o financeiro <b>conferir</b> o comprovante — anexar diz que pagou,
+              conferir é ver o dinheiro na conta.
             </p>
           </div>
         </div>
@@ -255,6 +306,47 @@ export default function EditarPedidoModal({ pedido, onClose, onConfirmar, salvan
               ))}
             </div>
           )}
+        </div>
+
+        {/* ── O frete ─────────────────────────────────────────── */}
+        <div className="rounded-xl border border-gray-200 p-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="label">Frete do pedido</label>
+              <div className="relative w-40">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">R$</span>
+                <input className="input pl-8" type="number" step="0.01" min={0}
+                  value={freteTocado ? freteTxt : (conta.frete ? conta.frete.toFixed(2) : '0.00')}
+                  onChange={e => { setFreteTocado(true); setFreteTxt(e.target.value); }} />
+              </div>
+            </div>
+            <div className="min-w-0 flex-1 text-[11.5px] text-gray-500">
+              {conta.pecas !== conta.pecasAntes && conta.freteAntes > 0 ? (
+                <>
+                  O pedido foi de <b>{conta.pecasAntes}</b> para <b>{conta.pecas}</b> peças, então o
+                  frete acompanhou: era <b>{brl(conta.freteAntes)}</b>, sugerimos{' '}
+                  <b>{brl(conta.sugerido)}</b>.
+                  {freteTocado && conta.frete !== conta.sugerido && (
+                    <>
+                      {' '}Você digitou <b>{brl(conta.frete)}</b> —{' '}
+                      <button type="button" className="text-primary-600 hover:underline"
+                        onClick={() => { setFreteTocado(false); setFreteTxt(''); }}>
+                        voltar para a sugestão
+                      </button>.
+                    </>
+                  )}
+                  <span className="block mt-0.5 text-gray-400">
+                    A conta é por peça, que é como a transportadora cobra. Tem a cotação nova?
+                    Digite por cima.
+                  </span>
+                </>
+              ) : conta.freteAntes > 0 ? (
+                <>Frete atual do pedido. Mexer na quantidade ajusta este valor proporcionalmente.</>
+              ) : (
+                <>Este pedido não tem frete{pedido?.delivery_mode === 'retirada' ? ' — é retirada' : ''}.</>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* ── A conta ─────────────────────────────────────────── */}

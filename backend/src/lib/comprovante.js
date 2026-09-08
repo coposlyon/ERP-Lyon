@@ -341,7 +341,38 @@ async function estaQuitada(tenantId, venda) {
   }
 }
 
+/**
+ * O FINANCEIRO OLHOU E DISSE QUE ESTÁ CERTO?
+ *
+ * `estaQuitada` responde outra pergunta: se o VALOR está coberto. As
+ * duas foram a mesma coisa por um tempo, e não são — quem anexa o
+ * comprovante é o comercial ou o próprio cliente, e anexar é uma
+ * AFIRMAÇÃO ("paguei"), não uma conferência. O print de uma
+ * transferência agendada, o comprovante de outro pedido e o valor
+ * digitado errado passam todos por anexo; nenhum deles passa por
+ * alguém do financeiro abrindo o extrato.
+ *
+ * Enquanto a etapa de Pagamento se contentava com o anexo, a fábrica
+ * começava a produzir em cima de uma afirmação. Agora ela espera a
+ * conferência — que é o ato que o `conferir()` acima já registrava
+ * (com quem conferiu e quando) e que ninguém estava obrigado a fazer.
+ *
+ * Parcela de valor zero não conta: ela não tem o que conferir.
+ */
+async function estaConferida(tenantId, venda) {
+  try {
+    const parcelas = await parcelasDaVenda(tenantId, venda);
+    const comValor = parcelas.filter(p => (Number(p.amount) || 0) > 0.005);
+    if (!comValor.length) return false;
+    const aberto = comValor.reduce((soma, x) => soma + (Number(x.falta) || 0), 0);
+    if (aberto > 0.005) return false;
+    return comValor.every(p => p.receipt_status === 'conferido');
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   parcelasDaVenda, anexarComprovante, lerComprovante, conferir,
-  linkDoComprovante, enriquecer, estaQuitada,
+  linkDoComprovante, enriquecer, estaQuitada, estaConferida,
 };

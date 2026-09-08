@@ -44,6 +44,9 @@ async function carregarParaFluxo(tenantId, id) {
   // etapa de pagamento. Uma consulta a mais por leitura do fluxo — que
   // e a tela de UM pedido, aberta por uma pessoa de cada vez.
   const comprovante_quitado = await C.estaQuitada(tenantId, data);
+  // E se o FINANCEIRO conferiu. Anexar é dizer que pagou; conferir é
+  // alguém olhando o extrato — e é a conferência que solta a fábrica.
+  const comprovante_conferido = await C.estaConferida(tenantId, data);
 
   // A ARTE ENTRA NA FICHA porque a etapa dela deixou de ser "existe
   // arquivo": a arte que a LOJA manda ainda precisa do sim do cliente,
@@ -52,7 +55,7 @@ async function carregarParaFluxo(tenantId, id) {
   const arte_resumo = resumoDaArte(itens);
 
   return {
-    venda: { ...data, itens_qtd: itens.length, comprovante_quitado, arte_resumo },
+    venda: { ...data, itens_qtd: itens.length, comprovante_quitado, comprovante_conferido, arte_resumo },
     aplicaveis: etapasDosItens(itens),
   };
 }

@@ -88,9 +88,9 @@ export default function Sales() {
   }
 
   const editarPedido = useMutation({
-    mutationFn: ({ alteracoes, remover, novos, motivo, email, senha }) =>
+    mutationFn: ({ alteracoes, remover, novos, motivo, email, senha, freight }) =>
       api.patch(`/sales/${editando.id}/itens`, {
-        alteracoes, remover, novos, motivo,
+        alteracoes, remover, novos, motivo, freight,
         autorizador_email: email, autorizador_senha: senha,
       }),
     onSuccess: r => {
@@ -110,6 +110,10 @@ export default function Sales() {
           { icon: '⚠️', duration: 9000 });
       } else {
         toast.success('Pedido atualizado.');
+      }
+      if (r?.voltou_ao_financeiro) {
+        toast('O pedido voltou para "Aguardando financeiro". A produção só segue quando o '
+            + 'financeiro conferir o comprovante.', { icon: '💰', duration: 9000 });
       }
     },
     onError: e => toast.error(e.error || 'Não foi possível editar o pedido.'),

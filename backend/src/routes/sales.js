@@ -907,7 +907,13 @@ router.patch('/:id/itens', async (req, res) => {
   const remover    = Array.isArray(req.body?.remover)    ? req.body.remover    : [];
   const novos      = Array.isArray(req.body?.novos)      ? req.body.novos      : [];
 
-  if (!alteracoes.length && !remover.length && !novos.length) {
+  // O FRETE SOZINHO JÁ É UMA EDIÇÃO. A cotação que voltou mais cara não
+  // mexe em item nenhum, e antes desta linha ela era recusada com "nada
+  // foi alterado" — o que obrigava a mexer numa quantidade só para
+  // conseguir salvar o frete certo.
+  const mexeNoFrete = req.body?.freight !== undefined && req.body?.freight !== null
+    && req.body?.freight !== '';
+  if (!alteracoes.length && !remover.length && !novos.length && !mexeNoFrete) {
     return res.status(400).json({ error: 'Nada foi alterado no pedido.' });
   }
 
@@ -925,7 +931,8 @@ router.patch('/:id/itens', async (req, res) => {
     }
 
     const { data: venda } = await supabase.from('VENDAS')
-      .select('id, number, status, customer_id, subtotal, discount, freight, total, production_log')
+      .select('id, number, status, customer_id, subtotal, discount, freight, total, '
+            + 'production_log, delivery_mode, created_at')
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
     if (!venda) return res.status(404).json({ error: 'Pedido não encontrado' });
 
@@ -936,6 +943,8 @@ router.patch('/:id/itens', async (req, res) => {
     const { data: atuais } = await supabase.from('VENDA_ITENS')
       .select('id, product_id, product_name, quantity, unit_price, discount, total, PRODUTOS ( name )')
       .eq('sale_id', venda.id);
+    // Quantas peças o pedido tinha ANTES: é a régua do frete lá embaixo.
+    const pecasAntes = (atuais || []).reduce((s, i) => s + (Number(i.quantity) || 0), 0);
     const porItem = Object.fromEntries((atuais || [])
       .map(i => [i.id, { ...i, product_name: i.product_name || i.PRODUTOS?.name || 'Produto' }]));
 
@@ -1028,7 +1037,11 @@ router.patch('/:id/itens', async (req, res) => {
       }
     }
 
-    if (!registro.length) return res.status(400).json({ error: 'Nada mudou no pedido.' });
+    // Sem mudança em item E sem frete informado, não há edição nenhuma —
+    // com o frete, a conta segue e ele entra no histórico lá embaixo.
+    if (!registro.length && !mexeNoFrete) {
+      return res.status(400).json({ error: 'Nada mudou no pedido.' });
+    }
 
     // ── O total, recontado do banco ──────────────────────────
     // Do banco, e não somando a diferença em cima do total antigo: se
@@ -1036,10 +1049,59 @@ router.patch('/:id/itens', async (req, res) => {
     // ficou gravado. A conta tem de bater com as linhas que existem, não
     // com as que eu esperava ter escrito.
     const { data: depois } = await supabase.from('VENDA_ITENS')
-      .select('id, total').eq('sale_id', venda.id);
+      .select('id, total, quantity').eq('sale_id', venda.id);
     const subtotal = (depois || []).reduce((s, i) => s + (Number(i.total) || 0), 0);
     const desconto = Number(venda.discount) || 0;
-    const frete = Number(venda.freight) || 0;
+
+    /**
+     * O FRETE ACOMPANHA A QUANTIDADE.
+     *
+     * Ele ficava parado enquanto o pedido crescia: acrescentar 100 copos
+     * mudava o total dos produtos e mantinha o frete de 100 — e a caixa
+     * a mais viajava de graça, com o prejuízo aparecendo só na fatura da
+     * transportadora, um mês depois, sem ninguém ligar uma coisa à outra.
+     *
+     * A REGRA É PROPORCIONAL ÀS PEÇAS, e não ao valor: transportadora
+     * cobra por peso e volume, e o dobro de copos ocupa o dobro de
+     * caixa, custe cada copo R$ 2 ou R$ 8. Dobrar a quantidade dobra o
+     * frete.
+     *
+     * É UMA ESTIMATIVA, E ELA CEDE AO NÚMERO CERTO: quem tem a cotação
+     * nova na mão manda `freight` no corpo e é esse valor que vale. A
+     * proporção existe para o caso comum — o vendedor no telefone, sem
+     * cotação, que não pode deixar o frete defasado por não saber o
+     * número exato.
+     *
+     * RETIRADA CONTINUA EM ZERO. Ninguém entrega, não há o que ratear —
+     * e multiplicar zero por qualquer coisa continua dando zero, mas
+     * dizê-lo aqui evita a próxima pergunta.
+     */
+    const pecasDepois = (depois || []).reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+    const freteAntes = Number(venda.freight) || 0;
+    const freteInformado = req.body?.freight;
+    let frete = freteAntes;
+    let freteAutomatico = false;
+    if (freteInformado !== undefined && freteInformado !== null && freteInformado !== '') {
+      const v = Number(freteInformado);
+      if (!Number.isFinite(v) || v < 0) {
+        return res.status(400).json({ error: 'Frete inválido.' });
+      }
+      frete = Math.round(v * 100) / 100;
+    } else if (freteAntes > 0 && pecasAntes > 0 && pecasDepois !== pecasAntes) {
+      frete = Math.round((freteAntes * pecasDepois / pecasAntes) * 100) / 100;
+      freteAutomatico = true;
+    }
+
+    // O frete que muda é uma linha do histórico como qualquer outra:
+    // "por que este pedido ficou R$ 40 mais caro" tem de ter resposta.
+    if (frete !== freteAntes) {
+      registro.push({
+        o_que: 'frete', produto: freteAutomatico ? 'Frete (ajustado pela quantidade)' : 'Frete',
+        de: freteAntes, para: frete,
+      });
+    }
+    if (!registro.length) return res.status(400).json({ error: 'Nada mudou no pedido.' });
+
     const novoTotal = Math.round(Math.max(0, subtotal - desconto + frete) * 100) / 100;
     const diferenca = Math.round((novoTotal - totalAntes) * 100) / 100;
 
@@ -1049,17 +1111,60 @@ router.patch('/:id/itens', async (req, res) => {
       .eq('reference_type', 'sale').eq('reference_id', venda.id);
     const jaPago = (lancs || []).reduce((s, l) => s + (Number(l.paid_amount) || 0), 0);
 
+    const agora = new Date().toISOString();
+    const quem = aut.usuario?.name || aut.usuario?.email || null;
     const log = Array.isArray(venda.production_log) ? [...venda.production_log] : [];
     log.push({
-      action: 'pedido_editado', at: new Date().toISOString(),
-      user: aut.usuario?.name || aut.usuario?.email || null, stage: 'comercial',
+      action: 'pedido_editado', at: agora,
+      user: quem, stage: 'comercial',
       total_antes: totalAntes, total_agora: novoTotal, diferenca,
+      frete_antes: freteAntes, frete_agora: frete, frete_automatico: freteAutomatico,
+      pecas_antes: pecasAntes, pecas_agora: pecasDepois,
       mudancas: registro,
       motivo: String(req.body?.motivo || '').trim().slice(0, 300) || null,
     });
 
+    /**
+     * MUDOU O VALOR, VOLTA PARA O FINANCEIRO.
+     *
+     * O pedido seguia andando com o valor novo e o dinheiro velho: a
+     * fábrica continuava de onde estava, e a diferença virava uma
+     * cobrança que ninguém era obrigado a olhar antes de gravar mil
+     * copos. Quem descobria era o financeiro, no fim do mês, com a peça
+     * já entregue.
+     *
+     * Agora a etapa de Pagamento volta a valer, e ela só passa quando o
+     * financeiro CONFERIR o comprovante da diferença (ou liberar à mão,
+     * com nome e hora). A liberação anterior é cancelada de propósito:
+     * ela dizia respeito ao valor de antes, e um "liberado" de ontem
+     * não pode responder por uma cobrança de hoje.
+     *
+     * PEDIDO JÁ ENTREGUE NÃO VOLTA. Escrever "aguardando financeiro"
+     * num pedido que o cliente já recebeu seria mentir sobre onde ele
+     * está; a cobrança da diferença existe do mesmo jeito, no contas a
+     * receber, que é onde ela se resolve.
+     */
+    const mudouValor = diferenca !== 0;
+    const finalizado = A.finalizado(venda.status);
+    const voltaAoFinanceiro = mudouValor && !finalizado && venda.status !== 'aguardando_financeiro';
+
+    if (mudouValor && !finalizado) {
+      log.push({
+        stage: 'status', action: 'pagamento_cancelado', at: agora, user: quem,
+        nota: 'o pedido foi editado e o valor mudou — a liberação anterior não vale para o novo total',
+      });
+      log.push({
+        stage: 'status', action: 'aguardando_financeiro', at: agora, user: quem,
+        nota: `total de ${totalAntes.toFixed(2)} para ${novoTotal.toFixed(2)}`,
+      });
+    }
+
+    const patch = { subtotal, total: novoTotal, production_log: log };
+    if (frete !== freteAntes) patch.freight = frete;
+    if (voltaAoFinanceiro || (mudouValor && !finalizado)) patch.status = 'aguardando_financeiro';
+
     const { error: erroUpd } = await supabase.from('VENDAS')
-      .update({ subtotal, total: novoTotal, production_log: log })
+      .update(patch)
       .eq('id', venda.id).eq('tenant_id', req.tenantId);
     if (erroUpd) throw erroUpd;
 
@@ -1085,10 +1190,19 @@ router.patch('/:id/itens', async (req, res) => {
     audit(req, 'update', 'sale', venda.id, {
       editou_itens: true, total_antes: totalAntes, total_agora: novoTotal,
       diferenca, mudancas: registro, autorizou: aut.usuario?.email,
+      frete_antes: freteAntes, frete_agora: frete,
+      voltou_ao_financeiro: mudouValor && !finalizado,
     });
 
     res.json({
       ok: true, total_antes: totalAntes, total: novoTotal, diferenca,
+      // O frete, para a tela poder dizer que ele mudou junto — e por quê.
+      frete_antes: freteAntes, frete: frete, frete_automatico: freteAutomatico,
+      pecas_antes: pecasAntes, pecas: pecasDepois,
+      // Para onde o pedido foi. Quem edita precisa saber na hora que a
+      // produção parou de andar até o financeiro conferir.
+      status: (mudouValor && !finalizado) ? 'aguardando_financeiro' : venda.status,
+      voltou_ao_financeiro: mudouValor && !finalizado,
       mudancas: registro, cobranca_gerada: !!cobranca, ja_pago: jaPago,
       falta_pagar: Math.max(0, Math.round((novoTotal - jaPago) * 100) / 100),
       // Encolheu abaixo do que já foi pago: a edição vale do mesmo jeito,
