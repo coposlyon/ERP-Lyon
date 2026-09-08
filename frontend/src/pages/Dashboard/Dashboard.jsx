@@ -16,7 +16,8 @@ import { useNavigate } from 'react-router-dom';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
-import { Target, Pencil, TrendingUp } from 'lucide-react';
+import { Target, Pencil, TrendingUp, Gauge } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 ChartJS.register(
   CategoryScale, LinearScale, PointElement,
@@ -428,6 +429,13 @@ export default function Dashboard() {
       {/* ── Meta do mês ────────────────────────────────────────────────────── */}
       <MetaCard kpis={kpis} />
 
+      {/* ── Teto de faturamento ────────────────────────────────────────────
+          Ao lado da meta de propósito: uma diz quanto falta para bater o
+          mês, a outra quanto falta para o CNPJ estourar o ano. São as
+          duas metades da mesma pergunta, e olhar só a primeira é como se
+          vender mais não tivesse teto. */}
+      <TetoCard />
+
       {/* ── KPIs linha 2 ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <KPI title="Orçamentos Abertos"     value={kpis.open_quotes_count || 0}
@@ -607,4 +615,242 @@ export default function Dashboard() {
 
     </div>
   );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   O TETO DE FATURAMENTO
+
+   O Simples Nacional tem limite anual. Passar dele não dá multa na
+   hora — dá desenquadramento no ano seguinte, com o imposto
+   recalculado por cima de tudo que já foi faturado. Quando alguém
+   percebe, já vendeu, já entregou e já gastou o dinheiro.
+
+   ESTE CARTÃO É UM ALARME, NÃO UM RELATÓRIO. Ele mostra quanto falta
+   para o teto de cada CNPJ e deixa ligar o bloqueio — e o bloqueio é
+   explicado com todas as letras, porque ligar isto significa combinar
+   que um dia o sistema vai parar de vender de propósito.
+   ══════════════════════════════════════════════════════════════ */
+
+function TetoCard() {
+  const qc = useQueryClient();
+  const [abrir, setAbrir] = useState(false);
+
+  const { data: teto } = useQuery({
+    queryKey: ['contabil-teto'],
+    queryFn: () => api.get('/contabil/teto').catch(() => null),
+    retry: false,
+  });
+
+  const salvar = useMutation({
+    mutationFn: v => api.put('/contabil/teto', { bloquear_venda_no_teto: v }),
+    onSuccess: r => {
+      qc.invalidateQueries({ queryKey: ['contabil-teto'] });
+      toast.success(r.bloquear_venda_no_teto
+        ? 'Bloqueio ligado — o sistema vai recusar venda que passe do teto'
+        : 'Bloqueio desligado — o sistema volta a só avisar');
+    },
+    onError: e => toast.error(e.error || 'Não foi possível salvar'),
+  });
+
+  // Módulo Contábil indisponível ou sem empresa: o cartão não aparece
+  // em vez de mostrar uma barra vazia que não quer dizer nada.
+  if (!teto?.empresas?.length) return null;
+
+  const comLimite = teto.empresas.filter(e => e.tem_limite);
+  // O CNPJ MAIS APERTADO é o que manda no cartão. Mostrar a média de
+  // três CNPJs esconderia justamente o que está para estourar.
+  const critico = comLimite.slice().sort((a, b) => (b.pct || 0) - (a.pct || 0))[0] || null;
+  const pct = critico?.pct ?? 0;
+  const cor = pct >= 100 ? '#ef4444' : pct >= 85 ? '#f59e0b' : pct >= 70 ? '#eab308' : '#22c55e';
+
+  return (
+    <>
+      <div className="card p-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+          <div className="flex items-center gap-2">
+            <Gauge size={16} style={{ color: cor }} />
+            <span className="font-semibold text-gray-700 dark:text-gray-200">
+              Teto de faturamento {teto.ano}
+            </span>
+            {teto.bloqueando ? (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                BLOQUEIO LIGADO
+              </span>
+            ) : (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                só avisa
+              </span>
+            )}
+          </div>
+          <button onClick={() => setAbrir(true)}
+            className="text-sm text-primary-600 hover:underline flex items-center gap-1">
+            <Pencil size={13} /> Configurar
+          </button>
+        </div>
+
+        {/* O AVISO DE QUE VAI PARAR vem antes dos números: quando não há
+            para onde mandar a próxima venda, o resto é detalhe. */}
+        {teto.sem_saida && (
+          <div className="flex gap-2.5 rounded-xl bg-red-50 border border-red-200 p-3 mb-3">
+            <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-800">
+              <b>O sistema vai parar de vender.</b> Todos os CNPJs chegaram ao limite e o
+              bloqueio está ligado. Cadastre outro CNPJ em Contábil, ou desligue o bloqueio
+              para continuar faturando por cima do teto.
+            </p>
+          </div>
+        )}
+
+        {comLimite.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            Nenhum CNPJ tem limite anual cadastrado. Informe o limite em
+            {' '}<Link to="/contabil" className="text-primary-600 hover:underline">Contábil</Link>
+            {' '}para o sistema saber quando avisar.
+          </p>
+        ) : (
+          <div className="space-y-2.5">
+            {comLimite.map(e => (
+              <div key={e.id}>
+                <div className="flex items-baseline justify-between gap-2 text-sm">
+                  <span className="text-gray-700 dark:text-gray-200 truncate">
+                    {e.nome_fantasia || e.razao_social}
+                    {e.cnpj && <span className="text-[11px] text-gray-400 ml-1.5 font-mono">{fmtCnpjBr(e.cnpj)}</span>}
+                  </span>
+                  <span className="tabular-nums shrink-0"
+                    style={{ color: e.pct >= 85 ? '#ef4444' : undefined }}>
+                    {fmt(e.faturado)} <span className="text-gray-400">de {fmt(e.limite)}</span>
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 mt-1 overflow-hidden">
+                  <div className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(100, e.pct || 0)}%`,
+                      background: e.pct >= 100 ? '#ef4444' : e.pct >= 85 ? '#f59e0b' : '#22c55e',
+                    }} />
+                </div>
+                <p className="text-[11.5px] text-gray-500 mt-0.5">
+                  {e.estourado
+                    ? <b className="text-red-600">limite estourado</b>
+                    : <>faltam <b>{fmt(e.restante)}</b> — {String(e.pct).replace('.', ',')}% usado</>}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {abrir && (
+        <TetoConfig teto={teto} salvando={salvar.isPending}
+          onSalvar={v => { salvar.mutate(v); setAbrir(false); }}
+          onFechar={() => setAbrir(false)} />
+      )}
+    </>
+  );
+}
+
+/**
+ * A CONVERSA ANTES DE LIGAR O BLOQUEIO.
+ *
+ * Uma chave que faz o sistema parar de vender não pode ser um
+ * interruptor mudo. O texto aqui não é aviso legal para ninguém ler —
+ * é a descrição do que vai acontecer no dia em que o teto chegar, e
+ * quem liga precisa ter lido isso antes, não depois.
+ */
+function TetoConfig({ teto, salvando, onSalvar, onFechar }) {
+  const [ligado, setLigado] = useState(!!teto.bloqueando);
+  const comEspaco = teto.empresas.filter(e => !e.tem_limite || !e.estourado);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+      onClick={onFechar}>
+      <div onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5">
+        <h2 className="text-base font-bold text-gray-800 dark:text-gray-100 mb-1">
+          Teto de faturamento
+        </h2>
+        <p className="text-[12.5px] text-gray-500 mb-4">
+          O que o sistema faz quando uma venda passa do limite anual do CNPJ.
+        </p>
+
+        <div className="space-y-2">
+          <Opcao ligado={!ligado} onClick={() => setLigado(false)}
+            titulo="Só avisar (padrão)"
+            texto="A venda aparece com um aviso e sai do mesmo jeito se quem está vendendo confirmar. Nada trava — e nada impede de passar do teto sem perceber." />
+
+          <Opcao ligado={ligado} onClick={() => setLigado(true)} perigo
+            titulo="Bloquear a venda"
+            texto="O servidor RECUSA a venda que passar do limite. Não há senha de gerente que passe por cima." />
+        </div>
+
+        {ligado && (
+          <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3.5 space-y-2.5">
+            <p className="text-sm font-bold text-amber-900 flex items-center gap-1.5">
+              <AlertTriangle size={15} /> Leia antes de ligar
+            </p>
+            <ul className="text-[12.5px] text-amber-900 space-y-1.5 list-disc pl-4">
+              <li>
+                Chegando ao teto, <b>o sistema para de aceitar vendas nesse CNPJ</b>. Não é
+                aviso: é recusa.
+              </li>
+              <li>
+                Para continuar vendendo é preciso <b>escolher outro CNPJ</b> na tela de
+                pagamento do pedido. A recusa mostra quais ainda têm espaço.
+              </li>
+              <li>
+                <b>Se não houver outro CNPJ com espaço, o sistema PARA.</b> Nenhuma venda
+                nova entra até alguém cadastrar um segundo CNPJ em Contábil ou desligar esta
+                chave aqui.
+              </li>
+              <li>
+                Pedidos que já existem continuam funcionando — produção, entrega e
+                recebimento não são afetados. O que para é a <b>criação</b> de venda nova.
+              </li>
+            </ul>
+
+            <div className="rounded-lg bg-white/70 border border-amber-200 p-2.5">
+              <p className="text-[12px] text-amber-900">
+                Hoje você tem <b>{comEspaco.length}</b> CNPJ{comEspaco.length !== 1 ? 's' : ''}
+                {' '}com espaço.
+                {comEspaco.length === 0 && (
+                  <b> Ligando agora, o sistema para na próxima venda.</b>
+                )}
+                {comEspaco.length === 1 && (
+                  <> Quando ele encher, não há para onde mandar a venda seguinte.</>
+                )}
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-2 justify-end mt-5">
+          <button onClick={onFechar} className="btn-secondary text-sm">Cancelar</button>
+          <button onClick={() => onSalvar(ligado)} disabled={salvando}
+            className={`text-sm px-4 py-2 rounded-lg font-semibold text-white disabled:opacity-50 ${
+              ligado ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700'}`}>
+            {ligado ? 'Ligar o bloqueio' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const Opcao = ({ ligado, onClick, titulo, texto, perigo }) => (
+  <button onClick={onClick}
+    className={`w-full text-left rounded-xl border p-3 transition-colors ${
+      ligado
+        ? (perigo ? 'border-red-400 bg-red-50' : 'border-primary-400 bg-primary-50')
+        : 'border-gray-200 hover:bg-gray-50'}`}>
+    <p className={`text-sm font-semibold ${ligado && perigo ? 'text-red-800' : 'text-gray-800'}`}>
+      {titulo}
+    </p>
+    <p className="text-[12px] text-gray-600 mt-0.5">{texto}</p>
+  </button>
+);
+
+/** 12345678000190 → 12.345.678/0001-90; menos de 14 dígitos não vira nada. */
+function fmtCnpjBr(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  if (d.length !== 14) return null;
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
 }

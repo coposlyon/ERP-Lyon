@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Search, Trash2, Pencil, ShoppingCart, User, Check, Loader2, X, Truck, Star, Plus, MoreHorizontal, MessageCircle, Download, Filter, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, Trash2, Pencil, ShoppingCart, User, Check, Loader2, X, Truck, Star, Plus, MoreHorizontal, MessageCircle, Download, Filter, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
 import SeletorOrigem from '@/components/UI/SeletorOrigem';
@@ -195,6 +195,7 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [discount, setDiscount] = useState('');
+  const [tetoBloqueou, setTetoBloqueou] = useState(null);   // venda recusada pelo teto do CNPJ
   const [couponInput, setCouponInput] = useState('');
   const [coupon, setCoupon] = useState(null); // { coupon_id, code, discount_type, discount_value }
   const [carrierId, setCarrierId] = useState(''); // transportadora desta venda
@@ -585,7 +586,23 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
       if (inModal) { onDone(); return; } // fecha o card e atualiza a lista
       setTimeout(() => searchRef.current?.focus(), 100);
     },
-    onError: (err) => toast.error(err.error || 'Erro ao finalizar venda'),
+    onError: err => {
+      /**
+       * O TETO RECUSOU A VENDA.
+       *
+       * Um toast vermelho de três segundos não serve aqui: a pessoa
+       * está com o cliente na frente e precisa saber o que fazer
+       * AGORA — trocar de CNPJ, ou parar. O modal fica na tela até
+       * alguém decidir, e a chave do pedido é solta para a venda poder
+       * ser refeita no outro CNPJ sem esbarrar na idempotência.
+       */
+      if (err?.code === 'TETO_ATINGIDO') {
+        chaveDoPedido.current = null;
+        setTetoBloqueou({ ...err.teto, alternativas: err.alternativas || [], mensagem: err.error });
+        return;
+      }
+      toast.error(err.error || 'Erro ao finalizar venda');
+    },
   });
 
   // O que o pedido confirmado deixa para tras. Fora do onSuccess porque
@@ -2283,6 +2300,91 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
         }>
         <img src={png?.dataUrl} alt="Foto do orçamento" className="w-full rounded-lg border border-gray-200" />
       </Modal>
+      {/* A venda recusada pelo teto — e por onde ela ainda pode sair. */}
+      {tetoBloqueou && (
+        <TetoBloqueado dados={tetoBloqueou}
+          empresas={companiesOk}
+          onTrocar={id => { setBillingCompanyId(id); setReceivingAccountId(''); setTetoBloqueou(null); }}
+          onFechar={() => setTetoBloqueou(null)} />
+      )}
+
     </div>
   );
 }
+
+/**
+ * O QUE APARECE QUANDO O TETO RECUSA A VENDA.
+ *
+ * Duas situações, e a tela precisa dizer QUAL delas é:
+ *
+ *   há outro CNPJ    o problema tem solução em dois cliques — escolher
+ *                    e refazer. A lista já vem filtrada pelos que
+ *                    cabem ESTA venda.
+ *
+ *   não há           o sistema parou, e ninguém no balcão vai resolver
+ *                    isso. Dizer "escolha outro CNPJ" aqui mandaria a
+ *                    pessoa procurar uma opção que não existe.
+ */
+function TetoBloqueado({ dados, empresas, onTrocar, onFechar }) {
+  const temSaida = (dados.alternativas || []).length > 0;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+      <div className="bg-white rounded-2xl w-full max-w-md p-5">
+        <div className="flex items-start gap-2.5 mb-3">
+          <AlertTriangle size={20} className="text-red-500 shrink-0 mt-0.5" />
+          <div>
+            <h2 className="text-base font-bold text-gray-800">Venda não pode sair por este CNPJ</h2>
+            <p className="text-[12.5px] text-gray-500 mt-0.5">{dados.mensagem}</p>
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 text-[12.5px] space-y-1">
+          <Linha rot="Empresa"      v={dados.empresa} />
+          <Linha rot="Já faturado"  v={fmt(dados.faturado)} />
+          <Linha rot="Limite anual" v={fmt(dados.limite)} />
+          <Linha rot="Ficaria em"   v={fmt(dados.depois)} destaque />
+          <Linha rot="Passa em"     v={fmt(dados.excedente)} destaque />
+        </div>
+
+        {temSaida ? (
+          <>
+            <p className="text-[12.5px] text-gray-600 mt-4 mb-2">
+              Estes CNPJs ainda têm espaço para esta venda. Escolhendo um, confirme o
+              pedido de novo.
+            </p>
+            <div className="space-y-1.5">
+              {dados.alternativas.map(a => (
+                <button key={a.id} onClick={() => onTrocar(a.id)}
+                  className="w-full text-left rounded-lg border border-gray-200 hover:border-primary-400 hover:bg-primary-50 p-2.5">
+                  <p className="text-sm font-medium text-gray-800">{a.razao_social}</p>
+                  <p className="text-[11.5px] text-gray-500">
+                    {a.restante == null ? 'sem limite cadastrado' : `cabe mais ${fmt(a.restante)}`}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="mt-4 rounded-xl bg-red-50 border border-red-200 p-3">
+            <p className="text-[12.5px] text-red-800">
+              <b>Não há outro CNPJ com espaço.</b> O sistema está bloqueado para novas
+              vendas. Quem resolve isto é o administrativo — cadastrando um segundo CNPJ
+              em Contábil, ou desligando o bloqueio no Dashboard.
+            </p>
+          </div>
+        )}
+
+        <button onClick={onFechar} className="btn-secondary text-sm w-full justify-center mt-4">
+          Voltar ao pedido
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const Linha = ({ rot, v, destaque }) => (
+  <div className="flex justify-between gap-3">
+    <span className="text-gray-500">{rot}</span>
+    <span className={destaque ? 'font-semibold text-red-700 tabular-nums' : 'text-gray-700 tabular-nums'}>{v}</span>
+  </div>
+);

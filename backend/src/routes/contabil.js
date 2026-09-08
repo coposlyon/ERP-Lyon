@@ -309,6 +309,170 @@ router.get('/simulate', async (req, res) => {
   }
 });
 
+// ════════════ O TETO DE FATURAMENTO ═══════════════════════
+//
+// POR QUE ISTO EXISTE. O Simples Nacional tem limite anual. Passar dele
+// não dá multa na hora — dá desenquadramento no ano seguinte, com o
+// imposto recalculado por cima de tudo que foi faturado. Quando alguém
+// percebe, já faturou, já entregou e já gastou o dinheiro.
+//
+// O AVISO NÃO BASTAVA. Já existia um `confirm()` no fechamento da venda
+// dizendo "isto ultrapassa o limite, continuar?". Quem está com o
+// cliente na frente clica em continuar — é o que se faz com uma caixa
+// que atrapalha. O aviso protege quem já ia parar sozinho.
+//
+// POR ISSO O BLOQUEIO É UMA CHAVE, e não o padrão. Ligada, a venda que
+// estoura o teto é RECUSADA pelo servidor, e não pela tela: a tela é o
+// lugar onde o "continuar mesmo assim" mora.
+//
+// E É POR ISSO QUE ELE PRECISA SER BEM EXPLICADO. Ligar isto significa
+// que um dia o sistema vai parar de vender — de propósito. Se nesse dia
+// não houver um segundo CNPJ com espaço, ele para e pronto: não há
+// senha de gerente que passe por cima, porque a decisão de estourar o
+// Simples não é de quem está no balcão.
+const CHAVE_TETO = 'bloquear_venda_no_teto';
+
+async function lerTeto(tenantId) {
+  try {
+    const { data } = await supabase.from('EMPRESAS')
+      .select('settings').eq('id', tenantId).maybeSingle();
+    return !!data?.settings?.fiscal?.[CHAVE_TETO];
+  } catch {
+    // Sem conseguir ler a configuração, NÃO se bloqueia. Uma leitura
+    // falha travando a venda de todo mundo é pior do que um teto que
+    // deixa passar — o teto tem um ano para ser corrigido, a venda
+    // perdida acontece agora.
+    return false;
+  }
+}
+
+/**
+ * A situação de cada CNPJ diante do teto.
+ *
+ * Devolve TODOS, e não só o que está estourando: a pergunta que a tela
+ * precisa responder é "para onde eu mando a próxima venda", e isso só
+ * se responde vendo quanto cabe em cada um.
+ */
+router.get('/teto', async (req, res) => {
+  try {
+    const year = new Date().getFullYear();
+    const companies = await companiesWithRevenue(req.tenantId, year);
+    const bloqueando = await lerTeto(req.tenantId);
+
+    const empresas = companies.map(c => {
+      const limite = Number(c.annual_limit) || 0;
+      const faturado = Number(c.faturado) || 0;
+      return {
+        id: c.id,
+        razao_social: c.razao_social,
+        nome_fantasia: c.nome_fantasia || null,
+        cnpj: c.cnpj || null,
+        regime: c.regime,
+        is_default: !!c.is_default,
+        faturado: r2(faturado),
+        limite,
+        // Sem limite cadastrado NÃO é limite infinito: é limite não
+        // informado, e a tela precisa dizer isso em vez de desenhar uma
+        // barra vazia que parece folga.
+        tem_limite: limite > 0,
+        restante: limite > 0 ? r2(Math.max(0, limite - faturado)) : null,
+        pct: limite > 0 ? Math.round((faturado / limite) * 10000) / 100 : null,
+        estourado: limite > 0 && faturado >= limite,
+      };
+    });
+
+    const comEspaco = empresas.filter(e => !e.tem_limite || !e.estourado);
+    res.json({
+      ano: year,
+      bloqueando,
+      empresas,
+      // "Vai parar" é o que a tela precisa gritar ANTES de acontecer:
+      // bloqueio ligado, e nenhum CNPJ com espaço sobrando.
+      sem_saida: bloqueando && comEspaco.length === 0,
+      com_espaco: comEspaco.length,
+    });
+  } catch (err) {
+    if (missing043(err)) return err043(res);
+    console.error('[contabil/teto]', err.message);
+    res.status(500).json({ error: 'Erro ao ler o teto de faturamento' });
+  }
+});
+
+/** Liga ou desliga o bloqueio. */
+router.put('/teto', async (req, res) => {
+  try {
+    const { data } = await supabase.from('EMPRESAS')
+      .select('settings').eq('id', req.tenantId).maybeSingle();
+    const settings = data?.settings || {};
+    settings.fiscal = { ...(settings.fiscal || {}), [CHAVE_TETO]: !!req.body?.[CHAVE_TETO] };
+
+    const { error } = await supabase.from('EMPRESAS')
+      .update({ settings }).eq('id', req.tenantId);
+    if (error) throw error;
+
+    audit(req, 'update', 'fiscal', req.tenantId, { [CHAVE_TETO]: settings.fiscal[CHAVE_TETO] });
+    res.json({ [CHAVE_TETO]: settings.fiscal[CHAVE_TETO] });
+  } catch (err) {
+    console.error('[contabil/teto PUT]', err.message);
+    res.status(500).json({ error: 'Não foi possível salvar' });
+  }
+});
+
+/**
+ * ESTA VENDA PODE SAIR POR ESTE CNPJ?
+ *
+ * Chamada pela criação da venda. Devolve `{ ok: true }` quando pode, e
+ * quando não pode devolve JUNTO os CNPJs que ainda têm espaço — porque
+ * "não pode" sem "então por onde?" é um beco.
+ *
+ * Não bloqueia quando o bloqueio está desligado, quando a empresa não
+ * tem limite cadastrado, ou quando o Contábil não está configurado. As
+ * três são a mesma decisão: na dúvida, a venda passa.
+ */
+async function podeFaturar(tenantId, companyId, valor) {
+  try {
+    if (!await lerTeto(tenantId)) return { ok: true, bloqueando: false };
+
+    const year = new Date().getFullYear();
+    const companies = await companiesWithRevenue(tenantId, year);
+    const alvo = companies.find(c => c.id === companyId)
+      || companies.find(c => c.is_default) || companies[0];
+    if (!alvo) return { ok: true, bloqueando: true };
+
+    const limite = Number(alvo.annual_limit) || 0;
+    if (limite <= 0) return { ok: true, bloqueando: true };
+
+    const depois = (Number(alvo.faturado) || 0) + (Number(valor) || 0);
+    if (depois <= limite) return { ok: true, bloqueando: true };
+
+    // Quem ainda tem espaço PARA ESTA VENDA — não "quem não estourou".
+    // Um CNPJ com R$ 200 de folga não recebe uma venda de R$ 5.000, e
+    // oferecê-lo seria mandar a pessoa tentar de novo para levar o
+    // mesmo não.
+    const alternativas = companies
+      .filter(c => c.id !== alvo.id)
+      .map(c => ({
+        id: c.id, razao_social: c.razao_social, cnpj: c.cnpj || null,
+        restante: (Number(c.annual_limit) || 0) > 0
+          ? r2(Math.max(0, Number(c.annual_limit) - Number(c.faturado || 0)))
+          : null,
+      }))
+      .filter(c => c.restante === null || c.restante >= Number(valor));
+
+    return {
+      ok: false, bloqueando: true,
+      empresa: alvo.razao_social,
+      faturado: r2(Number(alvo.faturado) || 0),
+      limite, depois: r2(depois),
+      excedente: r2(depois - limite),
+      alternativas,
+    };
+  } catch {
+    // Falha na checagem não pode virar venda recusada.
+    return { ok: true, bloqueando: false };
+  }
+}
+
 // ════════════ VISÃO GERAL (dashboard) ═════════════════════
 router.get('/overview', async (req, res) => {
   const month = isMonth(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
@@ -660,3 +824,5 @@ router.get('/alerts', async (req, res) => {
 });
 
 module.exports = router;
+// A checagem do teto é usada pela criação da venda (routes/sales.js).
+module.exports.podeFaturar = podeFaturar;

@@ -27,6 +27,9 @@ const { gerarCobrancaPix } = require('../lib/pixCobranca');
 // O que o pedido faz sozinho ao nascer — hoje, confirmar o pagamento
 // quando a empresa configurou assim.
 const Auto = require('../lib/pedidoAutomacao');
+// O teto de faturamento por CNPJ mora no Contábil, junto do cálculo
+// que sabe quanto cada empresa já faturou no ano.
+const Contabil = require('./contabil');
 
 const saleSchema = Joi.object({
   items: Joi.array().min(1).items(
@@ -463,6 +466,42 @@ async function legacyCreateSale(req, res) {
     const freightVal = Number(freight) || 0;
     const payAdj = Number(payment_adjustment) || 0;
     const total = Math.max(0, subtotal - totalDiscount + freightVal + payAdj);
+
+    /**
+     * O TETO DE FATURAMENTO — A TRAVA DE VERDADE.
+     *
+     * Já havia um aviso na tela ("isto ultrapassa o limite, continuar?")
+     * e ele não protege ninguém: quem está com o cliente na frente
+     * clica em continuar, porque é o que se faz com uma caixa que
+     * atrapalha.
+     *
+     * Com o bloqueio LIGADO em Contábil, a venda que estoura o limite
+     * anual do CNPJ é recusada AQUI, no servidor. A recusa vem com os
+     * CNPJs que ainda têm espaço para este valor — e, quando não há
+     * nenhum, com a frase que descreve o que realmente aconteceu: o
+     * sistema parou de vender.
+     *
+     * Desligado (o padrão), nada muda: o aviso da tela continua sendo o
+     * que era. Passar do teto do Simples é decisão de dono, não de
+     * quem opera o caixa — e por isso ela é tomada uma vez, na
+     * configuração, e não a cada venda.
+     */
+    const teto = await Contabil.podeFaturar(req.tenantId, billing_company_id, total);
+    if (!teto.ok) {
+      return res.status(409).json({
+        error: teto.alternativas.length
+          ? `${teto.empresa} chegou ao limite anual. Escolha outro CNPJ para faturar esta venda.`
+          : `${teto.empresa} chegou ao limite anual e não há outro CNPJ com espaço. `
+            + 'O sistema está bloqueado para novas vendas até que um segundo CNPJ seja cadastrado '
+            + 'ou o bloqueio seja desligado em Contábil.',
+        code: 'TETO_ATINGIDO',
+        teto: {
+          empresa: teto.empresa, faturado: teto.faturado, limite: teto.limite,
+          depois: teto.depois, excedente: teto.excedente,
+        },
+        alternativas: teto.alternativas,
+      });
+    }
 
     const { data: sale, error: saleError } = await supabase
       .from('VENDAS')
