@@ -65,6 +65,20 @@ export default function Products() {
     queryFn: () => api.get('/products/categories/list'),
   });
 
+  /**
+   * As categorias que o FILTRO oferece — só as que têm produto.
+   *
+   * `product_count` vem da própria rota, então isto não custa consulta
+   * nenhuma. A escolhida entra mesmo zerada: se ela sumisse da lista
+   * enquanto está selecionada, o campo mostraria "Todas as categorias"
+   * com a tela ainda filtrada por ela — e a pessoa procuraria o que
+   * ficou errado no lugar errado.
+   */
+  const categoriasComProduto = useMemo(
+    () => categories.filter(c => Number(c.product_count) > 0 || c.id === categoryId),
+    [categories, categoryId],
+  );
+
   // Opções dos filtros (cores e tamanhos que existem no catálogo)
   const { data: filterOpts } = useQuery({
     queryKey: ['product-filters'],
@@ -533,7 +547,22 @@ export default function Products() {
           <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setPage(1); }}
             className="input w-auto text-sm" title="Filtrar por categoria">
             <option value="">Todas as categorias</option>
-            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {/* FILTRO SÓ OFERECE O QUE FILTRA.
+                Categoria sem nenhum produto continuava na lista e, ao
+                ser escolhida, levava a "Nenhum registro encontrado" —
+                um caminho que só existe para não dar em nada. Quem
+                apagou os copos de uma linha não devia continuar
+                encontrando a linha aqui.
+                A CATEGORIA NÃO É APAGADA, e o cadastro continua
+                mostrando todas: é por lá que se cria o primeiro
+                produto de uma categoria nova, e uma categoria que só
+                aparece depois de já ter produto nunca receberia o
+                primeiro. Some do filtro, e volta sozinha assim que
+                alguém cadastrar um copo nela.
+                A escolhida fica visível mesmo zerada — senão o campo
+                mostraria "Todas as categorias" enquanto a lista
+                continua filtrada por uma que sumiu. */}
+            {categoriasComProduto.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
           {/* Cor (vem do catálogo) */}
