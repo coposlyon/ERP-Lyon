@@ -269,7 +269,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         <SidebarVendedor onMobileClose={onMobileClose} />
       ) : (
         <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
-          {visibleItems.map((item, idx) => (
+          {visibleItems.map(item => (
             <div key={item.label}>
               <SidebarGroup
                 item={item}
@@ -277,8 +277,11 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                 onMobileClose={onMobileClose}
                 badges={badges}
               />
-              {/* Divisor após o Dashboard, separando-o dos módulos */}
-              {idx === 0 && <div className="my-2 border-t border-indigo-800/60" />}
+              {/* O divisor é declarado no próprio menu (menu.js), e não
+                  por posição: "depois do primeiro item" seguia o índice,
+                  então reordenar a barra levava o traço junto para
+                  debaixo do que passasse a ser o primeiro. */}
+              {item.separadorDepois && <div className="my-2 border-t border-indigo-800/60" />}
             </div>
           ))}
         </nav>

@@ -41,6 +41,73 @@ export const menuItems = [
     // sem module: visível para todos
   },
 
+  // PORTAIS SAIU DO MENU (Meu Portal, Portal do Gestor, Portal do
+  // Contador). A Lyon não vai usar por enquanto.
+  //
+  // ATENÇÃO AO QUE ISSO MUDA, porque estes três não eram como os outros:
+  // eles não pediam módulo — quem entrava era a PESSOA, liberada uma a
+  // uma em Permissões. Sumindo daqui, somem também da árvore de
+  // permissões (TELAS nasce desta lista), e as liberações individuais
+  // que já existirem deixam de ter onde ser revistas.
+  //
+  // O QUE NÃO QUEBRA: as rotas /portal/eu, /portal/gestor e
+  // /portal/contador continuam de pé, e os avisos do sino que apontam
+  // para /portal/gestor (solicitação, justificativa e férias esperando
+  // decisão — lib/avisos.js) continuam levando a uma tela que abre. A
+  // fila de aprovação do gestor também vive em RH → Férias /
+  // Afastamentos, que segue no menu: nenhum pedido fica sem quem decida.
+  //
+  // PARA VOLTAR: devolva este bloco. As telas nunca saíram do lugar.
+
+  // COMUNICAÇÃO — o que aconteceu e o que se combinou.
+  //
+  // Fica fora do Comercial de propósito: o mural registra o que TODO
+  // mundo fez (estoque, produção, financeiro) e a sala é da empresa
+  // inteira. Pendurado em Comercial, metade da fábrica não acharia.
+  {
+    label: 'Comunicação',
+    icon: MessageSquare,
+    // O TRAÇO DA BARRA LATERAL VEM DEPOIS DAQUI.
+    //
+    // Dashboard e Comunicação são as duas telas que se abre sem estar
+    // procurando nada: uma diz como a empresa está, a outra diz o que
+    // acabou de acontecer e onde se conversa. Daí para baixo começam os
+    // módulos, que se abre quando já se sabe o que fazer.
+    //
+    // A marca fica AQUI, e não como "depois do primeiro item" na
+    // Sidebar: com o índice fixo, reordenar o menu movia o traço para
+    // baixo de qualquer coisa que fosse parar em primeiro.
+    separadorDepois: true,
+    children: [
+      { label: 'Comunicação', path: '/comunicacao', icon: MessageSquare, module: ['comunicacao', 'agenda'] },
+      { label: 'Agenda',      path: '/agenda',      icon: CalendarDays,  module: ['agenda', 'comunicacao'] },
+    ],
+  },
+  {
+    label: 'Financeiro',
+    icon: Wallet,
+    children: [
+      // O DINHEIRO QUE ENTRA PELO SITE. Veio do grupo Comercial: quem
+      // confere o PIX no extrato e libera o pedido é o financeiro.
+      //
+      // O MÓDULO ACEITA OS DOIS ('sales' e 'financial') de propósito. A
+      // tela é a mesma de antes e a rota exige 'sales'; se o item
+      // passasse a pedir só 'financial', quem tinha acesso ontem
+      // clicaria hoje num item que a rota recusa — e quem tem só o
+      // financeiro veria um item que não abre. Um dos dois basta, e
+      // ninguém perde o caminho que já usava.
+      { label: 'Pagamentos da Loja', path: '/store-payments', icon: Wallet, module: ['sales', 'financial'] },
+      { label: 'Central de Contas', path: '/contas', icon: CalendarDays, module: 'financial' },
+      { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet, module: 'financial' },
+      { label: 'Config. Financeira', path: '/financial-config', icon: Building2, module: 'financial' },
+      // Nota fiscal e contabilidade são o mesmo assunto do dinheiro:
+      // dois grupos separados obrigavam quem fecha o mês a passear pelo
+      // menu inteiro para juntar o que sempre foi uma coisa só.
+      { label: 'Fiscal / NF-e', path: '/fiscal', icon: Receipt, module: 'fiscal' },
+      { label: 'Contábil / Fiscal', path: '/contabil', icon: Landmark, module: 'financial' },
+    ],
+  },
+
   // --- Módulos com submenu (agrupados) ---
   {
     label: 'Comercial',
@@ -91,27 +158,10 @@ export const menuItems = [
     ],
   },
   {
-    label: 'Financeiro',
-    icon: Wallet,
+    label: 'Logística',
+    icon: MapPin,
     children: [
-      // O DINHEIRO QUE ENTRA PELO SITE. Veio do grupo Comercial: quem
-      // confere o PIX no extrato e libera o pedido é o financeiro.
-      //
-      // O MÓDULO ACEITA OS DOIS ('sales' e 'financial') de propósito. A
-      // tela é a mesma de antes e a rota exige 'sales'; se o item
-      // passasse a pedir só 'financial', quem tinha acesso ontem
-      // clicaria hoje num item que a rota recusa — e quem tem só o
-      // financeiro veria um item que não abre. Um dos dois basta, e
-      // ninguém perde o caminho que já usava.
-      { label: 'Pagamentos da Loja', path: '/store-payments', icon: Wallet, module: ['sales', 'financial'] },
-      { label: 'Central de Contas', path: '/contas', icon: CalendarDays, module: 'financial' },
-      { label: 'Contas a Receber/Pagar', path: '/financial', icon: Wallet, module: 'financial' },
-      { label: 'Config. Financeira', path: '/financial-config', icon: Building2, module: 'financial' },
-      // Nota fiscal e contabilidade são o mesmo assunto do dinheiro:
-      // dois grupos separados obrigavam quem fecha o mês a passear pelo
-      // menu inteiro para juntar o que sempre foi uma coisa só.
-      { label: 'Fiscal / NF-e', path: '/fiscal', icon: Receipt, module: 'fiscal' },
-      { label: 'Contábil / Fiscal', path: '/contabil', icon: Landmark, module: 'financial' },
+      { label: 'Transportadoras', path: '/logistics', icon: Truck, module: 'logistics' },
     ],
   },
 
@@ -148,13 +198,6 @@ export const menuItems = [
       //
       // Viraram secoes da propria tela de Produtos. As rotas antigas
       // continuam respondendo — link salvo e favorito nao quebram.
-    ],
-  },
-  {
-    label: 'Logística',
-    icon: MapPin,
-    children: [
-      { label: 'Transportadoras', path: '/logistics', icon: Truck, module: 'logistics' },
     ],
   },
   // PREÇO E CUSTO VIRARAM UM GRUPO SÓ.
@@ -215,38 +258,6 @@ export const menuItems = [
       { label: 'Admissões',           path: '/hr/admissoes',  icon: UserPlus,  module: 'hr' },
       { label: 'Desligamentos',       path: '/hr/desligamentos', icon: UserMinus, module: 'hr' },
       { label: 'Conformidade Trab.',  path: '/hr/conformidade', icon: ShieldCheck, module: 'hr' },
-    ],
-  },
-
-  // PORTAIS SAIU DO MENU (Meu Portal, Portal do Gestor, Portal do
-  // Contador). A Lyon não vai usar por enquanto.
-  //
-  // ATENÇÃO AO QUE ISSO MUDA, porque estes três não eram como os outros:
-  // eles não pediam módulo — quem entrava era a PESSOA, liberada uma a
-  // uma em Permissões. Sumindo daqui, somem também da árvore de
-  // permissões (TELAS nasce desta lista), e as liberações individuais
-  // que já existirem deixam de ter onde ser revistas.
-  //
-  // O QUE NÃO QUEBRA: as rotas /portal/eu, /portal/gestor e
-  // /portal/contador continuam de pé, e os avisos do sino que apontam
-  // para /portal/gestor (solicitação, justificativa e férias esperando
-  // decisão — lib/avisos.js) continuam levando a uma tela que abre. A
-  // fila de aprovação do gestor também vive em RH → Férias /
-  // Afastamentos, que segue no menu: nenhum pedido fica sem quem decida.
-  //
-  // PARA VOLTAR: devolva este bloco. As telas nunca saíram do lugar.
-
-  // COMUNICAÇÃO — o que aconteceu e o que se combinou.
-  //
-  // Fica fora do Comercial de propósito: o mural registra o que TODO
-  // mundo fez (estoque, produção, financeiro) e a sala é da empresa
-  // inteira. Pendurado em Comercial, metade da fábrica não acharia.
-  {
-    label: 'Comunicação',
-    icon: MessageSquare,
-    children: [
-      { label: 'Comunicação', path: '/comunicacao', icon: MessageSquare, module: ['comunicacao', 'agenda'] },
-      { label: 'Agenda',      path: '/agenda',      icon: CalendarDays,  module: ['agenda', 'comunicacao'] },
     ],
   },
 
