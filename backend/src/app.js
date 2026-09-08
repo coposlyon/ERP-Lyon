@@ -29,6 +29,26 @@ const SOCIAL_SCRIPT = [
   'https://cdn.lightwidget.com', 'https://www.instagram.com',
 ];
 
+/**
+ * O STORAGE, PARA BAIXAR A ARTE COM O NOME CERTO.
+ *
+ * A arte já APARECE na tela sem isto — `imgSrc` libera https: inteiro, e
+ * é assim que a imagem carrega. O que a CSP barrava era o `fetch` do
+ * arquivo, que é como o visualizador baixa a arte renomeada
+ * ("arte-LDT-02.svg" em vez de "a1b2c3d4-….svg", que é o nome que ela
+ * tem no bucket).
+ *
+ * Sem o host aqui o download não quebra — cai no link direto e o arquivo
+ * salva com o uuid. Mas um arquivo que ninguém sabe de qual pedido é
+ * praticamente não foi salvo.
+ *
+ * É o MESMO host do SUPABASE_URL: liberar o projeto que já guarda todos
+ * os dados do ERP não amplia superfície nenhuma.
+ */
+const STORAGE_ORIGEM = (() => {
+  try { return [new URL(process.env.SUPABASE_URL).origin]; } catch { return []; }
+})();
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -37,7 +57,7 @@ app.use(helmet({
       styleSrc:    ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       imgSrc:      ["'self'", "data:", "blob:", "https:"],
       fontSrc:     ["'self'", "data:", "https://fonts.gstatic.com"],
-      connectSrc:  ["'self'", "https://graph.facebook.com", "https://www.instagram.com"],
+      connectSrc:  ["'self'", "https://graph.facebook.com", "https://www.instagram.com", ...STORAGE_ORIGEM],
       objectSrc:   ["'none'"],
       frameSrc:    ["'self'", ...SOCIAL_FRAME],
     },

@@ -10,6 +10,7 @@
 // seguinte, sem ninguém precisar avisar.
 // ============================================================
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -22,6 +23,12 @@ import {
   ThumbsUp, ThumbsDown, AlertTriangle, Lock,
 } from 'lucide-react';
 import api from '@/lib/api';
+// O MESMO VISUALIZADOR DO ERP. A arte abre DENTRO da tela, encaixada,
+// com um toque para o tamanho real — e não como o arquivo cru do
+// Storage, que vinha com `Content-Disposition: attachment` e por isso
+// era BAIXADO em vez de mostrado. Quem quer o arquivo continua tendo o
+// botão de baixar lá dentro; quem só quer olhar, olha.
+import VisualizarArteModal from '@/components/UI/VisualizarArteModal';
 
 // Nomeados um a um: `import * as Icons` derruba o tree-shaking e arrasta
 // a biblioteca inteira do lucide para dentro desta página.
@@ -646,7 +653,11 @@ const AVISO_SEM_VOLTA =
  * que é o resultado seguro.
  */
 function ConfirmacaoDupla({ titulo, pergunta, aviso, rotulo, Icone, cor, carregando, onConfirmar, onCancelar, children }) {
-  return (
+  // Portal pelo mesmo motivo do visualizador da arte: o cartão de vidro
+  // tem `backdrop-filter`, e isso faz o `fixed` de dentro dele ficar
+  // preso ao cartão — a janela nasceria dentro do bloco, com metade da
+  // página viva por fora.
+  return createPortal((
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
       style={{ background: 'rgba(3,6,18,0.85)' }} onClick={carregando ? undefined : onCancelar}>
       <div className="w-full max-w-lg rounded-2xl p-5" onClick={e => e.stopPropagation()}
@@ -690,7 +701,7 @@ function ConfirmacaoDupla({ titulo, pergunta, aviso, rotulo, Icone, cor, carrega
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 /** A cara de cada estado da arte — cor, título e o que dizer embaixo. */
@@ -719,6 +730,8 @@ function ArteDosItens({ pedidoId, token, itens, onMontar, onEnviou }) {
   // A pergunta em aberto: { tipo: 'enviar'|'aprovar'|'reprovar', item, arquivo }
   const [pergunta, setPergunta] = useState(null);
   const [motivo, setMotivo] = useState('');
+  // Qual arte está aberta no visualizador (o item, para dar nome ao arquivo).
+  const [vendo, setVendo] = useState(null);
 
   function abrir(tipo, item, arquivo) {
     setErro('');
@@ -830,10 +843,10 @@ function ArteDosItens({ pedidoId, token, itens, onMontar, onEnviou }) {
                     )}
                   </p>
                   {i.arte_anexada && (
-                    <a href={i.arte_anexada} target="_blank" rel="noreferrer"
+                    <button type="button" onClick={() => setVendo(i)}
                       className="text-[12px] inline-flex items-center gap-1.5 mt-1" style={{ color: estado.cor }}>
-                      <FileImage size={12} /> abrir a arte em tamanho real
-                    </a>
+                      <FileImage size={12} /> ver a arte ampliada
+                    </button>
                   )}
                 </div>
 
@@ -904,12 +917,14 @@ function ArteDosItens({ pedidoId, token, itens, onMontar, onEnviou }) {
                   decidir e voltar — e quem sai não volta. Ela olha o
                   desenho e os dois botões na mesma linha de visão. */}
               {daLoja && i.arte_anexada && /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(i.arte_anexada) && (
-                <a href={i.arte_anexada} target="_blank" rel="noreferrer"
-                  className="block mt-3 rounded-xl overflow-hidden"
-                  style={{ border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(255,255,255,0.04)' }}>
+                <button type="button" onClick={() => setVendo(i)}
+                  title="Clique para ver a arte ampliada"
+                  className="block w-full mt-3 rounded-xl overflow-hidden"
+                  style={{ border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(255,255,255,0.04)',
+                           cursor: 'zoom-in' }}>
                   <img src={i.arte_anexada} alt={`Arte de ${i.produto}`}
                     className="w-full max-h-72 object-contain" />
-                </a>
+                </button>
               )}
             </div>
           );
@@ -921,6 +936,17 @@ function ArteDosItens({ pedidoId, token, itens, onMontar, onEnviou }) {
         Enviar ou confirmar uma arte dá início à personalização: a partir daí o processo não pode ser
         interrompido, e a troca passa a ser com um atendente.
       </p>
+
+      {/* A arte aberta na tela — expandir é o padrão, baixar é um botão
+          dentro do visualizador. */}
+      <VisualizarArteModal
+        url={vendo?.arte_anexada || null}
+        titulo={vendo ? `Arte de ${vendo.produto}` : ''}
+        nomeArquivo={vendo ? `arte-${vendo.codigo || vendo.produto}` : ''}
+        notas={vendo?.arte_estado === 'aguardando_cliente'
+          ? 'Confira o desenho, os nomes e as datas. Feche esta janela para confirmar ou reprovar.'
+          : null}
+        onClose={() => setVendo(null)} />
 
       {/* ── A segunda pergunta, uma por vez ──────────────────── */}
       {pergunta?.tipo === 'enviar' && (
@@ -1094,6 +1120,7 @@ function OlhoEtapas({ novidade, onClick }) {
 function EtapasDoItem({ item, onClose }) {
   const linha = item.linha_do_tempo || [];
   const atual = linha.find(e => e.estado === 'atual');
+  const [vendoArte, setVendoArte] = useState(false);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -1204,21 +1231,29 @@ function EtapasDoItem({ item, onClose }) {
                 <FileImage size={13} />
                 Arte deste produto{item.arte_anexada_em ? ` · enviada em ${dataHora(item.arte_anexada_em)}` : ''}
               </p>
-              <a href={item.arte_anexada} target="_blank" rel="noreferrer"
-                className="text-[12px] shrink-0" style={{ color: '#93c5fd' }}>abrir em tamanho real</a>
+              <button type="button" onClick={() => setVendoArte(true)}
+                className="text-[12px] shrink-0" style={{ color: '#93c5fd' }}>ver ampliada</button>
             </div>
             {/* PDF, .ai e .cdr não viram <img>. Só a imagem é
-                pré-visualizada; o resto continua abrindo no link acima,
-                em vez de mostrar um quadrado quebrado. */}
+                pré-visualizada; o resto abre no visualizador, que sabe
+                oferecer o download em vez de mostrar um quadrado
+                quebrado. */}
             {/\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(item.arte_anexada) && (
-              <a href={item.arte_anexada} target="_blank" rel="noreferrer" className="block">
+              <button type="button" onClick={() => setVendoArte(true)} className="block w-full"
+                title="Clique para ver a arte ampliada" style={{ cursor: 'zoom-in' }}>
                 <img src={item.arte_anexada} alt={`Arte de ${item.produto}`}
                   className="w-full max-h-64 object-contain"
                   style={{ background: 'rgba(255,255,255,0.04)' }} />
-              </a>
+              </button>
             )}
           </div>
         )}
+
+        <VisualizarArteModal
+          url={vendoArte ? item.arte_anexada : null}
+          titulo={`Arte de ${item.produto}`}
+          nomeArquivo={`arte-${item.codigo || item.produto}`}
+          onClose={() => setVendoArte(false)} />
 
         <div className="flex flex-wrap gap-x-2 gap-y-5">
           {linha.map(passo => <Balao key={passo.key} passo={passo} />)}

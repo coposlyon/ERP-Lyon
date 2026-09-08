@@ -14,22 +14,65 @@
 // visualizador de fotos do celular, que é onde a pessoa já aprendeu.
 //
 // Arquivo que não é imagem (PDF, AI, CDR, EPS, PSD) o navegador não
-// desenha aqui — para esse continua valendo abrir à parte, e o cartão
-// diz isso em vez de mostrar um quadrado vazio.
+// desenha aqui — para esse continua valendo baixar, e o cartão diz isso
+// em vez de mostrar um quadrado vazio.
+//
+// "ABRIR EM OUTRA ABA" VIROU "BAIXAR", porque era o que já acontecia.
+// O Storage devolve a arte com `Content-Disposition: attachment`: a aba
+// nova abria, disparava o download e fechava. O botão prometia uma coisa
+// e fazia outra — agora ele diz o que faz. E o download passou a ser de
+// verdade (busca o arquivo e salva com um nome que se entende), em vez
+// de um link que o navegador resolve como quiser.
 // ============================================================
 import { useEffect, useState } from 'react';
-import { X, ZoomIn, ZoomOut, ExternalLink, Loader2, FileText } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, ZoomIn, ZoomOut, Download, Loader2, FileText } from 'lucide-react';
 
 /** As extensões que o navegador desenha numa <img>. */
 export const ehImagemDeArte = url =>
   /\.(png|jpe?g|webp|gif|svg|avif|bmp)(\?|$)/i.test(String(url || ''));
+
+/** A extensão do arquivo, lida da URL. */
+const extensaoDe = url => (String(url || '').split('?')[0].match(/\.([a-z0-9]{2,5})$/i) || [])[1] || '';
+
+/**
+ * BAIXAR A ARTE COM UM NOME QUE SE ENTENDE.
+ *
+ * O arquivo mora no Storage com um uuid por nome. Salvar
+ * "a1b2c3d4-….svg" na pasta de downloads do cliente é a mesma coisa que
+ * não salvar: daqui a uma semana ninguém sabe de que pedido era.
+ *
+ * O bucket devolve `Access-Control-Allow-Origin: *`, então dá para
+ * buscar o arquivo e salvá-lo renomeado. Se a busca falhar (rede, CORS
+ * que mude, link expirado), cai no link direto — que baixa do mesmo
+ * jeito, só com o nome feio. Falhar baixando é melhor que não baixar.
+ */
+async function baixarArte(url, nome) {
+  const ext = extensaoDe(url);
+  const arquivo = `${(nome || 'arte').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '')}${ext ? `.${ext}` : ''}`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(String(r.status));
+    const blob = await r.blob();
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = arquivo;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 10000);
+  } catch {
+    window.open(url, '_blank', 'noopener');
+  }
+}
 
 /**
  * @param {string|null} url    O arquivo da arte (null fecha o visualizador).
  * @param {string} titulo     O que aparece no topo — normalmente o código do pedido.
  * @param {string} notas      As observações da arte, quando houver.
  */
-export default function VisualizarArteModal({ url, titulo = 'Arte do pedido', notas, className = '', onClose }) {
+export default function VisualizarArteModal({ url, titulo = 'Arte do pedido', notas, nomeArquivo, className = '', onClose }) {
   const [ampliada, setAmpliada] = useState(false);  // false = encaixada na tela
   const [carregando, setCarregando] = useState(true);
   const [falhou, setFalhou] = useState(false);
@@ -58,7 +101,19 @@ export default function VisualizarArteModal({ url, titulo = 'Arte do pedido', no
 
   const imagem = ehImagemDeArte(url);
 
-  return (
+  /**
+   * SAI DE ONDE FOI CHAMADO E VAI PARA O <body>.
+   *
+   * `position: fixed` é relativo à JANELA — menos quando algum
+   * ancestral tem `transform`, `filter` ou `backdrop-filter`, que é o
+   * caso dos cartões de vidro desta interface: aí ele passa a ser
+   * relativo ao CARTÃO, e a "tela cheia" vira um retângulo dentro do
+   * card, com metade da página clicável por fora.
+   *
+   * Um portal resolve isso de uma vez para todos os lugares que abrem a
+   * arte, em vez de cada tela descobrir o problema do seu jeito.
+   */
+  return createPortal((
     <div className={`fixed inset-0 z-[70] flex flex-col ${className}`} style={{ background: 'rgba(3,7,18,0.96)' }}>
 
       {/* ── Barra do topo ───────────────────────────────────────
@@ -75,9 +130,9 @@ export default function VisualizarArteModal({ url, titulo = 'Arte do pedido', no
             {ampliada ? <ZoomOut size={18} /> : <ZoomIn size={18} />}
           </BotaoBarra>
         )}
-        <BotaoBarra titulo="Abrir o arquivo em outra aba"
-          onClick={() => window.open(url, '_blank', 'noopener')}>
-          <ExternalLink size={18} />
+        <BotaoBarra titulo="Baixar o arquivo da arte"
+          onClick={() => baixarArte(url, nomeArquivo || titulo)}>
+          <Download size={18} />
         </BotaoBarra>
         <BotaoBarra titulo="Fechar" onClick={onClose}>
           <X size={20} />
@@ -95,9 +150,9 @@ export default function VisualizarArteModal({ url, titulo = 'Arte do pedido', no
         style={{ WebkitOverflowScrolling: 'touch' }}>
 
         {!imagem ? (
-          <SemPreview onAbrir={() => window.open(url, '_blank', 'noopener')} />
+          <SemPreview onBaixar={() => baixarArte(url, nomeArquivo || titulo)} />
         ) : falhou ? (
-          <SemPreview erro onAbrir={() => window.open(url, '_blank', 'noopener')} />
+          <SemPreview erro onBaixar={() => baixarArte(url, nomeArquivo || titulo)} />
         ) : (
           <>
             {carregando && (
@@ -130,7 +185,7 @@ export default function VisualizarArteModal({ url, titulo = 'Arte do pedido', no
         )}
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 // ── Peças pequenas ───────────────────────────────────────────
@@ -145,7 +200,7 @@ function BotaoBarra({ titulo, onClick, children }) {
 }
 
 /** PDF, AI, CDR, PSD… ou a imagem que não carregou. */
-function SemPreview({ erro, onAbrir }) {
+function SemPreview({ erro, onBaixar }) {
   return (
     <div className="text-center px-6" onClick={e => e.stopPropagation()}>
       <FileText size={40} className="mx-auto mb-3" style={{ color: 'rgba(255,255,255,0.35)' }} />
@@ -157,10 +212,10 @@ function SemPreview({ erro, onAbrir }) {
           ? 'O arquivo pode ter sido movido ou o link expirou.'
           : 'PDF, AI, CDR, EPS e PSD abrem no programa do seu aparelho.'}
       </p>
-      <button type="button" onClick={onAbrir}
+      <button type="button" onClick={onBaixar}
         className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold"
         style={{ border: '1.5px solid #4ade80', color: '#4ade80', background: 'rgba(74,222,128,0.10)' }}>
-        <ExternalLink size={15} /> Abrir o arquivo
+        <Download size={15} /> Baixar o arquivo
       </button>
     </div>
   );
