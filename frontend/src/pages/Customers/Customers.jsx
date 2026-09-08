@@ -16,16 +16,14 @@ import toast from 'react-hot-toast';
 const TYPE_LABELS = { PF: 'PF', PJ: 'PJ', CO: 'Colab.' };
 const TYPE_BADGE  = { PF: 'badge-gray', PJ: 'badge-blue', CO: 'badge-purple' };
 
-function StarDisplay({ value }) {
-  if (!value) return <span className="text-gray-300 text-xs">—</span>;
-  return (
-    <div className="flex gap-0.5">
-      {[1,2,3,4,5].map(n => (
-        <Star key={n} size={12} className={n <= value ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'} />
-      ))}
-    </div>
-  );
-}
+// AS ESTRELAS SAÍRAM DESTA TELA — a coluna, o filtro e o botão de
+// recalcular. Elas eram uma faixa do total comprado (cada R$ 1.000 vale
+// uma), e a faixa diz menos do que o número que a gerou: no lugar da
+// fileira de estrelas ficou "Comprou (12m)", que é o dado.
+//
+// O CÁLCULO CONTINUA rodando no servidor a cada venda, e `rating`
+// continua alimentando o Lyon Prime — que é o programa de fidelidade e
+// tem tela própria. Aqui elas só não são mais mostradas nem filtradas.
 
 function whatsappLink(phone, name) {
   if (!phone) return null;
@@ -45,7 +43,6 @@ export default function Customers() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [typeFilter, setTypeFilter] = useState('cliente');
-  const [ratingFilter, setRatingFilter] = useState(null);
   const [stateFilter, setStateFilter] = useState('');
   const [marketingOpen, setMarketingOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -66,11 +63,6 @@ export default function Customers() {
     onError: e => toast.error(e.error || 'Não foi possível consultar'),
   });
 
-  const recomputeMut = useMutation({
-    mutationFn: () => api.post('/customers/recompute-ratings'),
-    onSuccess: (r) => { toast.success(`Estrelas recalculadas (${r.customers || 0} clientes)`); qc.invalidateQueries(['customers']); },
-    onError: e => toast.error(e.error || 'Erro ao recalcular'),
-  });
   // Google Contatos: o botão só aparece se o servidor tem as credenciais.
   const { data: googleStatus } = useQuery({
     queryKey: ['google-contacts-status'],
@@ -127,12 +119,11 @@ export default function Customers() {
   }
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['customers', page, search, typeFilter, ratingFilter, stateFilter],
+    queryKey: ['customers', page, search, typeFilter, stateFilter],
     queryFn: () => {
       let url = `/customers?page=${page}&limit=100`;
       if (search)       url += `&search=${encodeURIComponent(search)}`;
       if (typeFilter)   url += `&type=${typeFilter}`;
-      if (ratingFilter) url += `&rating=${ratingFilter}`;
       if (stateFilter)  url += `&state=${stateFilter}`;
       return api.get(url);
     },
@@ -151,11 +142,6 @@ export default function Customers() {
 
   function applyFilter(val) {
     setTypeFilter(val);
-    setPage(1);
-  }
-
-  function applyRating(val) {
-    setRatingFilter(prev => prev === val ? null : val);
     setPage(1);
   }
 
@@ -240,17 +226,20 @@ export default function Customers() {
         );
       }
     },
-    { key: 'rating', label: '⭐', width: 100,
-      render: (v, row) => (
-        <div>
-          <StarDisplay value={v} />
-          {row.total_12m > 0 && (
-            <p className="text-[10px] text-gray-400 mt-0.5 whitespace-nowrap" title="Total comprado nos últimos 12 meses">
-              R$ {Number(row.total_12m).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}/12m
-            </p>
-          )}
-        </div>
-      )
+    /**
+     * AS ESTRELAS SAÍRAM, O TOTAL COMPRADO FICOU.
+     *
+     * A coluna era uma fileira de estrelas com o valor de 12 meses em
+     * letra miúda embaixo. As estrelas são uma faixa (cada R$ 1.000 = 1),
+     * e o número que as gerou diz mais do que elas: R$ 3.200 é a
+     * informação; três estrelas é o arredondamento dela.
+     */
+    { key: 'total_12m', label: 'Comprou (12m)', width: 120,
+      render: v => (Number(v) > 0
+        ? <span className="text-sm text-gray-700 tabular-nums whitespace-nowrap">
+            {Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+          </span>
+        : <span className="text-gray-300">—</span>),
     },
     { key: 'is_active', label: 'Status', width: 70,
       render: v => <span className={`badge ${v ? 'badge-green' : 'badge-gray'}`}>{v ? 'Ativo' : 'Inativo'}</span>
@@ -287,10 +276,6 @@ export default function Customers() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => recomputeMut.mutate()} disabled={recomputeMut.isPending} className="btn-secondary disabled:opacity-50"
-            title="Recalcula as estrelas dos clientes pelo total comprado nos últimos 12 meses (cada R$1.000 = 1★, até 5★ com R$5.000)">
-            {recomputeMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Recalcular estrelas
-          </button>
           <button onClick={exportContacts} disabled={exportingContacts} className="btn-secondary disabled:opacity-50"
             title="Baixa um arquivo .vcf com nome + código + telefone para importar no Google Contatos / celular">
             {exportingContacts ? <Loader2 size={16} className="animate-spin" /> : <Contact size={16} />} Exportar contatos
@@ -324,35 +309,6 @@ export default function Customers() {
                 {f.label}
               </button>
             ))}
-          </div>
-
-          {/* Filtro por estrelas — rótulo em cima, estrelas embaixo */}
-          <div className="border border-gray-200 rounded-lg px-2 py-1">
-            <span className="block text-[10px] text-gray-400 select-none leading-none mb-1">Avaliação</span>
-            <div className="flex items-center gap-0.5">
-            {[1,2,3,4,5].map(n => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => applyRating(n)}
-                title={`${n} estrela${n > 1 ? 's' : ''}`}
-                className="focus:outline-none transition-transform hover:scale-110"
-              >
-                <Star
-                  size={17}
-                  className={n === ratingFilter ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300 hover:text-yellow-300'}
-                />
-              </button>
-            ))}
-            {ratingFilter && (
-              <button
-                type="button"
-                onClick={() => applyRating(null)}
-                className="ml-1.5 text-gray-400 hover:text-gray-600 text-xs leading-none"
-                title="Limpar filtro"
-              >✕</button>
-            )}
-            </div>
           </div>
 
           {/* Filtro por estado (UF) */}
