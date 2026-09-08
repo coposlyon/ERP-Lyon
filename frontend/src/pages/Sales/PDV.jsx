@@ -511,23 +511,17 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
     return [...nomes].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [itensBorda, acabCatalog]);
   // As tintas cadastradas, com o valor por ML de cada uma.
-  const { data: tintas = [], refetch: refetchTintas } = useQuery({
+  const { data: tintas = [] } = useQuery({
     queryKey: ['tintas'],
     queryFn: () => api.get('/lancamento/tintas'),
   });
-  const [novaTinta, setNovaTinta] = useState(null);   // { nome, valor_ml }
 
-  async function salvarTinta() {
-    const nome = String(novaTinta?.nome || '').trim().toUpperCase();
-    if (!nome) { toast.error('Informe o nome da tinta'); return; }
-    try {
-      await api.post('/settings/tintas', { nome, valor_ml: novaTinta.valor_ml });
-      await refetchTintas();
-      setLaunch(l => (l ? { ...l, color: nome } : l));
-      setNovaTinta(null);
-      toast.success('Tinta cadastrada');
-    } catch (err) { toast.error(err.error || 'Erro ao cadastrar a tinta'); }
-  }
+  // CADASTRAR TINTA SAIU DAQUI. Havia um "+" ao lado do seletor que
+  // abria um diálogo de nome + valor por ML, no meio do lançamento do
+  // produto. Cadastrar tinta é decisão de custo — o valor por ML entra
+  // no preço de todo pedido daquela cor — e não coisa de se resolver
+  // com o cliente esperando do outro lado do balcão. O lugar disso é
+  // Configurações, onde já mora.
 
   // Cadastra uma cor/borda no catálogo e já seleciona no lançamento.
   async function addAcabValor(chave, onPicked) {
@@ -1673,13 +1667,15 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
             <span>{items.length} iten{items.length !== 1 ? 's' : ''}</span>
             <span>{fmt(subtotal)}</span>
           </div>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-sm text-gray-600">Desconto (R$)</span>
-            <input type="text" inputMode="decimal"
-              value={discount} onChange={e => setDiscount(e.target.value.replace(/[^\d.,]/g, ''))}
-              onBlur={() => { if (discount.trim() !== '') setDiscount(maskMoney(parseMoney(discount))); }}
-              className="input text-right w-28 text-sm" placeholder="0,00" />
-          </div>
+          {/* O DESCONTO DO PEDIDO SAIU DAQUI.
+              Ele já é dado no lançamento de cada produto — em % e em
+              R$, na mesma janela em que se digita a quantidade e o
+              preço. Um segundo campo, aqui embaixo, criava duas contas
+              para o mesmo abatimento: dava para conceder 10% no item e
+              mais R$ 50 no rodapé, e nenhuma das duas telas mostrava a
+              outra. `discountValue` continua existindo e continua indo
+              para o pedido — pedido antigo com desconto de rodapé
+              continua somando certo. */}
 
           {/* Cupom de desconto (só no pedido de venda) */}
           {!isQuote && (coupon ? (
@@ -2000,11 +1996,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                       <option value={launch.color}>{launch.color}</option>
                     )}
                   </select>
-                  {podeCadastrarListas && (
-                    <button type="button" title="Cadastrar uma tinta"
-                      onClick={() => setNovaTinta({ nome: '', valor_ml: '' })}
-                      className="btn-secondary px-3">+</button>
-                  )}
                 </div>
                 {(() => {
                   const t = tintas.find(x => x.nome === launch.color);
@@ -2265,36 +2256,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
         )}
       </Modal>
 
-      {/* Cadastro rápido de tinta. É um diálogo e não um prompt do
-          navegador porque são DOIS campos — e porque o valor por ML
-          precisa ser conferido antes de virar custo em todo pedido. */}
-      <Modal isOpen={!!novaTinta} onClose={() => setNovaTinta(null)} title="Cadastrar tinta" size="sm"
-        footer={<>
-          <button type="button" className="btn-secondary" onClick={() => setNovaTinta(null)}>Cancelar</button>
-          <button type="button" className="btn-primary" onClick={salvarTinta}>Salvar tinta</button>
-        </>}>
-        {novaTinta && (
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Nome da tinta</label>
-              <input autoFocus className="input text-sm w-full uppercase" placeholder="BRANCO"
-                value={novaTinta.nome}
-                onChange={e => setNovaTinta(t => ({ ...t, nome: e.target.value.toUpperCase() }))} />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">Valor por ML (R$)</label>
-              <input className="input text-sm w-full text-right" inputMode="decimal" placeholder="0,35"
-                value={novaTinta.valor_ml}
-                onChange={e => setNovaTinta(t => ({ ...t, valor_ml: e.target.value.replace(/[^\d.,]/g, '') }))}
-                onKeyDown={e => { if (e.key === 'Enter') salvarTinta(); }} />
-              <p className="text-[10px] text-gray-400 mt-1">
-                É o que faz a personalização entrar no custo em vez de ser chute.
-                Cadastrar uma tinta que já existe atualiza o valor dela.
-              </p>
-            </div>
-          </div>
-        )}
-      </Modal>
 
       {/* Foto do orçamento gerada — visualizar e baixar */}
       <Modal isOpen={!!png} onClose={() => { setPng(null); onDone?.(); }}
