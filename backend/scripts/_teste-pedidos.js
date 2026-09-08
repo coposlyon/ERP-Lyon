@@ -23,6 +23,29 @@ const MARCA = '[PEDIDO DE TESTE]';
 const CLIENTE_TESTE = 'CLIENTE DE TESTE — NAO FATURAR';
 const BUCKET = 'loja-publico';
 
+/**
+ * COMO SE ENTRA NO PORTAL DO CLIENTE — e por que o CPF é este.
+ *
+ * O portal (/acompanhar) não tem senha: o acesso é CPF + DATA DE
+ * NASCIMENTO, os dois do mesmo cadastro (routes/public-pedido.js, POST
+ * /acesso). Sem esses dois campos preenchidos, o cliente de teste
+ * existe no ERP mas não consegue abrir o próprio pedido — e ver o
+ * pedido pelos olhos do cliente é metade do que um ensaio serve.
+ *
+ * O CPF é 000.000.000-00 DE PROPÓSITO. Ele reprova no dígito
+ * verificador, então nenhuma nota fiscal sai com ele — a barreira que
+ * protege o cadastro de teste continua de pé. O portal não valida
+ * dígito, só compara os números, então entra normalmente. Um CPF
+ * "válido" inventado seria o caminho para o cadastro de teste virar
+ * faturável no dia em que alguém esquecesse o que ele é.
+ *
+ * O preço disso: quem digitar esse CPF e essa data entra no portal e vê
+ * os pedidos de teste. Não há dado real ali dentro, e o `--limpar`
+ * apaga o cadastro junto — mas é bom saber que a porta existe.
+ */
+const CPF_TESTE = '000.000.000-00';
+const NASCIMENTO_TESTE = '2000-01-01';
+
 /** Data relativa a hoje, para o teste continuar valendo semana que vem. */
 const dia = n => {
   const d = new Date();
@@ -117,12 +140,34 @@ async function empresaEUsuario() {
 /**
  * O cliente de teste, criado uma vez e reaproveitado por todos os
  * cenários — é o mesmo comprador ensaiando compras diferentes.
- * Sem CPF de propósito: cadastro de teste que não pode virar nota.
+ *
+ * `doc_digits` NÃO entra no insert: é coluna gerada a partir do
+ * cpf_cnpj (migração 015), e escrever nela é erro do Postgres.
+ *
+ * O cadastro que já existe sem CPF ou sem nascimento é COMPLETADO, e
+ * não recriado: os pedidos que já apontam para ele continuariam
+ * apontando para o cadastro velho, e o portal seguiria fechado.
  */
 async function garantirCliente(tenantId, assinatura) {
+  const campos = {
+    cpf_cnpj: CPF_TESTE,
+    birth_date: NASCIMENTO_TESTE,
+  };
+
   const { data: existente } = await supabase.from('CLIENTES')
-    .select('id, name, display_id').eq('tenant_id', tenantId).eq('name', CLIENTE_TESTE).maybeSingle();
-  if (existente) return { cliente: existente, criado: false };
+    .select('id, name, display_id, cpf_cnpj, birth_date')
+    .eq('tenant_id', tenantId).eq('name', CLIENTE_TESTE).maybeSingle();
+
+  if (existente) {
+    const faltando = Object.entries(campos).filter(([k]) => !existente[k]);
+    if (!faltando.length) return { cliente: existente, criado: false, completado: false };
+
+    const { data, error } = await supabase.from('CLIENTES')
+      .update(Object.fromEntries(faltando)).eq('id', existente.id)
+      .select('id, name, display_id, cpf_cnpj, birth_date').single();
+    if (error) throw new Error(`Cliente de teste: ${error.message}`);
+    return { cliente: data, criado: false, completado: true };
+  }
 
   const { data, error } = await supabase.from('CLIENTES').insert({
     tenant_id: tenantId,
@@ -130,10 +175,12 @@ async function garantirCliente(tenantId, assinatura) {
     name: CLIENTE_TESTE,
     email: 'teste@teste.invalid',
     is_active: true,
-    notes: `${MARCA} cadastro criado por ${assinatura}. Não faturar, não emitir nota.`,
-  }).select('id, name, display_id').single();
+    ...campos,
+    notes: `${MARCA} cadastro criado por ${assinatura}. Não faturar, não emitir nota. `
+      + `Portal do cliente (/acompanhar): CPF ${CPF_TESTE} + nascimento ${NASCIMENTO_TESTE}.`,
+  }).select('id, name, display_id, cpf_cnpj, birth_date').single();
   if (error) throw new Error(`Cliente de teste: ${error.message}`);
-  return { cliente: data, criado: true };
+  return { cliente: data, criado: true, completado: false };
 }
 
 /** Continua de onde a numeração parou, para não colidir com pedido real. */
@@ -204,7 +251,7 @@ async function limparPor(tenantId, assinatura) {
 }
 
 module.exports = {
-  MARCA, CLIENTE_TESTE,
+  MARCA, CLIENTE_TESTE, CPF_TESTE, NASCIMENTO_TESTE,
   dia, pv, trilha, historico, svgArte, subirArte,
   empresaEUsuario, garantirCliente, ultimoNumero, pedidosDe, limparPor,
 };
