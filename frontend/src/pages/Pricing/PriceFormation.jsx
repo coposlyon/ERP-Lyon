@@ -1,865 +1,557 @@
 // ============================================================
-// FORMAÇÃO DE PREÇO — TRÊS PERGUNTAS, NESTA ORDEM.
+// FORMAÇÃO DE PREÇO — UMA CONTA POR CATEGORIA.
 //
-//   1. O que você vai vender, e quantas peças?
-//   2. Quanto custa cada peça?
-//   3. Quanto você quer ganhar?
+// O QUE MUDOU, E POR QUÊ.
 //
-// A tela anterior tinha sete cartões abertos ao mesmo tempo e trinta
-// campos com a mesma cara. O problema não era a conta — a conta está
-// certa e continua exatamente a mesma (lib/pricingCalc.js, espelhada
-// no backend). O problema era não dar para saber:
+// A ficha era por PRODUTO. Só que os 35 twisters tradicionais têm o
+// mesmo copo cru, a mesma tela, a mesma tinta e a mesma caixa — muda a
+// cor, e cor não muda custo. Precificar um por um é fazer 35 vezes a
+// mesma conta e chegar a 35 respostas ligeiramente diferentes: é assim
+// que o mesmo copo passa a custar R$ 1,08 numa cor e R$ 1,12 na outra.
 //
-//   · por onde começar;
-//   · o que ainda faltava preencher;
-//   · o que cada campo fazia com o preço.
+// Agora a pergunta é "quanto custa fazer um copo DESTA categoria", e a
+// resposta vale para todos os produtos dela.
 //
-// E havia uma armadilha específica: os exemplos ("1,59", "1000")
-// moravam dentro dos campos como placeholder, e o resultado aparecia
-// como "R$ 0,0000". Cinza dentro do campo parece preenchido; zero
-// parece calculado. Dava para olhar a tela inteira preenchida e o
-// preço estar sendo formado sobre NADA — foi exatamente o que
-// aconteceu. Agora todo exemplo vem escrito "ex.:" e todo valor não
-// informado aparece como "—".
+// A TELA ANTERIOR TINHA SETE CARTÕES E TRINTA CAMPOS. A conta nunca foi
+// o problema — ela está certa e continua exatamente a mesma
+// (lib/pricingCalc.js, espelhada no backend). O problema era não dar
+// para saber por onde começar nem o que faltava. O que sumiu daqui:
 //
-// A OUTRA METADE DA CONFUSÃO: metade dos campos não mudava o preço.
-// Capacidade, cor, tipo de impressão, descrição e referência de
-// cálculo são a etiqueta da ficha — nenhum deles entra em `computeSheet`.
-// Estar do lado dos que mudam fazia parecer que tudo importava.
-// Foram para "Detalhes da ficha", fechado.
+//   quatro campos de tinta      viraram um: "tinta gasta no lote".
+//                               Ninguém preenchia cor 2, 3 e 4, e as
+//                               três linhas vazias faziam a tela
+//                               parecer incompleta para sempre.
+//
+//   três margens                virou uma. Mínimo e premium continuam
+//                               aparecendo no resultado, calculados —
+//                               são leitura, não pergunta.
+//
+//   capacidade, cor, modelo,    são a etiqueta da ficha e não entram
+//   tipo de impressão,          em `computeSheet`. Estar do lado do que
+//   descrição, referência       muda o preço fazia parecer que
+//                               importavam.
+//
+// E FICOU UMA COISA QUE NÃO EXISTIA: o botão que põe o preço nos
+// produtos. Antes a ficha calculava e o número morria ali — alguém
+// tinha de abrir produto por produto e digitar. Agora aplica na
+// categoria inteira, com a prévia do de/para antes de confirmar.
+//
+// APLICAR É UM CLIQUE À PARTE, e não consequência de salvar: salvar
+// guarda a conta, aplicar mexe no preço de venda de dezenas de
+// produtos. O sistema calcula e sugere; quem muda preço é quem
+// responde por ele.
 // ============================================================
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Calculator, Save, Loader2, Plus, Trash2, Download, FolderOpen,
-  Printer, AlertCircle, CheckCircle2, TrendingUp, Package,
+  Calculator, Save, Loader2, Printer, AlertCircle, CheckCircle2,
+  Package, Tag, ArrowRight, Layers,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import {
-  computeSheet, simulate, emptySheet,
-  fmtBRL, fmtBRL4, fmtQty, numInput, TAX_REGIMES, PRINT_TYPES, CALC_REFERENCES,
+  computeSheet, emptySheet, fmtBRL, fmtQty, numInput,
 } from '@/lib/pricingCalc';
 import { buildSheetReportHtml, openPrintWindow } from '@/utils/pricingReportHtml';
-import { expandVariants } from '@/pages/Products/ProductVariantsModal';
-import { iconFor } from './fixedCostIcons';
-import { Passo, LinhaCusto, Moeda, Quantidade, Texto, Percentual, Recolhivel } from './pecas';
+import { Moeda, Quantidade, Percentual } from './pecas';
 
-// Métodos de impressão da Tabela de Precificação — espelha PRINT_METHODS
-// do backend (lib/calc.js). Manter as duas listas em sincronia.
-const PRINT_METHODS = [
-  { key: 'serigrafia_1',     label: 'Serigrafia 1 Cor' },
-  { key: 'serigrafia_2',     label: 'Serigrafia 2 Cores' },
-  { key: 'transfer',         label: 'Transfer' },
-  { key: 'dtf',              label: 'DTF' },
-  { key: 'laser',            label: 'Laser' },
-  { key: 'borda_metalizada', label: 'Borda Metalizada' },
-  { key: 'pintura',          label: 'Pintura' },
-  { key: 'degrade',          label: 'Degradê' },
-];
-
-const preenchido = v => v !== '' && v != null && numInput(v) !== 0;
+/** Informado é diferente de zero: "de graça" e "não perguntei" não são a mesma coisa. */
+const temValor = v => v !== '' && v != null && numInput(v) !== 0;
 
 export default function PriceFormation() {
   const qc = useQueryClient();
+  const [categoryId, setCategoryId] = useState('');
   const [sheet, setSheet] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [simPrice, setSimPrice] = useState('');
+  const [previa, setPrevia] = useState(null);   // resultado do "simular" antes de aplicar
 
-  const { data: fixed, refetch: refetchFixed } = useQuery({
+  const { data: fixed } = useQuery({
     queryKey: ['pricing-fixed-summary'],
     queryFn: () => api.get('/pricing/fixed-summary'),
   });
-  const { data: sheets, refetch: refetchSheets } = useQuery({
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['pricing-categorias'],
+    queryFn: () => api.get('/pricing/categorias'),
+  });
+  const { data: fichas = [] } = useQuery({
     queryKey: ['pricing-sheets'],
     queryFn: () => api.get('/pricing/sheets'),
   });
-  const { data: productsRes } = useQuery({
-    queryKey: ['pricing-products'],
-    queryFn: () => api.get('/products?limit=1000'),
-  });
-  const products = productsRes?.data || [];
 
-  const { data: categoriesRes } = useQuery({
-    queryKey: ['product-categories'],
-    queryFn: () => api.get('/products/categories/list'),
-  });
-  const categorias = Array.isArray(categoriesRes) ? categoriesRes : [];
+  const cat = categorias.find(c => c.id === categoryId) || null;
 
-  // Capacidades derivadas dos nomes reais dos produtos (300ml, 1L...).
-  const capacities = useMemo(() => {
-    const set = new Set();
-    for (const p of products) {
-      const m = String(p.name || '').match(/\d+(?:[.,]\d+)?\s?(?:ml|l(?:itros?)?)\b/gi) || [];
-      for (const cap of m) set.add(cap.replace(/\s+/g, '').toLowerCase());
-    }
-    return [...set].sort((a, b) => parseFloat(a.replace(',', '.')) - parseFloat(b.replace(',', '.')));
-  }, [products]);
-
-  const selectedVariants = useMemo(() => {
-    const p = products.find(x => x.id === sheet?.product_id);
-    return p ? expandVariants(p) : [];
-  }, [products, sheet?.product_id]);
-
+  /**
+   * ESCOLHER A CATEGORIA CARREGA A FICHA DELA, se já existir.
+   *
+   * Sem isto, quem voltasse para ajustar o preço do Twister recomeçaria
+   * do zero e salvaria uma segunda ficha da mesma categoria — duas
+   * contas para o mesmo copo, e nenhuma das duas sabendo da outra.
+   *
+   * A REF É O QUE IMPEDE ISTO DE RODAR DE NOVO SOZINHO. As listas vêm
+   * de useQuery e trocam de referência a cada recarga — e recarregar as
+   * categorias (o que "Aplicar" faz de propósito, para atualizar o
+   * preço médio) reexecutaria este efeito e apagaria o que estivesse
+   * digitado. Só troca de categoria recarrega a ficha.
+   */
+  const carregada = useRef(null);
   useEffect(() => {
-    if (fixed && !sheet) {
-      setSheet(emptySheet({
+    if (!fixed) return;
+    if (carregada.current === categoryId) return;
+    carregada.current = categoryId;
+    const base = {
+      overhead_unit: fixed.overhead_unit,
+      tax_regime: fixed.tax_regime,
+      tax_pct: fixed.tax_pct_default || 4,
+    };
+    if (!categoryId) { setSheet(emptySheet(base)); return; }
+
+    const daCategoria = fichas.find(f => f.category_id === categoryId);
+    if (daCategoria) {
+      setSheet({
+        ...emptySheet(base),
+        ...daCategoria,
+        blocks: { ...emptySheet(base).blocks, ...(daCategoria.blocks || {}) },
         overhead_unit: fixed.overhead_unit,
-        tax_regime: fixed.tax_regime,
-        tax_pct: fixed.tax_pct_default || 4,
-      }));
+      });
+    } else {
+      const nova = emptySheet(base);
+      setSheet({
+        ...nova,
+        category_id: categoryId,
+        name: cat?.name || '',
+        category: cat?.name || '',
+        // O CUSTO DO CADASTRO ENTRA COMO PONTO DE PARTIDA, não como
+        // verdade: é o que a empresa paga pelo copo cru, e começar de
+        // um número plausível é melhor do que começar de vazio. Quem
+        // sabe o número certo digita por cima.
+        blocks: {
+          ...nova.blocks,
+          materia_prima: { ...nova.blocks.materia_prima, unit_cost: cat?.custo_medio || '' },
+        },
+      });
     }
-  }, [fixed, sheet]);
-
-  useEffect(() => {
-    if (fixed && sheet) setSheet(s => ({ ...s, overhead_unit: fixed.overhead_unit }));
-  }, [fixed?.overhead_unit]); // eslint-disable-line react-hooks/exhaustive-deps
+    setPrevia(null);
+  }, [categoryId, fixed, fichas, cat]);   // guardado pela ref acima
 
   const calc = useMemo(() => (sheet ? computeSheet(sheet) : null), [sheet]);
+
+  const salvar = useMutation({
+    mutationFn: () => {
+      const corpo = {
+        ...sheet,
+        category_id: categoryId,
+        name: cat?.name || sheet.name,
+        category: cat?.name || '',
+        is_master: true,
+      };
+      return sheet.id
+        ? api.put(`/pricing/sheets/${sheet.id}`, corpo)
+        : api.post('/pricing/sheets', corpo);
+    },
+    onSuccess: f => {
+      setSheet(s => ({ ...s, id: f.id }));
+      qc.invalidateQueries({ queryKey: ['pricing-sheets'] });
+      toast.success('Ficha salva');
+    },
+    onError: e => toast.error(e.error || 'Não foi possível salvar'),
+  });
+
+  const simular = useMutation({
+    mutationFn: () => api.post('/pricing/aplicar-categoria', {
+      category_id: categoryId, price: calc.price_ideal, simular: true,
+    }),
+    onSuccess: setPrevia,
+    onError: e => toast.error(e.error || 'Não foi possível simular'),
+  });
+
+  const aplicar = useMutation({
+    mutationFn: () => api.post('/pricing/aplicar-categoria', {
+      category_id: categoryId, price: calc.price_ideal,
+    }),
+    onSuccess: r => {
+      setPrevia(null);
+      qc.invalidateQueries({ queryKey: ['pricing-categorias'] });
+      qc.invalidateQueries({ queryKey: ['products'] });
+      toast.success(r.alterados
+        ? `${r.alterados} produto(s) de ${r.categoria} agora vendem a ${fmtBRL(r.preco)}`
+        : `Nenhum produto mudou — ${r.categoria} já estava a ${fmtBRL(r.preco)}`);
+    },
+    onError: e => toast.error(e.error || 'Não foi possível aplicar'),
+  });
 
   if (!sheet || !calc) {
     return <div className="flex justify-center p-16"><Loader2 className="animate-spin text-primary-500" size={28} /></div>;
   }
 
-  const set = patch => setSheet(s => ({ ...s, ...patch }));
-  const setBlock = (block, patch) =>
-    setSheet(s => ({ ...s, blocks: { ...s.blocks, [block]: { ...(s.blocks[block] || {}), ...patch } } }));
-  const setTinta = (i, patch) =>
-    setSheet(s => {
-      const tintas = [...(s.blocks.tintas || [])];
-      tintas[i] = { ...(tintas[i] || {}), ...patch };
-      return { ...s, blocks: { ...s.blocks, tintas } };
-    });
+  const set = patch => { setSheet(s => ({ ...s, ...patch })); setPrevia(null); };
+  const setBloco = (bloco, patch) => {
+    setSheet(s => ({ ...s, blocks: { ...s.blocks, [bloco]: { ...(s.blocks[bloco] || {}), ...patch } } }));
+    setPrevia(null);
+  };
+  const setTinta = valor => {
+    setSheet(s => ({ ...s, blocks: { ...s.blocks, tintas: [{ label: 'Tinta', amount: valor }] } }));
+    setPrevia(null);
+  };
 
   const b = sheet.blocks;
-  const nColors = Math.min(Math.max(parseInt(sheet.print_colors) || 1, 1), 4);
-  const lote = calc.qty;
-
-  // ── O que já foi informado ───────────────────────────────
-  // Só isto separa "R$ 0,00 porque é de graça" de "R$ 0,00 porque
-  // ninguém preencheu" — e era a diferença que a tela não mostrava.
-  const temMat = preenchido(b.materia_prima.unit_cost);
-  const temPers = preenchido(b.personalizacao.screen_cost);
-  const temTinta = (b.tintas || []).some(t => preenchido(t.amount));
-  const temEmb = preenchido(b.embalagem.box_price) && preenchido(b.embalagem.units_per_box);
-  const temFrete = preenchido(b.frete.freight_value);
-  const temFixo = numInput(fixed?.total) > 0;
-
-  const faltando = [
-    !temMat && { texto: 'quanto você paga por peça (matéria-prima)', obrigatorio: true },
-    !temFixo && { texto: 'despesas fixas do mês (aluguel, energia…)', link: '/rateio/despesas-fixas' },
-    !temEmb && { texto: 'embalagem' },
-    !temFrete && { texto: 'frete da compra' },
-  ].filter(Boolean);
-
-  // ── Simulador: preço digitado ou o sugerido ──────────────
-  const precoSim = simPrice !== '' ? numInput(simPrice) : (calc.price_ideal || 0);
-  const sim = simulate({
-    costUnit: calc.cost_unit, taxUnit: calc.tax_unit, price: precoSim, quantity: lote,
-  });
-  const ganhoPeca = precoSim - calc.cost_unit;
-
-  // ── Tabela da loja (faixas + custo de impressão) ─────────
-  const tiers = Array.isArray(sheet.blocks.tiers) ? sheet.blocks.tiers : [];
-  const printCosts = sheet.blocks.print_costs || {};
-
-  function syncPrintCosts(newTiers, pc) {
-    const out = {};
-    for (const [m, arr] of Object.entries(pc || {})) {
-      out[m] = newTiers.map((t, i) => ({
-        min_qty: t.min_qty, max_qty: t.max_qty,
-        cost: (Array.isArray(arr) && arr[i] ? arr[i].cost : '') ?? '',
-      }));
-    }
-    return out;
-  }
-  const setTiers = (newTiers) =>
-    setSheet(s => ({ ...s, blocks: { ...s.blocks, tiers: newTiers, print_costs: syncPrintCosts(newTiers, s.blocks.print_costs) } }));
-  const addTier = () => setTiers([...tiers, { min_qty: '', max_qty: '' }]);
-  const removeTier = (i) => setTiers(tiers.filter((_, idx) => idx !== i));
-  const setTier = (i, patch) => setTiers(tiers.map((t, idx) => idx === i ? { ...t, ...patch } : t));
-
-  function toggleMethod(method) {
-    setSheet(s => {
-      const pc = { ...(s.blocks.print_costs || {}) };
-      if (pc[method]) delete pc[method];
-      else pc[method] = tiers.map(t => ({ min_qty: t.min_qty, max_qty: t.max_qty, cost: '' }));
-      return { ...s, blocks: { ...s.blocks, print_costs: pc } };
-    });
-  }
-  const setPrintCost = (method, i, cost) =>
-    setSheet(s => {
-      const arr = [...(s.blocks.print_costs?.[method] || [])];
-      arr[i] = { min_qty: tiers[i]?.min_qty, max_qty: tiers[i]?.max_qty, cost };
-      return { ...s, blocks: { ...s.blocks, print_costs: { ...s.blocks.print_costs, [method]: arr } } };
-    });
-
-  // ── Integração com Compras ───────────────────────────────
-  async function pullLastPurchase(productId, { silent = false } = {}) {
-    if (!productId) { if (!silent) toast.error('Escolha primeiro um produto do cadastro'); return; }
-    try {
-      const info = await api.get(`/pricing/purchase-info/${productId}`);
-      if (!info.found) { if (!silent) toast('Este produto ainda não tem compras registradas', { icon: 'ℹ️' }); return; }
-      setSheet(s => ({
-        ...s,
-        blocks: {
-          ...s.blocks,
-          // A QUANTIDADE COMPRADA NÃO ENTRA AQUI. O custo da
-          // matéria-prima é por PEÇA; o total do bloco é ele vezes o
-          // lote desta ficha. Gravar a quantidade da compra fazia o
-          // "total" falar de um lote que não é o desta ficha.
-          materia_prima: {
-            ...s.blocks.materia_prima,
-            unit_cost: info.unit_price,
-            supplier_name: info.supplier_name,
-          },
-          frete: {
-            supplier_name: info.supplier_name,
-            freight_value: info.freight || s.blocks.frete.freight_value,
-            quantity_bought: info.purchase_total_qty || s.blocks.frete.quantity_bought,
-          },
-        },
-      }));
-      if (!silent) toast.success(`Compra #${info.purchase_number}: ${fmtBRL(info.unit_price)}/un de ${info.supplier_name || 'fornecedor'}`);
-    } catch (err) { if (!silent) toast.error(err.error || 'Erro ao buscar a última compra'); }
-  }
-
-  function onPickProduct(name) {
-    const p = products.find(x => x.name === name);
-    set({ name, product_id: p?.id || null, category: p?.CATEGORIAS?.name || sheet.category });
-    if (p?.id) pullLastPurchase(p.id, { silent: true });
-  }
-
-  // ── Ações ────────────────────────────────────────────────
-  async function save() {
-    if (!sheet.name.trim()) { toast.error('Dê um nome ao produto antes de salvar'); return; }
-    setSaving(true);
-    try {
-      const payload = {
-        product_id: sheet.product_id, category_id: sheet.category_id || null, name: sheet.name, category: sheet.category,
-        capacity: sheet.capacity, color_model: sheet.color_model,
-        print_type: sheet.print_type, print_colors: nColors,
-        calc_quantity: lote, calc_reference: sheet.calc_reference,
-        description: sheet.description, blocks: sheet.blocks,
-        tax_regime: sheet.tax_regime, tax_pct: numInput(sheet.tax_pct), tax_notes: sheet.tax_notes,
-        margin_min_pct: numInput(sheet.margin_min_pct),
-        margin_ideal_pct: numInput(sheet.margin_ideal_pct),
-        margin_premium_pct: numInput(sheet.margin_premium_pct),
-        is_master: !!sheet.is_master,
-      };
-      const saved = sheet.id
-        ? await api.put(`/pricing/sheets/${sheet.id}`, payload)
-        : await api.post('/pricing/sheets', payload);
-      set({ id: saved.id });
-      toast.success(`Ficha "${saved.name}" salva — preço sugerido ${fmtBRL(saved.price_ideal)}`);
-      refetchSheets();
-      qc.invalidateQueries({ queryKey: ['pricing-report'] });
-    } catch (err) { toast.error(err.error || 'Erro ao salvar a ficha'); }
-    finally { setSaving(false); }
-  }
-
-  function report() {
-    if (!openPrintWindow(buildSheetReportHtml(sheet, calc, fixed))) {
-      toast.error('Libere as janelas pop-up para gerar o relatório');
-    }
-  }
-
-  function loadSheet(id) {
-    if (!id) {
-      setSheet(emptySheet({ overhead_unit: fixed?.overhead_unit, tax_regime: fixed?.tax_regime, tax_pct: fixed?.tax_pct_default }));
-      setSimPrice('');
-      return;
-    }
-    const s = (sheets || []).find(x => x.id === id);
-    if (!s) return;
-    setSheet({
-      ...emptySheet({ overhead_unit: fixed?.overhead_unit }),
-      ...s,
-      blocks: {
-        ...emptySheet({}).blocks,
-        ...(s.blocks || {}),
-        tintas: (s.blocks?.tintas?.length ? s.blocks.tintas : emptySheet({}).blocks.tintas),
-      },
-      overhead_unit: fixed?.overhead_unit ?? s.overhead_unit,
-    });
-    setSimPrice('');
-  }
-
-  async function removeSheet() {
-    if (!sheet.id) return;
-    if (!confirm(`Excluir a ficha "${sheet.name}"?`)) return;
-    try {
-      await api.delete(`/pricing/sheets/${sheet.id}`);
-      toast.success('Ficha excluída');
-      refetchSheets();
-      loadSheet(null);
-    } catch (err) { toast.error(err.error || 'Erro ao excluir'); }
-  }
-
-  async function saveMonthlyUnits(v) {
-    const units = v === '' ? null : Math.max(0, parseInt(v) || 0);
-    try {
-      await api.put('/pricing/config', { monthly_units: units });
-      await refetchFixed();
-      toast.success('Produção mensal atualizada — rateio recalculado');
-    } catch (err) { toast.error(err.error || 'Erro ao salvar a produção mensal'); }
-  }
+  const lote = Math.max(1, parseInt(sheet.calc_quantity) || 1);
+  const temMateria = temValor(b.materia_prima?.unit_cost);
 
   return (
     <div className="space-y-4">
-      <div className="page-header flex-wrap gap-3">
+      <div className="page-header flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="page-title">Formação de Preço</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Responda três perguntas e o preço sai pronto — com a conta aberta, para você conferir.
+          <p className="text-sm text-gray-500 mt-0.5">
+            Uma conta por categoria — o preço vale para todos os produtos dela.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button className="btn-secondary" onClick={report}>
-            <Printer size={16} /> Imprimir ficha
+        <div className="flex items-center gap-2">
+          <button onClick={() => openPrintWindow(buildSheetReportHtml(sheet, calc))}
+            disabled={!categoryId} className="btn-secondary text-sm disabled:opacity-45">
+            <Printer size={15} /> Imprimir
           </button>
-          <button className="btn-primary" disabled={saving} onClick={save}>
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Salvar ficha
+          <button onClick={() => salvar.mutate()} disabled={!categoryId || salvar.isPending}
+            className="btn-primary text-sm disabled:opacity-45">
+            {salvar.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+            Salvar ficha
           </button>
         </div>
       </div>
 
-      {/* Fichas salvas */}
-      <div className="card p-3 flex items-center gap-3 flex-wrap">
-        <FolderOpen size={16} className="text-primary-600 shrink-0" />
-        <select className="input max-w-md text-sm" value={sheet.id || ''} onChange={e => loadSheet(e.target.value)}>
-          <option value="">— Nova ficha —</option>
-          {(sheets || []).map(s => (
-            <option key={s.id} value={s.id}>
-              {s.name}{s.capacity ? ` ${s.capacity}` : ''} · custa {fmtBRL(s.cost_unit)} · vende {fmtBRL(s.price_ideal)}
-            </option>
-          ))}
-        </select>
-        {sheet.id && (
-          <button className="btn-ghost p-1.5 text-red-500" title="Excluir esta ficha" onClick={removeSheet}>
-            <Trash2 size={15} />
-          </button>
-        )}
-        <span className="text-xs text-gray-400 ml-auto">{(sheets || []).length} ficha(s) salva(s)</span>
-      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
-        <div className="xl:col-span-2 space-y-4">
+        {/* ── As perguntas ───────────────────────────────────── */}
+        <div className="space-y-3">
 
-          {/* ═══ PASSO 1 ═══ */}
-          <Passo n={1} titulo="O que você vai vender"
-            descricao="O nome liga a ficha ao cadastro do produto; a quantidade é o lote sobre o qual tudo será rateado.">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex-1 min-w-[240px]">
-                <label className="block text-[11px] text-gray-500 mb-0.5">Produto</label>
-                <input list="pf-products" className="input text-sm w-full" value={sheet.name}
-                  placeholder="ex.: Twister 500ml Degradê"
-                  onChange={e => onPickProduct(e.target.value)} />
-                <datalist id="pf-products">
-                  {products.map(p => <option key={p.id} value={p.name} />)}
-                </datalist>
-              </div>
-              <Quantidade label="Quantas peças neste lote" exemplo="1000" value={sheet.calc_quantity}
-                onChange={v => set({ calc_quantity: v })} largura="w-40" />
-              {sheet.product_id && (
-                <button className="btn-secondary btn-sm mb-0.5" onClick={() => pullLastPurchase(sheet.product_id)}
-                  title="Preenche a matéria-prima e o frete com a última compra registrada">
-                  <Download size={13} /> Puxar da última compra
-                </button>
-              )}
+          <Bloco n={1} titulo="Qual categoria?"
+            ajuda="O preço que sair daqui vale para todos os produtos desta categoria.">
+            <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
+              className="input text-sm w-full max-w-md">
+              <option value="">— escolha a categoria —</option>
+              {categorias.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name} — {c.produtos} produto{c.produtos !== 1 ? 's' : ''}
+                  {c.com_preco === 0
+                    ? ' · sem preço'
+                    : c.com_preco < c.produtos
+                      ? ` · ${c.com_preco} com preço`
+                      : ` · hoje ${fmtBRL(c.preco_medio)}`}
+                </option>
+              ))}
+            </select>
+            {cat && (
+              <p className="text-[12px] text-gray-500 mt-2 flex items-center gap-1.5 flex-wrap">
+                <Package size={13} />
+                <b>{cat.produtos}</b> produto{cat.produtos !== 1 ? 's' : ''} nesta categoria
+                {cat.com_preco === 0 ? (
+                  <span className="text-amber-600">· nenhum tem preço ainda</span>
+                ) : (
+                  <>
+                    · <b>{cat.com_preco}</b> com preço
+                    {cat.preco_min !== cat.preco_max
+                      ? <>, entre <b>{fmtBRL(cat.preco_min)}</b> e <b>{fmtBRL(cat.preco_max)}</b></>
+                      : <>, a <b>{fmtBRL(cat.preco_min)}</b></>}
+                  </>
+                )}
+                {fichas.some(f => f.category_id === categoryId) && (
+                  <span className="text-emerald-600 flex items-center gap-1">
+                    <CheckCircle2 size={12} /> ficha já existente, carregada
+                  </span>
+                )}
+              </p>
+            )}
+          </Bloco>
+
+          {!categoryId ? (
+            <div className="card p-10 text-center">
+              <Layers size={30} className="mx-auto mb-3 text-gray-300" />
+              <p className="text-sm text-gray-500">Escolha a categoria acima para começar.</p>
             </div>
-            <p className="text-[11px] text-gray-400 mt-2">
-              Tudo o que é pago uma vez pelo lote (tela, tinta, frete) é dividido por estas {fmtQty(lote)} peças.
-              Mudar a quantidade muda o preço — é assim que pedido grande fica mais barato por peça.
-            </p>
-          </Passo>
+          ) : (
+            <>
+              <Bloco n={2} titulo="Quanto custa fazer um copo?"
+                ajuda="Preencha o que existir. O que ficar em branco não entra na conta."
+                direita={<span className="text-[11px] text-gray-400">no lote de {fmtQty(lote)}</span>}>
 
-          {/* ═══ PASSO 2 ═══ */}
-          <Passo n={2} titulo="Quanto custa cada peça"
-            descricao="Preencha o que existir. O que ficar em branco não entra na conta — e aparece como “—”, não como zero."
-            direita={
-              <div className="text-right">
-                <p className="text-[11px] uppercase tracking-wide text-gray-400">Soma dos custos</p>
-                <p className="text-xl font-bold text-gray-900 tabular-nums">{fmtBRL4(calc.subtotal)}</p>
-              </div>
-            }>
-            <div className="space-y-2.5">
-              <LinhaCusto
-                titulo="Matéria-prima"
-                origem={{ texto: 'Este valor é digitado aqui, na ficha. O custo de compra do copo fica no cadastro do produto — clique para abrir e conferir.', link: '/products' }}
-                ajuda="O copo, a caneca, a peça crua — o que você compra pronto para personalizar."
-                valor={calc.mat_unit} informado={temMat}
-                conta={temMat
-                  ? `${fmtBRL(calc.mat_unit)} por peça × ${fmtQty(lote)} peças = ${fmtBRL(calc.mat_unit * lote)} no lote`
-                  : null}
-                fonte={b.materia_prima.supplier_name ? `Fornecedor: ${b.materia_prima.supplier_name}` : null}>
-                <Moeda label="Preço que você paga por peça" exemplo="1,59"
-                  value={b.materia_prima.unit_cost}
-                  onChange={v => setBlock('materia_prima', { unit_cost: v })} />
-              </LinhaCusto>
+                <div className="space-y-3">
+                  <Pergunta titulo="O copo cru, por peça"
+                    nota="O que você paga pelo copo antes de qualquer personalização."
+                    porPeca={calc.mat_unit} obrigatorio informado={temMateria}>
+                    <Moeda exemplo="1,59" value={b.materia_prima?.unit_cost}
+                      onChange={v => setBloco('materia_prima', { unit_cost: v })} />
+                  </Pergunta>
 
-              <LinhaCusto
-                titulo="Personalização (tela, clichê, matriz)"
-                ajuda="O que você paga UMA vez e usa em várias peças."
-                valor={calc.pers_unit} informado={temPers}
-                conta={temPers
-                  ? `${fmtBRL(numInput(b.personalizacao.screen_cost))} ÷ ${fmtQty(numInput(b.personalizacao.screen_uses) || lote)} peças = ${fmtBRL4(calc.pers_unit)} por peça`
-                  : null}>
-                <Moeda label="Custo da tela / clichê" exemplo="80,00"
-                  value={b.personalizacao.screen_cost}
-                  onChange={v => setBlock('personalizacao', { screen_cost: v })} />
-                <Quantidade label="Quantas peças essa tela faz" exemplo={String(lote)}
-                  value={b.personalizacao.screen_uses}
-                  onChange={v => setBlock('personalizacao', { screen_uses: v })} />
-              </LinhaCusto>
+                  <Pergunta titulo="Quantas peças neste lote"
+                    nota="Tela, tinta e frete são divididos por esta quantidade — é por isso que pedido grande sai mais barato."
+                    valorTexto={`${fmtQty(lote)} peças`} informado>
+                    <Quantidade exemplo="1000" value={sheet.calc_quantity}
+                      onChange={v => set({ calc_quantity: v })} />
+                  </Pergunta>
 
-              <LinhaCusto
-                titulo="Tintas"
-                origem={{ texto: 'Tinta lançada por lote nesta ficha. Para a tinta com preço por ml e consumo por peça, use Cadastros › Tintas — de lá ela entra sozinha em todo copo.', link: '/cadastros/tintas' }}
-                ajuda={`Quanto de tinta o lote inteiro consome, por cor. ${nColors} cor(es) — mude em Detalhes da ficha.`}
-                valor={calc.tinta_unit} informado={temTinta}
-                conta={temTinta
-                  ? `${fmtBRL(calc.tinta_total)} no lote ÷ ${fmtQty(lote)} peças = ${fmtBRL4(calc.tinta_unit)} por peça`
-                  : null}>
-                {Array.from({ length: nColors }).map((_, i) => (
-                  <div key={i} className="flex items-end gap-1.5">
-                    <Moeda label={`Cor ${i + 1}`} exemplo="50,00" largura="w-28"
-                      value={b.tintas[i]?.amount ?? ''}
-                      onChange={v => setTinta(i, { amount: v, label: b.tintas[i]?.label || `Cor ${i + 1}` })} />
-                    <input className="input text-sm w-24 mb-0" placeholder="nome"
-                      value={(b.tintas[i]?.label || '').replace(/^Cor \d+\s*/, '')}
-                      onChange={e => setTinta(i, { label: `Cor ${i + 1} ${e.target.value}`.trim() })} />
-                  </div>
-                ))}
-              </LinhaCusto>
-
-              <LinhaCusto
-                titulo="Embalagem"
-                origem={{ texto: 'Caixa lançada nesta ficha. Sacola, plástico e caixa com preço próprio se cadastram em Cadastros › Itens.', link: '/cadastros/itens' }}
-                ajuda="A caixa em que as peças vão. O custo é dividido pelas peças que cabem nela."
-                valor={calc.emb_unit} informado={temEmb}
-                conta={temEmb
-                  ? `${fmtBRL(numInput(b.embalagem.box_price))} a caixa ÷ ${fmtQty(numInput(b.embalagem.units_per_box))} peças = ${fmtBRL4(calc.emb_unit)} por peça`
-                  : null}>
-                <Texto label="Nome da caixa" exemplo="Caixa Twister" largura="w-40"
-                  value={b.embalagem.box_name} onChange={v => setBlock('embalagem', { box_name: v })} />
-                <Moeda label="Preço da caixa" exemplo="2,50"
-                  value={b.embalagem.box_price} onChange={v => setBlock('embalagem', { box_price: v })} />
-                <Quantidade label="Peças por caixa" exemplo="50"
-                  value={b.embalagem.units_per_box} onChange={v => setBlock('embalagem', { units_per_box: v })} />
-              </LinhaCusto>
-
-              <LinhaCusto
-                titulo="Frete da compra"
-                origem={{ texto: 'Frete digitado aqui. O histórico de compras fica no módulo de Compras — clique para abrir.', link: '/purchases' }}
-                ajuda="O que você pagou para a mercadoria chegar até você — dividido pelas peças que vieram."
-                valor={calc.frete_unit} informado={temFrete}
-                conta={temFrete
-                  ? `${fmtBRL(numInput(b.frete.freight_value))} ÷ ${fmtQty(numInput(b.frete.quantity_bought) || lote)} peças = ${fmtBRL4(calc.frete_unit)} por peça`
-                  : null}>
-                <Texto label="Fornecedor" exemplo="Supercop" largura="w-40"
-                  value={b.frete.supplier_name} onChange={v => setBlock('frete', { supplier_name: v })} />
-                <Moeda label="Valor do frete" exemplo="250,00"
-                  value={b.frete.freight_value} onChange={v => setBlock('frete', { freight_value: v })} />
-                <Quantidade label="Peças que vieram" exemplo="5000"
-                  value={b.frete.quantity_bought} onChange={v => setBlock('frete', { quantity_bought: v })} />
-              </LinhaCusto>
-
-              {/* Custos fixos: não se digitam aqui — vêm do rateio. */}
-              <LinhaCusto
-                titulo="Custos fixos da empresa"
-                origem={{ texto: 'Este valor NÃO se digita aqui: vem das Despesas Fixas cadastradas, dividido pela produção mensal. Clique para abrir.', link: '/rateio/despesas-fixas' }}
-                ajuda="Aluguel, energia, salários, sistema. Não se digitam aqui: vêm das despesas cadastradas."
-                valor={calc.overhead_unit} informado={temFixo}
-                conta={temFixo
-                  ? `${fmtBRL(fixed?.total)} por mês ÷ ${fmtQty(fixed?.monthly_units || fixed?.auto_monthly_units)} peças produzidas no mês = ${fmtBRL4(calc.overhead_unit)} por peça`
-                  : null}>
-                <div className="flex flex-wrap items-end gap-3">
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-0.5">Produção mensal estimada</label>
-                    <div className="relative">
-                      <input type="number" min="0" className="input text-sm w-40 pr-14"
-                        defaultValue={fixed?.monthly_units_source === 'manual' ? fixed?.monthly_units : ''}
-                        placeholder={`auto: ${fmtQty(fixed?.auto_monthly_units)}`}
-                        key={`mu-${fixed?.monthly_units}`}
-                        onBlur={e => {
-                          const v = e.target.value;
-                          if (v !== (fixed?.monthly_units_source === 'manual' ? String(fixed?.monthly_units) : '')) saveMonthlyUnits(v);
-                        }} />
-                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">peças</span>
+                  <Pergunta titulo="Tela / clichê"
+                    nota="O que você paga UMA vez e usa em várias peças."
+                    porPeca={calc.pers_unit} informado={temValor(b.personalizacao?.screen_cost)}>
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <Moeda label="custo" exemplo="80,00" value={b.personalizacao?.screen_cost}
+                        onChange={v => setBloco('personalizacao', { screen_cost: v })} />
+                      <Quantidade label="rende" exemplo="1000" value={b.personalizacao?.screen_uses}
+                        onChange={v => setBloco('personalizacao', { screen_uses: v })} />
                     </div>
-                  </div>
-                  <Link to="/rateio/despesas-fixas" className="btn-secondary btn-sm mb-0.5">
-                    <Package size={13} /> {temFixo ? 'Ver as despesas' : 'Cadastrar despesas'}
-                  </Link>
+                  </Pergunta>
+
+                  <Pergunta titulo="Tinta gasta no lote"
+                    nota="O total de tinta do lote inteiro, somando todas as cores."
+                    porPeca={calc.tinta_unit} informado={temValor(b.tintas?.[0]?.amount)}>
+                    <Moeda exemplo="50,00" value={b.tintas?.[0]?.amount} onChange={setTinta} />
+                  </Pergunta>
+
+                  <Pergunta titulo="Embalagem"
+                    nota="A caixa em que as peças vão. O custo é dividido pelas peças que cabem nela."
+                    porPeca={calc.emb_unit} informado={temValor(b.embalagem?.box_price)}>
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <Moeda label="preço da caixa" exemplo="2,50" value={b.embalagem?.box_price}
+                        onChange={v => setBloco('embalagem', { box_price: v })} />
+                      <Quantidade label="cabem" exemplo="50" value={b.embalagem?.units_per_box}
+                        onChange={v => setBloco('embalagem', { units_per_box: v })} />
+                    </div>
+                  </Pergunta>
+
+                  <Pergunta titulo="Frete da compra"
+                    nota="O que você pagou para o copo cru chegar até aqui."
+                    porPeca={calc.frete_unit} informado={temValor(b.frete?.freight_value)}>
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <Moeda label="valor" exemplo="300,00" value={b.frete?.freight_value}
+                        onChange={v => setBloco('frete', { freight_value: v })} />
+                      <Quantidade label="peças compradas" exemplo="1000" value={b.frete?.quantity_bought}
+                        onChange={v => setBloco('frete', { quantity_bought: v })} />
+                    </div>
+                  </Pergunta>
+
+                  {/* O rateio não se digita: vem das Despesas Fixas. */}
+                  <Pergunta titulo="Custos fixos (rateio)"
+                    nota="Aluguel, energia, salários — divididos pela produção do mês. Muda em Despesas Fixas."
+                    porPeca={calc.overhead_unit} informado={calc.overhead_unit > 0}>
+                    <Link to="/rateio" className="text-[12px] text-primary-600 hover:underline">
+                      ver o rateio →
+                    </Link>
+                  </Pergunta>
                 </div>
-                {temFixo && (
-                  <div className="w-full mt-2 flex flex-wrap gap-1.5">
-                    {(fixed?.items || []).slice(0, 12).map(f => {
-                      const Icon = iconFor(f.name);
-                      return (
-                        <span key={f.id} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600">
-                          <Icon size={11} className="text-gray-400" /> {f.name}
-                          <b className="text-gray-800">{fmtBRL(f.amount)}</b>
-                        </span>
-                      );
-                    })}
-                    {(fixed?.items || []).length > 12 && (
-                      <span className="text-[11px] text-gray-400 self-center">
-                        +{(fixed.items.length - 12)} outras
-                      </span>
-                    )}
-                  </div>
-                )}
-              </LinhaCusto>
-            </div>
-          </Passo>
+              </Bloco>
 
-          {/* ═══ PASSO 3 ═══ */}
-          <Passo n={3} titulo="Quanto você quer ganhar"
-            descricao="O imposto sai do seu regime; a margem é sua escolha. O preço é consequência dos dois.">
-            <div className="flex flex-wrap items-end gap-4">
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-0.5">Regime tributário</label>
-                <select className="input text-sm w-48" value={sheet.tax_regime}
-                  onChange={e => {
-                    const r = TAX_REGIMES.find(x => x.value === e.target.value);
-                    set({ tax_regime: e.target.value, tax_pct: r ? r.default_pct : sheet.tax_pct });
-                  }}>
-                  {TAX_REGIMES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                </select>
-              </div>
-              <Percentual label="Imposto sobre a venda" value={sheet.tax_pct} onChange={v => set({ tax_pct: v })} />
-              <Percentual label="Margem que você quer" value={sheet.margin_ideal_pct}
-                onChange={v => { set({ margin_ideal_pct: v }); setSimPrice(''); }} />
-              <div className="text-sm text-gray-500 pb-2">
-                = imposto de <b className="text-gray-800">{fmtBRL4(calc.tax_unit)}</b> por peça
-              </div>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <p className="text-sm font-medium text-gray-800 mb-2">E se eu vender por outro preço?</p>
-              <div className="flex flex-wrap items-end gap-4">
-                <Moeda label="Preço de venda por peça" exemplo="1,19" largura="w-32"
-                  value={simPrice === '' ? (calc.price_ideal ? calc.price_ideal.toFixed(2).replace('.', ',') : '') : simPrice}
-                  onChange={setSimPrice} />
-                <div className="text-sm">
-                  <p className="text-[11px] text-gray-500">Margem efetiva</p>
-                  <p className={`font-bold ${sim.margemEfetiva >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                    {sim.margemEfetiva.toFixed(1)}%
+              <Bloco n={3} titulo="Quanto entra de imposto e quanto você quer ganhar?">
+                <div className="flex items-end gap-4 flex-wrap">
+                  <Percentual label="Imposto" value={sheet.tax_pct}
+                    onChange={v => set({ tax_pct: v })} />
+                  <Percentual label="Margem" value={sheet.margin_ideal_pct}
+                    onChange={v => set({ margin_ideal_pct: v })} />
+                  <p className="text-[11.5px] text-gray-500 max-w-sm">
+                    A margem é sobre o <b>preço de venda</b>, não sobre o custo: 40% em cima de
+                    um custo de {fmtBRL(calc.cost_unit)} dá {fmtBRL(calc.price_ideal)} — e não
+                    {' '}{fmtBRL(calc.cost_unit * 1.4)}, que seria somar a porcentagem ao custo.
                   </p>
                 </div>
-                <div className="text-sm">
-                  <p className="text-[11px] text-gray-500">Faturamento do lote</p>
-                  <p className="font-semibold text-gray-900">{fmtBRL(sim.faturamento)}</p>
-                </div>
-                <div className="text-sm">
-                  <p className="text-[11px] text-gray-500">Lucro líquido do lote</p>
-                  <p className={`font-bold ${sim.lucroLiquido >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                    {fmtBRL(sim.lucroLiquido)}
-                  </p>
-                </div>
-                {simPrice !== '' && (
-                  <button className="btn-ghost btn-sm text-primary-600 mb-0.5" onClick={() => setSimPrice('')}>
-                    voltar ao preço sugerido
-                  </button>
-                )}
-              </div>
-            </div>
-          </Passo>
-
-          {/* ═══ O QUE NÃO MUDA O PREÇO ═══ */}
-          <Recolhivel titulo="Detalhes da ficha"
-            descricao="Categoria, capacidade, cor, impressão e observação. Nada aqui altera o preço — é a etiqueta da ficha.">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-0.5">Categoria</label>
-                <select className="input text-sm w-full" value={sheet.category_id || ''}
-                  onChange={e => {
-                    const id = e.target.value;
-                    const cat = categorias.find(c => c.id === id);
-                    set({ category_id: id || null, category: cat?.name || sheet.category });
-                  }}>
-                  <option value="">— Sem categoria —</option>
-                  {categorias.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-0.5">Capacidade</label>
-                <input list="pf-capacity" className="input text-sm w-full" value={sheet.capacity || ''}
-                  placeholder="ex.: 500ml" onChange={e => set({ capacity: e.target.value })} />
-                <datalist id="pf-capacity">{capacities.map(c => <option key={c} value={c} />)}</datalist>
-              </div>
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-0.5">Cor / modelo</label>
-                <input list="pf-variants" className="input text-sm w-full" value={sheet.color_model || ''}
-                  placeholder="ex.: Azul Degradê" onChange={e => set({ color_model: e.target.value })} />
-                <datalist id="pf-variants">{selectedVariants.map(v => <option key={v} value={v} />)}</datalist>
-              </div>
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-0.5">Tipo de impressão</label>
-                <select className="input text-sm w-full" value={sheet.print_type}
-                  onChange={e => set({ print_type: e.target.value })}>
-                  {PRINT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-0.5">
-                  Quantas cores <span className="text-gray-400">(muda os campos de tinta)</span>
-                </label>
-                <select className="input text-sm w-full" value={nColors}
-                  onChange={e => set({ print_colors: parseInt(e.target.value) })}>
-                  {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n} cor{n > 1 ? 'es' : ''}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] text-gray-500 mb-0.5">Referência de cálculo</label>
-                <select className="input text-sm w-full" value={sheet.calc_reference}
-                  onChange={e => set({ calc_reference: e.target.value })}>
-                  {CALC_REFERENCES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                </select>
-              </div>
-              <div className="sm:col-span-2 lg:col-span-3">
-                <label className="block text-[11px] text-gray-500 mb-0.5">Observação</label>
-                <input className="input text-sm w-full" value={sheet.description || ''}
-                  placeholder="ex.: Copo Twister 500ml com pintura degradê e serigrafia 2 cores."
-                  onChange={e => set({ description: e.target.value })} />
-              </div>
-              <div className="sm:col-span-2 lg:col-span-3">
-                <label className="block text-[11px] text-gray-500 mb-0.5">Observação fiscal</label>
-                <input className="input text-sm w-full" value={sheet.tax_notes || ''}
-                  placeholder="ex.: confirmar a alíquota do regime com o contador."
-                  onChange={e => set({ tax_notes: e.target.value })} />
-              </div>
-            </div>
-          </Recolhivel>
-
-          {/* ═══ TABELA DA LOJA ═══ */}
-          <Recolhivel titulo="Preço da loja por quantidade"
-            descricao="Só para quem vende no site: faixas de quantidade e o custo de impressão em cada uma.">
-            <label className="flex items-center gap-2 text-sm cursor-pointer mb-3">
-              <input type="checkbox" className="w-4 h-4 rounded text-primary-600"
-                checked={!!sheet.is_master} onChange={e => set({ is_master: e.target.checked })} />
-              <span className="text-gray-700">
-                Usar como <b>tabela mestre</b> da categoria — é esta ficha que a loja consulta.
-              </span>
-            </label>
-            <p className="text-xs text-gray-500 mb-3">
-              O preço da loja é <b>custo base + impressão da faixa + margem</b>. Custo maior nas faixas
-              pequenas é o que faz o pedido grande sair mais barato por peça.
-            </p>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-gray-700">Faixas de quantidade</p>
-                <button type="button" onClick={addTier} className="btn-secondary btn-sm">
-                  <Plus size={13} /> Faixa
-                </button>
-              </div>
-              {tiers.length === 0 && <p className="text-xs text-gray-400">Sem faixas. Clique em “Faixa” para começar.</p>}
-              {tiers.map((t, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">De</span>
-                  <input type="number" min="0" className="input py-1 text-sm w-24 text-center" placeholder="mín"
-                    value={t.min_qty} onChange={e => setTier(i, { min_qty: e.target.value })} />
-                  <span className="text-xs text-gray-500">até</span>
-                  <input type="number" min="0" className="input py-1 text-sm w-24 text-center" placeholder="máx"
-                    value={t.max_qty} onChange={e => setTier(i, { max_qty: e.target.value })} />
-                  <span className="text-xs text-gray-500">peças</span>
-                  <button type="button" onClick={() => removeTier(i)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 rounded"><Trash2 size={14} /></button>
-                </div>
-              ))}
-            </div>
-
-            <div className="space-y-2 pt-3 mt-3 border-t border-gray-100">
-              <p className="text-sm font-medium text-gray-700">Custo de impressão por peça</p>
-              <div className="flex flex-wrap gap-1.5">
-                {PRINT_METHODS.map(m => (
-                  <button key={m.key} type="button" onClick={() => toggleMethod(m.key)}
-                    className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${printCosts[m.key]
-                      ? 'bg-primary-600 text-white border-primary-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-              {tiers.length === 0 && Object.keys(printCosts).length > 0 && (
-                <p className="text-xs text-amber-600">Crie as faixas acima para informar os custos.</p>
-              )}
-              {PRINT_METHODS.filter(m => printCosts[m.key]).map(m => (
-                <div key={m.key} className="rounded-lg border border-gray-100 p-2.5">
-                  <p className="text-xs font-semibold text-gray-700 mb-1.5">{m.label}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {tiers.map((t, i) => (
-                      <div key={i} className="flex items-center gap-1">
-                        <span className="text-[11px] text-gray-400 whitespace-nowrap">
-                          {t.min_qty || '?'}–{t.max_qty || '∞'}
-                        </span>
-                        <div className="relative">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">R$</span>
-                          <input type="number" min="0" step="0.01" className="input py-1 text-sm w-24 pl-7"
-                            placeholder="0,00" value={printCosts[m.key]?.[i]?.cost ?? ''}
-                            onChange={e => setPrintCost(m.key, i, e.target.value)} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Recolhivel>
+              </Bloco>
+            </>
+          )}
         </div>
 
-        {/* ═══ RESULTADO — sempre à vista ═══ */}
-        <div className="space-y-4 xl:sticky xl:top-4">
-          <Resultado calc={calc} sheet={sheet} lote={lote} precoSim={precoSim}
-            ganhoPeca={ganhoPeca} sim={sim} faltando={faltando} temMat={temMat}
-            onMargem={(k, v) => set({ [k]: v })} />
+        {/* ── O preço ────────────────────────────────────────── */}
+        <div className="lg:sticky lg:top-4 space-y-3">
+          <Preco calc={calc} cat={cat} lote={lote} temMateria={temMateria} />
+
+          {categoryId && temMateria && (
+            <AplicarNaCategoria
+              cat={cat} preco={calc.price_ideal} previa={previa}
+              simulando={simular.isPending} aplicando={aplicar.isPending}
+              onSimular={() => simular.mutate()}
+              onAplicar={() => aplicar.mutate()}
+              onCancelar={() => setPrevia(null)} />
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// ── O RESULTADO ──────────────────────────────────────────────
+/* ── peças da tela ───────────────────────────────────────── */
+
+function Bloco({ n, titulo, ajuda, direita, children }) {
+  return (
+    <div className="card p-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <span className="w-6 h-6 rounded-lg bg-primary-100 text-primary-700 text-[12px] font-bold flex items-center justify-center shrink-0">
+            {n}
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-gray-800">{titulo}</h2>
+            {ajuda && <p className="text-[12px] text-gray-500 mt-0.5">{ajuda}</p>}
+          </div>
+        </div>
+        {direita}
+      </div>
+      {children}
+    </div>
+  );
+}
 
 /**
- * Um número grande e uma frase em português.
+ * Uma linha de custo: o que se pergunta, e quanto aquilo virou por peça.
  *
- * O painel antigo tinha catorze linhas de valores com quatro casas
- * decimais e nenhuma frase. Dava para ler tudo e ainda não saber a
- * resposta da pergunta que levou a pessoa até ali: por quanto eu vendo?
+ * O VALOR POR PEÇA FICA DO LADO DA PERGUNTA. Antes ele morava numa
+ * coluna à direita, longe do campo — e a relação entre "R$ 80,00 de
+ * tela" e "R$ 0,08 por peça" ficava por conta de quem lia. É essa
+ * relação que ensina a formar preço.
+ *
+ * Não informado sai "—", e nunca "R$ 0,00": zero parece conta feita.
  */
-function Resultado({ calc, sheet, lote, precoSim, ganhoPeca, sim, faltando, temMat, onMargem }) {
-  const prejuizo = ganhoPeca < 0;
-
+function Pergunta({ titulo, nota, children, porPeca, valorTexto, informado, obrigatorio }) {
   return (
-    <>
-      <div className="card overflow-hidden">
-        <div className="bg-gray-900 text-white px-4 py-2.5 flex items-center gap-2">
-          <Calculator size={15} /> <span className="font-semibold text-sm">O SEU PREÇO</span>
-        </div>
-
-        <div className="p-4 space-y-3">
-          <div>
-            <p className="text-xs text-gray-500">Cada peça custa</p>
-            <p className="text-2xl font-bold text-gray-900 tabular-nums">
-              {temMat ? fmtBRL(calc.cost_unit) : '—'}
-            </p>
-            <p className="text-[11px] text-gray-400">já com imposto e rateio dos custos fixos</p>
-          </div>
-
-          <div className={`rounded-xl border-2 p-3 text-center ${prejuizo ? 'border-red-400 bg-red-50' : 'border-emerald-500 bg-emerald-50'}`}>
-            <p className={`text-[11px] font-bold tracking-wide ${prejuizo ? 'text-red-700' : 'text-emerald-700'}`}>
-              VENDER POR
-            </p>
-            <p className={`text-3xl font-extrabold mt-0.5 ${prejuizo ? 'text-red-700' : 'text-emerald-700'}`}>
-              {fmtBRL(precoSim)}
-            </p>
-            <p className="text-xs text-gray-600 mt-1.5">
-              {prejuizo ? (
-                <>Este preço fica <b>abaixo do custo</b>: cada peça vendida perde {fmtBRL(Math.abs(ganhoPeca))}.</>
-              ) : (
-                <>Sobram <b>{fmtBRL(ganhoPeca)}</b> por peça — <b>{fmtBRL(sim.lucroLiquido)}</b> no lote de {fmtQty(lote)}.</>
-              )}
-            </p>
-          </div>
-
-          {/* Os outros dois preços */}
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              ['Mínimo', 'margin_min_pct', calc.price_min, 'text-amber-700'],
-              ['Premium', 'margin_premium_pct', calc.price_premium, 'text-violet-700'],
-            ].map(([label, key, price, cls]) => (
-              <div key={key} className="rounded-lg border border-gray-200 p-2 text-center">
-                <div className="flex items-center justify-center gap-1 text-[11px] text-gray-500">
-                  {label}
-                  <input className="w-9 text-right border-b border-dashed border-gray-300 bg-transparent focus:outline-none"
-                    inputMode="decimal" value={sheet[key]} onChange={e => onMargem(key, e.target.value)} />%
-                </div>
-                <p className={`font-bold ${cls}`}>{fmtBRL(price)}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* A conta aberta, para quem quiser conferir */}
-          <details className="pt-1">
-            <summary className="text-xs text-primary-600 cursor-pointer select-none">Ver a conta aberta</summary>
-            <div className="mt-2 space-y-1 text-xs">
-              {[
-                ['Matéria-prima', calc.mat_unit],
-                ['Personalização', calc.pers_unit],
-                ['Tintas', calc.tinta_unit],
-                ['Embalagem', calc.emb_unit],
-                ['Frete da compra', calc.frete_unit],
-                ['Custos fixos', calc.overhead_unit],
-              ].map(([label, v]) => (
-                <div key={label} className="flex justify-between">
-                  <span className="text-gray-500">{label}</span>
-                  <span className={`tabular-nums ${v ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>
-                    {v ? fmtBRL4(v) : '—'}
-                  </span>
-                </div>
-              ))}
-              <div className="flex justify-between pt-1 border-t border-gray-200">
-                <span className="text-gray-600">Soma dos custos</span>
-                <span className="font-bold tabular-nums">{fmtBRL4(calc.subtotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Imposto ({calc.tax_pct}%)</span>
-                <span className="tabular-nums">{fmtBRL4(calc.tax_unit)}</span>
-              </div>
-              <div className="flex justify-between pt-1 border-t border-gray-300">
-                <span className="font-bold text-gray-900">Custo por peça</span>
-                <span className="font-bold tabular-nums">{fmtBRL4(calc.cost_unit)}</span>
-              </div>
-            </div>
-          </details>
-        </div>
-      </div>
-
-      {/* O QUE FALTA — a pergunta que a tela antiga nunca respondia */}
-      <div className="card">
-        <div className="card-body">
-          {faltando.length === 0 ? (
-            <p className="text-sm text-emerald-700 flex items-center gap-2">
-              <CheckCircle2 size={16} /> Todos os custos estão informados.
-            </p>
-          ) : (
-            <>
-              <p className="text-sm font-medium text-gray-800 flex items-center gap-2 mb-2">
-                <AlertCircle size={15} className="text-amber-500" /> Ainda não informado
-              </p>
-              <ul className="space-y-1.5">
-                {faltando.map((f, i) => (
-                  <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
-                    <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${f.obrigatorio ? 'bg-red-500' : 'bg-gray-300'}`} />
-                    <span>
-                      {f.texto}
-                      {f.obrigatorio && <b className="text-red-600"> — sem isso o preço não vale nada</b>}
-                      {f.link && <> · <Link to={f.link} className="text-primary-600 hover:underline">cadastrar</Link></>}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
+    <div className="flex items-start justify-between gap-4 rounded-xl border border-gray-100 p-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-medium text-gray-800 flex items-center gap-1.5">
+          {titulo}
+          {obrigatorio && !informado && (
+            <span className="text-[10px] font-semibold text-red-600 bg-red-50 rounded px-1.5 py-0.5">
+              sem isto não há preço
+            </span>
           )}
-        </div>
+        </p>
+        {nota && <p className="text-[11.5px] text-gray-500 mt-0.5 mb-2">{nota}</p>}
+        {children}
       </div>
+      <div className="text-right shrink-0 w-24">
+        <p className="text-[10px] uppercase tracking-wider text-gray-400">
+          {valorTexto ? 'lote' : 'por peça'}
+        </p>
+        <p className={`text-sm font-semibold tabular-nums ${informado ? 'text-gray-800' : 'text-gray-300'}`}>
+          {valorTexto || (informado ? fmtBRL(porPeca) : '—')}
+        </p>
+      </div>
+    </div>
+  );
+}
 
-      <div className="card">
-        <div className="card-body">
-          <p className="text-xs text-gray-500 flex items-start gap-1.5">
-            <TrendingUp size={14} className="text-gray-400 shrink-0 mt-0.5" />
-            Margem aqui é sobre o <b className="mx-1">preço de venda</b>, não sobre o custo:
-            {' '}{numInput(sheet.margin_ideal_pct)}% de margem sobre um custo de {fmtBRL(calc.cost_unit)} dá
-            {' '}{fmtBRL(calc.price_ideal)} — e não {fmtBRL(calc.cost_unit * (1 + numInput(sheet.margin_ideal_pct) / 100))},
-            que seria somar a porcentagem ao custo.
+function Preco({ calc, cat, lote, temMateria }) {
+  const margem = m => {
+    const d = 1 - (Number(m) || 0) / 100;
+    return d > 0 ? calc.cost_unit / d : 0;
+  };
+  return (
+    <div className="card p-4">
+      <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2 mb-3">
+        <Calculator size={15} className="text-primary-600" /> O preço
+      </h2>
+
+      {!temMateria ? (
+        <div className="text-center py-6">
+          <AlertCircle size={24} className="mx-auto mb-2 text-amber-400" />
+          <p className="text-[13px] text-gray-600">Falta o custo do copo cru.</p>
+          <p className="text-[11.5px] text-gray-400 mt-1">
+            Sem ele o preço não vale nada — tudo o mais é acréscimo em cima dele.
           </p>
         </div>
+      ) : (
+        <>
+          <div className="flex items-baseline justify-between mb-1">
+            <span className="text-[12px] text-gray-500">Cada peça custa</span>
+            <span className="text-sm font-semibold text-gray-700 tabular-nums">{fmtBRL(calc.cost_unit)}</span>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-3">já com imposto e rateio dos custos fixos</p>
+
+          <div className="rounded-xl border-2 border-emerald-500 bg-emerald-50 p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wider font-semibold text-emerald-700">Vender por</p>
+            <p className="text-3xl font-bold text-emerald-700 tabular-nums">{fmtBRL(calc.price_ideal)}</p>
+            <p className="text-[11.5px] text-emerald-800 mt-1">
+              Sobram <b>{fmtBRL(calc.price_ideal - calc.cost_unit)}</b> por peça —
+              {' '}<b>{fmtBRL((calc.price_ideal - calc.cost_unit) * lote)}</b> no lote de {fmtQty(lote)}.
+            </p>
+          </div>
+
+          {/* Mínimo e premium são LEITURA: as duas contas que a pessoa
+              faria de cabeça para saber até onde dá para negociar. Como
+              campo, eram duas perguntas a mais para a mesma resposta. */}
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <Faixa rot="Mínimo (20%)" v={margem(20)} />
+            <Faixa rot="Premium (50%)" v={margem(50)} />
+          </div>
+
+          {cat?.com_preco > 0 && (
+            <p className="text-[11.5px] text-gray-500 mt-3 flex items-center gap-1.5">
+              <Tag size={12} />
+              Hoje {cat.com_preco === cat.produtos ? 'esta categoria vende' : `${cat.com_preco} destes produtos vendem`}
+              {' '}por {fmtBRL(cat.preco_medio)} em média.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+const Faixa = ({ rot, v }) => (
+  <div className="rounded-lg border border-gray-200 p-2 text-center">
+    <p className="text-[10px] text-gray-500">{rot}</p>
+    <p className="text-sm font-semibold text-gray-700 tabular-nums">{fmtBRL(v)}</p>
+  </div>
+);
+
+/**
+ * O botão que põe o preço nos produtos.
+ *
+ * DUAS ETAPAS, DE PROPÓSITO. O primeiro clique só pergunta ao servidor
+ * o que aconteceria; o segundo grava. Mexer no preço de venda de
+ * dezenas de produtos sem ver o de/para antes é o tipo de clique que só
+ * se descobre errado quando o cliente reclama da nota.
+ */
+function AplicarNaCategoria({ cat, preco, previa, simulando, aplicando, onSimular, onAplicar, onCancelar }) {
+  if (!cat) return null;
+
+  if (!previa) {
+    return (
+      <div className="card p-4">
+        <p className="text-[13px] text-gray-700">
+          Pôr <b>{fmtBRL(preco)}</b> em todos os <b>{cat.produtos}</b> produto
+          {cat.produtos !== 1 ? 's' : ''} de <b>{cat.name}</b>.
+        </p>
+        <button onClick={onSimular} disabled={simulando || !cat.produtos}
+          className="btn-secondary text-sm w-full justify-center mt-3 disabled:opacity-45">
+          {simulando ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+          Ver o que vai mudar
+        </button>
       </div>
-    </>
+    );
+  }
+
+  return (
+    <div className="card p-4">
+      <p className="text-[13px] font-semibold text-gray-800">
+        {previa.alterados === 0
+          ? `Nada muda — os ${previa.produtos} produtos já estão a ${fmtBRL(previa.preco)}.`
+          : `${previa.alterados} de ${previa.produtos} produtos mudam de preço.`}
+      </p>
+
+      {previa.alterados > 0 && (
+        <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+          {previa.itens.map(it => (
+            <div key={it.id} className="flex items-center gap-2 px-2.5 py-1.5 text-[11.5px]">
+              <span className="min-w-0 flex-1 truncate text-gray-700">{it.name}</span>
+              <span className="tabular-nums text-gray-400 line-through shrink-0">{fmtBRL(it.de)}</span>
+              <span className="tabular-nums font-semibold text-emerald-700 shrink-0">{fmtBRL(it.para)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2 mt-3">
+        <button onClick={onCancelar} className="btn-secondary text-sm flex-1 justify-center">Cancelar</button>
+        <button onClick={onAplicar} disabled={aplicando || previa.alterados === 0}
+          className="btn-primary text-sm flex-1 justify-center disabled:opacity-45">
+          {aplicando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+          Aplicar
+        </button>
+      </div>
+    </div>
   );
 }

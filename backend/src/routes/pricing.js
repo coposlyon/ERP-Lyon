@@ -295,6 +295,154 @@ function pickSheetBody(body) {
   return out;
 }
 
+// ============================================================
+// O PREÇO É DA CATEGORIA, NÃO DO ITEM.
+//
+// A ficha de Formação de Preço nasceu por PRODUTO: uma ficha para cada
+// copo. Só que os 35 twisters tradicionais têm o mesmo copo cru, a mesma
+// tela, a mesma tinta e a mesma caixa — muda a cor, que não muda custo.
+// Precificar um por um é fazer 35 vezes a mesma conta e conseguir 35
+// respostas ligeiramente diferentes, que é o começo de um catálogo em
+// que o mesmo copo custa R$ 1,08 numa cor e R$ 1,12 na outra.
+//
+// A ficha passa a ser da CATEGORIA. Uma conta, um preço, e o preço vale
+// para todos os produtos dela.
+//
+// APLICAR CONTINUA SENDO UM CLIQUE, e não uma consequência de salvar.
+// Salvar a ficha guarda a conta; aplicar mexe no preço de venda de
+// dezenas de produtos ao mesmo tempo, e isso é decisão de gente. É a
+// mesma regra que já vale no rateio: o sistema calcula e sugere, quem
+// muda o preço é quem responde por ele.
+// ============================================================
+
+/**
+ * As categorias, com quantos produtos têm e por quanto vendem hoje.
+ *
+ * O de/para é o que responde "essa mudança é grande?" antes de ela
+ * acontecer. Uma categoria que vende a R$ 1,05 e vai para R$ 1,08 é
+ * ajuste; a que vai para R$ 3,00 é outra conversa, e quem clica tem de
+ * ver isso na tela.
+ */
+router.get('/categorias', async (req, res) => {
+  try {
+    const [{ data: cats, error: e1 }, { data: prods, error: e2 }] = await Promise.all([
+      supabase.from('CATEGORIAS').select('id, name').eq('tenant_id', req.tenantId).order('name'),
+      supabase.from('PRODUTOS').select('id, category_id, sale_price, cost_price, is_active')
+        .eq('tenant_id', req.tenantId).eq('is_active', true).limit(5000),
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+
+    const porCat = new Map();
+    for (const p of prods || []) {
+      if (!p.category_id) continue;
+      if (!porCat.has(p.category_id)) porCat.set(p.category_id, []);
+      porCat.get(p.category_id).push(p);
+    }
+
+    const media = xs => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
+    const r2 = v => Math.round(v * 100) / 100;
+
+    res.json((cats || []).map(c => {
+      const lista = porCat.get(c.id) || [];
+      const precos = lista.map(p => Number(p.sale_price) || 0).filter(v => v > 0);
+      const custos = lista.map(p => Number(p.cost_price) || 0).filter(v => v > 0);
+      return {
+        id: c.id, name: c.name,
+        produtos: lista.length,
+        // QUANTOS TÊM PREÇO, e não só a média dos que têm. A média
+        // ignora o zero — então uma categoria com um produto a R$ 4,53
+        // e nove zerados aparecia como "hoje R$ 4,53", que descreve um
+        // décimo da categoria e esconde justamente o que precisa de
+        // preço.
+        com_preco: precos.length,
+        preco_medio: r2(media(precos)),
+        preco_min: precos.length ? r2(Math.min(...precos)) : 0,
+        preco_max: precos.length ? r2(Math.max(...precos)) : 0,
+        // O custo do cadastro é um bom chute inicial para a matéria-prima:
+        // é o que se paga pelo copo cru. A tela oferece, não impõe.
+        custo_medio: r2(media(custos)),
+      };
+    }));
+  } catch (err) {
+    console.error('[pricing/categorias]', err.message);
+    res.status(500).json({ error: 'Erro ao listar as categorias' });
+  }
+});
+
+/**
+ * Põe o preço calculado em todos os produtos da categoria.
+ *
+ * `simular: true` NÃO GRAVA — devolve exatamente o que gravaria. É o que
+ * a tela usa para mostrar "35 produtos, de R$ 1,05 para R$ 1,08" antes
+ * de alguém confirmar. Sem isso, a única forma de saber o tamanho da
+ * mudança é fazê-la.
+ */
+router.post('/aplicar-categoria', async (req, res) => {
+  const categoryId = String(req.body?.category_id || '').trim();
+  const preco = Number(req.body?.price);
+  const simular = !!req.body?.simular;
+
+  if (!categoryId) return res.status(400).json({ error: 'Escolha a categoria.' });
+  if (!Number.isFinite(preco) || preco <= 0) {
+    return res.status(400).json({ error: 'O preço tem de ser maior que zero.' });
+  }
+
+  try {
+    const { data: cat } = await supabase.from('CATEGORIAS')
+      .select('id, name').eq('id', categoryId).eq('tenant_id', req.tenantId).maybeSingle();
+    if (!cat) return res.status(404).json({ error: 'Categoria não encontrada.' });
+
+    const { data: prods, error } = await supabase.from('PRODUTOS')
+      .select('id, code, name, sale_price')
+      .eq('tenant_id', req.tenantId).eq('category_id', categoryId).eq('is_active', true)
+      .order('name').limit(5000);
+    if (error) throw error;
+
+    const novo = Math.round(preco * 100) / 100;
+    const alvo = (prods || []).map(p => ({
+      id: p.id, code: p.code, name: p.name,
+      de: Math.round((Number(p.sale_price) || 0) * 100) / 100,
+      para: novo,
+    }));
+    // Produto que já está no preço não entra na conta do que muda: dizer
+    // "35 produtos alterados" quando 12 ficaram iguais é inflar o
+    // resultado de um botão que mexe em preço.
+    const mudam = alvo.filter(x => x.de !== x.para);
+
+    if (simular) {
+      return res.json({
+        simulado: true, categoria: cat.name,
+        produtos: alvo.length, alterados: mudam.length,
+        preco: novo, itens: mudam.slice(0, 200),
+      });
+    }
+
+    if (!mudam.length) {
+      return res.json({ ok: true, categoria: cat.name, produtos: alvo.length, alterados: 0, preco: novo });
+    }
+
+    // UM UPDATE PARA TODOS, e não um por produto: são dezenas de
+    // linhas, e o meio do caminho de um laço que falha deixa metade da
+    // categoria num preço e metade no outro.
+    const { error: erroUp } = await supabase.from('PRODUTOS')
+      .update({ sale_price: novo, updated_at: new Date().toISOString() })
+      .eq('tenant_id', req.tenantId).eq('category_id', categoryId).eq('is_active', true);
+    if (erroUp) throw erroUp;
+
+    audit(req, 'update', 'product', categoryId, {
+      preco_por_categoria: cat.name, preco: novo,
+      produtos: alvo.length, alterados: mudam.length,
+      de_ate: mudam.length ? [Math.min(...mudam.map(x => x.de)), Math.max(...mudam.map(x => x.de))] : null,
+    });
+
+    res.json({ ok: true, categoria: cat.name, produtos: alvo.length, alterados: mudam.length, preco: novo });
+  } catch (err) {
+    console.error('[pricing/aplicar-categoria]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Tabelas mestre (fichas marcadas como is_master) — usado pelo seletor
 // "Tabela de Precificação" no cadastro de produto. Só id + nome.
 router.get('/tables', async (req, res) => {
