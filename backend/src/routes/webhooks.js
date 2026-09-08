@@ -37,6 +37,11 @@ router.post('/mercadopago', async (req, res) => {
       paid_amount: paidAmount,
       paid_date: new Date().toISOString().split('T')[0],
       status: fullyPaid ? 'paid' : 'partial',
+      // O gateway avisando que o dinheiro caiu É a confirmação — mais
+      // forte que um print. Fica assinado como tal para não cair na
+      // regra de "dinheiro sem confirmação do financeiro".
+      paid_by: 'Mercado Pago (confirmação automática)',
+      paid_at: new Date().toISOString(),
       payment_method: 'pix',
       gateway_payment_id: String(paymentId),
     }).eq('id', lanc.id);

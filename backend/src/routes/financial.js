@@ -13,6 +13,32 @@ const { gerarCobrancaPix } = require('../lib/pixCobranca');
 const C = require('../lib/comprovante');
 const { sendWhatsApp, normalizarNumero } = require('../lib/whatsapp');
 
+/**
+ * PAGO É O QUE O FINANCEIRO CONFIRMOU — e nada mais.
+ *
+ * A coluna `status` podia dizer 'paid' sem ninguém do financeiro ter
+ * olhado: era assim que ficavam as linhas do tempo em que anexar o
+ * comprovante já dava o pagamento por feito. Um selo verde de "Pago"
+ * nessas linhas é o sistema afirmando uma coisa que ninguém afirmou.
+ *
+ * `situacao` é o que a tela mostra: sem `paid_at`, volta a ser
+ * PENDENTE, por mais que exista dinheiro lançado. O valor continua em
+ * `paid_amount` (não se apaga dado), e o financeiro resolve confirmando
+ * ou desfazendo.
+ */
+function comSituacao(linha) {
+  const pago = Number(linha?.paid_amount) || 0;
+  const confirmado = !!linha?.paid_at;
+  return {
+    ...linha,
+    confirmado,
+    // Dinheiro sem confirmação não é pagamento: é uma afirmação
+    // esperando o financeiro.
+    situacao: confirmado ? linha.status : (pago > 0 ? 'pending' : linha.status),
+    pago_sem_confirmacao: !confirmado && pago > 0 ? pago : 0,
+  };
+}
+
 router.get('/receivables', async (req, res) => {
   const { page = 1, limit = 50, status, start_date, end_date } = req.query;
   const offset = (page - 1) * limit;
@@ -32,7 +58,7 @@ router.get('/receivables', async (req, res) => {
 
     const { data, error, count } = await query;
     if (error) throw error;
-    res.json({ data, total: count, page: Number(page), limit: Number(limit) });
+    res.json({ data: (data || []).map(comSituacao), total: count, page: Number(page), limit: Number(limit) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -57,7 +83,7 @@ router.get('/payables', async (req, res) => {
 
     const { data, error, count } = await query;
     if (error) throw error;
-    res.json({ data, total: count, page: Number(page), limit: Number(limit) });
+    res.json({ data: (data || []).map(comSituacao), total: count, page: Number(page), limit: Number(limit) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -87,6 +113,11 @@ router.post('/pay/:id', async (req, res) => {
         status,
         payment_method,
         account_id,
+        // Quem apertou o botão. Sem isto o pagamento feito AQUI cairia
+        // na regra de "dinheiro sem confirmação" e voltaria a aparecer
+        // como pendente — sendo que foi o financeiro que o lançou.
+        paid_by: req.userProfile?.name || req.user?.email || 'Financeiro',
+        paid_at: new Date().toISOString(),
       })
       .eq('id', req.params.id)
       .eq('tenant_id', req.tenantId)

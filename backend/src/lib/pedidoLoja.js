@@ -134,6 +134,12 @@ async function registrarRecebimento(pedido, sale, actor = {}) {
       due_date: hoje,
       paid_date: hoje,
       status: 'paid',
+      // QUEM CONFIRMOU: este lançamento nasce da fila de Pagamentos da
+      // Loja, onde alguém do financeiro confere o PIX e libera. Sem
+      // assinar aqui, o recebimento cairia na regra de "dinheiro sem
+      // confirmação" e a tela o mostraria pendente.
+      paid_by: actor.userName || 'Pagamentos da Loja',
+      paid_at: new Date().toISOString(),
       payment_method: 'pix',
       customer_id: pedido.customer_id,
       installment: 1,

@@ -901,21 +901,37 @@ export default function Financial() {
     { key: 'installment', label: 'Parcela', width: 80,
       render: (v, row) => row.total_installments > 1 ? <span className="badge badge-gray">{v}/{row.total_installments}</span> : '—' },
     { key: 'amount', label: 'Total', width: 110, render: v => fmt(v) },
-    { key: 'paid_amount', label: 'Pago', width: 110, render: v => <span className="text-green-600">{fmt(v)}</span> },
-    { key: 'status', label: 'Status', width: 130,
-      // "Pago" sem `paid_at` é dinheiro que entrou no sistema sem passar
-      // pelo financeiro. A tela diz isso em vez de esconder atrás do
-      // mesmo selo verde de um pagamento conferido.
+    { key: 'paid_amount', label: 'Pago', width: 110,
+      // Verde é dinheiro confirmado. O que entrou sem confirmação
+      // aparece em âmbar — está lançado, mas não vale como recebido.
       render: (v, row) => (
-        <span className="inline-flex items-center gap-1">
-          <span className={`badge ${statusClass[v] || 'badge-gray'}`}>{statusLabel[v] || v}</span>
-          {tab === 'receivable' && (Number(row.paid_amount) || 0) > 0 && !row.paid_at && (
-            <span className="badge badge-yellow" title="Pago pelo fluxo antigo, sem confirmação do financeiro">
-              sem confirmação
-            </span>
-          )}
+        <span className={row.confirmado === false && (Number(v) || 0) > 0 ? 'text-amber-600' : 'text-green-600'}>
+          {fmt(v)}
         </span>
       ) },
+    { key: 'status', label: 'Status', width: 150,
+      /**
+       * O SELO É A SITUAÇÃO, NÃO A COLUNA DO BANCO.
+       *
+       * Enquanto o financeiro não confirma, é PENDENTE — por mais que
+       * exista `paid_amount` lançado. Dinheiro que ninguém do financeiro
+       * conferiu não é pagamento: é uma afirmação esperando conferência,
+       * e um selo verde ali é o sistema afirmando o que ninguém afirmou.
+       */
+      render: (v, row) => {
+        const sit = row.situacao || v;
+        return (
+          <span className="inline-flex items-center gap-1 flex-wrap">
+            <span className={`badge ${statusClass[sit] || 'badge-gray'}`}>{statusLabel[sit] || sit}</span>
+            {row.pago_sem_confirmacao > 0 && (
+              <span className="badge badge-yellow"
+                title={`${fmt(row.pago_sem_confirmacao)} lançados sem confirmação do financeiro`}>
+                aguardando confirmação
+              </span>
+            )}
+          </span>
+        );
+      } },
     { key: 'id', label: '', width: 250,
       render: (_, row) => {
         if (row.status === 'cancelled') return null;
@@ -971,12 +987,23 @@ export default function Financial() {
       } },
   ];
 
+  /**
+   * OS CARTÕES CONTAM O QUE FOI CONFIRMADO.
+   *
+   * "Pago R$ 215,00" com o comprovante ainda por conferir é o número que
+   * faz alguém fechar o mês achando que o dinheiro entrou. Aqui só entra
+   * em PAGO o que tem confirmação do financeiro; o resto é pendente, e o
+   * que está lançado sem confirmação aparece à parte.
+   */
   const summary = (data?.data || []).reduce((acc, t) => {
-    acc.total += t.amount || 0;
-    acc.paid += t.paid_amount || 0;
-    acc.pending += Math.max(0, (t.amount || 0) - (t.paid_amount || 0));
+    const pago = Number(t.paid_amount) || 0;
+    const confirmado = t.confirmado !== false;
+    acc.total += Number(t.amount) || 0;
+    if (confirmado) acc.paid += pago;
+    else acc.semConfirmacao += pago;
+    acc.pending += Math.max(0, (Number(t.amount) || 0) - (confirmado ? pago : 0));
     return acc;
-  }, { total: 0, paid: 0, pending: 0 });
+  }, { total: 0, paid: 0, pending: 0, semConfirmacao: 0 });
 
   return (
     <div className="space-y-4">
@@ -997,7 +1024,15 @@ export default function Financial() {
           </div>
           <div className="card p-4 flex items-center gap-3">
             <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center"><TrendingUp size={18} className="text-green-600" /></div>
-            <div><p className="text-xs text-gray-500">Pago</p><p className="font-bold text-green-700">{fmt(summary.paid)}</p></div>
+            <div>
+              <p className="text-xs text-gray-500">Pago (confirmado)</p>
+              <p className="font-bold text-green-700">{fmt(summary.paid)}</p>
+              {summary.semConfirmacao > 0 && (
+                <p className="text-[11px] text-amber-600">
+                  + {fmt(summary.semConfirmacao)} aguardando confirmação
+                </p>
+              )}
+            </div>
           </div>
           <div className="card p-4 flex items-center gap-3">
             <div className="w-10 h-10 bg-yellow-50 rounded-xl flex items-center justify-center"><TrendingDown size={18} className="text-yellow-600" /></div>
