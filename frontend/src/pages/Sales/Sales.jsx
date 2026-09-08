@@ -115,6 +115,65 @@ export default function Sales() {
     onError: e => toast.error(e.error || 'Não foi possível editar o pedido.'),
   });
 
+  // ── RESTAURADO ────────────────────────────────────────────
+  // Tirar o interruptor de pagamento daqui levou junto, por descuido,
+  // tudo o que vinha depois dele neste trecho: a fila dos pedidos do
+  // site, o catálogo de status, a consulta da própria lista e os
+  // filtros. A tela quebrou inteira em "hasFilters is not defined".
+  // Só o interruptor devia ter saído.
+  const { data: fila } = useQuery({
+    queryKey: ['store-payments', 'aguardando_pagamento'],
+    queryFn: () => api.get('/store-payments?status=aguardando_pagamento'),
+    refetchInterval: 60000,
+    retry: false,
+  });
+  const aguardando = fila?.total || 0;
+  const comComprovante = fila?.com_comprovante || 0;
+
+  // O fluxo (label, cor e quem responde por cada etapa) vem do servidor —
+  // a mesma fonte que a carteira do vendedor lê, para as duas telas nunca
+  // discordarem sobre o que é "Aguardando estoque".
+  const { data: statusList = [] } = useQuery({
+    queryKey: ['fluxo-status'],
+    queryFn: () => api.get('/area-vendedor/status'),
+    staleTime: Infinity,
+  });
+  const statusInfo = useMemo(
+    () => Object.fromEntries(statusList.map(s => [s.key, s])),
+    [statusList],
+  );
+
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
+    queryKey: ['sales', page, status, search, startDate, endDate, porPagina],
+    queryFn: () => {
+      let url = `/sales?page=${page}&limit=${porPagina}`;
+      if (status) url += `&status=${status}`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+      if (startDate) url += `&start_date=${startDate}`;
+      if (endDate) url += `&end_date=${endDate}`;
+      return api.get(url);
+    },
+  });
+
+  const todas = data?.data || [];
+  // Pedido concluído sai da lista por padrão: quem abre a tela quer ver o
+  // que está acontecendo. O botão Finalizados traz o histórico de volta,
+  // que é o caminho da recompra.
+  const rows = finalizados ? todas : todas.filter(r => !ehFinal(r.status));
+  // A SOMA DA PAGINA SAIU. Ela repetia, numa segunda linha, os mesmos
+  // numeros que a coluna ja mostra - e com um pedido na tela dizia
+  // "R$ 550,00" duas vezes, uma embaixo da outra. A contagem de pedidos
+  // continua logo abaixo, na paginacao, que e onde se procura por ela.
+  const totalPaginas = Math.max(1, Math.ceil((data?.total || 0) / porPagina));
+
+
+  function handleSearch(e) { e?.preventDefault?.(); setSearch(searchInput); setPage(1); }
+  function clearFilters() {
+    setSearch(''); setSearchInput(''); setStatus(''); setStartDate(''); setEndDate('');
+    setFinalizados(false); setPage(1);
+  }
+  const hasFilters = search || status || startDate || endDate || finalizados;
+
   /** Abrir o pedido. É o que o clique na linha faz, e o que F3 repete. */
   function abrirPedido(id) { navigate(`/sales/${id}/detalhe`); }
 

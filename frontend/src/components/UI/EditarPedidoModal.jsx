@@ -82,7 +82,7 @@ export default function EditarPedidoModal({ pedido, onClose, onConfirmar, salvan
     novos.some(n => n.quantidade > 0)
     || Object.keys(removidos).some(k => removidos[k])
     || itens.some(i => quantidades[i.id] != null
-      && Number(quantidades[i.id]) !== Number(i.quantidade)),
+      && Number(quantidades[i.id]) !== Number(i.quantidade))
   ), [itens, quantidades, removidos, novos]);
 
   const sobraram = itens.filter(i => !removidos[i.id]).length + novos.filter(n => n.quantidade > 0).length;
