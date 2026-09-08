@@ -87,6 +87,25 @@ const MODULOS_SEM_TELA = ['dashboard', 'pdv', 'purchases', 'vendedor', 'pedidos-
 // é a área enxuta de cinco itens do layout aprovado.
 const LAYOUTS = ['erp', 'vendedor'];
 
+/**
+ * O QUE TODO MUNDO TEM, INDEPENDENTE DE SETOR.
+ *
+ * Comunicação é a sala da empresa: o mural do que aconteceu e os chats
+ * dos setores. Um setor sem ela é um setor que ninguém consegue chamar
+ * — o estoque não avisa que faltou copo, a produção não pergunta da
+ * arte, e a conversa volta para o WhatsApp pessoal, onde nada fica
+ * registrado no pedido.
+ *
+ * Por isso ela deixou de ser uma caixinha a marcar e passou a ser piso:
+ * quem esquecer de marcar não tira ninguém da conversa. Continua sendo
+ * possível ABRIR mais coisa para um setor; não é possível fechar esta.
+ *
+ * A tela entra junto pelo mesmo motivo — módulo sem tela liberada é um
+ * acesso que existe na API e não aparece no menu.
+ */
+const MODULOS_DE_TODOS = ['comunicacao'];
+const TELAS_DE_TODOS = ['/comunicacao'];
+
 // Migração 067 pendente ou indisponível: cai na regra antiga em vez de
 // derrubar o login de todo mundo.
 const tabelaAusente = err =>
@@ -138,8 +157,10 @@ async function listSetores(tenantId) {
  * Array.isArray e nunca com o valor ser falsy.
  */
 function telasEfetivas(userProfile, setor) {
-  if (Array.isArray(userProfile?.allowed_screens)) return userProfile.allowed_screens;
-  if (Array.isArray(setor?.screens)) return setor.screens;
+  // A tela da Comunicação entra em qualquer lista — ver MODULOS_DE_TODOS.
+  const comAsDeTodos = lista => [...new Set([...lista, ...TELAS_DE_TODOS])];
+  if (Array.isArray(userProfile?.allowed_screens)) return comAsDeTodos(userProfile.allowed_screens);
+  if (Array.isArray(setor?.screens)) return comAsDeTodos(setor.screens);
   return null;
 }
 
@@ -159,11 +180,16 @@ function resolverAcesso(userProfile, setor) {
 
   if (!setor) {
     // Regra antiga, intocada: null = sem restrição, lista = só a lista.
-    return { modules: extras, screens: telas, layout: 'erp', home: '/', setor: null, setorName: null, herda: false };
+    // A lista antiga também ganha o piso: quem foi cadastrado com cinco
+    // módulos escolhidos a dedo, em 2025, não escolheu ficar fora da
+    // conversa da empresa — a Comunicação nem existia.
+    const modulesLegado = extras ? [...new Set([...extras, ...MODULOS_DE_TODOS])] : null;
+    return { modules: modulesLegado, screens: telas, layout: 'erp', home: '/', setor: null, setorName: null, herda: false };
   }
 
   const doSetor = Array.isArray(setor.modules) ? setor.modules : [];
-  const modules = [...new Set([...doSetor, ...(extras || [])])].filter(m => MODULO_KEYS.has(m));
+  const modules = [...new Set([...doSetor, ...(extras || []), ...MODULOS_DE_TODOS])]
+    .filter(m => MODULO_KEYS.has(m));
 
   // A CASA DE QUEM NÃO PODE VER O DASHBOARD NÃO PODE SER O DASHBOARD.
   //
@@ -195,7 +221,7 @@ function podeModulo(acesso, ...modulos) {
 }
 
 module.exports = {
-  MODULOS, MODULO_KEYS, LAYOUTS, MODULOS_SEM_TELA,
+  MODULOS, MODULO_KEYS, LAYOUTS, MODULOS_SEM_TELA, MODULOS_DE_TODOS, TELAS_DE_TODOS,
   loadSetor, listSetores, resolverAcesso, podeModulo, tabelaAusente,
   telasEfetivas, herdaDoSetor,
 };

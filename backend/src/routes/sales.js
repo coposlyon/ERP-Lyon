@@ -323,6 +323,21 @@ router.post('/', validate(saleSchema), async (req, res) => {
       _allow_price_override: allowOverride,
       _installments:         payment_method === 'a_prazo' ? Math.max(parseInt(installments) || 1, 1) : 1,
       _first_due_date:       payment_method === 'a_prazo' ? (first_due_date || null) : null,
+      /**
+       * O FRETE VAI JUNTO — e antes não ia.
+       *
+       * A função fechava o total como "produtos - desconto" e gerava as
+       * parcelas em cima disso; o frete era somado DEPOIS, num update
+       * daqui. As parcelas já estavam gravadas: pedido de R$ 400 + R$ 30
+       * de frete em 2x virava duas parcelas de R$ 200 num pedido de
+       * R$ 430, e faltavam R$ 30 no contas a receber de todo pedido a
+       * prazo com frete.
+       *
+       * Agora a soma acontece dentro da função (migração 111), que é
+       * onde o total e as parcelas são decididos na mesma transação.
+       */
+      _freight:              Number(freight) || 0,
+      _payment_adjustment:   Number(payment_adjustment) || 0,
     });
 
     if (error) {
@@ -359,10 +374,23 @@ router.post('/', validate(saleSchema), async (req, res) => {
       if (origemOk) patch.origin = origemOk;
       if (billing_company_id) patch.billing_company_id = billing_company_id;
       if (receiving_account_id) patch.receiving_account_id = receiving_account_id;
-      // Frete + ajuste por condição de pagamento (juros/desconto): somam no total da venda
+      /**
+       * O FRETE JÁ VEIO SOMADO — este bloco virou rede de segurança.
+       *
+       * Ele existia para somar frete e ajuste depois da função. Desde a
+       * migração 111 a própria `criar_venda` faz isso, junto com as
+       * parcelas, e refazer a soma aqui cobraria o frete duas vezes.
+       *
+       * O que sobrou é o caso do banco que ainda não migrou: a função
+       * antiga ignora os dois argumentos novos e devolve o total sem
+       * frete. Aí, e só aí, o total é corrigido aqui — sem as parcelas,
+       * que é a limitação que a migração veio resolver.
+       */
       const freightVal = Number(freight) || 0;
       const payAdj = Number(payment_adjustment) || 0;
-      if (freightVal || payAdj) {
+      const jaVeioComFrete = Math.abs((Number(data.total) || 0)
+        - ((Number(data.subtotal) || 0) - (Number(data.discount) || 0) + freightVal + payAdj)) < 0.005;
+      if ((freightVal || payAdj) && !jaVeioComFrete) {
         if (freightVal) patch.freight = freightVal;
         patch.total = Math.max(0, (Number(data.total) || 0) + freightVal + payAdj);
       }

@@ -32,6 +32,9 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const A = require('../lib/atencao');
 const { audit } = require('../lib/audit');
+// As salas por setor saem do cadastro de setores (Permissões), e não
+// de uma lista escrita aqui.
+const { listSetores } = require('../lib/setores');
 
 const isManager = req => ['admin', 'manager'].includes(req.userProfile?.role);
 const tabelaAusente = err => /does not exist|schema cache|relation/i.test(err?.message || '');
@@ -183,7 +186,99 @@ router.get('/atividades', async (req, res) => {
 // ============================================================
 
 const CANAL_PADRAO = 'geral';
-const canalDe = req => String(req.query.canal || req.body?.canal || CANAL_PADRAO).slice(0, 40) || CANAL_PADRAO;
+
+/**
+ * AS SALAS: uma da empresa e uma por SETOR.
+ *
+ * A conversa era uma só, e uma sala só é a sala em que ninguém fala: o
+ * aviso do estoque some no meio do assunto da produção, e quem quer
+ * falar com o financeiro chama no WhatsApp pessoal — onde nada fica
+ * registrado e ninguém mais da equipe lê depois.
+ *
+ * As salas de setor saem dos SETORES cadastrados em Permissões, e não
+ * de uma lista escrita aqui: setor novo ganha sala no mesmo instante, e
+ * setor renomeado muda de nome na tela sem ninguém mexer em código.
+ *
+ * A CHAVE É `setor:<key>` porque a coluna `canal` já existe e é texto
+ * livre — o prefixo é o que separa "a sala do setor vendas" de um canal
+ * de outra natureza que venha a existir (um por pedido, por exemplo).
+ *
+ * TODO MUNDO LÊ TODAS AS SALAS, de propósito. Elas organizam o assunto,
+ * não escondem informação: numa fábrica de trinta pessoas, sala fechada
+ * é a mesma conversa acontecendo duas vezes. Quem não é do setor entra
+ * para perguntar — que é exatamente o que se quer que aconteça.
+ */
+const PREFIXO_SETOR = 'setor:';
+
+async function canaisDisponiveis(tenantId) {
+  const { setores } = await listSetores(tenantId).catch(() => ({ setores: [] }));
+  return [
+    { key: CANAL_PADRAO, nome: 'Toda a empresa', tipo: 'geral' },
+    ...(setores || []).map(s => ({
+      key: `${PREFIXO_SETOR}${s.key}`,
+      nome: s.name || s.key,
+      tipo: 'setor',
+      setor: s.key,
+    })),
+  ];
+}
+
+/**
+ * O canal pedido, conferido contra os que existem.
+ *
+ * Sem esta conferência, `?canal=qualquer-coisa` criaria uma sala
+ * invisível: as mensagens entrariam no banco e nenhuma tela as
+ * mostraria. Canal desconhecido cai no geral, que é onde a pessoa
+ * esperava estar.
+ */
+async function canalDe(req) {
+  const pedido = String(req.query.canal || req.body?.canal || CANAL_PADRAO).slice(0, 40) || CANAL_PADRAO;
+  if (pedido === CANAL_PADRAO) return CANAL_PADRAO;
+  const canais = await canaisDisponiveis(req.tenantId);
+  return canais.some(c => c.key === pedido) ? pedido : CANAL_PADRAO;
+}
+
+/** Quantas mensagens novas nesta sala, para esta pessoa. */
+async function contarNaoLidas(tenantId, userId, canal) {
+  const { data: leitura } = await supabase.from('CHAT_LEITURAS')
+    .select('lido_ate').eq('tenant_id', tenantId)
+    .eq('user_id', userId).eq('canal', canal).maybeSingle();
+  const desde = leitura?.lido_ate || new Date(Date.now() - 3600000).toISOString();
+
+  const { data } = await supabase.from('CHAT_MENSAGENS')
+    .select('id, user_id, mencionados')
+    .eq('tenant_id', tenantId).eq('canal', canal)
+    .is('deleted_at', null).gt('created_at', desde);
+
+  const outras = (data || []).filter(m => m.user_id !== userId);
+  return {
+    nao_lidas: outras.length,
+    mencoes: outras.filter(m => (m.mencionados || []).includes(userId)).length,
+    desde,
+  };
+}
+
+/**
+ * GET /comunicacao/canais
+ *
+ * A lista de salas com o que há de novo em cada uma — numa resposta só.
+ * Uma consulta por sala faria a tela abrir com dez requisições e o
+ * contador de cada uma chegando em ordem aleatória.
+ */
+router.get('/canais', async (req, res) => {
+  try {
+    const canais = await canaisDisponiveis(req.tenantId);
+    const comContagem = await Promise.all(canais.map(async c => ({
+      ...c,
+      // O setor da própria pessoa vem marcado: é a sala dela, e é a
+      // primeira que ela procura.
+      meu: c.tipo === 'setor' && c.setor === (req.acesso?.setor || null),
+      ...(await contarNaoLidas(req.tenantId, req.user.id, c.key).catch(
+        () => ({ nao_lidas: 0, mencoes: 0 }))),
+    })));
+    res.json({ data: comContagem });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 /**
  * Quem foi chamado pelo nome na mensagem.
@@ -234,7 +329,7 @@ router.get('/pessoas', async (req, res) => {
  * história da empresa toda vez que alguém abrisse a tela.
  */
 router.get('/chat', async (req, res) => {
-  const canal = canalDe(req);
+  const canal = await canalDe(req);
   const limite = Math.min(Math.max(parseInt(req.query.limite, 10) || 120, 1), 400);
   try {
     const { data, error } = await supabase.from('CHAT_MENSAGENS')
@@ -282,7 +377,7 @@ router.post('/chat', async (req, res) => {
   if (!corpo) return res.status(400).json({ error: 'Escreva a mensagem.' });
   if (corpo.length > 4000) return res.status(400).json({ error: 'Mensagem muito longa (limite de 4000 caracteres).' });
 
-  const canal = canalDe(req);
+  const canal = await canalDe(req);
   try {
     // A citação tem de ser DESTE canal e desta empresa: o id vem da
     // tela, e sem esta conferência daria para pendurar uma resposta na
@@ -371,7 +466,7 @@ async function marcarLido(tenantId, userId, canal) {
 
 router.post('/chat/lido', async (req, res) => {
   try {
-    await marcarLido(req.tenantId, req.user.id, canalDe(req));
+    await marcarLido(req.tenantId, req.user.id, await canalDe(req));
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -383,28 +478,12 @@ router.post('/chat/lido', async (req, res) => {
  * lidas na sala é rotina, uma menção é alguém esperando resposta.
  */
 router.get('/chat/nao-lidas', async (req, res) => {
-  const canal = canalDe(req);
+  const canal = await canalDe(req);
   try {
-    const { data: leitura } = await supabase.from('CHAT_LEITURAS')
-      .select('lido_ate').eq('tenant_id', req.tenantId)
-      .eq('user_id', req.user.id).eq('canal', canal).maybeSingle();
-    // Quem nunca abriu a sala não recebe mil não lidas na cara: o
-    // marco é a última hora, e a conversa antiga fica como histórico.
-    const desde = leitura?.lido_ate || new Date(Date.now() - 3600000).toISOString();
-
-    const { data } = await supabase.from('CHAT_MENSAGENS')
-      .select('id, user_id, mencionados')
-      .eq('tenant_id', req.tenantId).eq('canal', canal)
-      .is('deleted_at', null).gt('created_at', desde);
-
-    // O que eu mesmo escrevi não conta como não lido.
-    const outras = (data || []).filter(m => m.user_id !== req.user.id);
-    res.json({
-      canal,
-      nao_lidas: outras.length,
-      mencoes: outras.filter(m => (m.mencionados || []).includes(req.user.id)).length,
-      desde,
-    });
+    // A conta mora em `contarNaoLidas`, que é a mesma usada pela lista
+    // de salas: duas contagens do mesmo número acabariam divergindo, e
+    // o crachá da sala discordaria do crachá do menu.
+    res.json({ canal, ...(await contarNaoLidas(req.tenantId, req.user.id, canal)) });
   } catch (err) { res.json({ canal, nao_lidas: 0, mencoes: 0 }); }
 });
 

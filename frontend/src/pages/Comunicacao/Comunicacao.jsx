@@ -19,7 +19,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Activity, MessageSquare, Send, Loader2, Trash2, PenLine, CornerUpLeft,
-  X, Check, AtSign, RefreshCw, Filter,
+  X, Check, AtSign, RefreshCw, Filter, Users,
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -232,9 +232,59 @@ function LinhaDoMural({ v, e }) {
 
 /* ══ O CHAT ═══════════════════════════════════════════════════ */
 
+/**
+ * AS SALAS DO CHAT.
+ *
+ * Era uma sala só, e uma sala só é a sala em que ninguém fala: o aviso
+ * do estoque some no meio do assunto da produção, e quem precisa do
+ * financeiro chama no WhatsApp pessoal — onde nada fica registrado e
+ * ninguém mais da equipe lê depois.
+ *
+ * Agora existe a da empresa inteira e uma por SETOR, saídas do cadastro
+ * de Permissões: setor novo ganha sala sozinho.
+ *
+ * TODAS ABERTAS A TODOS, de propósito. A sala organiza o assunto, não
+ * esconde informação: numa fábrica de trinta pessoas, sala fechada é a
+ * mesma conversa acontecendo duas vezes. Quem não é do setor entra para
+ * perguntar, que é o que se quer que aconteça.
+ */
+function Salas({ v, canais, atual, onEscolher }) {
+  if (canais.length < 2) return null;
+  return (
+    <div className="flex gap-1.5 px-3 py-2 overflow-x-auto"
+      style={{ borderBottom: `1px solid ${v.divider}` }}>
+      {canais.map(c => {
+        const ativo = c.key === atual;
+        return (
+          <button key={c.key} type="button" onClick={() => onEscolher(c.key)}
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-medium transition"
+            style={{
+              background: ativo ? '#2563eb' : 'rgba(255,255,255,0.05)',
+              color: ativo ? '#fff' : v.textMuted,
+              border: `1px solid ${ativo ? '#2563eb' : v.divider}`,
+            }}>
+            {c.tipo === 'geral' ? <MessageSquare size={13} /> : <Users size={13} />}
+            {c.nome}
+            {c.meu && !ativo && <span className="text-[10px] opacity-70">(seu setor)</span>}
+            {/* Menção pesa mais que mensagem nova: quarenta não lidas na
+                sala é rotina, uma menção é alguém esperando resposta. */}
+            {!ativo && c.nao_lidas > 0 && (
+              <span className="ml-0.5 px-1.5 rounded-full text-[10px] font-bold"
+                style={{ background: c.mencoes > 0 ? '#f43f5e' : 'rgba(255,255,255,0.15)', color: '#fff' }}>
+                {c.mencoes > 0 ? `@${c.mencoes}` : c.nao_lidas}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function Chat({ v }) {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const [canal, setCanal] = useState('geral');
   const [texto, setTexto] = useState('');
   const [respondendo, setRespondendo] = useState(null);
   const [editando, setEditando] = useState(null);
@@ -247,9 +297,19 @@ function Chat({ v }) {
     queryFn: () => api.get('/comunicacao/pessoas'),
   });
 
+  // As salas, com o que há de novo em cada uma. O intervalo é mais
+  // largo que o da conversa aberta: o crachá de outra sala pode chegar
+  // com quinze segundos de atraso sem atrapalhar ninguém.
+  const { data: salas } = useQuery({
+    queryKey: ['chat-canais'],
+    queryFn: () => api.get('/comunicacao/canais'),
+    refetchInterval: 15000,
+  });
+  const canais = salas?.data || [];
+
   const { data, isLoading } = useQuery({
-    queryKey: ['chat', 'geral'],
-    queryFn: () => api.get('/comunicacao/chat?canal=geral&limite=200'),
+    queryKey: ['chat', canal],
+    queryFn: () => api.get(`/comunicacao/chat?canal=${encodeURIComponent(canal)}&limite=200`),
     // Cinco segundos: é uma sala de conversa, e resposta que chega meio
     // minuto depois faz duas pessoas escreverem a mesma coisa.
     refetchInterval: 5000,
@@ -272,23 +332,24 @@ function Chat({ v }) {
 
   // Abriu a sala = leu a sala.
   useEffect(() => {
-    api.post('/comunicacao/chat/lido', { canal: 'geral' }).catch(() => {});
-  }, [msgs.length]);
+    api.post('/comunicacao/chat/lido', { canal }).catch(() => {});
+  }, [msgs.length, canal]);
 
   const enviar = useMutation({
     mutationFn: corpo => (editando
       ? api.put(`/comunicacao/chat/${editando.id}`, { body: corpo })
-      : api.post('/comunicacao/chat', { canal: 'geral', body: corpo, reply_to: respondendo?.id || null })),
+      : api.post('/comunicacao/chat', { canal, body: corpo, reply_to: respondendo?.id || null })),
     onSuccess: () => {
       setTexto(''); setRespondendo(null); setEditando(null); setColado(true);
-      qc.invalidateQueries({ queryKey: ['chat', 'geral'] });
+      qc.invalidateQueries({ queryKey: ['chat', canal] });
+      qc.invalidateQueries({ queryKey: ['chat-canais'] });
     },
     onError: e => toast.error(e.error || 'Não foi possível enviar'),
   });
 
   const remover = useMutation({
     mutationFn: id => api.delete(`/comunicacao/chat/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['chat', 'geral'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['chat', canal] }),
     onError: e => toast.error(e.error || 'Não foi possível remover'),
   });
 
@@ -322,11 +383,15 @@ function Chat({ v }) {
     <div style={v.card} className="flex flex-col">
       <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${v.divider}` }}>
         <MessageSquare size={16} style={{ color: '#4ade80' }} />
-        <h2 className="text-sm font-semibold flex-1" style={{ color: v.textPrimary }}>Chat da equipe</h2>
+        <h2 className="text-sm font-semibold flex-1" style={{ color: v.textPrimary }}>
+          {canais.find(c => c.key === canal)?.nome || 'Chat da equipe'}
+        </h2>
         <span className="text-[11px]" style={{ color: v.textSubtle }}>
           {pessoas.length} {pessoas.length === 1 ? 'pessoa' : 'pessoas'}
         </span>
       </div>
+
+      <Salas v={v} canais={canais} atual={canal} onEscolher={setCanal} />
 
       <div ref={caixa}
         onScroll={e => {
@@ -394,7 +459,7 @@ function Chat({ v }) {
             if (e.key === 'Enter' && !e.shiftKey) submeter(e);
             if (e.key === 'Escape') { setRespondendo(null); setEditando(null); setTexto(''); }
           }}
-          placeholder="Escreva para a equipe…  (@ chama alguém · Enter envia · Shift+Enter quebra a linha)"
+          placeholder={`Escreva para ${canais.find(c => c.key === canal)?.nome || 'a equipe'}…  (@ chama alguém · Enter envia · Shift+Enter quebra a linha)`}
           className="flex-1 resize-none"
           style={{ ...v.control, minHeight: 42, maxHeight: 140, lineHeight: 1.4 }} />
         <button type="submit" disabled={!texto.trim() || enviar.isPending}

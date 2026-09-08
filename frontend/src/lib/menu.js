@@ -389,7 +389,25 @@ export function podeVerTela(path, { isAdmin, hasModule, screens }) {
   if (isAdmin) return true;
   const tela = telaDoCaminho(path);
   if (tela?.adminOnly) return false;
-  if (tela?.module && !hasModule(tela.module)) return false;
+  /**
+   * O ARRAY PRECISA SER ABERTO — e não era.
+   *
+   * `hasModule` é variádico: `hasModule('sales', 'financial')`. Aqui ele
+   * recebia `tela.module` inteiro, e metade dos itens do menu declara o
+   * módulo como LISTA (`['comunicacao','agenda']`). O que chegava do
+   * outro lado era `[['comunicacao','agenda']]`, e nenhuma lista de
+   * módulos contém um array — então a resposta era sempre NÃO.
+   *
+   * O efeito era o pior tipo de bug de permissão: a tela aparecia
+   * marcada e liberada em Configurações → Permissões, o módulo estava no
+   * setor, e o item simplesmente não aparecia no menu da pessoa. Quem
+   * configurou marcava de novo, salvava de novo, e continuava sumido.
+   *
+   * Valia para todo item de módulo múltiplo: Comunicação, Agenda,
+   * Pagamentos da Loja, e as telas da área do vendedor.
+   */
+  const modulos = Array.isArray(tela?.module) ? tela.module : (tela?.module ? [tela.module] : []);
+  if (modulos.length && !hasModule(...modulos)) return false;
   if (screens == null) return true;
   // Endereço que não pertence a tela nenhuma do menu (uma rota solta)
   // continua valendo pelo módulo — a lista de telas não é uma lista de
