@@ -301,12 +301,29 @@ async function confirmarPagamento(tenantId, parcelaId, { valor, sem_comprovante,
     };
   }
 
+  const jaLancado = doisDecimais(parcela.paid_amount);
+  const semConfirmacao = jaLancado > 0 && !parcela.paid_at;
+
   const pago = doisDecimais(
     valor != null && valor !== '' ? valor
-      : (parcela.receipt_amount != null ? parcela.receipt_amount
-        : doisDecimais(parcela.amount) - doisDecimais(parcela.paid_amount)),
+      : (parcela.receipt_amount != null ? doisDecimais(parcela.receipt_amount) - jaLancado
+        : doisDecimais(parcela.amount) - jaLancado),
   );
-  if (!(pago > 0)) return { erro: 'Informe o valor recebido.' };
+
+  /**
+   * CONFIRMAR TAMBEM E RATIFICAR — e sem isto a linha ficava presa.
+   *
+   * A parcela paga pelo fluxo antigo ja tem `paid_amount` e nao tem
+   * confirmacao. Conferir o comprovante dela nao levava a lugar nenhum:
+   * "confirmar" exigia um valor maior que zero, e nao havia nada a
+   * acrescentar — o dinheiro ja estava lancado, faltava alguem assumi-lo.
+   *
+   * Agora confirmar com valor zero (ou negativo, quando o lancado passa
+   * do total) e um ato legitimo: NAO mexe no valor, so assina. Quem
+   * confirmou e quando passam a existir, e a conta sai da fila.
+   */
+  const soRatifica = pago <= 0.005 && semConfirmacao;
+  if (!(pago > 0) && !soRatifica) return { erro: 'Informe o valor recebido.' };
 
   const agora = new Date().toISOString();
   const hoje = agora.split('T')[0];
@@ -324,7 +341,7 @@ async function confirmarPagamento(tenantId, parcelaId, { valor, sem_comprovante,
   }
 
   const aplicados = [];
-  let restante = pago;
+  let restante = soRatifica ? 0 : pago;
 
   // 1) A parcela que recebeu o comprovante vem primeiro.
   const cabeNela = Math.max(0, doisDecimais(parcela.amount) - doisDecimais(parcela.paid_amount));
@@ -414,6 +431,11 @@ async function confirmarPagamento(tenantId, parcelaId, { valor, sem_comprovante,
     // proximo pedido, e inventar uma linha aqui sujaria o contas a
     // receber com algo que ninguem cobra.
     sobra: restante > 0.005 ? restante : 0,
+    // Ratificacao: nada de novo entrou, o financeiro assumiu o que ja
+    // estava lancado. A tela diz isso em vez de anunciar um recebimento
+    // que nao aconteceu agora.
+    ratificado: soRatifica,
+    valor_ratificado: soRatifica ? jaLancado : 0,
     confirmado_por: quem,
     confirmado_em: agora,
   };

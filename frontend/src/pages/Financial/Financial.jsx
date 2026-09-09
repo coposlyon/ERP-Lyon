@@ -551,8 +551,15 @@ function ConferirModal({ conta, onClose, onFeito }) {
  * aqui só se diz quanto entrou.
  */
 function ConfirmarModal({ conta, onClose, onFeito }) {
-  const falta = Math.max(0, (Number(conta.amount) || 0) - (Number(conta.paid_amount) || 0));
-  const [valor, setValor] = useState(String(conta.receipt_amount ?? falta ?? ''));
+  const jaLancado = Number(conta.paid_amount) || 0;
+  const falta = Math.max(0, (Number(conta.amount) || 0) - jaLancado);
+  // Linha que já tem dinheiro lançado sem ninguém ter confirmado: o que
+  // falta ali não é valor, é assinatura. O campo começa em zero.
+  const ratificar = jaLancado > 0 && !conta.paid_at;
+  const sugerido = ratificar
+    ? Math.max(0, (Number(conta.receipt_amount) || jaLancado) - jaLancado)
+    : (conta.receipt_amount ?? falta);
+  const [valor, setValor] = useState(String(sugerido ?? ''));
   const [enviando, setEnviando] = useState(false);
   const semComprovante = !conta.receipt_url;
   const excedente = Math.max(0, (Number(String(valor).replace(',', '.')) || 0) - falta);
@@ -568,7 +575,9 @@ function ConfirmarModal({ conta, onClose, onFeito }) {
       if ((r.aplicados || []).length > 1) extra.push(`${r.aplicados.length - 1} parcela(s) seguinte(s) abatida(s)`);
       if (r.saldo) extra.push(`saldo de ${fmt(r.saldo.amount)} em aberto`);
       if (r.sobra > 0) extra.push(`sobrou ${fmt(r.sobra)} de crédito com o cliente`);
-      toast.success(`Pagamento confirmado por ${r.confirmado_por}${extra.length ? ` — ${extra.join(', ')}` : ''}`,
+      toast.success(r.ratificado
+        ? `${fmt(r.valor_ratificado)} confirmados por ${r.confirmado_por}`
+        : `Pagamento confirmado por ${r.confirmado_por}${extra.length ? ` — ${extra.join(', ')}` : ''}`,
         { duration: 8000 });
       onFeito();
     } catch (e) {
@@ -586,8 +595,16 @@ function ConfirmarModal({ conta, onClose, onFeito }) {
         )}
       </div>
 
+      {ratificar && (
+        <p className="text-[12.5px] rounded-xl px-3 py-2 bg-blue-50 border border-blue-200 text-blue-900">
+          Esta conta já tem <b>{fmt(jaLancado)}</b> lançados sem confirmação do financeiro.
+          Confirmar <b>assina esse valor com o seu nome</b> — não precisa digitar nada.
+          Se ainda entrou mais dinheiro, some no campo abaixo.
+        </p>
+      )}
+
       <label className="block">
-        <span className="label">Quanto entrou</span>
+        <span className="label">{ratificar ? 'Entrou mais alguma coisa? (opcional)' : 'Quanto entrou'}</span>
         <input className="input w-44" type="number" step="0.01" min={0}
           value={valor} onChange={e => setValor(e.target.value)} />
       </label>
@@ -607,7 +624,8 @@ function ConfirmarModal({ conta, onClose, onFeito }) {
 
       <div className="flex justify-end gap-2">
         <button className="btn-secondary" onClick={onClose} disabled={enviando}>Cancelar</button>
-        <button className="btn-primary" onClick={confirmar} disabled={enviando || !(Number(String(valor).replace(',', '.')) > 0)}>
+        <button className="btn-primary" onClick={confirmar}
+          disabled={enviando || (!ratificar && !(Number(String(valor).replace(',', '.')) > 0))}>
           {enviando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
           Confirmar pagamento
         </button>
@@ -921,12 +939,22 @@ export default function Financial() {
       render: (v, row) => {
         const sit = row.situacao || v;
         return (
-          <span className="inline-flex items-center gap-1 flex-wrap">
-            <span className={`badge ${statusClass[sit] || 'badge-gray'}`}>{statusLabel[sit] || sit}</span>
-            {row.pago_sem_confirmacao > 0 && (
-              <span className="badge badge-yellow"
-                title={`${fmt(row.pago_sem_confirmacao)} lançados sem confirmação do financeiro`}>
-                aguardando confirmação
+          <span className="inline-flex flex-col items-start gap-0.5">
+            <span className="inline-flex items-center gap-1 flex-wrap">
+              <span className={`badge ${statusClass[sit] || 'badge-gray'}`}>{statusLabel[sit] || sit}</span>
+              {row.pago_sem_confirmacao > 0 && (
+                <span className="badge badge-yellow"
+                  title={`${fmt(row.pago_sem_confirmacao)} lançados sem confirmação do financeiro`}>
+                  aguardando confirmação
+                </span>
+              )}
+            </span>
+            {/* QUEM CONFIRMOU, NA LINHA. "Pago" sozinho não diz de quem é
+                a responsabilidade; e é a primeira pergunta quando o
+                extrato não bate. */}
+            {row.paid_at && (
+              <span className="text-[10.5px] text-green-700">
+                confirmado por {row.paid_by || 'financeiro'}
               </span>
             )}
           </span>
@@ -959,7 +987,11 @@ export default function Financial() {
                 <FileCheck2 size={12} /> Conferir
               </button>
             )}
-            {tab === 'receivable' && !confirmado && !quitada && (conferido || !temComprovante) && (
+            {/* SEM `!quitada`. A linha paga pelo fluxo antigo JÁ está
+                quitada e mesmo assim precisa de confirmação — era ela
+                que ficava presa: conferia o comprovante e não havia
+                botão nenhum para onde ir. */}
+            {tab === 'receivable' && !confirmado && (conferido || !temComprovante) && (
               <button onClick={() => setConfirmar(row)} className="btn-primary btn-sm">
                 <Check size={12} /> Confirmar
               </button>
