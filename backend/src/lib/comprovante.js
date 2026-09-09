@@ -470,24 +470,39 @@ async function conferir(tenantId, parcelaId, { status, nota, req }) {
 }
 
 /**
- * O PEDIDO ESTA PAGO? — a soma dos comprovantes cobre o total?
+ * O QUE ESTE PEDIDO DEVE HOJE — e nao o que ele deve no total.
  *
- * E esta resposta que libera a etapa de Pagamento no fluxo. Ela mora
- * AQUI, e nao na rota, porque duas telas diferentes montam a ficha do
- * pedido — o painel do fluxo e a tela de detalhe do pedido — e cada
- * uma carrega a venda do seu jeito. Quando o calculo ficou dentro de
- * uma delas, a outra abriu com o requisito eternamente por cumprir:
- * comprovante anexado, quitado na tela, e "Confirmar o pagamento"
- * apagado do mesmo jeito.
+ * A ETAPA DE PAGAMENTO TRAVAVA A VENDA A PRAZO INTEIRA. Ela perguntava
+ * se TODAS as parcelas estavam quitadas: num pedido em 2x com
+ * vencimentos em outubro e novembro, a fabrica so podia comecar depois
+ * da ultima parcela cair — dois meses depois de o cliente comprar.
  *
- * Erro de leitura devolve `false`: a etapa fica parada, que e melhor
- * do que dar por pago o que ninguem conseguiu conferir.
+ * A pergunta certa e outra: o cliente esta em dia com o que JA venceu?
+ * Parcela com vencimento la na frente nao e pendencia, e o combinado.
+ *
+ * Parcela sem vencimento e a do pedido a vista: ela e devida agora.
+ */
+function devidasAgora(parcelas, hoje = new Date().toISOString().slice(0, 10)) {
+  return parcelas.filter(p => {
+    const venc = p.due_date ? String(p.due_date).slice(0, 10) : null;
+    return !venc || venc <= hoje;
+  });
+}
+
+/**
+ * O dinheiro que ja deveria ter entrado, entrou?
+ *
+ * Sem nada vencido, a resposta e SIM — nao ha o que cobrar hoje. E o
+ * caso da venda a prazo pura: o pedido anda, e o contas a receber
+ * continua marcando as parcelas para os meses seguintes.
  */
 async function estaQuitada(tenantId, venda) {
   try {
     const parcelas = await parcelasDaVenda(tenantId, venda);
     if (!parcelas.length) return false;
-    const aberto = parcelas.reduce((soma, x) => soma + (Number(x.falta) || 0), 0);
+    const agora = devidasAgora(parcelas);
+    if (!agora.length) return true;            // nada vencido: nada a cobrar hoje
+    const aberto = agora.reduce((soma, x) => soma + (Number(x.falta) || 0), 0);
     return aberto <= 0.005;
   } catch {
     return false;
@@ -495,37 +510,54 @@ async function estaQuitada(tenantId, venda) {
 }
 
 /**
- * O FINANCEIRO OLHOU E DISSE QUE ESTÁ CERTO?
+ * O FINANCEIRO OLHOU E DISSE QUE ESTA CERTO?
  *
- * `estaQuitada` responde outra pergunta: se o VALOR está coberto. As
- * duas foram a mesma coisa por um tempo, e não são — quem anexa o
- * comprovante é o comercial ou o próprio cliente, e anexar é uma
- * AFIRMAÇÃO ("paguei"), não uma conferência. O print de uma
- * transferência agendada, o comprovante de outro pedido e o valor
- * digitado errado passam todos por anexo; nenhum deles passa por
- * alguém do financeiro abrindo o extrato.
+ * `estaQuitada` responde outra pergunta: se o VALOR esta coberto. As
+ * duas foram a mesma coisa por um tempo, e nao sao — quem anexa o
+ * comprovante e o comercial ou o proprio cliente, e anexar e uma
+ * AFIRMACAO ("paguei"), nao uma conferencia. O print de uma
+ * transferencia agendada, o comprovante de outro pedido e o valor
+ * digitado errado passam todos por anexo; nenhum deles passa por alguem
+ * do financeiro abrindo o extrato.
  *
- * Enquanto a etapa de Pagamento se contentava com o anexo, a fábrica
- * começava a produzir em cima de uma afirmação. Agora ela espera a
- * conferência — que é o ato que o `conferir()` acima já registrava
- * (com quem conferiu e quando) e que ninguém estava obrigado a fazer.
+ * Vale so para o que e devido HOJE, pelo mesmo motivo da funcao acima:
+ * ninguem confere o comprovante de uma parcela que vence mes que vem.
  *
- * Parcela de valor zero não conta: ela não tem o que conferir.
+ * Parcela de valor zero nao conta: ela nao tem o que conferir.
  */
 async function estaConferida(tenantId, venda) {
   try {
     const parcelas = await parcelasDaVenda(tenantId, venda);
-    const comValor = parcelas.filter(p => (Number(p.amount) || 0) > 0.005);
-    if (!comValor.length) return false;
-    const aberto = comValor.reduce((soma, x) => soma + (Number(x.falta) || 0), 0);
+    const agora = devidasAgora(parcelas).filter(p => (Number(p.amount) || 0) > 0.005);
+    if (!agora.length) return true;            // nada vencido: nada a conferir
+    const aberto = agora.reduce((soma, x) => soma + (Number(x.falta) || 0), 0);
     if (aberto > 0.005) return false;
-    return comValor.every(p => p.receipt_status === 'conferido');
+    return agora.every(p => p.receipt_status === 'conferido' && !!p.paid_at);
   } catch {
     return false;
   }
 }
 
+/** O resumo que a ficha de fluxo mostra: o que vence hoje, e o que vem depois. */
+async function situacaoDoPagamento(tenantId, venda) {
+  try {
+    const parcelas = await parcelasDaVenda(tenantId, venda);
+    const hoje = new Date().toISOString().slice(0, 10);
+    const agora = devidasAgora(parcelas, hoje);
+    const futuras = parcelas.filter(p => !agora.includes(p));
+    const doisDec = v => Math.round((Number(v) || 0) * 100) / 100;
+    return {
+      vencido_aberto: doisDec(agora.reduce((s, x) => s + (Number(x.falta) || 0), 0)),
+      a_vencer: doisDec(futuras.reduce((s, x) => s + (Number(x.falta) || 0), 0)),
+      parcelas_a_vencer: futuras.length,
+      proximo_vencimento: futuras.map(p => p.due_date).filter(Boolean).sort()[0] || null,
+    };
+  } catch {
+    return { vencido_aberto: 0, a_vencer: 0, parcelas_a_vencer: 0, proximo_vencimento: null };
+  }
+}
+
 module.exports = {
   parcelasDaVenda, anexarComprovante, confirmarPagamento, lerComprovante, conferir,
-  linkDoComprovante, enriquecer, estaQuitada, estaConferida,
+  linkDoComprovante, enriquecer, estaQuitada, estaConferida, situacaoDoPagamento,
 };

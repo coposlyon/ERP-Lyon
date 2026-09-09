@@ -34,6 +34,9 @@
 const A = require('./atencao');
 const { podeModulo } = require('./setores');
 
+const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const dataBR = d => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '');
+
 // ── Quem responde por cada fase ─────────────────────────────
 //
 // O módulo é o mesmo do menu (lib/setores.js). Gerente e admin passam
@@ -135,17 +138,29 @@ const REQUISITOS = {
    * essa porta, venda paga em dinheiro no balcão (que não tem
    * comprovante nenhum) travaria para sempre.
    */
-  pagamento: v => [
-    { chave: 'comprovante', label: 'Comprovante do pagamento anexado',
-      ok: !!v.comprovante_quitado || !!v.pagamento?.liberado,
-      como: 'Anexe o comprovante na parcela, aqui em cima. Enquanto o valor do pedido '
-          + 'não estiver coberto, o financeiro não tem lastro do que entrou.' },
-    { chave: 'conferido', label: 'Comprovante conferido pelo financeiro',
-      ok: !!v.comprovante_conferido || !!v.pagamento?.liberado,
-      como: 'O financeiro abre a parcela e marca o comprovante como conferido. '
-          + 'Anexar é dizer que pagou; conferir é ver o dinheiro na conta — e é isso '
-          + 'que solta a produção.' },
-  ],
+  pagamento: v => {
+    // O QUE PESA É O QUE JÁ VENCEU. Parcela de novembro não é pendência
+    // hoje — e exigir o comprovante dela seria mandar a fábrica esperar
+    // dois meses por um pedido que o cliente já combinou como pagar.
+    const r = v.pagamento_resumo || {};
+    const nadaHoje = !(r.vencido_aberto > 0) && !!r.parcelas_a_vencer;
+    const aPrazo = r.parcelas_a_vencer
+      ? ` A prazo: ${r.parcelas_a_vencer} parcela(s), ${brl(r.a_vencer)} a vencer`
+        + `${r.proximo_vencimento ? ` (próxima em ${dataBR(r.proximo_vencimento)})` : ''}.`
+      : '';
+    return [
+      { chave: 'comprovante',
+        label: nadaHoje ? 'Nada vencido para hoje' : 'Comprovante do que já venceu, anexado',
+        ok: !!v.comprovante_quitado || !!v.pagamento?.liberado,
+        como: 'Anexe o comprovante na parcela vencida, aqui em cima. Enquanto o que já '
+            + 'venceu não estiver coberto, o financeiro não tem lastro do que entrou.' + aPrazo },
+      { chave: 'conferido',
+        label: nadaHoje ? 'Nada a conferir hoje' : 'Comprovante conferido pelo financeiro',
+        ok: !!v.comprovante_conferido || !!v.pagamento?.liberado,
+        como: 'O financeiro abre a parcela e confirma o pagamento. Anexar é dizer que '
+            + 'pagou; conferir é ver o dinheiro na conta — e é isso que solta a produção.' + aPrazo },
+    ];
+  },
 
   /**
    * A ARTE, E O SIM DO CLIENTE.

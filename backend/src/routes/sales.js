@@ -290,7 +290,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', validate(saleSchema), async (req, res) => {
   const {
     customer_id, type, items, notes, discount, delivery_date,
-    artwork_url, artwork_notes, payment_method, installments, first_due_date,
+    artwork_url, artwork_notes, payment_method, installments, first_due_date, entrada,
     operation_date, event_date, ship_date, max_delivery_date, freight, payment_adjustment, carrier_id,
     delivery_mode, // entrega ou retirada — decide se o pedido passa por Em Trânsito
     billing_company_id, receiving_account_id, // Contábil: empresa faturadora + conta de destino (migração 043)
@@ -339,6 +339,14 @@ router.post('/', validate(saleSchema), async (req, res) => {
        */
       _freight:              Number(freight) || 0,
       _payment_adjustment:   Number(payment_adjustment) || 0,
+      /**
+       * A ENTRADA — o que o cliente paga no ato.
+       *
+       * Vira a primeira parcela, vencendo hoje, e o resto se divide no
+       * prazo. Só faz sentido na venda a prazo: à vista o pedido
+       * inteiro já é a entrada.
+       */
+      _entrada:              payment_method === 'a_prazo' ? Math.max(0, Number(entrada) || 0) : 0,
     });
 
     if (error) {

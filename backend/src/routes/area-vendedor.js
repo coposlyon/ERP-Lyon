@@ -261,7 +261,8 @@ router.get('/pedidos/:id', async (req, res) => {
           // da etapa de Pagamento, e sem ela esta tela mostraria
           // "Confirmar o pagamento" liberado num pedido que o financeiro
           // ainda não olhou.
-          comprovante_conferido: await C.estaConferida(req.tenantId, data) },
+          comprovante_conferido: await C.estaConferida(req.tenantId, data),
+          pagamento_resumo: await C.situacaoDoPagamento(req.tenantId, data) },
         etapasDosItens(itens),
         { acesso: req.acesso, perfil: req.userProfile },
       ),

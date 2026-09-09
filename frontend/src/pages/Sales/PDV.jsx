@@ -225,6 +225,10 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [receivingAccountId, setReceivingAccountId] = useState('');
   const [receivedAmount, setReceivedAmount] = useState('');
   const [installments, setInstallments] = useState(1);
+  // A ENTRADA: o que o cliente paga no ato. O resto vira as parcelas.
+  // Texto, e não número, porque o campo fica vazio enquanto ninguém
+  // digita — e zero digitado é diferente de campo em branco.
+  const [entrada, setEntrada] = useState('');
   const [operationDate, setOperationDate] = useState(todayISO);
   // De onde veio o cliente (Shopee, WhatsApp, Site...). Começa vazio de
   // propósito: um padrão chutado enche o relatório de canal de mentira.
@@ -1038,6 +1042,12 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const payPercent = payTerm ? (Number(payTerm.percent) || 0) : 0;
   const paymentAdj = payTerm ? Math.round(goodsBase * payPercent) / 100 : 0; // − desconto / + juros
   const total = Math.max(0, goodsBase + paymentAdj + freteValue);
+
+  // A ENTRADA e o que sobra para o prazo. Ficam aqui, junto do total,
+  // porque as duas mudam com ele: mexer no frete muda o que resta a
+  // parcelar, e a tela tem de dizer o valor certo enquanto se digita.
+  const entradaValor = Math.max(0, Number(String(entrada).replace(',', '.')) || 0);
+  const restanteAPrazo = Math.max(0, total - entradaValor);
   /**
    * CARTAO SO EXISTE COM A MAQUININHA NA FRENTE.
    *
@@ -1168,7 +1178,10 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
         return noteParts.length ? { notes: noteParts.join(' · ') } : {};
       })(),
       payment_method: paymentMethod,
-      ...(paymentMethod === 'a_prazo' ? { installments, first_due_date: firstDueDate } : {}),
+      ...(paymentMethod === 'a_prazo'
+        ? { installments, first_due_date: firstDueDate,
+            entrada: Math.max(0, Number(String(entrada).replace(',', '.')) || 0) }
+        : {}),
       ...(billingCompanyId ? { billing_company_id: billingCompanyId } : {}),
       ...(receivingAccountId ? { receiving_account_id: receivingAccountId } : {}),
     });
@@ -2266,12 +2279,29 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                   ⚠️ Selecione o cliente — a prazo gera conta a receber no nome dele.
                 </p>
               )}
+              {/* A ENTRADA.
+                  "300 de entrada e o resto em 1x" era uma venda que o
+                  sistema não sabia fazer: as parcelas saíam sempre
+                  iguais. Ela vira a primeira parcela, vencendo hoje —
+                  é ela que recebe o comprovante e é ela que libera a
+                  fábrica; as do prazo não seguram o pedido. */}
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-gray-700">Parcelas</span>
+                <span className="text-sm font-medium text-gray-700">Entrada (hoje)</span>
+                <div className="relative w-40">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">R$</span>
+                  <input className="input pl-8 w-40 text-sm" type="number" step="0.01" min={0}
+                    max={total} placeholder="0,00" value={entrada}
+                    onChange={e => setEntrada(e.target.value)} />
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-gray-700">
+                  {entradaValor > 0 ? 'Parcelas do restante' : 'Parcelas'}
+                </span>
                 <select className="input w-32 text-sm" value={installments}
                   onChange={e => setInstallments(parseInt(e.target.value))}>
                   {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
-                    <option key={n} value={n}>{n}x de {fmt(total / n)}</option>
+                    <option key={n} value={n}>{n}x de {fmt(restanteAPrazo / n)}</option>
                   ))}
                 </select>
               </div>
@@ -2279,6 +2309,25 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
                 <span className="text-sm font-medium text-gray-700">1º vencimento</span>
                 <CampoData className="input w-40 text-sm" value={firstDueDate} onChange={setFirstDueDate} />
               </div>
+
+              {/* A CONTA POR EXTENSO, antes de fechar. Quem está com o
+                  cliente na frente precisa dizer o valor em voz alta. */}
+              <p className="text-[12px] rounded-lg px-2.5 py-2 bg-gray-50 border border-gray-200 text-gray-700">
+                {entradaValor > 0
+                  ? <>Entrada de <b>{fmt(entradaValor)}</b> hoje
+                      {restanteAPrazo > 0.005
+                        ? <> + <b>{installments}x</b> de <b>{fmt(restanteAPrazo / installments)}</b>
+                            {firstDueDate ? <> a partir de {String(firstDueDate).slice(0, 10).split('-').reverse().join('/')}</> : null}</>
+                        : <> — a entrada cobre o pedido inteiro, sem parcelas.</>}
+                    </>
+                  : <><b>{installments}x</b> de <b>{fmt(total / installments)}</b>, sem entrada.
+                      O pedido segue para a produção sem esperar as parcelas.</>}
+              </p>
+              {entradaValor > total && (
+                <p className="text-[12px] text-red-600">
+                  A entrada é maior que o total do pedido ({fmt(total)}).
+                </p>
+              )}
             </div>
           )}
           </div>

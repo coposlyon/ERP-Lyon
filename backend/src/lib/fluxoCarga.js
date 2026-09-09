@@ -47,6 +47,9 @@ async function carregarParaFluxo(tenantId, id) {
   // E se o FINANCEIRO conferiu. Anexar é dizer que pagou; conferir é
   // alguém olhando o extrato — e é a conferência que solta a fábrica.
   const comprovante_conferido = await C.estaConferida(tenantId, data);
+  // O que vence hoje e o que vence depois — a etapa de Pagamento fala
+  // disso na tela, em vez de dizer só "falta comprovante".
+  const pagamento_resumo = await C.situacaoDoPagamento(tenantId, data);
 
   // A ARTE ENTRA NA FICHA porque a etapa dela deixou de ser "existe
   // arquivo": a arte que a LOJA manda ainda precisa do sim do cliente,
@@ -55,7 +58,7 @@ async function carregarParaFluxo(tenantId, id) {
   const arte_resumo = resumoDaArte(itens);
 
   return {
-    venda: { ...data, itens_qtd: itens.length, comprovante_quitado, comprovante_conferido, arte_resumo },
+    venda: { ...data, itens_qtd: itens.length, comprovante_quitado, comprovante_conferido, pagamento_resumo, arte_resumo },
     aplicaveis: etapasDosItens(itens),
   };
 }
