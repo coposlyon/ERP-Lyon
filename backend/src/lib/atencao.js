@@ -75,9 +75,9 @@ const STATUS = {
   producao_processo:     { label: 'Produção em processo',        area: 'producao',   aguardando: false, cor: 'azul' },
   producao_finalizada:   { label: 'Produção finalizada',         area: 'producao',   aguardando: false, cor: 'azul',    passo: 17, icone: 'Settings' },
 
-  aguardando_embalagem:  { label: 'Aguardando embalagem',        area: 'producao',   aguardando: true,  cor: 'laranja', passo: 20, icone: 'PackageOpen' },
+  aguardando_embalagem:  { label: 'Aguardando embalagem',        area: 'producao',   aguardando: true,  cor: 'laranja', passo: 22, icone: 'PackageOpen' },
   embalando_pedido:      { label: 'Embalando pedido',            area: 'producao',   aguardando: false, cor: 'laranja' },
-  embalagem_finalizada:  { label: 'Embalagem finalizada',        area: 'producao',   aguardando: false, cor: 'laranja', passo: 21, icone: 'Package' },
+  embalagem_finalizada:  { label: 'Embalagem finalizada',        area: 'producao',   aguardando: false, cor: 'laranja', passo: 23, icone: 'Package' },
 
   aguardando_qualidade:  { label: 'Aguardando controle de qualidade', area: 'qualidade', aguardando: true,  cor: 'roxo', passo: 18, icone: 'ShieldQuestion' },
   conferencia_processo:  { label: 'Em processo de conferência',  area: 'qualidade',  aguardando: false, cor: 'roxo' },
@@ -85,8 +85,8 @@ const STATUS = {
 
   // A foto do produto pronto vai ao cliente antes de o pedido sair —
   // é a última chance de pegar um erro enquanto a caixa ainda está aqui.
-  aguardando_foto:       { label: 'Aguardando foto',             area: 'qualidade',  aguardando: true,  cor: 'roxo',    passo: 22, icone: 'Camera' },
-  foto_enviada:          { label: 'Foto enviada',                area: 'comercial',  aguardando: false, cor: 'ciano',   passo: 23, icone: 'ImageUp' },
+  aguardando_foto:       { label: 'Aguardando foto',             area: 'qualidade',  aguardando: true,  cor: 'roxo',    passo: 20, icone: 'Camera' },
+  foto_enviada:          { label: 'Foto enviada',                area: 'comercial',  aguardando: false, cor: 'ciano',   passo: 21, icone: 'ImageUp' },
 
   aguardando_logistica:  { label: 'Aguardando logística',        area: 'logistica',  aguardando: true,  cor: 'verde' },
   aguardando_coleta:     { label: 'Aguardando coleta / retirada', area: 'logistica', aguardando: true,  cor: 'verde',   passo: 24, icone: 'Truck' },
@@ -404,8 +404,15 @@ const FASES = [
   { key: 'borda',      label: 'Borda',                 icone: 'CircleDashed',   entrando: ['aguardando_borda'],      concluida: ['borda_finalizada'],     opcional: 'borda' },
   { key: 'producao',   label: 'Produção',             icone: 'Settings',       entrando: ['aguardando_producao'],   concluida: ['producao_finalizada'] },
   { key: 'qualidade',  label: 'Controle de Qualidade', icone: 'ShieldCheck',    entrando: ['aguardando_qualidade'],  concluida: ['qualidade_finalizada'] },
-  { key: 'embalagem',  label: 'Embalagem',             icone: 'PackageOpen',    entrando: ['aguardando_embalagem'],  concluida: ['embalagem_finalizada'] },
+  // A FOTO VEM ANTES DA EMBALAGEM, e não depois.
+  //
+  // Estava ao contrário: embalar e só então fotografar. A foto é a
+  // última conferência antes de a caixa sair — e é o que o cliente vê
+  // no portal. Tirá-la depois da embalagem significa, na prática, uma
+  // de duas coisas: abrir a caixa de novo, ou fotografar a caixa
+  // fechada. As duas acontecem, e as duas são erradas.
   { key: 'foto',       label: 'Foto',                  icone: 'Camera',         entrando: ['aguardando_foto'],       concluida: ['foto_enviada'] },
+  { key: 'embalagem',  label: 'Embalagem',             icone: 'PackageOpen',    entrando: ['aguardando_embalagem'],  concluida: ['embalagem_finalizada'] },
   { key: 'coleta',     label: 'Coleta',                icone: 'Truck',          entrando: ['aguardando_coleta'],     concluida: ['mercadoria_coletada', 'produto_retirado'] },
   { key: 'transito',   label: 'Em Trânsito',           icone: 'Truck',          entrando: ['em_transito'],           concluida: [] },
   // O fim da régua é "Pedido Entregue", nunca "Finalizado": finalizado é

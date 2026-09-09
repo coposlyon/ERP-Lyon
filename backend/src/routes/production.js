@@ -12,49 +12,218 @@ const { etapasDosItens, caracteristicasDoItem } = require('../lib/itensPedido');
 
 // Etapas e suas colunas de início/fim
 // Fluxo: Revelação → Pintura → Metalização (opcional) → Produção → Embalagem
-const STAGE_FIELDS = {
-  revelacao:   { start: 'revelacao_inicio',   end: 'revelacao_fim',   label: 'Revelação' },
-  producao:    { start: 'producao_inicio',    end: 'producao_fim',    label: 'Produção' },
-  pintura:     { start: 'pintura_inicio',     end: 'pintura_fim',     label: 'Pintura' },
-  metalizacao: { start: 'metalizacao_inicio', end: 'metalizacao_fim', label: 'Metalização' },
-  embalagem:   { start: 'embalagem_inicio',   end: 'embalagem_fim',   label: 'Embalagem' },
+/**
+ * O CATÁLOGO DAS ETAPAS DA FÁBRICA — UM LUGAR SÓ.
+ *
+ * Isto morava em três mapas separados (que campos gravar, que fase do
+ * pedido mexer, que botões desenhar) e mais uma cópia na tela. Quatro
+ * lugares para descrever a mesma etapa é quatro lugares para
+ * divergirem — foi assim que Borda e Controle de Qualidade acabaram
+ * existindo como status do pedido sem existir no chão de fábrica: quem
+ * estava na máquina não tinha onde registrar, e o pedido só andava se
+ * alguém abrisse a tela do comercial.
+ *
+ * Agora cada etapa se descreve inteira aqui, e a tela PERGUNTA (GET
+ * /production/etapas). Acrescentar uma etapa nova é acrescentar uma
+ * entrada aqui — nada na tela.
+ *
+ * Os CAMPOS são o que a etapa registra, e são o motivo de tudo isto:
+ * o número da matriz que a revelação gravou, o número da máquina que
+ * produziu, a perda de cada etapa, o resultado da qualidade. Sem isso,
+ * "quem fez" é a única pergunta que o histórico responde — e no dia em
+ * que mil copos saem errados, a pergunta é OUTRA: em que matriz, em que
+ * máquina, com quantas perdas.
+ *
+ *   tipo 'texto'   uma linha escrita
+ *   tipo 'numero'  quantidade (perda, avaria)
+ *   tipo 'sim'     caixa que precisa estar marcada para seguir
+ *   tipo 'opcao'   uma entre as opções
+ */
+const ETAPAS = {
+  revelacao: {
+    label: 'Revelação',
+    fase: 'revelacao', processo: 'revelacao_processo',
+    colunas: { start: 'revelacao_inicio', fim: 'revelacao_fim' },
+    campos: {
+      finish: [
+        { key: 'matriz', tipo: 'texto', label: 'Número da matriz', obrigatorio: true,
+          dica: 'É por ele que se acha a tela usada, se o copo sair errado.' },
+        { key: 'matriz_conferida', tipo: 'sim', obrigatorio: true,
+          label: 'Foi informado o número correto da matriz?' },
+      ],
+    },
+  },
+
+  pintura: {
+    label: 'Pintura',
+    fase: 'pintura', processo: 'pintura_processo',
+    colunas: { start: 'pintura_inicio', fim: 'pintura_fim' },
+    campos: { finish: [CAMPO_PERDA()] },
+  },
+
+  borda: {
+    // ETAPA NOVA NO CHÃO DE FÁBRICA — o status já existia desde sempre.
+    // Sem esta entrada, o pedido chegava em "Aguardando aplicação de
+    // borda" e a fábrica não tinha botão nenhum: quem aplicava a borda
+    // trabalhava e o sistema continuava dizendo que ninguém tinha
+    // começado.
+    label: 'Borda',
+    fase: 'borda', processo: 'borda_processo',
+    campos: { finish: [CAMPO_PERDA()] },
+  },
+
+  metalizacao: {
+    /**
+     * METALIZAÇÃO MUDA O QUE A TELA DIZ, MAS NÃO AVANÇA A RÉGUA.
+     *
+     * Ela é etapa do quadro da fábrica e não fase do pedido: mora DENTRO
+     * da produção. `avancaAoTerminar: false` é o que impede o estrago:
+     * terminar a metalização NÃO é terminar a produção.
+     */
+    label: 'Metalização',
+    fase: 'producao', processo: 'metalizacao_processo', avancaAoTerminar: false,
+    colunas: { start: 'metalizacao_inicio', fim: 'metalizacao_fim' },
+    campos: { finish: [CAMPO_PERDA()] },
+  },
+
+  producao: {
+    label: 'Produção',
+    fase: 'producao', processo: 'producao_processo',
+    colunas: { start: 'producao_inicio', fim: 'producao_fim' },
+    // A MATRIZ APARECE AQUI, e não se digita de novo: quem monta a
+    // máquina precisa saber qual tela pegar, e o número já foi gravado
+    // na revelação. Pedir duas vezes é convidar a segunda a divergir.
+    mostraMatriz: true,
+    campos: {
+      start: [
+        { key: 'maquina', tipo: 'texto', label: 'Número da máquina', obrigatorio: true,
+          dica: 'Em qual máquina este pedido está rodando.' },
+      ],
+      finish: [CAMPO_PERDA()],
+    },
+  },
+
+  qualidade: {
+    // A SEGUNDA ETAPA QUE FALTAVA NO CHÃO DE FÁBRICA. "Controle de
+    // qualidade" existia como status e como um módulo à parte que fala
+    // de lotes de matéria-prima — nada a ver com conferir o pedido.
+    label: 'Controle de qualidade',
+    fase: 'qualidade', processo: 'conferencia_processo',
+    campos: {
+      finish: [
+        { key: 'resultado', tipo: 'opcao', obrigatorio: true, label: 'Resultado da conferência',
+          opcoes: [
+            { valor: 'aprovado',  label: 'Aprovado' },
+            { valor: 'reprovado', label: 'Reprovado' },
+          ],
+          dica: 'Reprovado registra a conferência e mantém o pedido aqui, para refazer.' },
+        { key: 'avariadas', tipo: 'numero', label: 'Unidades avariadas', perda: true,
+          dica: 'Peças que saíram com defeito nesta conferência.' },
+      ],
+    },
+  },
+
+  foto: {
+    // A FOTO VEM ANTES DA EMBALAGEM, e é por isso que ela é uma etapa:
+    // fotografar depois de embalar significa abrir a caixa de novo.
+    label: 'Foto',
+    fase: 'foto', processo: null,
+    exigeFoto: true,
+    campos: {
+      finish: [
+        { key: 'fotos_conferidas', tipo: 'sim', obrigatorio: true,
+          label: 'Todas as fotos foram anexadas?' },
+      ],
+    },
+  },
+
+  embalagem: {
+    label: 'Embalagem',
+    fase: 'embalagem', processo: 'embalando_pedido',
+    colunas: { start: 'embalagem_inicio', fim: 'embalagem_fim' },
+    campos: {
+      finish: [
+        { key: 'etiqueta_fragil', tipo: 'sim', obrigatorio: true,
+          label: 'Colou a etiqueta de FRÁGIL?' },
+        { key: 'caixa_identificada', tipo: 'sim', obrigatorio: true,
+          label: 'A caixa está identificada?' },
+        { key: 'conferiu_etiqueta', tipo: 'sim', obrigatorio: true,
+          label: 'Conferiu se o pedido está correto com a etiqueta?' },
+        CAMPO_PERDA(),
+      ],
+    },
+  },
 };
 
 /**
- * A ETAPA DO CHÃO DE FÁBRICA E A FASE DO PEDIDO SÃO A MESMA COISA.
+ * A PERDA É A MESMA PERGUNTA EM CINCO ETAPAS.
  *
- * Esta tela e a linha do tempo do pedido viviam em mundos separados:
- * terminar a embalagem aqui gravava `status = 'ready'` e terminar
- * qualquer outra gravava `'in_production'` — dois rótulos do fluxo
- * ANTIGO. O efeito era o pior possível: o pedido andava na produção e
- * ANDAVA PARA TRÁS na linha do tempo, caindo num status que a régua nem
- * conhece. Quem olhasse a tela do pedido via a revelação sumir.
+ * Perde-se copo na pintura, na borda, na produção e na embalagem, e o
+ * campo é idêntico nas quatro. Escrever quatro vezes é aceitar que uma
+ * delas vai ficar diferente na primeira alteração.
  *
- * Agora quem move é o mesmo motor de sempre (lib/fluxoPedido.js):
- * iniciar marca "em processo", finalizar CONCLUI a fase e entrega o
- * pedido na próxima. Metalização não tem fase própria no fluxo — ela
- * registra hora e não mexe no status, que é o certo para uma etapa que
- * o pedido pode ou não ter.
+ * `perda: true` é o que faz o servidor gravar a linha em
+ * PRODUCAO_PERDAS e dar a baixa no estoque — o mesmo caminho do botão
+ * "Registrar perda", que continua existindo para a perda avulsa.
  */
-const FASE_DA_ETAPA = {
-  revelacao: { fase: 'revelacao', processo: 'revelacao_processo' },
-  pintura:   { fase: 'pintura',   processo: 'pintura_processo' },
+function CAMPO_PERDA() {
+  return {
+    key: 'perda', tipo: 'numero', label: 'Perdeu alguma unidade?', perda: true,
+    dica: 'Deixe zerado se não houve perda. O que for informado sai do estoque.',
+  };
+}
 
-  // METALIZACAO MUDA O QUE A TELA DIZ, MAS NAO AVANCA A REGUA.
-  //
-  // Ela e etapa do quadro da fabrica e nao fase do pedido: mora DENTRO
-  // da producao. Ficava fora deste mapa, e o efeito era o comercial e o
-  // cliente lendo "Aguardando producao" enquanto a peca estava na
-  // metalizadora.
-  //
-  // `avancaAoTerminar: false` e o que impede o estrago inverso:
-  // terminar a metalizacao NAO e terminar a producao, e sem esta trava
-  // o pedido pularia a fase inteira ao fechar um acabamento.
-  metalizacao: { fase: 'producao', processo: 'metalizacao_processo', avancaAoTerminar: false },
+/** As etapas que ESTE pedido pode ter, na ordem em que acontecem. */
+function etapasDoPedido(aplicaveis) {
+  const ordem = ['revelacao', 'pintura', 'borda', 'metalizacao', 'producao', 'qualidade', 'foto', 'embalagem'];
+  return ordem.filter(k => {
+    const e = ETAPAS[k];
+    const fase = A.FASES.find(f => f.key === e.fase);
+    // Fase opcional (pintura, borda, serigrafia) só entra se o pedido a
+    // contratou. Metalização não tem fase própria: acompanha a produção.
+    if (fase?.opcional) return !!aplicaveis[fase.opcional];
+    return true;
+  });
+}
 
-  producao:  { fase: 'producao',  processo: 'producao_processo' },
-  embalagem: { fase: 'embalagem', processo: 'embalando_pedido' },
-};
+/**
+ * O QUE A FÁBRICA PODE FAZER COM ESTE PEDIDO AGORA.
+ *
+ * Quem responde é o STATUS, e não uma corrente de "a etapa anterior
+ * terminou". A corrente morava na tela, era uma segunda régua paralela
+ * à do pedido, e por isso não conhecia borda nem qualidade: um pedido
+ * em "Aguardando aplicação de borda" não tinha botão nenhum.
+ *
+ * O status já diz exatamente onde o pedido está. `aguardando_borda`
+ * quer dizer "dá para começar a borda"; `borda_processo` quer dizer
+ * "dá para terminar". Não há terceira leitura.
+ */
+function acoesDoPedido(venda, aplicaveis) {
+  const status = venda?.status;
+  const acoes = [];
+  for (const key of etapasDoPedido(aplicaveis)) {
+    const e = ETAPAS[key];
+    const fase = A.FASES.find(f => f.key === e.fase);
+    const entrando = (fase?.entrando || []).includes(status);
+
+    if (e.avancaAoTerminar === false) {
+      // Metalização acontece DENTRO da produção: vale em qualquer
+      // momento dela, e não avança a régua ao terminar.
+      const naProducao = entrando || status === 'producao_processo' || status === e.processo;
+      if (naProducao && status !== e.processo) acoes.push({ stage: key, action: 'start' });
+      if (status === e.processo) acoes.push({ stage: key, action: 'finish' });
+      continue;
+    }
+
+    if (entrando) {
+      // Etapa sem "em processo" própria (foto) começa e termina no
+      // mesmo status — ela não tem meio-termo para mostrar.
+      acoes.push({ stage: key, action: e.processo ? 'start' : 'finish' });
+    }
+    if (e.processo && status === e.processo) acoes.push({ stage: key, action: 'finish' });
+  }
+  return acoes;
+}
 
 /**
  * A FILA DA PRODUÇÃO — quem entra e quem não entra.
@@ -145,6 +314,12 @@ router.get('/', async (req, res) => {
         // Tem o que a fábrica registrar? É a única pergunta que sobrou:
         // copo liso não tem arte, vegetal nem tela.
         interagivel: !!aplicaveis.personalizado,
+        // O QUE DÁ PARA FAZER COM ELE AGORA — respondido aqui, e não na
+        // tela. A tela desenha o botão; quem decide se ele existe é
+        // quem conhece o status e as etapas que este pedido tem.
+        acoes: aplicaveis.personalizado ? acoesDoPedido(s, aplicaveis) : [],
+        etapas: aplicaveis.personalizado ? etapasDoPedido(aplicaveis) : [],
+        status_label: A.infoStatus(s.status).label,
         id: s.id, number: s.number, created_at: s.created_at,
         customer: s.CLIENTES?.name || 'Consumidor Final',
         seller: s.USUARIOS?.name || null,
@@ -175,6 +350,24 @@ router.get('/', async (req, res) => {
       sem_personalizacao: fila.filter(r => !r.personalizado).length,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * O CATÁLOGO, PARA A TELA DESENHAR.
+ *
+ * A tela não sabe quais são as etapas nem que campos cada uma pede —
+ * ela pergunta. Era o contrário: a lista de etapas estava escrita na
+ * tela E no servidor, e as duas discordavam (a tela não conhecia borda
+ * nem qualidade). Quem pergunta nunca discorda.
+ */
+router.get('/etapas', (req, res) => {
+  res.json({
+    etapas: Object.entries(ETAPAS).map(([key, e]) => ({
+      key, label: e.label, fase: e.fase,
+      exigeFoto: !!e.exigeFoto, mostraMatriz: !!e.mostraMatriz,
+      campos: { start: e.campos?.start || [], finish: e.campos?.finish || [] },
+    })),
+  });
 });
 
 // ════════ Serigrafia: configuração, perda de matriz e quadros (telas) ════════
@@ -301,7 +494,7 @@ router.get('/:id', async (req, res) => {
     if (error || !sale) return res.status(404).json({ error: 'Pedido não encontrado' });
 
     const { data: items } = await supabase
-      .from('VENDA_ITENS').select('*, PRODUTOS(name, code, unit)')
+      .from('VENDA_ITENS').select('*, PRODUTOS(name, code, unit, ink_type)')
       .eq('sale_id', req.params.id);
 
     const { data: perdas } = await supabase
@@ -309,12 +502,24 @@ router.get('/:id', async (req, res) => {
       .eq('tenant_id', req.tenantId).eq('sale_id', req.params.id)
       .order('created_at', { ascending: false });
 
+    const carac = (items || []).map(i => caracteristicasDoItem(i));
+    const aplicaveis = etapasDosItens(carac);
+
     res.json({
       ...sale,
       order_date: sale.created_at ? String(sale.created_at).slice(0, 10) : null,
       photos: Array.isArray(sale.production_photos) ? sale.production_photos : [],
       history: Array.isArray(sale.production_log) ? sale.production_log : [],
       perdas: perdas || [],
+      // O mesmo que a fila diz, para a tela do pedido aberto não ter de
+      // recalcular nada por conta própria.
+      acoes: aplicaveis.personalizado ? acoesDoPedido(sale, aplicaveis) : [],
+      etapas: aplicaveis.personalizado ? etapasDoPedido(aplicaveis) : [],
+      status_label: A.infoStatus(sale.status).label,
+      // A matriz que a revelação gravou, para quem for montar a máquina.
+      matriz: matrizDoPedido(sale.production_log),
+      // Quantas fotos este pedido precisa ter: uma por arte.
+      artes: artesDoPedido(items),
       items: (items || []).map(it => ({
         product_id: it.product_id,
         product_code: it.PRODUTOS?.code, product_name: it.product_name || it.PRODUTOS?.name,
@@ -349,152 +554,339 @@ router.patch('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Iniciar / Finalizar etapa (registra quem e quando) ────
-router.post('/:id/stage', async (req, res) => {
-  const { stage, action, password, actor_user, quadro, conferido } = req.body;
-  const def = STAGE_FIELDS[stage];
-  if (!def || !['start', 'finish'].includes(action)) return res.status(400).json({ error: 'Etapa ou ação inválida' });
-  try {
-    // Toda mudança de etapa exige usuário + senha (confirmação + histórico)
-    if (!String(actor_user || '').trim()) return res.status(400).json({ error: 'Informe o usuário.' });
-    if (!password) return res.status(400).json({ error: 'Digite sua senha para confirmar.' });
-    const email = req.user?.email;
-    // Não usar 401: o interceptor do front trata 401 como sessão expirada e desloga.
-    if (!email) return res.status(403).json({ error: 'Não consegui confirmar sua sessão. Recarregue a página e tente de novo.' });
-    const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-    const { error: authErr } = await client.auth.signInWithPassword({ email, password });
-    if (authErr) {
-      const badPass = authErr.status === 400 || /invalid|credential|password|senha/i.test(authErr.message || '');
-      return res.status(badPass ? 403 : 502).json({ error: badPass ? 'Senha incorreta.' : `Não foi possível confirmar a senha: ${authErr.message}` });
-    }
+/**
+ * CONFIRMAR QUEM É — DUAS VEZES, DE PROPÓSITO.
+ *
+ * A senha é pedida ao preencher e PEDIDA DE NOVO na tela de "tem
+ * certeza". Não é zelo excessivo: entre uma e outra está a conferência
+ * dos dados, e é ali que a pessoa lê "matriz 47" e percebe que digitou
+ * 74. Uma confirmação que não custa nada não faz ninguém reler.
+ *
+ * As duas são validadas de verdade, contra o Supabase Auth. Comparar a
+ * segunda com a primeira no navegador seria teatro — bastaria colar o
+ * mesmo texto errado duas vezes.
+ */
+async function confirmarIdentidade(req, senhas) {
+  const email = req.user?.email;
+  // Não usar 401: o interceptor do front trata 401 como sessão expirada.
+  if (!email) return 'Não consegui confirmar sua sessão. Recarregue a página e tente de novo.';
 
-    // Revelação tem campos extras: nº do quadro + conferido
-    if (stage === 'revelacao') {
-      if (!String(quadro || '').trim()) return res.status(400).json({ error: 'Informe a numeração do quadro.' });
-      if (!conferido) return res.status(400).json({ error: 'Marque "Conferido" para confirmar.' });
+  const client = makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+  for (const [i, senha] of senhas.entries()) {
+    if (!senha) return i === 0 ? 'Digite sua senha para confirmar.' : 'Digite a senha de novo para confirmar.';
+    const { error } = await client.auth.signInWithPassword({ email, password: senha });
+    if (error) {
+      const errada = error.status === 400 || /invalid|credential|password|senha/i.test(error.message || '');
+      if (errada) return i === 0 ? 'Senha incorreta.' : 'A segunda senha não confere.';
+      return `Não foi possível confirmar a senha: ${error.message}`;
     }
+  }
+  return null;
+}
+
+/**
+ * OS CAMPOS DA ETAPA, CONFERIDOS AQUI E NÃO SÓ NA TELA.
+ *
+ * A tela já não deixa avançar sem preencher; isto é o servidor dizendo
+ * a mesma coisa. Uma aba velha aberta desde ontem, um duplo clique
+ * antes do formulário carregar, um `curl` — todos chegam por aqui.
+ */
+function conferirCampos(campos, dados) {
+  const registro = {};
+  for (const c of campos) {
+    const bruto = dados?.[c.key];
+    if (c.tipo === 'sim') {
+      if (c.obrigatorio && !bruto) return { erro: `Marque "${c.label}" para confirmar.` };
+      registro[c.key] = !!bruto;
+    } else if (c.tipo === 'numero') {
+      const n = Number(bruto || 0);
+      if (Number.isNaN(n) || n < 0) return { erro: `${c.label}: informe um número válido.` };
+      if (c.obrigatorio && !n) return { erro: `Informe ${c.label.toLowerCase()}.` };
+      registro[c.key] = n;
+    } else if (c.tipo === 'opcao') {
+      const v = String(bruto || '').trim();
+      if (!c.opcoes.some(o => o.valor === v)) return { erro: `Escolha: ${c.label.toLowerCase()}.` };
+      registro[c.key] = v;
+    } else {
+      const v = String(bruto || '').trim();
+      if (c.obrigatorio && !v) return { erro: `Informe ${c.label.toLowerCase()}.` };
+      registro[c.key] = v || null;
+    }
+  }
+  return { registro };
+}
+
+/** O número da matriz que a revelação deste pedido gravou. */
+function matrizDoPedido(log) {
+  const m = [...(Array.isArray(log) ? log : [])].reverse()
+    .find(e => e.stage === 'revelacao' && (e.matriz || e.quadro));
+  return m ? (m.matriz || m.quadro) : null;
+}
+
+/**
+ * QUANTAS FOTOS ESTE PEDIDO PRECISA TER.
+ *
+ * "Se houver 10 artes serão tiradas 10 fotos." Cada arte é um copo
+ * diferente saindo da fábrica, e uma foto só mostraria um deles — o
+ * cliente aprovaria no portal um pedido que ele nem viu inteiro.
+ *
+ * Conta-se ARTE DISTINTA, e não item: dois itens com a mesma arte (100
+ * copos e 50 canecas do mesmo logo) são uma foto.
+ */
+function artesDoPedido(itens) {
+  const artes = new Set();
+  for (const it of itens || []) {
+    const c = it.customization || {};
+    const url = c.arte_cliente?.url || c.arte?.preview_url || c.preview || c.art_file;
+    if (url) artes.add(String(url));
+  }
+  return artes.size;
+}
+
+// ── Iniciar / Finalizar etapa (registra quem, quando e o quê) ────
+router.post('/:id/stage', async (req, res) => {
+  const { stage, action, password, password_confirma, actor_user, dados } = req.body;
+  const etapa = ETAPAS[stage];
+  if (!etapa || !['start', 'finish'].includes(action)) {
+    return res.status(400).json({ error: 'Etapa ou ação inválida' });
+  }
+  try {
+    if (!String(actor_user || '').trim()) return res.status(400).json({ error: 'Informe o usuário.' });
+
+    /**
+     * OS DADOS DA ETAPA VÊM ANTES DA SENHA.
+     *
+     * Conferir o formulário primeiro é o que evita a cena de digitar a
+     * senha duas vezes e só então descobrir que faltava o número da
+     * matriz.
+     */
+    const campos = etapa.campos?.[action] || [];
+    const { registro, erro: erroCampo } = conferirCampos(campos, dados);
+    if (erroCampo) return res.status(400).json({ error: erroCampo });
+
+    const erroSenha = await confirmarIdentidade(req, [password, password_confirma]);
+    if (erroSenha) return res.status(403).json({ error: erroSenha });
 
     const { data: sale, error: e0 } = await supabase.from('VENDAS')
-      .select(`production_log, production_stage, status, delivery_mode, notes, created_at,
-               VENDA_ITENS ( id, product_name, quantity, customization, PRODUTOS ( id, code, name, ink_type ) )`)
+      .select(`production_log, production_stage, status, delivery_mode, notes, created_at, production_photos,
+               VENDA_ITENS ( id, product_id, product_name, quantity, customization, PRODUTOS ( id, code, name, ink_type ) )`)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
     if (e0 || !sale) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const itens = (sale.VENDA_ITENS || []).map(i => caracteristicasDoItem(i));
+    const aplicaveis = etapasDosItens(itens);
 
     /**
      * A MESMA PENEIRA DA FILA, AGORA NA AÇÃO.
      *
-     * A tela já apaga o botão de quem não pode; isto é o servidor
-     * dizendo a mesma coisa. Sem isto, bastaria a requisição chegar por
-     * outro caminho — uma aba velha, um duplo clique antes do filtro
-     * carregar — para a fábrica registrar revelação num copo liso.
+     * A trava do "enviado para produção" MORREU AQUI TAMBÉM. Ela já
+     * tinha saído da fila e do motor, e ficou só neste ponto — com o
+     * efeito exato de antes, mas escondido: o pedido aparecia na tela,
+     * o botão aparecia, e o clique voltava 409 dizendo que o comercial
+     * precisava liberar algo que não existe mais.
      */
-    {
-      const itensDoPedido = (sale.VENDA_ITENS || []).map(i => caracteristicasDoItem(i));
-      const aplicaveisDoPedido = etapasDosItens(itensDoPedido);
-      if (!F.envioParaProducao(sale).enviado) {
-        return res.status(409).json({
-          error: 'Este pedido ainda não foi enviado para a produção. O comercial precisa liberar antes.',
-        });
-      }
-      if (!aplicaveisDoPedido.personalizado) {
-        return res.status(409).json({
-          error: 'Este pedido não tem personalização — não passa pela serigrafia. '
-               + 'Ele segue pela tela do pedido de venda.',
-        });
-      }
+    if (!aplicaveis.personalizado) {
+      return res.status(409).json({
+        error: 'Este pedido não tem personalização — não passa pela serigrafia. '
+             + 'Ele segue pela tela do pedido de venda.',
+      });
     }
 
-    const now = new Date().toISOString();
+    // A AÇÃO PRECISA SER UMA DAS QUE O PEDIDO PERMITE AGORA. Sem isto,
+    // dava para finalizar a embalagem de um pedido que ainda está na
+    // pintura — e o histórico passaria a contar uma coisa que não houve.
+    const permitidas = acoesDoPedido(sale, aplicaveis);
+    if (!permitidas.some(a => a.stage === stage && a.action === action)) {
+      return res.status(409).json({
+        error: `"${etapa.label}" não é o que este pedido espera agora (${A.infoStatus(sale.status).label}).`,
+        dica: 'Atualize a tela — outra pessoa pode ter movido o pedido.',
+      });
+    }
+
+    // A FOTO SÓ FECHA COM AS FOTOS LÁ. Uma por arte.
+    if (etapa.exigeFoto && action === 'finish') {
+      const fotos = (Array.isArray(sale.production_photos) ? sale.production_photos : []).length;
+      const artes = Math.max(1, artesDoPedido(sale.VENDA_ITENS));
+      if (fotos < artes) {
+        return res.status(400).json({
+          error: `Este pedido tem ${artes} arte(s) e ${fotos} foto(s) anexada(s).`,
+          dica: 'Cada arte precisa da sua foto — é o que o cliente vê no portal.',
+        });
+      }
+      registro.fotos = fotos;
+      registro.artes = artes;
+    }
+
+    const agora = new Date().toISOString();
     const actor = String(actor_user || '').trim() || req.user?.name || req.user?.email || 'Usuário';
-    const log = Array.isArray(sale.production_log) ? sale.production_log : [];
-    const entry = { stage, action, at: now, user_id: req.user?.id || null, user: actor };
-    if (stage === 'revelacao') { entry.quadro = String(quadro).trim(); entry.conferido = true; }
-    log.push(entry);
+    const log = Array.isArray(sale.production_log) ? [...sale.production_log] : [];
+
+    // O MARCO DA ETAPA — com tudo o que foi registrado dentro dele.
+    log.push({
+      stage, action, at: agora,
+      user_id: req.user?.id || null, user: actor,
+      confirmado_duas_vezes: true,
+      ...registro,
+    });
 
     const patch = { production_log: log };
-    patch[action === 'start' ? def.start : def.end] = now;
-    // estado atual
+    if (etapa.colunas) {
+      const col = action === 'start' ? etapa.colunas.start : etapa.colunas.fim;
+      if (col) patch[col] = agora;
+    }
     if (action === 'start') patch.production_stage = stage;
     if (action === 'finish' && stage === 'embalagem') patch.production_stage = 'finalizado';
 
-    // ── O status do pedido, pela régua do fluxo ──────────────
-    const mapa = FASE_DA_ETAPA[stage];
-    if (mapa) {
-      const itens = (sale.VENDA_ITENS || []).map(i => caracteristicasDoItem(i));
-      const aplicaveis = etapasDosItens(itens);
-      const trilho = A.fasesVisiveis(sale, aplicaveis);
-      const naFase = trilho[F.indiceAtual(trilho, sale.status)]?.key === mapa.fase;
+    /**
+     * REPROVADO NÃO ANDA.
+     *
+     * O controle de qualidade é a etapa que pode dizer NÃO, e um "não"
+     * que empurra o pedido para a embalagem não é um controle. A
+     * conferência fica registrada com a avaria, e o pedido continua
+     * aqui para ser refeito e conferido de novo.
+     */
+    const reprovado = stage === 'qualidade' && registro.resultado === 'reprovado';
 
-      if (action === 'start' && naFase) {
-        // "Estou com a mão nele agora". Não é uma fase nova — é a mesma,
-        // dita de outro jeito, e a linha do tempo continua apontando pra cá.
-        patch.status = mapa.processo;
-        log.push({ stage: 'status', action: mapa.processo, at: now, user_id: req.user?.id || null, user: actor });
-      } else if (action === 'finish' && naFase && mapa.avancaAoTerminar !== false) {
-        // Terminar a etapa É concluir a fase. Quem trabalha na produção
-        // não deveria ter que abrir o pedido depois para avançar de novo.
-        //
-        // Só quando o pedido está NESTA fase: registrar a hora de uma
-        // etapa fora de ordem (acontece) não pode empurrar o pedido para
-        // um lugar onde ele não estava.
-        const passo = F.avancar(
-          { ...sale, production_log: log },
-          aplicaveis,
-          { perfil: req.userProfile, acesso: req.acesso },
-          { user: { id: req.user?.id || null, name: actor } },
-        );
-        if (!passo.erro) {
-          patch.status = passo.status;
-          patch.production_log = passo.log;
-        }
+    // ── O status do pedido, pela régua do fluxo ──────────────
+    let avancou = null;
+    if (action === 'start' && etapa.processo) {
+      // "Estou com a mão nele agora". Não é fase nova — é a mesma, dita
+      // de outro jeito, e a linha do tempo continua apontando pra cá.
+      patch.status = etapa.processo;
+      log.push({ stage: 'status', action: etapa.processo, at: agora, user_id: req.user?.id || null, user: actor });
+    } else if (action === 'finish' && etapa.avancaAoTerminar !== false && !reprovado) {
+      // Terminar a etapa É concluir a fase. Quem trabalha na produção
+      // não deveria ter que abrir o pedido depois para avançar de novo.
+      const passo = F.avancar(
+        { ...sale, production_log: log },
+        aplicaveis,
+        { perfil: req.userProfile, acesso: req.acesso },
+        { user: { id: req.user?.id || null, name: actor } },
+      );
+      if (!passo.erro) {
+        patch.status = passo.status;
+        patch.production_log = passo.log;
+        avancou = passo.status;
       }
+    } else if (reprovado) {
+      // Volta a esperar a conferência: o pedido não saiu daqui.
+      patch.status = 'aguardando_qualidade';
     }
 
     const { error } = await supabase.from('VENDAS').update(patch)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId);
     if (error) throw error;
-    // Revelação concluída com sucesso = +1 gravação na vida daquele quadro
-    if (stage === 'revelacao' && action === 'finish') {
-      try { await bumpQuadro(req.tenantId, quadro, 'gravacoes'); } catch { /* ignora */ }
+
+    // ── A PERDA INFORMADA NA ETAPA VIRA PERDA DE VERDADE ─────
+    //
+    // Ela sai do estoque e entra em PRODUCAO_PERDAS pelo mesmo caminho
+    // do botão "Registrar perda". Digitar a perda no fecho da etapa e o
+    // estoque continuar cheio seria pior que não perguntar.
+    const campoPerda = campos.find(c => c.perda);
+    const perdidas = campoPerda ? Number(registro[campoPerda.key] || 0) : 0;
+    if (perdidas > 0) {
+      const principal = (sale.VENDA_ITENS || [])[0] || {};
+      try {
+        await registrarPerda(req, {
+          product_id: principal.product_id || null,
+          product_name: principal.product_name || null,
+          quantity: perdidas,
+          deduct_stock: true,
+          notes: `${etapa.label} — informada ao finalizar por ${actor}`,
+        });
+      } catch (e) {
+        console.error('[production/stage] perda:', e?.message || e);
+      }
     }
-    audit(req, 'update', 'production', req.params.id, { stage, action });
-    res.json({ ok: true, stage: patch.production_stage || sale.production_stage });
+
+    // Revelação concluída = +1 gravação na vida daquela matriz.
+    if (stage === 'revelacao' && action === 'finish' && registro.matriz) {
+      try { await bumpQuadro(req.tenantId, registro.matriz, 'gravacoes'); } catch { /* ignora */ }
+    }
+
+    audit(req, 'update', 'production', req.params.id, { stage, action, ...registro });
+    res.json({
+      ok: true,
+      stage: patch.production_stage || sale.production_stage,
+      status: patch.status || sale.status,
+      status_label: A.infoStatus(patch.status || sale.status).label,
+      avancou,
+      reprovado,
+      registrado: registro,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * A MATRIZ DESTE PEDIDO, para a tela mostrar ao iniciar a produção.
+ *
+ * Quem monta a máquina precisa saber qual tela pegar. O número já foi
+ * gravado na revelação — pedir de novo seria convidar as duas cópias a
+ * divergirem.
+ */
+router.get('/:id/matriz', async (req, res) => {
+  try {
+    const { data } = await supabase.from('VENDAS').select('production_log')
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    res.json({ matriz: matrizDoPedido(data?.production_log) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Registrar perda na produção ───────────────────────────
-router.post('/:id/perda', async (req, res) => {
-  const { product_id, product_name, quantity, deduct_stock, notes } = req.body;
+/**
+ * REGISTRAR UMA PERDA — de dois lugares, por um caminho só.
+ *
+ * A perda chega por duas portas: o botão "Registrar perda" (a perda
+ * avulsa, notada no meio do trabalho) e o campo "perdeu alguma
+ * unidade?" no fecho de cada etapa. As duas fazem a MESMA coisa —
+ * linha em PRODUCAO_PERDAS, baixa no estoque, marco no histórico — e
+ * duas cópias disso seriam duas contas de estoque diferentes.
+ */
+async function registrarPerda(req, { product_id, product_name, quantity, deduct_stock, notes }) {
   const qty = Number(quantity);
+  const saleId = req.params.id;
+  const actor = req.user?.name || req.user?.email || 'Usuário';
+
+  const { data, error } = await supabase.from('PRODUCAO_PERDAS').insert({
+    tenant_id: req.tenantId, sale_id: saleId,
+    product_id: product_id || null, product_name: product_name || null,
+    quantity: qty, user_id: req.user?.id || null, user_name: actor, notes: notes || null,
+  }).select().single();
+  if (error) throw error;
+
+  // Baixa no estoque (quantidade negativa) se solicitado e houver produto.
+  if (deduct_stock && product_id) {
+    try {
+      await supabase.rpc('atualizar_estoque', {
+        p_tenant_id: req.tenantId, p_product_id: product_id, p_quantity: -Math.abs(qty),
+        p_type: 'adjustment', p_reference_type: 'production', p_reference_id: saleId,
+        p_user_id: req.user?.id || null, p_notes: `Perda na produção${notes ? ' — ' + notes : ''}`,
+      });
+    } catch { /* ignora se a RPC não existir */ }
+  }
+
+  const { data: sale } = await supabase.from('VENDAS').select('production_log')
+    .eq('id', saleId).eq('tenant_id', req.tenantId).single();
+  const log = Array.isArray(sale?.production_log) ? sale.production_log : [];
+  log.push({
+    stage: 'perda', action: 'registro', at: new Date().toISOString(),
+    user_id: req.user?.id || null, user: actor,
+    detail: `${qty} un${product_name ? ' — ' + product_name : ''}`,
+    quantidade: qty, motivo: notes || null,
+  });
+  await supabase.from('VENDAS').update({ production_log: log })
+    .eq('id', saleId).eq('tenant_id', req.tenantId);
+
+  audit(req, 'create', 'production_loss', saleId, { product_id, quantity: qty });
+  return data;
+}
+
+router.post('/:id/perda', async (req, res) => {
+  const qty = Number(req.body?.quantity);
   if (!qty || qty <= 0) return res.status(400).json({ error: 'Informe a quantidade perdida' });
   try {
-    const actor = req.user?.name || req.user?.email || 'Usuário';
-    const { data, error } = await supabase.from('PRODUCAO_PERDAS').insert({
-      tenant_id: req.tenantId, sale_id: req.params.id,
-      product_id: product_id || null, product_name: product_name || null,
-      quantity: qty, user_id: req.user?.id || null, user_name: actor, notes: notes || null,
-    }).select().single();
-    if (error) throw error;
-
-    // baixa no estoque (quantidade negativa) se solicitado e houver produto
-    if (deduct_stock && product_id) {
-      try {
-        await supabase.rpc('atualizar_estoque', {
-          p_tenant_id: req.tenantId, p_product_id: product_id, p_quantity: -Math.abs(qty),
-          p_type: 'adjustment', p_reference_type: 'production', p_reference_id: req.params.id,
-          p_user_id: req.user?.id || null, p_notes: `Perda na produção${notes ? ' — ' + notes : ''}`,
-        });
-      } catch { /* ignora se a RPC não existir */ }
-    }
-
-    // adiciona ao histórico do pedido
-    const { data: sale } = await supabase.from('VENDAS').select('production_log').eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
-    const log = Array.isArray(sale?.production_log) ? sale.production_log : [];
-    log.push({ stage: 'perda', action: 'registro', at: new Date().toISOString(), user_id: req.user?.id || null, user: actor, detail: `${qty} un${product_name ? ' — ' + product_name : ''}` });
-    await supabase.from('VENDAS').update({ production_log: log }).eq('id', req.params.id).eq('tenant_id', req.tenantId);
-
-    audit(req, 'create', 'production_loss', req.params.id, { product_id, quantity: qty });
-    res.status(201).json(data);
+    const perda = await registrarPerda(req, { ...req.body, quantity: qty });
+    res.status(201).json(perda);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -245,7 +245,9 @@ const REQUISITOS = {
  * cliente do lado — a arte acontece ANTES de o pedido ir para a
  * fábrica. Daqui para baixo é a fábrica que responde.
  */
-const FASES_DA_FABRICA = ['vegetal', 'revelacao', 'pintura', 'borda', 'producao', 'qualidade', 'embalagem'];
+// A FOTO ENTROU NA LISTA. Ela é trabalho de quem está com a peça na
+// mão, antes de embalar — e não um recado do comercial.
+const FASES_DA_FABRICA = ['vegetal', 'revelacao', 'pintura', 'borda', 'producao', 'qualidade', 'foto', 'embalagem'];
 
 /**
  * O PEDIDO JÁ FOI ENVIADO PARA A PRODUÇÃO?

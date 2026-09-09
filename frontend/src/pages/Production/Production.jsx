@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Factory, Play, Check, Search, RefreshCw, Loader2, Save, Image as ImageIcon, AlertTriangle, Clock, Plus, Camera, Trash2 } from 'lucide-react';
+import { Factory, Play, Check, Search, RefreshCw, Loader2, Save, Image as ImageIcon, AlertTriangle, Clock, Plus, Camera, Trash2, ShieldCheck, ArrowLeft, Lock } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import Modal from '@/components/UI/Modal';
@@ -9,7 +9,41 @@ import toast from 'react-hot-toast';
 
 const fmtMoney = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 const fmtDT = s => s ? new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-const STEP_LABEL = { revelacao: 'Revelação', producao: 'Produção', pintura: 'Pintura', metalizacao: 'Metalização', embalagem: 'Embalagem', perda: 'Perda', status: 'Status' };
+const STEP_LABEL = {
+  revelacao: 'Revelação', pintura: 'Pintura', borda: 'Borda', metalizacao: 'Metalização',
+  producao: 'Produção', qualidade: 'Controle de qualidade', foto: 'Foto', embalagem: 'Embalagem',
+  perda: 'Perda', status: 'Status',
+};
+
+/**
+ * O QUE CADA MARCO DO HISTÓRICO REGISTROU, em português.
+ *
+ * O histórico dizia só "Produção — finalizou". O que interessa no dia
+ * em que mil copos saem errados é OUTRA COISA: em que matriz, em que
+ * máquina, com quantas perdas. Isso passou a ser gravado; aqui ele é
+ * lido de volta.
+ */
+const CAMPO_LABEL = {
+  matriz: 'matriz', quadro: 'matriz', maquina: 'máquina', perda: 'perda',
+  avariadas: 'avariadas', resultado: 'resultado', quantidade: 'quantidade',
+  fotos: 'fotos', artes: 'artes', motivo: 'motivo',
+};
+const CAMPO_SIM = {
+  matriz_conferida: 'matriz conferida', fotos_conferidas: 'fotos conferidas',
+  etiqueta_fragil: 'etiqueta de frágil', caixa_identificada: 'caixa identificada',
+  conferiu_etiqueta: 'conferiu com a etiqueta', conferido: 'conferido',
+};
+function resumoDoMarco(h) {
+  const partes = [];
+  for (const [k, label] of Object.entries(CAMPO_LABEL)) {
+    const v = h[k];
+    if (v === undefined || v === null || v === '' || v === 0) continue;
+    partes.push(`${label} ${v}`);
+  }
+  const marcados = Object.entries(CAMPO_SIM).filter(([k]) => h[k]).map(([, l]) => l);
+  if (marcados.length) partes.push(marcados.join(', '));
+  return partes.join(' · ');
+}
 const ACT_LABEL = { start: 'iniciou', finish: 'finalizou', registro: 'registrou' };
 
 const STAGES = {
@@ -22,46 +56,194 @@ const STAGES = {
   embalagem:           { label: 'Em Embalagem',        cls: 'bg-violet-100 text-violet-700' },
   finalizado:          { label: 'Finalizado',          cls: 'bg-green-100 text-green-700' },
 };
-// Fluxo: Revelação → Pintura → Metalização → Produção → Embalagem
-// A Metalização é OPCIONAL (só pedidos com borda metalizada): a Produção
-// aceita vir tanto da Pintura quanto da Metalização.
-const STEPS = [
-  { stage: 'revelacao',   label: 'Revelação' },
-  { stage: 'pintura',     label: 'Pintura' },
-  { stage: 'metalizacao', label: 'Metalização' },
-  { stage: 'producao',    label: 'Produção' },
-  { stage: 'embalagem',   label: 'Embalagem' },
-];
 const fmtDate = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
 
 /**
- * A FÁBRICA SÓ MEXE NO QUE É DELA.
+ * QUEM DIZ O QUE DÁ PARA FAZER É O SERVIDOR.
  *
- * Duas condições antes de qualquer etapa, e as duas vêm do servidor
- * (`interagivel`), não de um palpite da tela:
+ * Havia aqui uma função `canDo` com uma corrente escrita à mão —
+ * "pintura libera depois da revelação, produção depois da pintura...".
+ * Era uma SEGUNDA RÉGUA, paralela à do pedido, e por isso não conhecia
+ * borda nem controle de qualidade: um pedido em "Aguardando aplicação
+ * de borda" não tinha botão nenhum, e quem estava na bancada aplicava a
+ * borda sem ter onde registrar.
  *
- *   ENVIADO       alguém do comercial disse "pode começar". Antes, o
- *                 pedido caía na fila só por mudar de status — inclusive
- *                 o que ainda estava sendo acertado com o cliente.
- *   PERSONALIZADO copo liso não tem arte, vegetal nem tela. Não há o que
- *                 revelar, e um botão "Iniciar Revelação" nele é um
- *                 convite a registrar trabalho que não existe.
- *
- * O pedido liso continua aparecendo na lista — some da tela seria a
- * produção descobrir por telefone que ele existe. Aparece marcado, e
- * sem botão.
+ * Agora a lista de ações vem pronta em `pedido.acoes`, calculada pelo
+ * status real e pelas etapas que ESTE pedido contratou. A tela desenha
+ * o que recebe.
  */
-function canDo(s, stage, action) {
-  if (!s) return false;
-  if (!s.interagivel) return false;
-  if (action === 'finish') return s.stage === stage;
-  if (stage === 'revelacao') return ['aguardando_arte', 'aguardando_producao'].includes(s.stage);
-  if (stage === 'pintura')     return s.stage === 'revelacao';
-  if (stage === 'metalizacao') return s.stage === 'pintura';
-  // Metalização é opcional: a Produção libera vindo da Pintura ou dela
-  if (stage === 'producao')    return ['pintura', 'metalizacao'].includes(s.stage);
-  if (stage === 'embalagem')   return s.stage === 'producao';
-  return false;
+const TITULO_ACAO = (stage, action) =>
+  `${action === 'finish' ? 'Finalizar' : 'Iniciar'} ${STEP_LABEL[stage] || stage}`;
+
+/**
+ * A CONFIRMAÇÃO EM DUAS PORTAS.
+ *
+ * Porta 1: os dados da etapa e a senha.
+ * Porta 2: tudo relido, e a senha DE NOVO.
+ *
+ * A segunda não é zelo excessivo — é o único momento em que a pessoa
+ * relê o que escreveu. Entre digitar "matriz 74" e ver escrito "matriz
+ * 74" no resumo existe a chance de perceber que era 47. Uma confirmação
+ * que não custa nada não faz ninguém reler.
+ *
+ * As duas senhas vão para o servidor e são conferidas de verdade, as
+ * duas. Comparar uma com a outra aqui no navegador seria teatro.
+ */
+function ConfirmacaoDeEtapa({ etapa, acao, matriz, artes, fotos, onCancelar, onConfirmar, enviando }) {
+  const [passo, setPasso] = useState(1);
+  const [quem, setQuem] = useState('');
+  const [senha, setSenha] = useState('');
+  const [senha2, setSenha2] = useState('');
+  const [dados, setDados] = useState({});
+
+  const campos = etapa?.campos?.[acao] || [];
+  const set = (k, v) => setDados(d => ({ ...d, [k]: v }));
+
+  const faltando = campos.filter(c => {
+    if (!c.obrigatorio) return false;
+    if (c.tipo === 'sim') return !dados[c.key];
+    if (c.tipo === 'numero') return !Number(dados[c.key] || 0);
+    return !String(dados[c.key] || '').trim();
+  });
+  const podeSeguir = quem.trim() && senha && !faltando.length;
+
+  return (
+    <div className="space-y-3">
+      {/* ── PORTA 1 ─────────────────────────────────────── */}
+      {passo === 1 && (
+        <>
+          {etapa?.mostraMatriz && (
+            <p className="text-[12.5px] rounded-xl px-3 py-2 bg-slate-50 border border-slate-200 text-slate-700">
+              Matriz gravada na revelação deste pedido:{' '}
+              <b className="font-mono">{matriz || 'ainda não informada'}</b>
+            </p>
+          )}
+          {etapa?.exigeFoto && (
+            <p className={`text-[12.5px] rounded-xl px-3 py-2 border ${fotos >= artes
+              ? 'bg-green-50 border-green-200 text-green-800'
+              : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+              Este pedido tem <b>{artes} arte(s)</b> e <b>{fotos} foto(s)</b> anexada(s).
+              {fotos < artes && ' Anexe as que faltam antes de fechar a etapa — é o que o cliente vê no portal.'}
+            </p>
+          )}
+
+          <div>
+            <label className="label">Usuário *</label>
+            <input className="input" autoFocus value={quem}
+              onChange={e => setQuem(e.target.value.toUpperCase())}
+              placeholder="Quem está fazendo esta etapa" />
+          </div>
+
+          {campos.map(c => (
+            <div key={c.key}>
+              {c.tipo === 'sim' ? (
+                <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input type="checkbox" checked={!!dados[c.key]}
+                    onChange={e => set(c.key, e.target.checked)}
+                    className="w-4 h-4 accent-primary-600 mt-0.5" />
+                  <span>{c.label} {c.obrigatorio && <span className="text-red-500">*</span>}</span>
+                </label>
+              ) : c.tipo === 'opcao' ? (
+                <>
+                  <label className="label">{c.label} {c.obrigatorio && '*'}</label>
+                  <div className="flex gap-2">
+                    {c.opcoes.map(o => (
+                      <button key={o.valor} type="button" onClick={() => set(c.key, o.valor)}
+                        className={`flex-1 text-sm py-2 rounded-lg border font-medium ${dados[c.key] === o.valor
+                          ? (o.valor === 'reprovado'
+                            ? 'bg-red-600 text-white border-red-600'
+                            : 'bg-green-600 text-white border-green-600')
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <label className="label">{c.label} {c.obrigatorio && '*'}</label>
+                  <input className={`input ${c.tipo === 'texto' ? 'font-mono' : ''}`}
+                    type={c.tipo === 'numero' ? 'number' : 'text'}
+                    min={c.tipo === 'numero' ? 0 : undefined}
+                    value={dados[c.key] ?? (c.tipo === 'numero' ? 0 : '')}
+                    onChange={e => set(c.key, e.target.value)} />
+                </>
+              )}
+              {c.dica && <p className="text-[11px] text-gray-400 mt-1">{c.dica}</p>}
+            </div>
+          ))}
+
+          <div className="border-t border-gray-100 pt-3">
+            <label className="label">Confirme com a sua senha *</label>
+            <input type="password" className="input" value={senha}
+              onChange={e => setSenha(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && podeSeguir && setPasso(2)}
+              placeholder="Sua senha" />
+          </div>
+
+          <div className="flex gap-2 justify-end pt-2 border-t border-gray-100">
+            <button onClick={onCancelar} className="btn-secondary">Cancelar</button>
+            <button onClick={() => setPasso(2)} disabled={!podeSeguir} className="btn-primary disabled:opacity-40">
+              Continuar
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ── PORTA 2: releia, e confirme de novo ─────────── */}
+      {passo === 2 && (
+        <>
+          <p className="text-[13px] font-semibold text-gray-800">
+            Tem certeza que as informações estão corretas?
+          </p>
+
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[13px] space-y-1">
+            <p className="text-gray-600">Quem: <b className="text-gray-900">{quem.trim()}</b></p>
+            {campos.map(c => {
+              const v = dados[c.key];
+              const texto = c.tipo === 'sim' ? (v ? 'Sim' : 'Não')
+                : c.tipo === 'opcao' ? (c.opcoes.find(o => o.valor === v)?.label || '—')
+                : (v === '' || v === undefined || v === null ? '—' : String(v));
+              return (
+                <p key={c.key} className="text-gray-600">
+                  {c.label} <b className={`${c.tipo === 'opcao' && v === 'reprovado' ? 'text-red-700' : 'text-gray-900'}`}>{texto}</b>
+                </p>
+              );
+            })}
+          </div>
+
+          {dados.resultado === 'reprovado' && (
+            <p className="text-[12.5px] rounded-xl px-3 py-2 bg-red-50 border border-red-200 text-red-800">
+              Reprovado registra a conferência e <b>mantém o pedido aqui</b> para ser refeito.
+              O pedido não segue para a próxima etapa.
+            </p>
+          )}
+
+          <div>
+            <label className="label flex items-center gap-1.5"><Lock size={12} /> Digite a senha novamente *</label>
+            <input type="password" className="input" autoFocus value={senha2}
+              onChange={e => setSenha2(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && senha2 && !enviando
+                && onConfirmar({ actor_user: quem.trim(), password: senha, password_confirma: senha2, dados })}
+              placeholder="Sua senha, de novo" />
+            <p className="text-[11px] text-gray-400 mt-1">
+              As duas senhas são conferidas no servidor. Fica registrado no histórico quem passou a etapa.
+            </p>
+          </div>
+
+          <div className="flex gap-2 justify-end pt-2 border-t border-gray-100">
+            <button onClick={() => setPasso(1)} disabled={enviando} className="btn-secondary">
+              <ArrowLeft size={14} /> Voltar e corrigir
+            </button>
+            <button disabled={!senha2 || enviando} className="btn-primary disabled:opacity-40"
+              onClick={() => onConfirmar({ actor_user: quem.trim(), password: senha, password_confirma: senha2, dados })}>
+              {enviando ? <><Loader2 size={15} className="animate-spin" /> Confirmando…</> : <><ShieldCheck size={15} /> Confirmar</>}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function Production() {
@@ -85,31 +267,39 @@ export default function Production() {
     enabled: !!selId,
   });
 
+  /**
+   * O CATÁLOGO DE ETAPAS VEM DO SERVIDOR.
+   *
+   * Que etapas existem e que campos cada uma pede era conhecimento
+   * duplicado — escrito aqui e lá. Duas cópias da mesma lista é uma
+   * cópia que fica para trás: foi assim que borda e controle de
+   * qualidade existiram no fluxo do pedido sem existir nesta tela.
+   */
+  const { data: catalogo } = useQuery({
+    queryKey: ['production-etapas'],
+    queryFn: () => api.get('/production/etapas'),
+    staleTime: 60 * 60 * 1000,
+  });
+  const etapaDe = k => (catalogo?.etapas || []).find(e => e.key === k);
+
   const stageMut = useMutation({
     mutationFn: (payload) => api.post(`/production/${selId}/stage`, payload),
-    onSuccess: () => { qc.invalidateQueries(['production']); qc.invalidateQueries(['production-detail', selId]); toast.success('Etapa registrada!'); setRevConfirm(null); },
-    onError: e => toast.error(e.error || 'Erro ao registrar etapa'),
+    onSuccess: r => {
+      qc.invalidateQueries(['production']);
+      qc.invalidateQueries(['production-detail', selId]);
+      setConfirmando(null);
+      if (r?.reprovado) {
+        toast('Conferência registrada como REPROVADA — o pedido continua aqui para ser refeito.',
+          { icon: '⚠️', duration: 8000 });
+      } else {
+        toast.success(`Etapa registrada — pedido em "${r?.status_label || 'próxima etapa'}"`);
+      }
+    },
+    onError: e => toast.error(e.dica ? `${e.error} ${e.dica}` : (e.error || 'Erro ao registrar etapa')),
   });
 
-  // Confirmação de QUALQUER etapa: usuário + senha (revelação pede nº do quadro + conferido)
-  const [revConfirm, setRevConfirm] = useState(null); // { stage, action } | null
-  const [revForm, setRevForm] = useState({ user: '', quadro: '', conferido: false, password: '' });
-  function confirmRev() {
-    const isRev = revConfirm.stage === 'revelacao';
-    stageMut.mutate({
-      stage: revConfirm.stage, action: revConfirm.action,
-      actor_user: revForm.user.trim(), password: revForm.password,
-      ...(isRev ? { quadro: revForm.quadro.trim(), conferido: revForm.conferido } : {}),
-    });
-  }
-  const isRevConfirm = revConfirm?.stage === 'revelacao';
-  const revReady = revForm.user.trim() && revForm.password && (!isRevConfirm || (revForm.quadro.trim() && revForm.conferido));
-
-  // Toda etapa passa pelo modal de confirmação (senha + histórico).
-  function doStage(stage, action) {
-    setRevForm({ user: '', quadro: '', conferido: false, password: '' });
-    setRevConfirm({ stage, action });
-  }
+  // A etapa que está sendo confirmada agora: { stage, action } | null
+  const [confirmando, setConfirmando] = useState(null);
 
   const [edit, setEdit] = useState({});
   const saveFields = useMutation({
@@ -175,48 +365,47 @@ export default function Production() {
         <button onClick={() => refetch()} className="btn-secondary"><RefreshCw size={15} className={isFetching ? 'animate-spin' : ''} /> Atualizar</button>
       </div>
 
-      {/* Toolbar de etapas.
-          NO CELULAR SÓ APARECE O QUE DÁ PARA FAZER. As cinco etapas em
-          dez botões ocupavam uma tela inteira do aparelho — e oito
-          deles sempre apagados, porque o pedido está numa etapa de cada
-          vez. No computador a régua inteira continua à vista (ela conta
-          o caminho); no celular fica o passo de agora, que é o que a
-          pessoa de pé na bancada precisa alcançar. */}
+      {/* A BARRA DE ETAPAS — só o que dá para fazer agora.
+          Antes eram dez botões fixos, oito deles sempre apagados, e a
+          lista não conhecia borda nem qualidade. Agora o servidor
+          responde quais ações este pedido aceita neste momento, e a
+          barra desenha exatamente essas. */}
       <div className="card p-3 flex flex-wrap items-center gap-2">
-        {STEPS.map(s => {
-          const podeIniciar = canDo(selected, s.stage, 'start');
-          const podeFinalizar = canDo(selected, s.stage, 'finish');
-          const agora = podeIniciar || podeFinalizar;
-          return (
-            <div key={s.stage} className={`items-center gap-1 ${agora ? 'flex w-full sm:w-auto' : 'hidden lg:flex'}`}>
-              <button disabled={!podeIniciar || stageMut.isPending}
-                onClick={() => doStage(s.stage, 'start')}
-                className="flex-1 lg:flex-none justify-center text-xs font-medium px-3 py-2.5 lg:py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-30 inline-flex items-center gap-1">
-                <Play size={13} /> Iniciar {s.label}
-              </button>
-              <button disabled={!podeFinalizar || stageMut.isPending}
-                onClick={() => doStage(s.stage, 'finish')}
-                className="flex-1 lg:flex-none justify-center text-xs font-medium px-3 py-2.5 lg:py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-30 inline-flex items-center gap-1">
-                <Check size={13} /> Finalizar {s.label}
-              </button>
-            </div>
-          );
-        })}
-        {/* Nada possível e nenhum aviso: o pedido está entre etapas. */}
-        {selected?.interagivel && !STEPS.some(s => canDo(selected, s.stage, 'start') || canDo(selected, s.stage, 'finish')) && (
-          <span className="text-xs text-gray-400 lg:hidden">
-            Nenhuma etapa da produção disponível agora para este pedido.
+        {selected?.acoes?.map(a => (
+          <button key={`${a.stage}-${a.action}`}
+            onClick={() => setConfirmando(a)}
+            disabled={stageMut.isPending}
+            className={`text-xs font-medium px-3 py-2.5 lg:py-2 rounded-lg text-white disabled:opacity-30 inline-flex items-center gap-1 ${
+              a.action === 'finish' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+            {a.action === 'finish' ? <Check size={13} /> : <Play size={13} />} {TITULO_ACAO(a.stage, a.action)}
+          </button>
+        ))}
+
+        {/* O CAMINHO INTEIRO CONTINUA À VISTA — apagado, mas visível.
+            Some a régua, some a noção de onde o pedido está. */}
+        {selected?.interagivel && (selected.etapas || []).length > 0 && (
+          <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-gray-400 ml-1">
+            {(selected.etapas || []).map(k => (
+              <span key={k} className={selected.acoes?.some(a => a.stage === k) ? 'text-gray-900 font-semibold' : ''}>
+                {STEP_LABEL[k] || k}
+              </span>
+            )).reduce((acc, el, i) => acc.length ? [...acc, <span key={`s${i}`}>›</span>, el] : [el], [])}
+          </span>
+        )}
+
+        {selected?.interagivel && !(selected.acoes || []).length && (
+          <span className="text-xs text-gray-500">
+            Nada para a fábrica fazer agora — o pedido está em “{selected.status_label}”.
           </span>
         )}
         {!selected && <span className="text-xs text-gray-400 ml-2">Selecione um pedido na lista.</span>}
+
         {/* BOTÃO APAGADO SEM EXPLICAÇÃO É BOTÃO QUEBRADO. Quem clica e
             não acontece nada conclui que o sistema travou. */}
         {selected && !selected.interagivel && (
           <span className="text-xs ml-2 flex items-center gap-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
             <AlertTriangle size={13} className="shrink-0" />
-            {!selected.personalizado
-              ? 'Pedido sem personalização — não passa pela serigrafia. Ele segue pela tela do pedido de venda.'
-              : 'Pedido ainda não enviado para a produção. O comercial precisa liberar no pedido de venda.'}
+            Pedido sem personalização — não passa pela serigrafia. Ele segue pela tela do pedido de venda.
           </span>
         )}
       </div>
@@ -466,7 +655,21 @@ export default function Production() {
                       <div>
                         <span className="font-medium">{STEP_LABEL[h.stage] || h.stage}</span>
                         <span className="text-gray-500"> — {ACT_LABEL[h.action] || h.action}{h.detail ? ` (${h.detail})` : ''}</span>
-                        <div className="text-xs text-gray-400">{h.user || '—'} · {fmtDT(h.at)}</div>
+                        {/* O QUE FOI REGISTRADO NAQUELE MOMENTO: matriz,
+                            máquina, perda, resultado da conferência. É
+                            o que se procura quando o copo sai errado. */}
+                        {resumoDoMarco(h) && (
+                          <div className="text-xs text-gray-600">{resumoDoMarco(h)}</div>
+                        )}
+                        <div className="text-xs text-gray-400 flex items-center gap-1">
+                          {h.user || '—'} · {fmtDT(h.at)}
+                          {h.confirmado_duas_vezes && (
+                            <span title="Confirmado duas vezes, com senha nas duas"
+                              className="inline-flex items-center gap-0.5 text-green-600">
+                              <ShieldCheck size={11} />
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </li>
                   ))}
@@ -508,58 +711,22 @@ export default function Production() {
         </div>
       </Modal>
 
-      {/* Confirmação da etapa (senha + histórico). Revelação pede nº do quadro + conferido. */}
-      <Modal isOpen={!!revConfirm} onClose={() => !stageMut.isPending && setRevConfirm(null)}
-        title={`${revConfirm?.action === 'finish' ? 'Finalizar' : 'Iniciar'} ${STEP_LABEL[revConfirm?.stage] || ''}`} size="sm">
-        <div className="space-y-3">
-          <div>
-            <label className="label">Usuário *</label>
-            <input className="input" autoFocus value={revForm.user}
-              onChange={e => setRevForm(s => ({ ...s, user: e.target.value.toUpperCase() }))}
-              placeholder="Quem está fazendo esta etapa" />
-          </div>
-
-          {/* O restante aparece após informar o usuário */}
-          {revForm.user.trim() && (
-            <div className="space-y-3 border-t border-gray-100 pt-3">
-              {isRevConfirm && (
-                <>
-                  <div>
-                    <label className="label">Qual a numeração do quadro? *</label>
-                    <input className="input font-mono" value={revForm.quadro}
-                      onChange={e => setRevForm(s => ({ ...s, quadro: e.target.value }))}
-                      placeholder="Ex.: 04827" />
-                  </div>
-                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                    <b>Obs:</b> favor conferir se a gravação da matriz está conforme a vegetal impressa.
-                  </p>
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input type="checkbox" checked={revForm.conferido}
-                      onChange={e => setRevForm(s => ({ ...s, conferido: e.target.checked }))}
-                      className="w-4 h-4 accent-primary-600" />
-                    Conferido
-                  </label>
-                </>
-              )}
-              <div>
-                <label className="label">Confirme com a sua senha *</label>
-                <input type="password" className="input" value={revForm.password}
-                  onChange={e => setRevForm(s => ({ ...s, password: e.target.value }))}
-                  onKeyDown={e => e.key === 'Enter' && revReady && !stageMut.isPending && confirmRev()}
-                  placeholder="Sua senha" />
-                <p className="text-[11px] text-gray-400 mt-1">Só confirma quando todos os campos acima estiverem preenchidos.</p>
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-2 justify-end pt-2 border-t border-gray-100">
-            <button onClick={() => setRevConfirm(null)} disabled={stageMut.isPending} className="btn-secondary">Cancelar</button>
-            <button onClick={confirmRev} disabled={!revReady || stageMut.isPending}
-              className="btn-primary disabled:opacity-40">
-              {stageMut.isPending ? <><Loader2 size={15} className="animate-spin" /> Confirmando...</> : <><Check size={15} /> Confirmar</>}
-            </button>
-          </div>
-        </div>
+      {/* Confirmação da etapa — duas portas, senha nas duas. */}
+      <Modal isOpen={!!confirmando} onClose={() => !stageMut.isPending && setConfirmando(null)}
+        title={confirmando ? TITULO_ACAO(confirmando.stage, confirmando.action) : ''} size="sm">
+        {confirmando && (
+          <ConfirmacaoDeEtapa
+            key={`${confirmando.stage}-${confirmando.action}`}
+            etapa={etapaDe(confirmando.stage)}
+            acao={confirmando.action}
+            matriz={detail?.matriz}
+            artes={Math.max(1, detail?.artes || 1)}
+            fotos={(detail?.photos || []).length}
+            enviando={stageMut.isPending}
+            onCancelar={() => setConfirmando(null)}
+            onConfirmar={payload => stageMut.mutate({ ...payload, stage: confirmando.stage, action: confirmando.action })}
+          />
+        )}
       </Modal>
     </div>
   );
