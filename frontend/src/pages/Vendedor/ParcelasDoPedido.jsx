@@ -18,13 +18,32 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Paperclip, Eye, Loader2, CheckCircle2, TriangleAlert, ScanLine, Wallet,
+  Paperclip, Eye, Loader2, CheckCircle2, TriangleAlert, ScanLine, Wallet, CalendarClock,
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 
 const brl = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
 const dataBR = d => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : null);
+const hojeISO = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+/**
+ * PARCELA QUE AINDA NAO VENCEU NAO TEM COMPROVANTE PARA ANEXAR.
+ *
+ * Vender em 2x para 30 e 60 dias e pedir o comprovante na hora e pedir
+ * o impossivel: o dinheiro ainda nao saiu da conta do cliente. O botao
+ * verde ali embaixo fazia parecer que faltava alguma coisa ao vendedor,
+ * e o pedido ficava com cara de incompleto no dia em que foi fechado.
+ *
+ * O que o pedido a prazo faz e GERAR AS CONTAS. Elas ja estao no
+ * Financeiro, com data; quem cobra, recebe o comprovante e confirma e o
+ * financeiro, no vencimento. Aqui isso vira uma frase em vez de um
+ * botao — e no dia do vencimento o botao volta sozinho.
+ */
+const aPrazo = p => !!p.due_date && !p.quitada && String(p.due_date).slice(0, 10) > hojeISO();
 
 export default function ParcelasDoPedido({ id, v, foraDaFase = false }) {
   const qc = useQueryClient();
@@ -109,6 +128,15 @@ export default function ParcelasDoPedido({ id, v, foraDaFase = false }) {
           : <span style={{ color: '#fbbf24' }}>em aberto {brl(data?.em_aberto)}</span>}
       </div>
 
+      {/* Nada vence hoje: nao ha o que este pedido espere do vendedor. */}
+      {!data?.quitado && parcelas.length > 0 && parcelas.every(p => p.quitada || aPrazo(p)) && (
+        <p className="text-[11px] flex items-start gap-1.5" style={{ color: v.textSubtle }}>
+          <CalendarClock size={12} className="shrink-0 mt-0.5" />
+          Pedido a prazo: as contas ja foram geradas e estao no Financeiro. Nao ha
+          comprovante a anexar hoje — o financeiro cobra e confirma no vencimento.
+        </p>
+      )}
+
       <input ref={entrada} type="file" className="hidden" accept="image/*,application/pdf"
         onChange={e => { escolheu(e.target.files?.[0]); e.target.value = ''; }} />
 
@@ -164,13 +192,21 @@ export default function ParcelasDoPedido({ id, v, foraDaFase = false }) {
                 </button>
               )}
 
-              {!p.quitada && !anexando && (
+              {!p.quitada && !anexando && !aPrazo(p) && (
                 <button onClick={() => { setAlvo(p); setValor(String(p.falta)); }}
                   disabled={anexar.isPending}
                   className="btn btn-sm disabled:opacity-50"
                   style={{ background: '#16a34a', color: 'white' }}>
                   <Paperclip size={13} /> Anexar comprovante
                 </button>
+              )}
+
+              {/* Ver aPrazo(), la em cima: a conta ja esta no Financeiro. */}
+              {aPrazo(p) && (
+                <span className="text-[11px] flex items-center gap-1.5" style={{ color: v.textSubtle }}>
+                  <CalendarClock size={12} />
+                  No Financeiro, para cobrar em {dataBR(p.due_date)}.
+                </span>
               )}
 
               {anexando && (

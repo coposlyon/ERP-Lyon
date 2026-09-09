@@ -12,6 +12,8 @@ const { validate } = require('../middleware/validate');
 const { recomputeRating } = require('../lib/customerRating');
 const { ORIGENS, normalizarOrigem } = require('../lib/origens');
 const { autorizar, excluirVenda } = require('../lib/excluirVenda');
+// Quem pode o que: liberar o pagamento sem comprovante e do financeiro.
+const { podeModulo } = require('../lib/setores');
 // O motor que move o pedido de etapa. A regua, os requisitos e quem pode
 // dar cada passo moram la - aqui so se le o pedido, chama e grava.
 const F = require('../lib/fluxoPedido');
@@ -892,6 +894,26 @@ router.post('/:id/fluxo/voltar', async (req, res) => {
  */
 router.post('/:id/pagamento/liberar', async (req, res) => {
   try {
+    /**
+     * E LIBERAR SEM COMPROVANTE E DO FINANCEIRO, DE MAIS NINGUEM.
+     *
+     * A excecao acima e real, mas uma excecao que qualquer um usa deixa
+     * de ser excecao. Esta rota mora em `sales`, que o comercial tem
+     * inteiro: sem esta linha, quem digita a venda poderia liberar o
+     * proprio pedido pelo endereco, mesmo com o botao fora da tela — e a
+     * etapa do dinheiro voltaria a ser dada por quem nao ve o extrato.
+     *
+     * Vencimento para HOJE se resolve de um jeito so: comprovante
+     * anexado na parcela e o financeiro conferindo em Contas a Receber.
+     */
+    if (!podeModulo(req.acesso, 'financial')) {
+      return res.status(403).json({
+        error: 'Liberar o pagamento sem comprovante e do Financeiro.',
+        dica: 'Anexe o comprovante na parcela; o financeiro confere e confirma em Contas a Receber, e o pedido segue sozinho.',
+        code: 'SO_O_FINANCEIRO',
+      });
+    }
+
     const carga = await carregarParaFluxo(req.tenantId, req.params.id);
     if (!carga) return res.status(404).json({ error: 'Pedido não encontrado' });
 

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DollarSign, TrendingUp, TrendingDown, Check, Plus, Loader2, FileBarChart2,
   ArrowDownCircle, ArrowUpCircle, ChevronLeft, ChevronRight, MessageCircle,
-  FileCheck2, ShieldCheck, AlertTriangle, ExternalLink, Copy, Undo2,
+  FileCheck2, ShieldCheck, AlertTriangle, ExternalLink, Copy, Undo2, History,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
@@ -816,6 +816,123 @@ function DesfazerModal({ conta, onClose, onFeito }) {
   );
 }
 
+/**
+ * DE ONDE VEIO ESTA CONTA.
+ *
+ * A pergunta que traz alguém aqui é sempre a mesma, e é feita com o
+ * cliente na linha: "esse valor é de quê?". A resposta estava em três
+ * lugares — o pedido, a auditoria e as colunas da conta — e ninguém
+ * cruza três lugares com o telefone no ombro.
+ *
+ * Agora é um botão. Em cima, a origem em uma frase e o pedido que a
+ * gerou; embaixo, a linha do tempo inteira, com hora e com nome de quem
+ * fez cada coisa.
+ */
+function HistoricoModal({ conta }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['financial-historico', conta.id],
+    queryFn: () => api.get(`/financial/${conta.id}/historico`),
+  });
+
+  if (isLoading) {
+    return <p className="text-sm text-gray-500 flex items-center gap-2 py-6 justify-center">
+      <Loader2 size={14} className="animate-spin" /> Levantando o histórico…
+    </p>;
+  }
+  if (error) {
+    return <p className="text-sm text-red-600 py-4">{error.error || 'Não consegui levantar o histórico'}</p>;
+  }
+
+  const c = data?.conta || {};
+  const ped = data?.pedido;
+  const eventos = data?.eventos || [];
+
+  const COR = {
+    origem: 'bg-blue-500',
+    criacao: 'bg-gray-300',
+    pedido: 'bg-blue-400',
+    comprovante: 'bg-amber-400',
+    conferencia: 'bg-violet-400',
+    pagamento: 'bg-green-500',
+    auditoria: 'bg-gray-400',
+  };
+
+  const quando = at => {
+    try { return format(parseISO(at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }); }
+    catch { return String(at || '').slice(0, 16).replace('T', ' '); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* A FICHA: o que é esta conta, em quatro linhas. */}
+      <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[13px] space-y-1">
+        <p className="font-semibold text-gray-800">{c.descricao}</p>
+        <p className="text-gray-600">
+          {fmt(c.valor)}
+          {c.parcela && c.total_parcelas > 1 ? <> · parcela {c.parcela}/{c.total_parcelas}</> : null}
+          {c.vencimento ? <> · vence {String(c.vencimento).slice(0, 10).split('-').reverse().join('/')}</> : null}
+          {c.pessoa ? <> · {c.pessoa}</> : null}
+        </p>
+        <p className="text-gray-600">
+          Origem: <b>{c.origem}</b>
+          {c.documento ? <> · documento {c.documento}</> : null}
+        </p>
+        {!c.confirmado_por && (
+          <p className="text-amber-700">Ainda sem confirmação do financeiro.</p>
+        )}
+      </div>
+
+      {/* O PEDIDO, quando existe: é o que responde "de quê". */}
+      {ped && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50/60 px-3 py-2.5 text-[13px] space-y-1">
+          <p className="font-semibold text-blue-900">Gerada pelo pedido {ped.codigo}</p>
+          <p className="text-blue-800">
+            {fmt(ped.total)}
+            {ped.frete ? <> (frete {fmt(ped.frete)})</> : null}
+            {ped.vendedor ? <> · vendido por {ped.vendedor}</> : null}
+          </p>
+          <p className="text-blue-800">
+            Etapa agora: <b>{ped.status_label}</b>
+            {ped.pagamento ? <> · pagamento {ped.pagamento}</> : null}
+          </p>
+          <a href={`/sales/${ped.id}/detalhe`} target="_blank" rel="noopener noreferrer"
+            className="text-blue-700 underline inline-flex items-center gap-1 text-[12px]">
+            <ExternalLink size={11} /> Abrir o pedido
+          </a>
+        </div>
+      )}
+
+      {/* A LINHA DO TEMPO. */}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          Histórico completo
+        </p>
+        {eventos.length === 0 ? (
+          <p className="text-sm text-gray-400">Sem eventos registrados nesta conta.</p>
+        ) : (
+          <ol className="space-y-3">
+            {eventos.map((e, i) => (
+              <li key={i} className="flex gap-3">
+                <div className="flex flex-col items-center pt-1">
+                  <span className={`w-2 h-2 rounded-full ${COR[e.tipo] || 'bg-gray-300'}`} />
+                  {i < eventos.length - 1 && <span className="flex-1 w-px bg-gray-200 mt-1" />}
+                </div>
+                <div className="pb-1">
+                  <p className="text-[13px] font-medium text-gray-800">{e.titulo}</p>
+                  {e.detalhe && <p className="text-[12.5px] text-gray-600">{e.detalhe}</p>}
+                  <p className="text-[11.5px] text-gray-400">
+                    {quando(e.at)}{e.quem ? ` · ${e.quem}` : ''}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Financial() {
   const [tab, setTab] = useState('receivable');
   const [page, setPage] = useState(1);
@@ -832,6 +949,7 @@ export default function Financial() {
   const [confirmar, setConfirmar] = useState(null);
   const [cobranca, setCobranca] = useState(null);
   const [desfazer, setDesfazer] = useState(null);
+  const [historico, setHistorico] = useState(null);
 
   /** Abre o arquivo do comprovante (o link é assinado e expira). */
   async function verComprovante(row) {
@@ -1030,6 +1148,12 @@ export default function Financial() {
             {tab === 'receivable' && !quitada && (
               <button onClick={() => setPixModal(row)} className="btn-secondary btn-sm" title="Gerar cobrança PIX">PIX</button>
             )}
+            {/* VALE PARA AS DUAS ABAS. A pergunta "de onde saiu esta
+                conta?" é a mesma no que se recebe e no que se paga. */}
+            <button onClick={() => setHistorico(row)} className="btn-secondary btn-sm"
+              title="Ver de onde esta conta foi gerada e tudo o que aconteceu com ela">
+              <History size={12} /> Histórico
+            </button>
           </div>
         );
       } },
@@ -1145,6 +1269,10 @@ export default function Financial() {
       <Modal isOpen={!!desfazer} onClose={() => setDesfazer(null)} title="Desfazer o pagamento" size="sm">
         {desfazer && <DesfazerModal conta={desfazer} onClose={() => setDesfazer(null)}
           onFeito={() => { setDesfazer(null); qc.invalidateQueries({ queryKey: ['financial'] }); qc.invalidateQueries({ queryKey: ['financial-pendencias'] }); }} />}
+      </Modal>
+
+      <Modal isOpen={!!historico} onClose={() => setHistorico(null)} title="Histórico da conta" size="md">
+        {historico && <HistoricoModal conta={historico} />}
       </Modal>
 
       <Modal isOpen={!!cobranca} onClose={() => setCobranca(null)} title="Cobrança pelo WhatsApp" size="sm">

@@ -16,6 +16,12 @@ const { sendWhatsApp, normalizarNumero } = require('../lib/whatsapp');
 // botão na tela do pedido e passou a ser consequência daqui.
 const Auto = require('../lib/pedidoAutomacao');
 const { carregarParaFluxo, gravarPasso } = require('../lib/fluxoCarga');
+// O historico de uma conta fala do pedido que a gerou: o codigo (PV-0007)
+// e o nome da etapa saem das mesmas fontes que a tela do pedido usa.
+const { codigoPedido } = require('../lib/pedidoCodigo');
+const A = require('../lib/atencao');
+
+const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 /**
  * PAGO É O QUE O FINANCEIRO CONFIRMOU — e nada mais.
@@ -249,6 +255,178 @@ router.post('/receipts/:id/confirmar', async (req, res) => {
 });
 
 /**
+ * DE ONDE VEIO ESTA CONTA, E TUDO O QUE JÁ ACONTECEU COM ELA.
+ *
+ * Uma linha do contas a receber é a ponta de uma história: alguém
+ * vendeu, alguém combinou o prazo, alguém anexou um comprovante, alguém
+ * conferiu, alguém confirmou — e às vezes alguém desfez. Quando o
+ * extrato não bate, é essa história que se procura, e ela estava
+ * espalhada em três lugares que ninguém cruza no meio do expediente: as
+ * colunas da própria conta, o `production_log` do pedido e a AUDITORIA.
+ *
+ * Aqui ela sai inteira, em ordem, numa chamada só.
+ *
+ * NADA DISSO É ESSENCIAL PARA A CONTA EXISTIR — por isso o pedido e a
+ * auditoria vêm cada um no seu try: base sem AUDITORIA, ou conta avulsa
+ * sem pedido, devolve o histórico mais curto em vez de um erro.
+ */
+router.get('/:id/historico', async (req, res) => {
+  try {
+    const { data: conta, error } = await supabase.from('LANCAMENTOS')
+      .select('*, CLIENTES(name), FORNECEDORES(name)')
+      .eq('tenant_id', req.tenantId).eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!conta) return res.status(404).json({ error: 'Conta não encontrada' });
+
+    const eventos = [];
+    const poe = (at, titulo, detalhe, quem, tipo) => {
+      if (!at) return;
+      eventos.push({ at, titulo, detalhe: detalhe || null, quem: quem || null, tipo });
+    };
+
+    poe(conta.created_at, 'Conta gerada', conta.description, null, 'origem');
+    if (conta.receipt_url) {
+      poe(conta.receipt_at, 'Comprovante anexado',
+        conta.receipt_amount != null ? `Declarado ${brl(conta.receipt_amount)}` : null,
+        conta.receipt_by, 'comprovante');
+    }
+    if (conta.receipt_status && conta.receipt_status !== 'pendente') {
+      poe(conta.receipt_at, `Comprovante ${conta.receipt_status}`, conta.notes || null,
+        conta.receipt_by, 'conferencia');
+    }
+    poe(conta.paid_at, 'Pagamento confirmado',
+      `${brl(conta.paid_amount)} de ${brl(conta.amount)}`, conta.paid_by, 'pagamento');
+
+    // -- O PEDIDO QUE DEU ORIGEM --------------------------------
+    let pedido = null;
+    if (conta.reference_type === 'sale' && conta.reference_id) {
+      try {
+        const { data: venda } = await supabase.from('VENDAS')
+          .select('id, number, status, total, subtotal, freight, created_at, payment_method, '
+                + 'production_log, USUARIOS(name), CLIENTES(name)')
+          .eq('tenant_id', req.tenantId).eq('id', conta.reference_id).maybeSingle();
+        if (venda) {
+          pedido = {
+            id: venda.id,
+            codigo: codigoPedido(venda.number),
+            status: venda.status,
+            status_label: A.infoStatus(venda.status).label,
+            total: Number(venda.total) || 0,
+            subtotal: Number(venda.subtotal) || 0,
+            frete: Number(venda.freight) || 0,
+            criado_em: venda.created_at,
+            vendedor: venda.USUARIOS?.name || null,
+            cliente: venda.CLIENTES?.name || null,
+            pagamento: venda.payment_method || null,
+          };
+          poe(venda.created_at, `Pedido ${pedido.codigo} fechado`,
+            `${brl(pedido.total)}${pedido.frete ? ` (frete ${brl(pedido.frete)})` : ''}`
+            + `${pedido.cliente ? ` para ${pedido.cliente}` : ''}`,
+            pedido.vendedor, 'origem');
+
+          /**
+           * SÓ OS MARCOS QUE FALAM DE DINHEIRO.
+           *
+           * O `production_log` tem a linha do tempo inteira, vegetal e
+           * embalagem inclusos. Despejar os vinte marcos aqui afogaria
+           * a pergunta que traz alguém a esta tela — "por que esta conta
+           * está assim?" — no meio da rotina da fábrica.
+           */
+          for (const m of (venda.production_log || [])) {
+            const acao = String(m.action || '');
+            if (!/pagamento|financeiro|editado/i.test(acao)) continue;
+            const info = A.infoStatus(acao);
+            // 'Pedido:' na frente porque "Pagamento confirmado" existe
+            // dos dois lados — a etapa do pedido e a conta — e sem o
+            // prefixo as duas linhas ficam identicas na tela.
+            poe(m.at,
+              `Pedido: ${info.label && info.label !== acao ? info.label : acao.replace(/_/g, ' ')}`,
+              m.motivo || (m.total_agora != null
+                ? `Total de ${brl(m.total_antes)} para ${brl(m.total_agora)}`
+                : null),
+              m.user, 'pedido');
+          }
+        }
+      } catch (e) {
+        console.error('[financial/historico] pedido:', e?.message || e);
+      }
+    }
+
+    // -- O QUE A AUDITORIA GUARDOU DESTA CONTA ------------------
+    try {
+      const { data: aud } = await supabase.from('AUDITORIA')
+        .select('action, entity, user_name, details, created_at')
+        .eq('tenant_id', req.tenantId).eq('entity_id', String(req.params.id))
+        .order('created_at');
+      for (const x of aud || []) {
+        const d = x.details || {};
+        const titulo = d.desfez_pagamento ? 'Pagamento desfeito'
+          : d.cobranca_whatsapp ? 'Cobrança enviada pelo WhatsApp'
+          : d.conferencia ? `Conferência: ${d.conferencia}`
+          : d.confirmou ? 'Confirmação registrada'
+          : `${x.action} ${x.entity}`;
+        const detalhe = d.desfez_pagamento
+          ? `${brl(d.desfez_pagamento)}${d.motivo ? ` — ${d.motivo}` : ''}`
+          : d.cobranca_whatsapp ? brl(d.cobranca_whatsapp)
+          : Number(d.sobra) > 0 ? `Sobra de ${brl(d.sobra)} para as próximas parcelas`
+          : d.pedido_avancou ? `O pedido seguiu para ${A.infoStatus(d.pedido_avancou).label}`
+          : null;
+        poe(x.created_at, titulo, detalhe, x.user_name, 'auditoria');
+      }
+    } catch (e) {
+      console.error('[financial/historico] auditoria:', e?.message || e);
+    }
+
+    /**
+     * O QUE ABRIU A HISTORIA VEM PRIMEIRO, MESMO QUE O RELOGIO DISCORDE.
+     *
+     * O pedido e as contas dele nascem no MESMO segundo, e as horas vem
+     * de dois relogios: `created_at` e do Postgres, `paid_at` e do
+     * servidor. Alguns segundos de diferenca entre os dois bastam para
+     * ordenar "Conta gerada" depois do pagamento dela — a historia
+     * contada de tras para frente logo na primeira linha.
+     *
+     * Uma conta nao tem evento antes de existir. Entao os dois marcos de
+     * origem (o pedido fechado, a conta gerada) ficam no comeco por
+     * definicao, e o resto se ordena pela hora.
+     */
+    // Date.parse, e nao comparacao de texto: o Postgres devolve
+    // '...+00:00' e o Node escreve '...Z' — dois formatos da mesma hora
+    // que se ordenam errado como string.
+    const q = e => Date.parse(e.at) || 0;
+    const porHora = (x, y) => q(x) - q(y);
+    const abertura = eventos.filter(e => e.tipo === 'origem').sort(porHora);
+    const resto = eventos.filter(e => e.tipo !== 'origem').sort(porHora);
+    const linhaDoTempo = [...abertura, ...resto];
+
+    res.json({
+      conta: {
+        id: conta.id,
+        descricao: conta.description,
+        documento: conta.document_number,
+        valor: Number(conta.amount) || 0,
+        pago: Number(conta.paid_amount) || 0,
+        vencimento: conta.due_date,
+        tipo: conta.type,
+        parcela: conta.installment,
+        total_parcelas: conta.total_installments,
+        pessoa: conta.CLIENTES?.name || conta.FORNECEDORES?.name || null,
+        criada_em: conta.created_at,
+        origem: conta.reference_type === 'sale' ? 'Pedido de venda'
+          : conta.fixed_expense_id ? 'Despesa fixa'
+          : conta.reference_type || 'Lançamento avulso',
+        conferido_por: conta.receipt_by, conferido_em: conta.receipt_at,
+        confirmado_por: conta.paid_by, confirmado_em: conta.paid_at,
+        tem_comprovante: !!conta.receipt_url,
+        observacoes: conta.notes || null,
+      },
+      pedido,
+      eventos: linhaDoTempo,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
  * DESFAZER UM PAGAMENTO.
  *
  * Existe por dois motivos, e os dois são reais:
@@ -345,7 +523,6 @@ router.post('/:id/cobranca-whatsapp', async (req, res) => {
     // O texto é o combinado com a Lyon, palavra por palavra. Ele não é
     // montado na tela porque a mesma cobrança sai daqui pelo envio
     // automático — e duas redações da mesma mensagem viram duas Lyons.
-    const brl = n => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     /**
      * O CÓDIGO FICA SEPARADO DO RECADO.
      *
