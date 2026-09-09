@@ -585,6 +585,11 @@ function ConfirmarModal({ conta, onClose, onFeito }) {
         `${fmt(r.total_recebido)} confirmados por ${r.confirmado_por}`
         + (extra.length ? ` — ${extra.join(', ')}` : ''),
         { duration: 8000 });
+      // O pedido anda como consequência da confirmação, e quem confirmou
+      // precisa ver isso: é o retorno do ato dela na fábrica.
+      if (r.pedido_status) {
+        toast('O pedido seguiu para a próxima etapa.', { icon: '📦', duration: 6000 });
+      }
       onFeito();
     } catch (e) {
       toast.error([e.error, e.dica].filter(Boolean).join(' '));

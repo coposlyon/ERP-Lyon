@@ -35,6 +35,25 @@ const A = require('./atencao');
 const { podeModulo } = require('./setores');
 
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+/**
+ * A ETAPA DO DINHEIRO SÓ ANDA DE UM LUGAR: CONTAS A RECEBER.
+ *
+ * O botão "Confirmar o pagamento" existia na tela do PEDIDO, e ali ele
+ * era um atalho perigoso: quem abre o pedido é o comercial (e o admin,
+ * que abre tudo), e um clique dava o dinheiro por recebido sem ninguém
+ * ter aberto o extrato — a mesma confusão que fazia anexar comprovante
+ * valer como pagamento.
+ *
+ * Agora a etapa anda como CONSEQUÊNCIA: o financeiro confirma a parcela
+ * em Contas a Receber e o pedido segue sozinho, pelo mesmo motor, com o
+ * marco no histórico. Uma decisão, um lugar, um responsável.
+ *
+ * `liberarPagamento` continua existindo para a exceção documentada (o
+ * dinheiro caiu e não há papel) — e também é do financeiro.
+ */
+const MOTIVO_ETAPA_DO_FINANCEIRO =
+  'Esta etapa anda no Financeiro: confirme o pagamento em Contas a Receber e o pedido segue sozinho.';
 const dataBR = d => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '');
 
 // ── Quem responde por cada fase ─────────────────────────────
@@ -496,6 +515,11 @@ function fichaDeFluxo(venda, aplicaveis = {}, quem = {}) {
   const area = A.infoStatus(statusDeEntrada(fase)).area;
 
   const motivos = [];
+  // O pagamento não se confirma daqui: quem o move é a confirmação da
+  // conta, no Financeiro. O botão continua visível para dizer isso —
+  // sumir faria a pessoa procurar onde ele foi parar.
+  const soNoFinanceiro = fase.key === 'pagamento';
+  if (soNoFinanceiro) motivos.push(MOTIVO_ETAPA_DO_FINANCEIRO);
   if (!autorizado) motivos.push(`Só ${A.AREAS[area] || area} (ou um gerente) pode dar este passo.`);
   for (const r of faltando) motivos.push(`Falta: ${r.label.toLowerCase()}.`);
 
@@ -550,7 +574,7 @@ function fichaDeFluxo(venda, aplicaveis = {}, quem = {}) {
       destino_label: A.infoStatus(destino).label,
       proxima_fase: proxima ? proxima.label : null,
       autorizado,
-      pode: autorizado && faltando.length === 0 && !faltaEnviar,
+      pode: autorizado && faltando.length === 0 && !faltaEnviar && !soNoFinanceiro,
       motivos: faltaEnviar
         ? [...motivos, 'Este pedido ainda não foi enviado para a produção.']
         : motivos,
@@ -618,7 +642,18 @@ function avancar(venda, aplicaveis, quem, req, observacao = null, opcoes = {}) {
     };
   }
 
-  if (!automatico && !podeAtuarNaFase(fase.key, quem)) {
+  // A etapa do dinheiro não é dada por quem olha o pedido — ver
+  // MOTIVO_ETAPA_DO_FINANCEIRO. `doFinanceiro` é a confirmação da conta
+  // chamando de volta; `automatico` é a política da empresa no nascimento.
+  if (fase.key === 'pagamento' && !automatico && !opcoes.doFinanceiro) {
+    return { erro: MOTIVO_ETAPA_DO_FINANCEIRO, http: 409, code: 'ETAPA_DO_FINANCEIRO' };
+  }
+
+  // `doFinanceiro` JÁ É a área respondendo: quem chama assim é a
+  // confirmação da conta em Contas a Receber, que só o financeiro abre.
+  // Os REQUISITOS continuam valendo — o que se pula aqui é a pergunta
+  // "você é do financeiro?", feita a quem acabou de provar que é.
+  if (!automatico && !opcoes.doFinanceiro && !podeAtuarNaFase(fase.key, quem)) {
     const area = A.infoStatus(statusDeEntrada(fase)).area;
     return { erro: `Esta etapa é de ${A.AREAS[area] || area}. Peça a alguém da área ou a um gerente.`, http: 403 };
   }

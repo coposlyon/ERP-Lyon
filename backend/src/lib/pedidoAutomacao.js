@@ -181,7 +181,25 @@ async function avancarAposArte(tenantId, venda, aplicaveis, req) {
   });
 }
 
+/**
+ * O PEDIDO DEPOIS QUE O FINANCEIRO CONFIRMOU A CONTA.
+ *
+ * Chamado por Contas a Receber, quando a parcela é confirmada. É o
+ * contrário do botão que existia na tela do pedido: lá alguém dizia
+ * "considere pago"; aqui o pagamento JÁ foi conferido, e o pedido
+ * apenas segue a consequência disso.
+ *
+ * Só anda se a fase atual for a do pagamento e os requisitos dela
+ * estiverem cumpridos — `doFinanceiro` abre a porta, não pula a
+ * conferência. Pedido que já passou dessa fase não se mexe.
+ */
+async function avancarAposPagamento(tenantId, venda, aplicaveis, req) {
+  const r = F.avancar(venda, aplicaveis, {}, req, null, { doFinanceiro: true });
+  if (r.erro || r.fase?.key !== 'pagamento') return null;
+  return { status: r.status, log: r.log };
+}
+
 module.exports = {
   confirmaPagamentoSozinho, confirmarPagamentoAoNascer,
-  avancarOQueJaEstaFeito, avancarAposArte, CHAVE,
+  avancarOQueJaEstaFeito, avancarAposArte, avancarAposPagamento, CHAVE,
 };

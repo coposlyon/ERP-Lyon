@@ -12,6 +12,10 @@ const { gerarCobrancaPix } = require('../lib/pixCobranca');
 // pago" seriam dois saldos diferentes para o mesmo cliente.
 const C = require('../lib/comprovante');
 const { sendWhatsApp, normalizarNumero } = require('../lib/whatsapp');
+// Confirmar a conta MOVE O PEDIDO: a etapa de Pagamento deixou de ser um
+// botão na tela do pedido e passou a ser consequência daqui.
+const Auto = require('../lib/pedidoAutomacao');
+const { carregarParaFluxo, gravarPasso } = require('../lib/fluxoCarga');
 
 /**
  * PAGO É O QUE O FINANCEIRO CONFIRMOU — e nada mais.
@@ -209,10 +213,38 @@ router.post('/receipts/:id/confirmar', async (req, res) => {
       req,
     });
     if (r.erro) return res.status(400).json({ error: r.erro, code: r.code, dica: r.dica });
+
+    /**
+     * E O PEDIDO ANDA.
+     *
+     * A etapa de Pagamento não tem mais botão na tela do pedido: ela é
+     * consequência desta confirmação. Sem isto, o financeiro confirmava
+     * a conta e o pedido continuava parado esperando um clique que não
+     * existe mais em lugar nenhum.
+     *
+     * Falhar aqui não desfaz o pagamento — ele já está gravado, e o
+     * pior caso é o pedido ficar onde estava até a próxima confirmação.
+     */
+    let avancou = null;
+    const vendaId = r.parcela?.reference_id;
+    if (vendaId) {
+      try {
+        const carga = await carregarParaFluxo(req.tenantId, vendaId);
+        const passo = carga && await Auto.avancarAposPagamento(req.tenantId, carga.venda, carga.aplicaveis, req);
+        if (passo) {
+          await gravarPasso(req.tenantId, vendaId, passo);
+          avancou = passo.status;
+        }
+      } catch (e) {
+        console.error('[financial/confirmar] avanco do pedido:', e?.message || e);
+      }
+    }
+
     audit(req, 'payment', 'financial', req.params.id, {
       confirmou: r.confirmado_por, aplicados: r.aplicados, sobra: r.sobra,
+      pedido_avancou: avancou,
     });
-    res.json(r);
+    res.json({ ...r, pedido_status: avancou });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
