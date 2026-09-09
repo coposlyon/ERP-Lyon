@@ -302,28 +302,32 @@ async function confirmarPagamento(tenantId, parcelaId, { valor, sem_comprovante,
   }
 
   const jaLancado = doisDecimais(parcela.paid_amount);
-  const semConfirmacao = jaLancado > 0 && !parcela.paid_at;
-
-  const pago = doisDecimais(
-    valor != null && valor !== '' ? valor
-      : (parcela.receipt_amount != null ? doisDecimais(parcela.receipt_amount) - jaLancado
-        : doisDecimais(parcela.amount) - jaLancado),
-  );
 
   /**
-   * CONFIRMAR TAMBEM E RATIFICAR — e sem isto a linha ficava presa.
+   * O NUMERO QUE ENTRA AQUI E O TOTAL RECEBIDO NESTA CONTA — e nao um
+   * acrescimo ao que ja estava lancado.
    *
-   * A parcela paga pelo fluxo antigo ja tem `paid_amount` e nao tem
-   * confirmacao. Conferir o comprovante dela nao levava a lugar nenhum:
-   * "confirmar" exigia um valor maior que zero, e nao havia nada a
-   * acrescentar — o dinheiro ja estava lancado, faltava alguem assumi-lo.
+   * "Quanto entrou a mais" obriga quem confirma a fazer uma subtracao de
+   * cabeca antes de digitar, olhando um comprovante que traz o valor
+   * CHEIO. E a conta errada e sempre para o mesmo lado: lanca-se de novo
+   * o que ja estava lancado, e a parcela fecha com o dobro.
    *
-   * Agora confirmar com valor zero (ou negativo, quando o lancado passa
-   * do total) e um ato legitimo: NAO mexe no valor, so assina. Quem
-   * confirmou e quando passam a existir, e a conta sai da fila.
+   * Aqui o campo e o valor do comprovante, tal como ele esta escrito. O
+   * que passar do valor DESTA conta escorre para as parcelas seguintes
+   * do mesmo pedido — que e o que acontece de verdade quando o cliente
+   * paga 350 de uma parcela de 200.
    */
-  const soRatifica = pago <= 0.005 && semConfirmacao;
-  if (!(pago > 0) && !soRatifica) return { erro: 'Informe o valor recebido.' };
+  const pago = doisDecimais(
+    valor != null && valor !== '' ? valor
+      : (parcela.receipt_amount != null ? parcela.receipt_amount
+        : (jaLancado > 0 ? jaLancado : doisDecimais(parcela.amount))),
+  );
+  if (!(pago > 0)) return { erro: 'Informe o valor total recebido.' };
+
+  // Confirmar sem mudar o valor: a linha ja tinha esse dinheiro lancado
+  // e o que faltava era alguem assumi-lo. A tela diz isso de outro
+  // jeito ("assina esse valor"), e o retorno precisa distinguir os dois.
+  const soRatifica = centavos(pago) === centavos(jaLancado) && !parcela.paid_at;
 
   const agora = new Date().toISOString();
   const hoje = agora.split('T')[0];
@@ -341,13 +345,13 @@ async function confirmarPagamento(tenantId, parcelaId, { valor, sem_comprovante,
   }
 
   const aplicados = [];
-  let restante = soRatifica ? 0 : pago;
 
-  // 1) A parcela que recebeu o comprovante vem primeiro.
-  const cabeNela = Math.max(0, doisDecimais(parcela.amount) - doisDecimais(parcela.paid_amount));
-  const naParcela = doisDecimais(Math.min(restante, cabeNela));
-  restante = doisDecimais(restante - naParcela);
-  const pagoNaParcela = doisDecimais(doisDecimais(parcela.paid_amount) + naParcela);
+  // 1) A parcela que recebeu o comprovante vem primeiro. Ela passa a
+  //    VALER o que foi recebido (ate o valor dela) — nao soma, substitui:
+  //    o campo e o total, e confirmar duas vezes tem de dar no mesmo.
+  const pagoNaParcela = doisDecimais(Math.min(pago, doisDecimais(parcela.amount)));
+  let restante = doisDecimais(pago - pagoNaParcela);
+  const naParcela = doisDecimais(pagoNaParcela - jaLancado);
   const quitou = centavos(pagoNaParcela) >= centavos(doisDecimais(parcela.amount));
 
   const { data: salva, error: e1 } = await supabase.from('LANCAMENTOS').update({
@@ -359,7 +363,7 @@ async function confirmarPagamento(tenantId, parcelaId, { valor, sem_comprovante,
     ...(sem_comprovante && !temComprovante ? { receipt_status: 'sem_comprovante' } : {}),
   }).eq('id', parcela.id).eq('tenant_id', tenantId).select(CAMPOS).single();
   if (e1) throw e1;
-  aplicados.push({ id: parcela.id, parcela: parcela.installment, valor: naParcela, quitou });
+  aplicados.push({ id: parcela.id, parcela: parcela.installment, valor: pagoNaParcela, quitou });
 
   // 2) O que sobrou escorre para as seguintes, na ordem das parcelas.
   for (const irma of irmas) {
@@ -436,6 +440,7 @@ async function confirmarPagamento(tenantId, parcelaId, { valor, sem_comprovante,
     // que nao aconteceu agora.
     ratificado: soRatifica,
     valor_ratificado: soRatifica ? jaLancado : 0,
+    total_recebido: pago,
     confirmado_por: quem,
     confirmado_em: agora,
   };

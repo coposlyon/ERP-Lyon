@@ -551,18 +551,24 @@ function ConferirModal({ conta, onClose, onFeito }) {
  * aqui só se diz quanto entrou.
  */
 function ConfirmarModal({ conta, onClose, onFeito }) {
+  const total = Number(conta.amount) || 0;
   const jaLancado = Number(conta.paid_amount) || 0;
-  const falta = Math.max(0, (Number(conta.amount) || 0) - jaLancado);
-  // Linha que já tem dinheiro lançado sem ninguém ter confirmado: o que
-  // falta ali não é valor, é assinatura. O campo começa em zero.
-  const ratificar = jaLancado > 0 && !conta.paid_at;
-  const sugerido = ratificar
-    ? Math.max(0, (Number(conta.receipt_amount) || jaLancado) - jaLancado)
-    : (conta.receipt_amount ?? falta);
+  /**
+   * O CAMPO É O TOTAL RECEBIDO, e vem preenchido com o valor do
+   * comprovante — do jeito que ele está escrito lá.
+   *
+   * Perguntar "quanto entrou a MAIS" obrigava a fazer uma subtração de
+   * cabeça olhando um comprovante que traz o valor cheio. E o erro é
+   * sempre para o mesmo lado: lança-se de novo o que já estava lançado.
+   */
+  const sugerido = conta.receipt_amount ?? (jaLancado > 0 ? jaLancado : total);
   const [valor, setValor] = useState(String(sugerido ?? ''));
   const [enviando, setEnviando] = useState(false);
   const semComprovante = !conta.receipt_url;
-  const excedente = Math.max(0, (Number(String(valor).replace(',', '.')) || 0) - falta);
+  const digitado = Number(String(valor).replace(',', '.')) || 0;
+  const excedente = Math.max(0, digitado - total);
+  const aMenos = Math.max(0, total - digitado);
+  const ratificar = jaLancado > 0 && !conta.paid_at;
 
   async function confirmar() {
     setEnviando(true);
@@ -575,9 +581,9 @@ function ConfirmarModal({ conta, onClose, onFeito }) {
       if ((r.aplicados || []).length > 1) extra.push(`${r.aplicados.length - 1} parcela(s) seguinte(s) abatida(s)`);
       if (r.saldo) extra.push(`saldo de ${fmt(r.saldo.amount)} em aberto`);
       if (r.sobra > 0) extra.push(`sobrou ${fmt(r.sobra)} de crédito com o cliente`);
-      toast.success(r.ratificado
-        ? `${fmt(r.valor_ratificado)} confirmados por ${r.confirmado_por}`
-        : `Pagamento confirmado por ${r.confirmado_por}${extra.length ? ` — ${extra.join(', ')}` : ''}`,
+      toast.success(
+        `${fmt(r.total_recebido)} confirmados por ${r.confirmado_por}`
+        + (extra.length ? ` — ${extra.join(', ')}` : ''),
         { duration: 8000 });
       onFeito();
     } catch (e) {
@@ -589,30 +595,36 @@ function ConfirmarModal({ conta, onClose, onFeito }) {
     <div className="space-y-3">
       <div className="rounded-xl border border-gray-200 p-3 text-[13px] space-y-1">
         <p className="font-semibold text-gray-800">{conta.description}</p>
-        <p className="text-gray-500">Em aberto nesta conta: <b className="text-gray-800">{fmt(falta)}</b></p>
+        <p className="text-gray-500">Valor desta conta: <b className="text-gray-800">{fmt(total)}</b></p>
+        {ratificar && (
+          <p className="text-gray-500">
+            Já lançados sem confirmação: <b className="text-gray-800">{fmt(jaLancado)}</b>
+          </p>
+        )}
         {conta.receipt_by && (
-          <p className="text-gray-500">Comprovante anexado por {conta.receipt_by} · conferido por {conta.receipt_by}</p>
+          <p className="text-gray-500">Comprovante anexado por {conta.receipt_by}</p>
         )}
       </div>
 
-      {ratificar && (
-        <p className="text-[12.5px] rounded-xl px-3 py-2 bg-blue-50 border border-blue-200 text-blue-900">
-          Esta conta já tem <b>{fmt(jaLancado)}</b> lançados sem confirmação do financeiro.
-          Confirmar <b>assina esse valor com o seu nome</b> — não precisa digitar nada.
-          Se ainda entrou mais dinheiro, some no campo abaixo.
-        </p>
-      )}
-
       <label className="block">
-        <span className="label">{ratificar ? 'Entrou mais alguma coisa? (opcional)' : 'Quanto entrou'}</span>
+        <span className="label">Valor total recebido</span>
         <input className="input w-44" type="number" step="0.01" min={0}
           value={valor} onChange={e => setValor(e.target.value)} />
+        <p className="text-[11.5px] text-gray-500 mt-1">
+          O valor que está no comprovante, inteiro. Não é o que falta nem o que entrou a mais.
+        </p>
       </label>
 
       {excedente > 0 && (
         <p className="text-[12.5px] rounded-xl px-3 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800">
           <b>{fmt(excedente)}</b> a mais do que esta conta — o excedente abate as parcelas seguintes
           do mesmo pedido, na ordem. O que sobrar depois de cobrir tudo fica como crédito do cliente.
+        </p>
+      )}
+      {aMenos > 0 && digitado > 0 && (
+        <p className="text-[12.5px] rounded-xl px-3 py-2 bg-amber-50 border border-amber-200 text-amber-900">
+          <b>{fmt(aMenos)}</b> a menos que o valor desta conta — o restante vira uma parcela nova de
+          saldo, esperando o próximo comprovante.
         </p>
       )}
       {semComprovante && (
@@ -624,8 +636,7 @@ function ConfirmarModal({ conta, onClose, onFeito }) {
 
       <div className="flex justify-end gap-2">
         <button className="btn-secondary" onClick={onClose} disabled={enviando}>Cancelar</button>
-        <button className="btn-primary" onClick={confirmar}
-          disabled={enviando || (!ratificar && !(Number(String(valor).replace(',', '.')) > 0))}>
+        <button className="btn-primary" onClick={confirmar} disabled={enviando || !(digitado > 0)}>
           {enviando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
           Confirmar pagamento
         </button>
