@@ -67,6 +67,8 @@ export default function PedidoCliente() {
   // Qual item está com a linha do tempo aberta (índice na lista).
   const [itemAberto, setItemAberto] = useState(null);
   const [formRetirada, setFormRetirada] = useState(false);
+  // A foto do pedido pronto aberta em tamanho grande.
+  const [fotoAberta, setFotoAberta] = useState(null);
   // O QUE O OLHO ANUNCIA É NOVIDADE, NÃO A PRÓPRIA EXISTÊNCIA.
   //
   // Antes ele piscava até o primeiro clique e nunca mais: era uma aula
@@ -352,6 +354,14 @@ export default function PedidoCliente() {
           <FormRetirada pedidoId={id} codigo={p.pedido.codigo} retirada={p.retirada}
             onClose={() => setFormRetirada(false)} onSalvo={() => { setFormRetirada(false); refetch(); }} />
         )}
+
+        {/* ── As fotos do pedido pronto ───────────────────────── */}
+        <FotosDoPedido fotos={p.fotos} onVer={setFotoAberta} />
+        <VisualizarArteModal
+          url={fotoAberta?.url || null}
+          titulo={fotoAberta?.nome || ''}
+          nomeArquivo={fotoAberta ? 'foto-do-pedido' : ''}
+          onClose={() => setFotoAberta(null)} />
 
         {/* ── Linha do tempo ──────────────────────────────────── */}
         <Card Icon={Clock} titulo="Linha do Tempo do Pedido">
@@ -987,6 +997,46 @@ function ArteDosItens({ pedidoId, token, itens, onMontar, onEnviou }) {
           </label>
         </ConfirmacaoDupla>
       )}
+    </Card>
+  );
+}
+
+/**
+ * AS FOTOS DO SEU PEDIDO PRONTO.
+ *
+ * A fábrica fotografa uma peça de cada arte antes de embalar — é etapa
+ * obrigatória, com senha e conferência. Só que a foto morria lá dentro:
+ * ficava guardada no pedido e nenhuma tela do lado do cliente a lia.
+ *
+ * Ela existe para ser vista AQUI, e agora. O pedido ainda está na
+ * fábrica quando a foto é tirada, e é a última hora em que um engano —
+ * a cor errada, o logo trocado, o nome escrito diferente — se conserta
+ * sem frete de volta e sem refazer mil copos.
+ *
+ * Clicar abre em tamanho grande, no mesmo visualizador da arte.
+ */
+function FotosDoPedido({ fotos, onVer }) {
+  if (!fotos?.length) return null;
+  return (
+    <Card Icon={Camera} titulo="Fotos do seu pedido pronto">
+      <p className="text-[13px] mb-3" style={{ color: 'rgba(255,255,255,0.65)' }}>
+        Fotografamos uma peça de cada arte antes de embalar. Confira com calma —
+        se algo não estiver como você combinou, fale com a gente <b>antes de o pedido sair</b>.
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {fotos.map((f, i) => (
+          <button key={i} onClick={() => onVer({ url: f.url, nome: `Foto ${i + 1} do pedido` })}
+            className="group relative rounded-xl overflow-hidden text-left"
+            style={{ border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)' }}>
+            <img src={f.url} alt={`Foto ${i + 1} do pedido pronto`} loading="lazy"
+              className="w-full h-32 object-cover transition-transform group-hover:scale-105" />
+            <span className="absolute bottom-0 left-0 right-0 px-2 py-1 text-[11px] flex items-center gap-1"
+              style={{ background: 'rgba(0,0,0,0.55)', color: 'rgba(255,255,255,0.85)' }}>
+              <Eye size={11} /> Ampliar
+            </span>
+          </button>
+        ))}
+      </div>
     </Card>
   );
 }

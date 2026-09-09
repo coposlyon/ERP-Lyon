@@ -130,6 +130,12 @@ router.use('/price-tables',   requireModules('price-tables','sales','pdv'), pric
 router.use('/coupons',   requireModules('sales','pdv','price-tables','settings'), require('./coupons'));
 router.use('/financial-config', requireModules('financial','settings'), financialConfigRoutes);
 router.use('/logistics', requireModules('logistics'), logisticsRoutes);
+// A FILA DA EXPEDICAO. Mora ao lado do cadastro de transportadoras
+// porque e a mesma pessoa que abre as duas — mas e outro trabalho:
+// quais pedidos estao prontos, quais ja foram avisados, qual espera
+// coleta. Vendas tambem entra: e o vendedor que o cliente liga
+// perguntando se ja pode buscar.
+router.use('/expedicao', requireModules('logistics', 'sales'), require('./expedicao'));
 router.use('/shipping',  requireModules('logistics','sales','pdv','settings'), require('./shipping'));
 router.use('/returns',   requireModules('returns','sales'), returnsRoutes);
 router.use('/quality',   requireModules('quality'), qualityRoutes);

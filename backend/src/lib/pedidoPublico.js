@@ -207,6 +207,26 @@ function montarPedidoDoCliente(venda, extra = {}) {
     },
 
     itens,
+
+    /**
+     * AS FOTOS DO PEDIDO PRONTO.
+     *
+     * A fábrica fotografava — uma foto por arte, é etapa obrigatória —
+     * e o cliente nunca via. As fotos ficavam em `production_photos`,
+     * lidas só pela tela da produção; do lado de fora ninguém sabia que
+     * existiam.
+     *
+     * É a última conferência antes de a caixa sair, e a única em que
+     * quem olha é quem comprou: o pedido ainda está aqui, e um erro
+     * visto agora se conserta sem frete de volta.
+     *
+     * Sem legenda interna e sem quem tirou — o cliente quer ver o copo
+     * dele, não o nome do operador da bancada.
+     */
+    fotos: (Array.isArray(venda.production_photos) ? venda.production_photos : [])
+      .filter(f => f?.url)
+      .map(f => ({ url: f.url, em: f.at || null })),
+
     // A régua DETALHADA, com "aguardando" e "confirmado" separados. É o
     // contrário da tela do vendedor de propósito: quem acompanha a
     // própria compra quer ver cada movimentação acontecer, enquanto quem

@@ -91,6 +91,9 @@ const CAMPOS_PEDIDO = `
   collect_date, transport_days, freight_quote, tracking_code,
   carrier_id, user_id, tenant_id, production_log,
   delivery_mode, notes, pickup_person, receipt_url,
+  // As fotos do pedido pronto. A fabrica tira uma por arte, e ate agora
+  // so a tela da producao as lia — quem comprou nunca via.
+  production_photos,
   CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating ),
   VENDA_ITENS ( id, product_name, quantity, unit_price, total, customization,
                 PRODUTOS ( id, code, name, ink_type ) )
