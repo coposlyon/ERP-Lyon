@@ -77,7 +77,6 @@ export default function Production() {
   const rows = data?.data || [];
   // Quantos ainda esperam o comercial mandar. Fila vazia com pedidos
   // represados é uma resposta; fila vazia e mais nada é um mistério.
-  const aguardandoEnvio = data?.aguardando_envio || 0;
   const selected = rows.find(r => r.id === selId) || null;
 
   const { data: detail } = useQuery({
@@ -268,7 +267,7 @@ export default function Production() {
             <tbody>
               {isLoading && <tr><td colSpan={11} className="p-8 text-center text-gray-400"><Loader2 className="animate-spin mx-auto" /></td></tr>}
               {!isLoading && error && <tr><td colSpan={11} className="p-0"><FalhouAoCarregar erro={error} onTentar={refetch} /></td></tr>}
-              {!isLoading && !error && rows.length === 0 && <tr><td colSpan={11} className="p-0"><FilaVazia aguardandoEnvio={aguardandoEnvio} /></td></tr>}
+              {!isLoading && !error && rows.length === 0 && <tr><td colSpan={11} className="p-0"><FilaVazia /></td></tr>}
               {rows.map(r => {
                 const st = STAGES[r.stage] || STAGES.aguardando_producao;
                 const dd = r.diff_deadline ?? r.diff_days;
@@ -308,7 +307,7 @@ export default function Production() {
             <div className="p-8 text-center text-gray-400"><Loader2 className="animate-spin mx-auto" /></div>
           )}
           {!isLoading && error && <FalhouAoCarregar erro={error} onTentar={refetch} />}
-          {!isLoading && !error && rows.length === 0 && <FilaVazia aguardandoEnvio={aguardandoEnvio} />}
+          {!isLoading && !error && rows.length === 0 && <FilaVazia />}
           {rows.map(r => (
             <CartaoProducao key={r.id} r={r} selecionado={selId === r.id}
               onSelecionar={() => { setSelId(r.id); setEdit({}); }} />
@@ -650,18 +649,21 @@ function FalhouAoCarregar({ erro, onTentar }) {
   );
 }
 
-/** Fila vazia com pedidos represados é resposta; sem isso é mistério. */
-function FilaVazia({ aguardandoEnvio }) {
+/**
+ * Fila vazia é só fila vazia.
+ *
+ * Aqui havia o recado "há N pedidos esperando o comercial clicar em
+ * Enviar para produção" — e ele saiu junto com a trava que o criava. A
+ * fila agora é o STATUS: pedido em "Aguardando produção" está nesta
+ * tela, sem depender de clique de terceiro.
+ */
+function FilaVazia() {
   return (
     <div className="p-8 text-center">
       <p className="text-sm text-gray-500">Nenhum pedido na fila da produção.</p>
-      {aguardandoEnvio > 0 && (
-        <p className="text-xs text-gray-400 mt-1.5 max-w-md mx-auto leading-relaxed">
-          {aguardandoEnvio === 1
-            ? 'Há 1 pedido esperando o comercial clicar em "Enviar para produção" no pedido de venda.'
-            : `Há ${aguardandoEnvio} pedidos esperando o comercial clicar em "Enviar para produção" no pedido de venda.`}
-        </p>
-      )}
+      <p className="text-xs text-gray-400 mt-1.5">
+        Os pedidos aparecem aqui assim que chegam em “Aguardando produção”.
+      </p>
     </div>
   );
 }

@@ -531,7 +531,18 @@ function fichaDeFluxo(venda, aplicaveis = {}, quem = {}) {
    * de texto e de dono: quem envia é o comercial, não a produção.
    */
   const naFabrica = FASES_DA_FABRICA.includes(fase.key);
-  const faltaEnviar = naFabrica && !envio.enviado;
+  /**
+   * O ENVIO NÃO SEGURA MAIS NADA — e por isso `faltaEnviar` é sempre
+   * falso. Ele foi um portão: fase de fábrica só andava depois de
+   * alguém clicar em "Enviar para produção", e o resultado foi uma fila
+   * invisível (pedidos em "Aguardando produção" com a tela da fábrica
+   * vazia). Chegar na fase JÁ é o aviso.
+   *
+   * A constante fica no lugar de sumir porque ela aparece em quatro
+   * decisões abaixo: zerá-la aqui é uma linha, e caçar as quatro é
+   * quatro chances de esquecer uma.
+   */
+  const faltaEnviar = false;
 
   /**
    * E QUANDO JÁ FOI ENVIADO, a espera fica escrita.
@@ -632,15 +643,23 @@ function avancar(venda, aplicaveis, quem, req, observacao = null, opcoes = {}) {
 
   const { fase, destino, marcos } = plano;
 
-  // A FÁBRICA SÓ TRABALHA NO QUE FOI MANDADO. Sem o envio, nem gerente
-  // avança: não é questão de permissão, é que o pedido não entrou na
-  // fila — concluir uma etapa que ninguém começou é registrar mentira.
-  if (FASES_DA_FABRICA.includes(fase.key) && !envioParaProducao(venda).enviado) {
-    return {
-      erro: 'Este pedido ainda não foi enviado para a produção. Use "Enviar para produção" no pedido de venda.',
-      http: 409,
-    };
-  }
+  /**
+   * O ENVIO PARA A PRODUÇÃO DEIXOU DE SER UM PORTÃO.
+   *
+   * Havia aqui uma trava: fase de fábrica só andava depois de alguém
+   * clicar em "Enviar para produção" no pedido. A intenção era boa — não
+   * pôr na fila o pedido que o comercial ainda estava acertando —, mas
+   * na prática ela criou uma fila invisível: seis pedidos em "Aguardando
+   * produção" e a tela da fábrica vazia, dizendo que esperava um clique
+   * que ninguém sabia que precisava dar.
+   *
+   * O pedido chegar em "Aguardando produção" JÁ É o aviso. Ele só chega
+   * ali depois de pagamento conferido, estoque e arte aprovada — três
+   * portas que o comercial e o financeiro já abriram, uma a uma.
+   *
+   * O evento `enviado_producao` continua sendo gravado por quem clicar
+   * (é histórico), mas não decide mais nada.
+   */
 
   // A etapa do dinheiro não é dada por quem olha o pedido — ver
   // MOTIVO_ETAPA_DO_FINANCEIRO. `doFinanceiro` é a confirmação da conta

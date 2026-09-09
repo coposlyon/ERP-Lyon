@@ -62,10 +62,16 @@ const FASE_DA_ETAPA = {
  * Duas peneiras, e as duas existem porque a fila estava mostrando
  * trabalho que não era trabalho:
  *
- *   1. O PEDIDO FOI ENVIADO. Antes bastava o pedido chegar num certo
- *      status para cair aqui — inclusive os que o comercial ainda
- *      estava acertando com o cliente. Agora alguém precisa ter dito
- *      "pode começar" (pedido do site já nasce dito).
+ *   1. O STATUS. O pedido chegar em "Aguardando produção" JÁ É o aviso:
+ *      ele só chega ali depois de pagamento conferido, estoque e arte
+ *      aprovada — três portas que o comercial e o financeiro abriram uma
+ *      a uma.
+ *
+ *      HOUVE UMA SEGUNDA TRAVA AQUI, e ela saiu: exigia que alguém
+ *      clicasse em "Enviar para produção" no pedido. O resultado foi uma
+ *      fila invisível — seis pedidos em "Aguardando produção" e a tela
+ *      da fábrica vazia, esperando um clique que ninguém sabia que
+ *      precisava dar.
  *
  *   2. TEM O QUE GRAVAR. Copo liso não tem arte, nem vegetal, nem tela:
  *      não há uma etapa de serigrafia sequer para a fábrica registrar.
@@ -136,7 +142,9 @@ router.get('/', async (req, res) => {
         enviado_producao: envio.enviado,
         enviado_em: envio.em,
         enviado_por: envio.por,
-        interagivel: envio.enviado && !!aplicaveis.personalizado,
+        // Tem o que a fábrica registrar? É a única pergunta que sobrou:
+        // copo liso não tem arte, vegetal nem tela.
+        interagivel: !!aplicaveis.personalizado,
         id: s.id, number: s.number, created_at: s.created_at,
         customer: s.CLIENTES?.name || 'Consumidor Final',
         seller: s.USUARIOS?.name || null,
@@ -154,17 +162,16 @@ router.get('/', async (req, res) => {
         art_file: s.art_file, total: s.total, status: s.status,
       };
     });
-    // PEDIDO NÃO ENVIADO NÃO É FILA DA PRODUÇÃO. Ele ainda está com o
-    // comercial. `?pendentes=1` mostra os que aguardam o envio, para
-    // quem quiser conferir o que está represado.
-    const soPendentes = req.query.pendentes === '1';
-    const fila = rows.filter(r => (soPendentes ? !r.enviado_producao : r.enviado_producao));
+    // A FILA É O QUE ESTÁ NO STATUS DE FÁBRICA. Sem segunda peneira: o
+    // pedido que chegou aqui é trabalho da fábrica, e some da tela só
+    // quando sair do status.
+    const fila = rows;
 
     res.json({
       data: fila,
-      // Os números da tela: quantos esperam o comercial mandar e
-      // quantos estão aqui sem nada para gravar.
-      aguardando_envio: rows.filter(r => !r.enviado_producao).length,
+      // Continua saindo por compatibilidade com quem já lê este campo —
+      // agora é sempre zero, porque não existe mais espera por envio.
+      aguardando_envio: 0,
       sem_personalizacao: fila.filter(r => !r.personalizado).length,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
