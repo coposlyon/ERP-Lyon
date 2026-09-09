@@ -244,6 +244,24 @@ function montarPedidoDoCliente(venda, extra = {}) {
       // tarde.
       pedir_agora: venda.status === 'aguardando_coleta',
       autorizado: paraOCliente(venda.pickup_person),
+
+      /**
+       * A DECLARAÇÃO DE CONFERÊNCIA — só no balcão, e só uma vez.
+       *
+       * `confirmar_agora` é o pedido esperando alguém buscar: é o único
+       * momento em que a frase "abri e conferi" pode ser verdade.
+       * Oferecer antes é pedir assinatura em caixa fechada.
+       *
+       * `confirmada` guarda quando e quem — depois de assinada, a tela
+       * mostra o registro em vez do botão.
+       */
+      confirmar_agora: ['aguardando_coleta', 'coleta_processo', 'embalagem_finalizada']
+        .includes(venda.status),
+      confirmada: (() => {
+        const e = (venda.production_log || [])
+          .filter(x => x.action === 'retirada_confirmada').slice(-1)[0];
+        return e ? { em: e.at, por: e.user, declaracao: e.declaracao } : null;
+      })(),
     } : null,
     historico: A.historicoPedido(venda),
     documentos: documentos(venda, extra.temNota, extra.temComprovante),

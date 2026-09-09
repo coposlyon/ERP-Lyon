@@ -19,7 +19,7 @@
 const express  = require('express');
 const router   = express.Router();
 const jwt      = require('jsonwebtoken');
-const { montarAutorizacao, paraOCliente } = require('../lib/retirada');
+const { montarAutorizacao, paraOCliente, mascararCpf } = require('../lib/retirada');
 const rateLimit = require('express-rate-limit');
 const supabase = require('../config/supabase');
 const { codigoPedido } = require('../lib/pedidoCodigo');
@@ -368,6 +368,110 @@ router.post('/pedido/:id/retirada', exigirToken, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Não foi possível registrar quem vai retirar.' });
+  }
+});
+
+/**
+ * A DECLARAÇÃO DE RETIRADA — assinada pelo cliente, no balcão.
+ *
+ * "Eu declaro que abri e conferi a mercadoria no ato da retirada e que
+ * estão de acordo com o pedido realizado." É a frase que fecha a
+ * entrega, e até agora ela era dita de boca: o cliente pegava a caixa e
+ * ia embora, e três dias depois a discussão sobre o que veio errado não
+ * tinha nada escrito de nenhum dos dois lados.
+ *
+ * QUEM ASSINA PROVA QUEM É. O portal do cliente não tem senha — ele
+ * entra com CPF e data de nascimento, e é ESSE MESMO PAR que se pede
+ * aqui de novo. Não é a mesma coisa que uma senha, e vale dizer: é o
+ * documento que ele já usa para entrar, digitado outra vez no momento
+ * de assumir a conferência. Quando existir senha de cliente, é aqui que
+ * ela entra, e nada mais muda.
+ *
+ * A CONFERÊNCIA É NO ATO, e por isso o botão só existe quando o pedido
+ * está esperando ser retirado. Assinar antes é assinar por uma caixa
+ * que ainda não foi aberta.
+ */
+router.post('/pedido/:id/retirada-confirmada', exigirToken, async (req, res) => {
+  try {
+    const saleId = await pedidoDoCliente(req.params.id, req.customerId);
+    if (!saleId) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    const { data: venda } = await supabase.from('VENDAS')
+      .select('id, number, status, delivery_mode, notes, production_log, pickup_person')
+      .eq('id', saleId).maybeSingle();
+    if (!venda) return res.status(404).json({ error: 'Pedido não encontrado.' });
+
+    if (!A.ehRetirada(venda)) {
+      return res.status(409).json({
+        error: 'Este pedido é para entrega, não para retirada.',
+        dica: 'Quando ele chegar, a confirmação de recebimento é com a transportadora.',
+      });
+    }
+
+    const PRONTOS = ['aguardando_coleta', 'coleta_processo', 'embalagem_finalizada'];
+    if (!PRONTOS.includes(venda.status)) {
+      const jaFoi = venda.status === 'produto_retirado' || A.infoStatus(venda.status).final;
+      return res.status(409).json({
+        error: jaFoi
+          ? 'Esta retirada já foi confirmada.'
+          : 'Seu pedido ainda não está pronto para retirada.',
+        dica: jaFoi ? null : 'Avisamos assim que ele estiver esperando por você aqui.',
+      });
+    }
+
+    if (!req.body?.declaro) {
+      return res.status(400).json({
+        error: 'Marque a declaração para confirmar a retirada.',
+      });
+    }
+
+    // ── QUEM ESTÁ ASSINANDO ──────────────────────────────────
+    const cpf = P.soDigitos(req.body?.cpf);
+    const nascimento = dataISO(req.body?.nascimento);
+    const { data: cliente } = await supabase.from('CLIENTES')
+      .select('id, name, cpf_cnpj, birth_date').eq('id', req.customerId).maybeSingle();
+
+    const confere = cliente
+      && P.soDigitos(cliente.cpf_cnpj) === cpf
+      && String(cliente.birth_date || '').slice(0, 10) === nascimento;
+
+    if (!confere) {
+      // A mesma frase para CPF errado e data errada: dizer qual dos dois
+      // falhou é dizer que o outro está certo.
+      return res.status(403).json({
+        error: 'Os dados não conferem com o seu cadastro.',
+        dica: 'Use o mesmo CPF e a mesma data de nascimento com que você entrou.',
+      });
+    }
+
+    const agora = new Date().toISOString();
+    const TEXTO = 'Eu declaro que abri e conferi a mercadoria no ato da retirada '
+                + 'e que estão de acordo com o pedido realizado.';
+
+    const log = Array.isArray(venda.production_log) ? [...venda.production_log] : [];
+    log.push({
+      stage: 'expedicao', action: 'retirada_confirmada', at: agora,
+      user: cliente.name, por_cliente: true,
+      declaracao: TEXTO,
+      cpf: mascararCpf(cliente.cpf_cnpj),
+      quem_retirou: venda.pickup_person?.nome || cliente.name,
+    });
+
+    const { error } = await supabase.from('VENDAS')
+      .update({ status: 'produto_retirado', production_log: log })
+      .eq('id', saleId).eq('tenant_id', req.tenantId);
+    if (error) throw error;
+
+    res.status(201).json({
+      ok: true,
+      declaracao: TEXTO,
+      em: agora,
+      assinou: cliente.name,
+      status_label: A.infoStatus('produto_retirado').label,
+      aviso: 'Retirada registrada. Guarde o número do pedido — ele é o seu comprovante.',
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Não foi possível registrar a retirada.' });
   }
 });
 

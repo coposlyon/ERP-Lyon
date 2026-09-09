@@ -355,6 +355,11 @@ export default function PedidoCliente() {
             onClose={() => setFormRetirada(false)} onSalvo={() => { setFormRetirada(false); refetch(); }} />
         )}
 
+        {/* ── A conferência no ato da retirada ─────────────────── */}
+        {p.retirada && (
+          <ConfirmarRetirada pedidoId={id} retirada={p.retirada} onFeito={refetch} />
+        )}
+
         {/* ── As fotos do pedido pronto ───────────────────────── */}
         <FotosDoPedido fotos={p.fotos} onVer={setFotoAberta} />
         <VisualizarArteModal
@@ -1038,6 +1043,141 @@ function FotosDoPedido({ fotos, onVer }) {
         ))}
       </div>
     </Card>
+  );
+}
+
+/**
+ * "ABRI E CONFERI" — dito por escrito, no balcão.
+ *
+ * A frase que fecha a retirada era dita de boca: o cliente pegava a
+ * caixa, ia embora, e três dias depois a conversa sobre o que veio
+ * errado não tinha nada escrito de nenhum dos dois lados.
+ *
+ * QUEM ASSINA PROVA QUEM É. O portal não tem senha de cliente — a
+ * entrada é CPF e data de nascimento, e é esse mesmo par que se pede
+ * aqui de novo, no momento de assumir a conferência. Está escrito na
+ * tela com todas as letras: pedir "sua senha" onde não existe senha
+ * seria a tela mentindo sobre o que faz.
+ *
+ * O botão só aparece com o pedido esperando ser buscado. Antes disso,
+ * assinar seria assinar por uma caixa que ainda não foi aberta.
+ */
+const TEXTO_DECLARACAO = 'Eu declaro que abri e conferi a mercadoria no ato da retirada '
+  + 'e que estão de acordo com o pedido realizado.';
+
+function ConfirmarRetirada({ pedidoId, retirada, onFeito }) {
+  const [aberto, setAberto] = useState(false);
+  const [declaro, setDeclaro] = useState(false);
+  const [cpf, setCpf] = useState('');
+  const [nascimento, setNascimento] = useState('');
+  const [erro, setErro] = useState(null);
+
+  const enviar = useMutation({
+    mutationFn: () => api.post(`/acompanhar/pedido/${pedidoId}/retirada-confirmada`,
+      { declaro, cpf, nascimento }),
+    onSuccess: () => { setAberto(false); onFeito?.(); },
+    onError: e => setErro(e.dica ? `${e.error} ${e.dica}` : (e.error || 'Não foi possível confirmar.')),
+  });
+
+  // Já assinada: fica o registro, e não o botão.
+  if (retirada.confirmada) {
+    return (
+      <div className="rounded-2xl px-4 py-3.5"
+        style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.3)' }}>
+        <p className="text-sm font-semibold flex items-center gap-2" style={{ color: '#4ade80' }}>
+          <CircleCheck size={15} /> Retirada confirmada
+        </p>
+        <p className="text-[13px] mt-1" style={{ color: 'rgba(255,255,255,0.7)' }}>
+          {retirada.confirmada.por} declarou a conferência em{' '}
+          {new Date(retirada.confirmada.em).toLocaleString('pt-BR', {
+            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}.
+        </p>
+        <p className="text-[12px] mt-1.5 italic" style={{ color: 'rgba(255,255,255,0.45)' }}>
+          “{retirada.confirmada.declaracao || TEXTO_DECLARACAO}”
+        </p>
+      </div>
+    );
+  }
+
+  if (!retirada.confirmar_agora) return null;
+
+  return (
+    <>
+      <button onClick={() => { setAberto(true); setErro(null); }}
+        className="w-full rounded-2xl px-4 py-3.5 text-left transition-colors"
+        style={{ background: 'rgba(96,165,250,0.10)', border: '1px solid rgba(96,165,250,0.35)' }}>
+        <span className="text-sm font-semibold flex items-center gap-2 text-white">
+          <PackageCheck size={16} style={{ color: '#60a5fa' }} /> Retirei o meu pedido
+        </span>
+        <span className="text-[13px] block mt-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
+          Confirme aqui no ato da retirada, depois de abrir e conferir a mercadoria.
+        </span>
+      </button>
+
+      {aberto && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.75)' }} onClick={() => !enviar.isPending && setAberto(false)}>
+          <div className="w-full max-w-md rounded-2xl p-5 space-y-3.5"
+            style={{ background: '#111827', border: '1px solid rgba(255,255,255,0.12)' }}
+            onClick={e => e.stopPropagation()}>
+
+            <p className="text-base font-semibold text-white flex items-center gap-2">
+              <PackageCheck size={17} style={{ color: '#60a5fa' }} /> Confirmar a retirada
+            </p>
+
+            <label className="flex items-start gap-2.5 cursor-pointer rounded-xl p-3"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)' }}>
+              <input type="checkbox" checked={declaro} onChange={e => setDeclaro(e.target.checked)}
+                className="w-4 h-4 mt-0.5 shrink-0 accent-blue-500" />
+              <span className="text-[13px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                {TEXTO_DECLARACAO}
+              </span>
+            </label>
+
+            <p className="text-[12px]" style={{ color: 'rgba(255,255,255,0.5)' }}>
+              Para assinar, confirme os mesmos dados com que você entrou aqui.
+            </p>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <span className="text-[11px] block mb-1" style={{ color: 'rgba(255,255,255,0.5)' }}>Seu CPF</span>
+                <input value={cpf} onChange={e => setCpf(e.target.value)} inputMode="numeric"
+                  placeholder="000.000.000-00"
+                  className="w-full rounded-lg px-3 py-2 text-sm text-white"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)' }} />
+              </div>
+              <div>
+                <span className="text-[11px] block mb-1" style={{ color: 'rgba(255,255,255,0.5)' }}>Nascimento</span>
+                <input value={nascimento} onChange={e => setNascimento(e.target.value)} type="date"
+                  className="w-full rounded-lg px-3 py-2 text-sm text-white"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)' }} />
+              </div>
+            </div>
+
+            {erro && (
+              <p className="text-[12.5px] rounded-lg px-3 py-2 flex items-start gap-2"
+                style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.3)', color: '#fca5a5' }}>
+                <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {erro}
+              </p>
+            )}
+
+            <div className="flex gap-2 justify-end pt-1">
+              <button onClick={() => setAberto(false)} disabled={enviar.isPending}
+                className="px-3.5 py-2 rounded-lg text-sm"
+                style={{ color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                Cancelar
+              </button>
+              <button onClick={() => { setErro(null); enviar.mutate(); }}
+                disabled={!declaro || !cpf || !nascimento || enviar.isPending}
+                className="px-3.5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40 inline-flex items-center gap-1.5"
+                style={{ background: '#2563eb' }}>
+                {enviar.isPending ? <Loader2 size={14} className="animate-spin" /> : <CircleCheck size={14} />}
+                Confirmar a retirada
+              </button>
+            </div>
+          </div>
+        </div>, document.body)}
+    </>
   );
 }
 

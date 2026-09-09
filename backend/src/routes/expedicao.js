@@ -259,6 +259,48 @@ function mensagemDeAviso(venda, retirada) {
   ].filter(Boolean).join('\n');
 }
 
+/**
+ * AVISAR O CLIENTE — a função, para quem não é a rota.
+ *
+ * A embalagem, ao fechar um pedido de retirada, avisa o cliente na
+ * hora: não há coleta a esperar, o pedido já está na prateleira. Ela
+ * chama isto (de `routes/production.js`) em vez de escrever o próprio
+ * texto, porque o cliente não deve receber dois avisos diferentes
+ * conforme quem apertou o botão.
+ */
+async function avisarCliente(req, saleId) {
+  const venda = await carregarPedido(req.tenantId, saleId);
+  if (!venda) return null;
+
+  const retirada = A.ehRetirada(venda);
+  const mensagem = mensagemDeAviso(venda, retirada);
+  const fone = normalizarNumero(venda.CLIENTES?.mobile || venda.CLIENTES?.phone);
+
+  let envio = { modo: 'manual', enviado: false };
+  if (!fone) {
+    envio = { modo: 'sem_telefone', enviado: false, motivo: 'Cliente sem telefone cadastrado' };
+  } else if (process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID) {
+    const r = await sendWhatsApp(fone, mensagem);
+    envio = r.ok ? { modo: 'automatico', enviado: true, id: r.id }
+      : { modo: 'manual', enviado: false, motivo: r.error };
+  }
+
+  await gravarMarco(req, venda.id, 'cliente_avisado', {
+    modo: retirada ? 'retirada' : 'entrega',
+    envio: envio.modo,
+    telefone: fone || null,
+  });
+
+  return {
+    ok: true,
+    cliente: venda.CLIENTES?.name || null,
+    telefone: fone,
+    mensagem,
+    wa_link: fone ? `https://wa.me/${fone}?text=${encodeURIComponent(mensagem)}` : null,
+    envio,
+  };
+}
+
 router.post('/:id/avisar-cliente', async (req, res) => {
   try {
     const venda = await carregarPedido(req.tenantId, req.params.id);
@@ -629,5 +671,15 @@ router.get('/:id/historico', async (req, res) => {
     res.json({ codigo: codigoPedido(v.number), status_label: A.infoStatus(v.status).label, eventos });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+/**
+ * O ROUTER É O MÓDULO, e o aviso vai pendurado nele.
+ *
+ * `routes/index.js` faz `router.use('/expedicao', require('./expedicao'))`
+ * e precisa receber o router — trocar isso por `{ router, avisarCliente }`
+ * quebraria o registro. Pendurar a função no próprio router deixa as
+ * duas coisas saírem daqui sem mudar quem já lê este arquivo.
+ */
+router.avisarCliente = avisarCliente;
 
 module.exports = router;

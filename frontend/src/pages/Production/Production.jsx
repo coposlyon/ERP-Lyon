@@ -294,12 +294,24 @@ export default function Production() {
       } else {
         toast.success(`Etapa registrada — pedido em "${r?.status_label || 'próxima etapa'}"`);
       }
+      /**
+       * RETIRADA NAO ESPERA A LOGISTICA.
+       *
+       * Fechada a embalagem de um pedido que o cliente vem buscar, nao
+       * ha coleta nem transportadora: o unico passo que falta e a
+       * pessoa aparecer. O servidor ja montou o recado; aqui a conversa
+       * abre na hora, com quem acabou de fechar a caixa.
+       */
+      if (r?.aviso_cliente) setAvisoRetirada(r.aviso_cliente);
     },
     onError: e => toast.error(e.dica ? `${e.error} ${e.dica}` : (e.error || 'Erro ao registrar etapa')),
   });
 
   // A etapa que está sendo confirmada agora: { stage, action } | null
   const [confirmando, setConfirmando] = useState(null);
+  // O recado de "pronto para retirada", montado pelo servidor ao fechar
+  // a embalagem de um pedido que o cliente vem buscar.
+  const [avisoRetirada, setAvisoRetirada] = useState(null);
 
   const [edit, setEdit] = useState({});
   const saveFields = useMutation({
@@ -709,6 +721,39 @@ export default function Production() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* O recado de "pronto para retirada", pronto para enviar. */}
+      <Modal isOpen={!!avisoRetirada} onClose={() => setAvisoRetirada(null)}
+        title="Pedido pronto — avise o cliente" size="sm">
+        {avisoRetirada && (
+          <div className="space-y-3">
+            <p className="text-[13px] rounded-xl px-3 py-2 bg-blue-50 border border-blue-200 text-blue-900">
+              Este pedido é para <b>retirada</b> — não passa pela logística. A mensagem está
+              pronta; é só abrir a conversa e enviar.
+            </p>
+            <pre className="text-[12.5px] whitespace-pre-wrap rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 font-sans text-gray-700">
+              {avisoRetirada.mensagem}
+            </pre>
+            {avisoRetirada.envio?.modo === 'sem_telefone' && (
+              <p className="text-[12.5px] rounded-xl px-3 py-2 bg-amber-50 border border-amber-200 text-amber-900">
+                {avisoRetirada.envio.motivo}. Copie o texto e mande pelo canal de sempre.
+              </p>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button className="btn-secondary" onClick={() => {
+                navigator.clipboard?.writeText(avisoRetirada.mensagem);
+                toast.success('Mensagem copiada');
+              }}>Copiar</button>
+              {avisoRetirada.wa_link && (
+                <a className="btn-primary" href={avisoRetirada.wa_link} target="_blank" rel="noopener noreferrer">
+                  Abrir o WhatsApp
+                </a>
+              )}
+              <button className="btn-secondary" onClick={() => setAvisoRetirada(null)}>Fechar</button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Confirmação da etapa — duas portas, senha nas duas. */}

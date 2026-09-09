@@ -643,6 +643,19 @@ function artesDoPedido(itens) {
   return artes.size;
 }
 
+/**
+ * O AVISO DE "PRONTO PARA RETIRADA", montado uma vez só.
+ *
+ * O texto e o registro no histórico moram em `routes/expedicao.js`,
+ * porque é lá que a logística avisa o cliente pelo botão. Aqui a
+ * embalagem chama a mesma coisa — o cliente não tem por que receber
+ * dois textos diferentes conforme quem apertou o botão.
+ */
+async function avisarProntoParaRetirada(req, saleId) {
+  const expedicao = require('./expedicao');
+  return expedicao.avisarCliente(req, saleId);
+}
+
 // ── Iniciar / Finalizar etapa (registra quem, quando e o quê) ────
 router.post('/:id/stage', async (req, res) => {
   const { stage, action, password, password_confirma, actor_user, dados } = req.body;
@@ -804,9 +817,37 @@ router.post('/:id/stage', async (req, res) => {
       try { await bumpQuadro(req.tenantId, registro.matriz, 'gravacoes'); } catch { /* ignora */ }
     }
 
+    /**
+     * RETIRADA NÃO PASSA PELA LOGÍSTICA — E O CLIENTE PRECISA SABER HOJE.
+     *
+     * Pedido que o cliente vem buscar não tem coleta, não tem
+     * transportadora e não tem etiqueta de transporte: fechada a
+     * embalagem, ele está pronto na prateleira e o único passo que
+     * falta é a pessoa aparecer. Mandar isso para a fila da logística
+     * seria criar uma espera que não existe — e é nessa espera que o
+     * cliente liga perguntando se já pode vir.
+     *
+     * Então a mensagem sai daqui, no mesmo instante em que a caixa
+     * fecha, montada pela MESMA função da tela de expedição — duas
+     * redações do mesmo aviso viram duas Lyons.
+     *
+     * O envio segue meio automático enquanto a API oficial do WhatsApp
+     * não estiver ligada: o texto vem pronto e quem fechou a embalagem
+     * aperta enviar. A tela da produção abre a conversa sozinha.
+     */
+    let avisoAoCliente = null;
+    if (action === 'finish' && stage === 'embalagem' && A.ehRetirada(sale)) {
+      try {
+        avisoAoCliente = await avisarProntoParaRetirada(req, req.params.id);
+      } catch (e) {
+        console.error('[production/stage] aviso de retirada:', e?.message || e);
+      }
+    }
+
     audit(req, 'update', 'production', req.params.id, { stage, action, ...registro });
     res.json({
       ok: true,
+      aviso_cliente: avisoAoCliente,
       stage: patch.production_stage || sale.production_stage,
       status: patch.status || sale.status,
       status_label: A.infoStatus(patch.status || sale.status).label,
