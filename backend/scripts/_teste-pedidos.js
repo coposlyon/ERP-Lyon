@@ -54,7 +54,7 @@ const dia = n => {
 };
 
 /** PV-000042 — o mesmo código que a tela mostra. */
-const pv = n => `PV-${String(n).padStart(6, '0')}`;
+const pv = n => `PV-${String(n).padStart(4, '0')}`;
 
 // ── A RÉGUA ─────────────────────────────────────────────────
 // A mesma ordem de lib/atencao.js: o começo vale para todo pedido, a

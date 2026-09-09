@@ -214,7 +214,7 @@ export default function Pagamento() {
             ) : (
               <>
                 <p className="text-[20px] font-bold" style={{ color: NEON.texto }}>
-                  {pedido.number ? `Pedido PV-${String(pedido.number).padStart(6, '0')}` : 'Pedido liberado'}
+                  {pedido.number ? `Pedido PV-${String(pedido.number).padStart(4, '0')}` : 'Pedido liberado'}
                 </p>
                 <p className="text-[12.5px] mt-2 leading-relaxed" style={{ color: NEON.suave }}>
                   Recebemos {brl(pedido.total)}. Seu pedido entrou na produção e você acompanha

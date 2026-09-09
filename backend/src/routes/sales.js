@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
 const supabase = require('../config/supabase');
+const { codigoPedido } = require('../lib/pedidoCodigo');
 // Quem sabe se o pedido é entrega ou retirada — a mesma resposta que a
 // linha do tempo usa, para as duas nunca discordarem.
 const A = require('../lib/atencao');
@@ -1221,8 +1222,8 @@ router.patch('/:id/itens', async (req, res) => {
     if (diferenca > 0) {
       const { data: nova } = await supabase.from('LANCAMENTOS').insert({
         tenant_id: req.tenantId, user_id: req.user.id,
-        description: `Venda #${venda.number} — diferença da edição`,
-        document_number: `Venda #${venda.number}`,
+        description: `${codigoPedido(venda.number)} — diferença da edição`,
+        document_number: codigoPedido(venda.number),
         type: 'receivable', amount: diferenca, paid_amount: 0,
         due_date: new Date().toISOString().split('T')[0],
         status: 'pending', customer_id: venda.customer_id,

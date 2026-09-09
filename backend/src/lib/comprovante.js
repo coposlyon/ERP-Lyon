@@ -30,6 +30,8 @@
 const supabase = require('../config/supabase');
 const { askClaude, extractJSON } = require('./ai');
 const { uploadPrivado, linkAssinado } = require('./storage');
+// O código do pedido tem um formato só — ver lib/pedidoCodigo.js.
+const { codigoPedido } = require('./pedidoCodigo');
 
 const centavos = v => Math.round((Number(v) || 0) * 100);
 const doisDecimais = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -73,7 +75,7 @@ async function parcelasDaVenda(tenantId, venda) {
   return [{
     id: null,                    // virtual: ainda nao existe no banco
     virtual: true,
-    description: `Venda #${venda.number}`,
+    description: codigoPedido(venda.number),
     amount: doisDecimais(venda.total),
     paid_amount: 0,
     due_date: null,
@@ -108,8 +110,8 @@ async function garantirParcela(tenantId, venda, req) {
   const { data, error } = await supabase.from('LANCAMENTOS').insert({
     tenant_id: tenantId,
     user_id: req?.user?.id || null,
-    description: `Venda #${venda.number}`,
-    document_number: `Venda #${venda.number}`,
+    description: codigoPedido(venda.number),
+    document_number: codigoPedido(venda.number),
     type: 'receivable',
     amount: doisDecimais(venda.total),
     paid_amount: 0,

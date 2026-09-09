@@ -30,6 +30,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
+const { codigoPedido } = require('../lib/pedidoCodigo');
 const A = require('../lib/atencao');
 const { audit } = require('../lib/audit');
 // As salas por setor saem do cadastro de setores (Permissões), e não
@@ -160,7 +161,7 @@ router.get('/atividades', async (req, res) => {
             user_id: null,
             user: m.user || (m.automatico ? 'Sistema' : null),
             entidade: 'Pedido',
-            texto: `${label} — PV-${String(v.number).padStart(6, '0')}`,
+            texto: `${label} — ${codigoPedido(v.number)}`,
             alvo_tipo: 'sale',
             alvo_id: v.id,
             automatico: !!m.automatico,

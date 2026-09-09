@@ -8,6 +8,7 @@
  */
 
 const supabase = require('../config/supabase');
+const { codigoPedido } = require('./pedidoCodigo');
 
 // Número da venda (RPC do banco). Sem a RPC, a venda entra sem número —
 // é o mesmo comportamento tolerante que a loja já tinha.
@@ -122,7 +123,7 @@ async function criarVendaDoPedido(pedido, actor = {}) {
  */
 async function registrarRecebimento(pedido, sale, actor = {}) {
   const hoje = new Date().toISOString().slice(0, 10);
-  const desc = sale.number ? `Venda #${sale.number} — pedido do site (PIX)` : 'Pedido do site (PIX)';
+  const desc = sale.number ? `${codigoPedido(sale.number)} — pedido do site (PIX)` : 'Pedido do site (PIX)';
   try {
     const { data, error } = await supabase.from('LANCAMENTOS').insert({
       tenant_id: pedido.tenant_id,

@@ -19,6 +19,8 @@ const { capacidade, caracteristicasDoItem, etapasDosItens } = require('./itensPe
 // pedido no portal caía no catch com "Não foi possível carregar o
 // pedido", que é a frase que esconde um ReferenceError.
 const { paraOCliente } = require('./retirada');
+// O código do pedido tem um formato só — ver lib/pedidoCodigo.js.
+const { codigoPedido } = require('./pedidoCodigo');
 
 const soDigitos = s => String(s || '').replace(/\D/g, '');
 
@@ -161,7 +163,7 @@ function montarPedidoDoCliente(venda, extra = {}) {
 
   return {
     pedido: {
-      codigo: `PV-${String(venda.number).padStart(6, '0')}`,
+      codigo: codigoPedido(venda.number),
       numero: venda.number,
       status: venda.status,
       status_label: info.label,

@@ -442,7 +442,7 @@ function AvisarWhatsApp({ pedido, onClose }) {
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs text-gray-600 space-y-1">
               <p className="font-semibold text-gray-800">O pagamento do seu pedido já foi confirmado!</p>
               <p>
-                {pedido.numero ? `Pedido PV-${String(pedido.numero).padStart(6, '0')}` : 'Pedido'} ·
+                {pedido.numero ? `Pedido PV-${String(pedido.numero).padStart(4, '0')}` : 'Pedido'} ·
                 {' '}{fmt(pedido.total)} · itens do pedido
               </p>
               <p>+ link para entrar, anexar a arte de cada item e ver o status.</p>

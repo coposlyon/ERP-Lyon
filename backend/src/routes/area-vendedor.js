@@ -9,6 +9,7 @@
 const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
+const { codigoPedido } = require('../lib/pedidoCodigo');
 const A        = require('../lib/atencao');
 const { paraOBalcao } = require('../lib/retirada');
 const { ORIGENS } = require('../lib/origens');
@@ -215,7 +216,7 @@ router.get('/pedidos/:id', async (req, res) => {
     res.json({
       ...data,
       empresa: empresa || null,
-      codigo: `PV-${String(data.number).padStart(6, '0')}`,
+      codigo: codigoPedido(data.number),
       codigo_cliente: data.CLIENTES?.display_id != null ? String(data.CLIENTES.display_id).padStart(4, '0') : null,
       vendedor: data.USUARIOS?.name || null,
       transportadora,

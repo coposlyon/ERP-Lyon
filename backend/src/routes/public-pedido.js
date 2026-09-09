@@ -22,6 +22,7 @@ const jwt      = require('jsonwebtoken');
 const { montarAutorizacao, paraOCliente } = require('../lib/retirada');
 const rateLimit = require('express-rate-limit');
 const supabase = require('../config/supabase');
+const { codigoPedido } = require('../lib/pedidoCodigo');
 const P        = require('../lib/pedidoPublico');
 const A        = require('../lib/atencao');
 const { askClaude } = require('../lib/ai');
@@ -285,7 +286,7 @@ router.get('/pedidos', exigirToken, async (req, res) => {
         const info = A.infoStatus(v.status);
         return {
           id: v.id,
-          codigo: `PV-${String(v.number).padStart(6, '0')}`,
+          codigo: codigoPedido(v.number),
           numero: v.number,
           data: v.operation_date || (v.created_at || '').slice(0, 10),
           data_evento: v.event_date || null,
@@ -336,7 +337,7 @@ router.post('/pedido/:id/retirada', exigirToken, async (req, res) => {
     }
 
     // Substituir quem já estava autorizado exige o código do pedido.
-    const codigoEsperado = `PV-${String(venda.number).padStart(6, '0')}`;
+    const codigoEsperado = codigoPedido(venda.number);
     const jaTem = !!venda.pickup_person?.nome;
     const codigo = String(req.body?.codigo || '').trim().toUpperCase().replace(/\s/g, '');
     if (jaTem && codigo.replace(/^PV-?0*/, '') !== String(venda.number)) {

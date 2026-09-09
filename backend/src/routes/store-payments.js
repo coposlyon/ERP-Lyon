@@ -10,6 +10,7 @@
 const express  = require('express');
 const router   = express.Router();
 const supabase = require('../config/supabase');
+const { codigoPedido } = require('../lib/pedidoCodigo');
 const { audit } = require('../lib/audit');
 const { linkAssinado } = require('../lib/storage');
 const { criarVendaDoPedido, registrarRecebimento } = require('../lib/pedidoLoja');
@@ -204,7 +205,7 @@ const enderecoBase = req => (process.env.APP_URL
  */
 function mensagemDeConfirmacao(ped, numero, base) {
   const nome = String(ped.customer?.name || '').trim().split(/\s+/)[0] || '';
-  const codigo = numero ? `PV-${String(numero).padStart(6, '0')}` : null;
+  const codigo = numero ? codigoPedido(numero) : null;
 
   const linhas = (Array.isArray(ped.items) ? ped.items : []).map(i => {
     const qtd = Number(i.quantity) || 0;
