@@ -43,6 +43,36 @@ function arquivosDaPasta() {
 }
 
 /**
+ * DOIS ARQUIVOS COM O MESMO NÚMERO SÃO UM ERRO, E PRECISAM GRITAR.
+ *
+ * Isto aconteceu de verdade e passou meses despercebido. Havia
+ * `099_itens_e_adicionais.sql` e `099_faixas_por_quantidade.sql`. O
+ * controle do que já rodou é por NÚMERO: no dia em que o 099 do
+ * primeiro foi registrado, o segundo virou invisível — não aparecia
+ * como pendente, não aparecia como aplicado, simplesmente não existia
+ * mais para o aplicador. As colunas que ele criava nunca chegaram ao
+ * banco, e o `--dry` dizia "nada pendente" com toda a confiança.
+ *
+ * Um erro que se esconde é pior que um erro que derruba. Agora ele
+ * aparece no log e em /api/health, com os nomes dos dois arquivos —
+ * quem renomear um deles resolve em trinta segundos.
+ *
+ * NÃO IMPEDE A SUBIDA: as outras migrações continuam entrando. Travar o
+ * deploy inteiro por causa de um arquivo mal numerado seria trocar um
+ * problema silencioso por um problema barulhento demais.
+ */
+function numerosRepetidos(todas) {
+  const porVersao = new Map();
+  for (const m of todas) {
+    if (!porVersao.has(m.version)) porVersao.set(m.version, []);
+    porVersao.get(m.version).push(m.file);
+  }
+  return [...porVersao.entries()]
+    .filter(([, arquivos]) => arquivos.length > 1)
+    .map(([version, arquivos]) => ({ version, arquivos }));
+}
+
+/**
  * Aplica o que estiver pendente.
  *
  * @param {object}  opts
@@ -106,19 +136,27 @@ async function rodarMigracoes({ dry = false, alvo = null, log = console.log } = 
       const { rows } = await client.query('SELECT version FROM "_MIGRATIONS"');
       const jaAplicadas = new Set(rows.map(r => String(r.version)));
       const todas = arquivosDaPasta();
+
+      // Ver numerosRepetidos(): o arquivo que divide o número com outro
+      // some sem deixar rastro. Isto é o rastro.
+      const repetidos = numerosRepetidos(todas);
+      for (const r of repetidos) {
+        log(`[migrate] ATENÇÃO: número ${r.version} usado por ${r.arquivos.length} arquivos `
+          + `(${r.arquivos.join(', ')}). Só um deles roda — renomeie os outros.`);
+      }
       let fila = todas.filter(m => !jaAplicadas.has(m.version));
       if (alvo) fila = fila.filter(m => m.version === alvo);
 
       if (!fila.length) {
         log(`[migrate] ${jaAplicadas.size} migrações aplicadas, nada pendente.`);
-        const r = { estado: 'em_dia', aplicadas: [], pendentes: [], erro: null };
+        const r = { estado: 'em_dia', aplicadas: [], pendentes: [], erro: null, repetidos };
         ultimoResultado = r;
         return r;
       }
 
       log(`[migrate] ${fila.length} pendente(s): ${fila.map(m => m.version).join(', ')}`);
       if (dry) {
-        const r = { estado: 'dry', aplicadas: [], pendentes: fila.map(m => m.file), erro: null };
+        const r = { estado: 'dry', aplicadas: [], pendentes: fila.map(m => m.file), erro: null, repetidos };
         ultimoResultado = r;
         return r;
       }

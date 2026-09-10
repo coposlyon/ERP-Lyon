@@ -42,5 +42,13 @@ COMMENT ON COLUMN "CONFIG_PROCESSOS".faixas IS
 
 NOTIFY pgrst, 'reload schema';
 
-INSERT INTO "_MIGRATIONS" (version, name) VALUES ('099', 'faixas_por_quantidade')
+-- RENUMERADA DE 099 PARA 115, e este e o motivo.
+--
+-- Existiam DOIS arquivos com o numero 099: este e o
+-- 099_itens_e_adicionais.sql. O aplicador de migracoes guarda o que ja
+-- rodou pelo NUMERO — entao, no dia em que o 099 do outro arquivo foi
+-- registrado, este aqui virou invisivel: nao aparecia como pendente e
+-- nunca mais ia rodar. Ficou meses assim, e as colunas abaixo nunca
+-- existiram no banco.
+INSERT INTO "_MIGRATIONS" (version, name) VALUES ('115', 'faixas_por_quantidade')
 ON CONFLICT (version) DO NOTHING;

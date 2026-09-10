@@ -68,35 +68,77 @@ router.put('/cost-centers/:id', async (req, res) => {
 });
 
 // ─── CONTAS BANCÁRIAS ─────────────────────────────────────────────
+//
+// TABELA CERTA: "CONTAS_FINANCEIRAS", e não "CONTAS_BANCARIAS".
+//
+// O ERP tinha DUAS tabelas para a mesma coisa. Esta tela cadastrava numa
+// ("Caixa", "Conta Corrente") e as chaves estrangeiras apontavam para a
+// outra ("Caixa Principal"): LANCAMENTOS.account_id e
+// VENDAS.receiving_account_id exigem CONTAS_FINANCEIRAS.
+//
+// O efeito aparecia no pior momento — ao registrar um recebimento:
+//
+//   insert or update on table "LANCAMENTOS" violates foreign key
+//   constraint "LANCAMENTOS_account_id_fkey"
+//
+// O select listava as contas de uma tabela, o id ia para uma coluna que
+// exigia a outra, e o banco recusava. NÃO HAVIA COMO DAR CERTO:
+// qualquer conta escolhida ali quebrava.
+//
+// A migração 116 copiou as contas para CONTAS_FINANCEIRAS mantendo os
+// MESMOS ids — o que já estava gravado continua válido, e o que estava
+// quebrado passou a funcionar.
+//
+// `account` ↔ `account_number`: o nome da coluna muda entre as duas
+// tabelas. A API mantém `account`, que é como a tela sempre falou —
+// renomear o campo aqui obrigaria a mexer na tela por nada.
+const daConta = c => (c ? { ...c, account: c.account_number ?? null } : c);
+
 router.get('/bank-accounts', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('CONTAS_BANCARIAS')
+    const { data, error } = await supabase.from('CONTAS_FINANCEIRAS')
       .select('*').eq('tenant_id', req.tenantId).eq('is_active', true).order('name');
     if (error) throw error;
-    res.json(data || []);
+    res.json((data || []).map(daConta));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Os quatro tipos que o CHECK da tabela aceita. Qualquer outro vira
+// 'other' — um tipo fora da lista derruba o insert com uma mensagem do
+// Postgres que ninguém na tela entende.
+const TIPOS = ['checking', 'savings', 'cash', 'other'];
+const tipoValido = t => (TIPOS.includes(t) ? t : t ? 'other' : 'checking');
+
 router.post('/bank-accounts', async (req, res) => {
-  const { name, bank_name, bank_code, agency, account, type, balance } = req.body;
+  const { name, bank_name, agency, account, type, balance, pix_key } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
   try {
-    const { data, error } = await supabase.from('CONTAS_BANCARIAS')
-      .insert({ tenant_id: req.tenantId, name, bank_name, bank_code, agency, account, type: type || 'checking', balance: balance || 0 })
+    const { data, error } = await supabase.from('CONTAS_FINANCEIRAS')
+      .insert({
+        tenant_id: req.tenantId, name, bank_name, agency,
+        account_number: account || null,
+        type: tipoValido(type), balance: balance || 0,
+        pix_key: pix_key || null,
+      })
       .select().single();
     if (error) throw error;
-    res.status(201).json(data);
+    res.status(201).json(daConta(data));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.put('/bank-accounts/:id', async (req, res) => {
-  const { name, bank_name, bank_code, agency, account, type, balance, is_active } = req.body;
+  const { name, bank_name, agency, account, type, balance, is_active, pix_key } = req.body;
   try {
-    const { data, error } = await supabase.from('CONTAS_BANCARIAS')
-      .update({ name, bank_name, bank_code, agency, account, type, balance, is_active })
+    const patch = { name, bank_name, agency, balance, is_active };
+    if (account !== undefined) patch.account_number = account || null;
+    if (type !== undefined) patch.type = tipoValido(type);
+    if (pix_key !== undefined) patch.pix_key = pix_key || null;
+
+    const { data, error } = await supabase.from('CONTAS_FINANCEIRAS')
+      .update(patch)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
     if (error) throw error;
-    res.json(data);
+    res.json(daConta(data));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

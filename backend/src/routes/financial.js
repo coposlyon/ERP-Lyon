@@ -635,9 +635,12 @@ router.get('/cashflow', async (req, res) => {
 router.get('/cashflow-projection', async (req, res) => {
   const months = Math.min(Math.max(parseInt(req.query.months) || 6, 1), 24);
   try {
-    // Saldo inicial = soma dos saldos das contas bancárias
+    // Saldo inicial = soma dos saldos das contas bancárias.
+    // CONTAS_FINANCEIRAS desde a migração 116: era a outra tabela, e a
+    // projeção começava de um saldo que não era o mesmo que o resto do
+    // sistema usava.
     const { data: banks } = await supabase
-      .from('CONTAS_BANCARIAS').select('balance')
+      .from('CONTAS_FINANCEIRAS').select('balance')
       .eq('tenant_id', req.tenantId).eq('is_active', true);
     const saldoInicial = (banks || []).reduce((s, b) => s + (Number(b.balance) || 0), 0);
 
