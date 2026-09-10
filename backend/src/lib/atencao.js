@@ -43,8 +43,13 @@ const STATUS = {
   aguardando_arte:       { label: 'Aguardando anexo da arte',    area: 'arte',       aguardando: true,  cor: 'amarelo', passo: 6,  icone: 'Hourglass' },
   arte_aprovada:         { label: 'Arte anexada e aprovada',     area: 'arte',       aguardando: false, cor: 'roxo',    passo: 7,  icone: 'PenTool' },
 
-  aguardando_vegetal:    { label: 'Aguardando impressão de vegetal', area: 'producao', aguardando: true,  cor: 'azul',  passo: 8,  icone: 'FileImage' },
-  vegetal_impresso:      { label: 'Vegetal impresso',            area: 'producao',   aguardando: false, cor: 'azul',    passo: 9,  icone: 'FileCheck' },
+  // O VEGETAL É DO DESIGNER, e não da produção: é o filme impresso que
+  // a serigrafia vai usar para gravar a tela. Quem imprime é quem
+  // desenha. `vegetal_processo` é o "estou imprimindo agora" — sem ele
+  // o Designer não teria iniciar/finalizar como as outras etapas.
+  aguardando_vegetal:    { label: 'Aguardando impressão de vegetal', area: 'designer', aguardando: true,  cor: 'azul',  passo: 8,  icone: 'FileImage' },
+  vegetal_processo:      { label: 'Imprimindo vegetal',          area: 'designer',   aguardando: false, cor: 'azul' },
+  vegetal_impresso:      { label: 'Vegetal impresso',            area: 'designer',   aguardando: false, cor: 'azul',    passo: 9,  icone: 'FileCheck' },
 
   aguardando_revelacao:  { label: 'Aguardando revelação',        area: 'producao',   aguardando: true,  cor: 'roxo',    passo: 10, icone: 'FlaskConical' },
   revelacao_processo:    { label: 'Revelação em processo',       area: 'producao',   aguardando: false, cor: 'roxo' },
@@ -116,6 +121,7 @@ const AREAS = {
   financeiro: 'Financeiro',
   estoque:    'Estoque',
   arte:       'Designer / Arte',
+  designer:   'Designer',
   producao:   'Produção',
   qualidade:  'Qualidade',
   logistica:  'Logística',
@@ -230,30 +236,41 @@ function linhaDoTempo(venda, aplicaveis = {}, opcoes = {}) {
   };
   const retirada = ehRetirada(venda);
 
-  const visiveis = PASSOS.filter(p => {
-    // Retirada: coleta, trânsito e entrega no endereço não existem —
-    // a não ser que o pedido tenha passado por elas mesmo assim, e aí
-    // o histórico manda mais que a regra.
+  /**
+   * A RÉGUA É GLOBAL: TODO PEDIDO TEM TODOS OS STATUS, NOS MESMOS NÚMEROS.
+   *
+   * Até aqui a linha do tempo ESCONDIA as etapas que o pedido não tinha
+   * (pintura, borda, serigrafia no copo liso) e renumerava o resto de
+   * 1 até N. O efeito: "estou na etapa 8" queria dizer coisas diferentes
+   * em pedidos diferentes, e o número que o cliente lia no portal não
+   * era o que a fábrica lia na fila. Um código de status que muda de
+   * pedido para pedido não é um código.
+   *
+   * Agora a numeração é a do catálogo, fixa: revelação é 10 em todo
+   * pedido do sistema. As etapas que este pedido não tem CONTINUAM na
+   * régua, marcadas "não se aplica" — presentes, no lugar delas,
+   * apagadas. O copo liso não fica esperando arte (isso foi reclamado e
+   * continua resolvido): ele mostra a arte como algo que não é dele.
+   *
+   * `aplica` diz se a etapa é deste pedido. É o que o motor de fluxo já
+   * usava para pular a fase; aqui ele só passa a ser dito, e não
+   * escondido.
+   */
+  const seAplica = p => {
     if (retirada && SO_NA_ENTREGA.includes(p.key) && !quando.has(p.key) && p.key !== venda?.status) return false;
     const grupo = OPCIONAIS[p.key];
     if (!grupo) return true;
     if (aplicaveis[grupo]) return true;
-    /**
-     * A RÉGUA DE UM ITEM É O CONTRATO DELE, E SÓ.
-     *
-     * No pedido inteiro, o histórico manda mais que a regra: se ele
-     * passou por uma etapa, ela aparece — mesmo que hoje nenhum item
-     * peça aquilo (item excluído, pedido antigo, correção de rota).
-     *
-     * Num ITEM isso é falso. O pedido misto — três personalizados e
-     * dois lisos — está em "Aguardando anexo da arte" por causa dos
-     * três, e com essa regra a etapa aparecia também na linha do tempo
-     * dos dois lisos, que não têm arte nenhuma. O copo liso não passa
-     * pela serigrafia porque o pedido passa.
-     */
+    // A régua de um ITEM é o contrato dele, e só: o pedido misto está
+    // em "aguardando arte" por causa dos personalizados, e o liso não
+    // passa pela serigrafia porque o pedido passa.
     if (opcoes.doItem) return false;
+    // No pedido inteiro, o histórico manda mais que a regra: passou por
+    // uma etapa, ela é dele.
     return quando.has(p.key) || p.key === venda?.status;
-  });
+  };
+
+  const visiveis = PASSOS.map(p => ({ ...p, aplica: seAplica(p) }));
 
   return visiveis.map((p, i) => {
     // Na retirada, "produto retirado" é o fim da linha: o pedido chegou
@@ -262,7 +279,8 @@ function linhaDoTempo(venda, aplicaveis = {}, opcoes = {}) {
       || (retirada && p.key === 'entregue' ? quando.get('produto_retirado') : null)
       || null;
     let estado;
-    if (p.key === venda?.status) estado = 'atual';
+    if (!p.aplica) estado = 'nao_se_aplica';
+    else if (p.key === venda?.status) estado = 'atual';
     else if (retirada && p.key === 'entregue' && venda?.status === 'produto_retirado') estado = 'atual';
     else if (visita) estado = 'concluido';
     // Passou do ponto sem registro no log: a etapa ficou para trás
@@ -271,15 +289,19 @@ function linhaDoTempo(venda, aplicaveis = {}, opcoes = {}) {
     else estado = 'pendente';
 
     return {
-      // `ordem` é a posição no que está VISÍVEL; `passo` é o número fixo
-      // no catálogo. Escondendo pintura e borda, o número fixo pularia de
-      // 11 para 16 na tela do cliente — e buraco na contagem se lê como
-      // etapa perdida, não como etapa que não existe neste pedido.
-      ordem: i + 1,
+      // `passo` é o NÚMERO GLOBAL do catálogo — o mesmo em todo pedido
+      // e em toda tela. `ordem` continua saindo por compatibilidade,
+      // mas hoje é igual ao passo: nada mais é escondido.
+      ordem: p.passo,
       passo: p.passo, key: p.key,
       label: (retirada && ROTULO_RETIRADA[p.key]) || p.label,
       icone: p.icone, cor: p.cor,
       area: p.area, estado,
+      // De quem é esta etapa — a tela pinta o balão com a cor do módulo
+      // e agrupa a régua por dono.
+      modulo: p.modulo || null,
+      modulo_label: p.modulo ? MODULOS_DO_FLUXO[p.modulo]?.label : null,
+      aplica: p.aplica,
       at: visita?.at || null,
       user: visita?.user || null,
     };
@@ -385,6 +407,41 @@ function historicoPedido(venda) {
  * decide é o que foi contratado nos itens, não um palpite. Pedido
  * tradicional sem borda simplesmente não mostra as duas.
  */
+/**
+ * OS CINCO MÓDULOS DO FLUXO, E A FATIA DE CADA UM.
+ *
+ * O pedido percorre uma régua só, de "Pedido realizado" a "Pedido
+ * entregue". Mas ninguém trabalha na régua inteira: o financeiro cuida
+ * do dinheiro, o comercial do estoque e da arte, o designer do vegetal,
+ * a fábrica da serigrafia à embalagem, e a logística do que sai da
+ * porta. Cada um abre a SUA tela e vê a SUA fatia — com os mesmos
+ * números, os mesmos nomes e os mesmos status de todo mundo.
+ *
+ * ISTO É A ÚNICA DEFINIÇÃO de quem é dono de quê. As telas de Designer,
+ * Produção e Logística são a mesma tela lendo fatias diferentes daqui;
+ * o menu lateral segue esta ordem; a linha do tempo do cliente pinta
+ * cada balão com a cor do módulo. Um segundo lugar dizendo "vegetal é
+ * da produção" seria o dia em que o designer não acha o pedido dele.
+ *
+ * A ORDEM DESTE OBJETO É A ORDEM DO FLUXO E DO MENU — não mexa nela
+ * sem mexer na régua.
+ */
+const MODULOS_DO_FLUXO = {
+  financeiro: { label: 'Financeiro',      modulo: 'financial',  cor: 'amarelo', fases: ['realizado', 'pagamento'] },
+  vendas:     { label: 'Pedido de Venda', modulo: 'sales',      cor: 'laranja', fases: ['estoque', 'arte'] },
+  designer:   { label: 'Designer',        modulo: 'designer',   cor: 'roxo',    fases: ['vegetal'] },
+  producao:   { label: 'Produção',        modulo: 'production', cor: 'azul',    fases: ['revelacao', 'pintura', 'borda', 'producao', 'qualidade', 'foto', 'embalagem'] },
+  logistica:  { label: 'Logística',       modulo: 'logistics',  cor: 'verde',   fases: ['coleta', 'transito', 'entrega'] },
+};
+
+/** O módulo dono de uma fase ('producao', 'designer'…), ou null. */
+function moduloDaFase(faseKey) {
+  for (const [k, m] of Object.entries(MODULOS_DO_FLUXO)) {
+    if (m.fases.includes(faseKey)) return k;
+  }
+  return null;
+}
+
 const FASES = [
   { key: 'realizado',  label: 'Pedido Realizado',      icone: 'CircleCheck',    entrando: [],                        concluida: ['iniciando_pedido'] },
   { key: 'pagamento',  label: 'Pagamento',             icone: 'Wallet',         entrando: ['aguardando_financeiro'], concluida: ['pagamento_confirmado'] },
@@ -419,6 +476,55 @@ const FASES = [
   // controle interno, entregue é o que aconteceu com o cliente.
   { key: 'entrega',    label: 'Pedido Entregue',       icone: 'PackageCheck',   entrando: ['aguardando_entrega'],    concluida: ['entregue', 'pedido_finalizado'] },
 ];
+
+// CADA FASE SABE DE QUEM É — e cada status também, pela fase em que
+// mora. `infoStatus(s).modulo` responde "quem trabalha nisto agora?"
+// sem ninguém ter de consultar duas tabelas.
+for (const f of FASES) f.modulo = moduloDaFase(f.key);
+for (const f of FASES) {
+  for (const k of [...(f.entrando || []), ...(f.concluida || [])]) {
+    if (STATUS[k]) STATUS[k].modulo = f.modulo;
+  }
+}
+// Os "em processo" moram na mesma fase que o seu "aguardando".
+const PROCESSO_DA_FASE = {
+  vegetal_processo: 'vegetal', revelacao_processo: 'revelacao', pintura_processo: 'pintura',
+  borda_processo: 'borda', producao_processo: 'producao', metalizacao_processo: 'producao',
+  conferencia_processo: 'qualidade', embalando_pedido: 'embalagem', coleta_processo: 'coleta',
+  aguardando_logistica: 'coleta',
+};
+for (const [k, fase] of Object.entries(PROCESSO_DA_FASE)) {
+  if (STATUS[k]) STATUS[k].modulo = moduloDaFase(fase);
+}
+// PASSOS é uma CÓPIA dos status, montada antes deste ponto — e uma
+// cópia não vê o que se escreve no original depois. Anota nela também.
+for (const p of PASSOS) p.modulo = STATUS[p.key]?.modulo || null;
+// O que a régua ainda não conhece (status antigos) fica sem módulo, e
+// `moduloDoStatus` devolve null — que a tela lê como "sem dono".
+const moduloDoStatus = st => STATUS[st]?.modulo || null;
+
+/**
+ * OS STATUS DE UM MÓDULO, para as filas filtrarem.
+ *
+ * "A tela da produção mostra o que está na produção" — e o que está na
+ * produção é o que tem status de uma fase da produção, incluindo os "em
+ * processo". Devolve as chaves de status, prontas para um `.in()`.
+ */
+function statusDoModulo(moduloKey) {
+  const fases = MODULOS_DO_FLUXO[moduloKey]?.fases || [];
+  const chaves = new Set();
+  for (const f of FASES) {
+    if (!fases.includes(f.key)) continue;
+    for (const k of f.entrando || []) chaves.add(k);
+    // O "concluído" de uma fase ainda é trabalho do módulo até o
+    // pedido entrar na fase seguinte — por isso entra também.
+    for (const k of f.concluida || []) chaves.add(k);
+  }
+  for (const [k, fase] of Object.entries(PROCESSO_DA_FASE)) {
+    if (fases.includes(fase)) chaves.add(k);
+  }
+  return [...chaves];
+}
 
 /**
  * A linha do tempo por fases.
@@ -620,6 +726,7 @@ const passouPeloPagamento = status => !ANTES_DO_PAGAMENTO.has(String(status || '
 
 module.exports = {
   STATUS, AREAS, PASSOS, FASES,
+  MODULOS_DO_FLUXO, moduloDaFase, moduloDoStatus, statusDoModulo,
   infoStatus, listaStatus, finalizado, prazoSaida, calcularAtencao,
   linhaDoTempo, fasesDoPedido, fasesVisiveis, visitasDoPedido,
   historicoPedido, ehRetirada,

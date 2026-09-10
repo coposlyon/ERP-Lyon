@@ -141,7 +141,22 @@ router.use('/returns',   requireModules('returns','sales'), returnsRoutes);
 router.use('/quality',   requireModules('quality'), qualityRoutes);
 router.use('/crm',       requireModules('crm'), crmRoutes);
 router.use('/marketing', requireModules('marketing','crm'), require('./marketing'));
-router.use('/production', requireModules('production','quality','stock'), require('./production'));
+/**
+ * UM MOTOR DE ETAPAS, TRES MODULOS.
+ *
+ * Designer, Producao e Logistica sao a mesma tela lendo fatias diferentes
+ * da regua (ver MODULOS_DO_FLUXO em lib/atencao.js). routes/production.js
+ * exporta uma FABRICA de router; aqui ela e montada tres vezes, cada uma
+ * presa ao seu modulo e a sua permissao.
+ *
+ *   /production  revelacao ... embalagem   (status 10-23)
+ *   /designer    vegetal                   (status 8-9)
+ *   /logistica   coleta, transito, entrega (status 24-28)
+ */
+const criarFilaDeEtapas = require('./production');
+router.use('/production', requireModules('production','quality','stock'), criarFilaDeEtapas('producao'));
+router.use('/designer',   requireModules('designer','production'),        criarFilaDeEtapas('designer'));
+router.use('/logistica',  requireModules('logistics','sales'),            criarFilaDeEtapas('logistica'));
 router.use('/hr',        requireModules('hr'), hrRoutes);
 // O painel do RH e a estrutura da empresa: leitura agregada, tudo
 // calculado do cadastro mestre (migração 080).

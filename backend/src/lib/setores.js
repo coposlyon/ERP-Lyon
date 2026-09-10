@@ -53,6 +53,11 @@ const MODULOS = [
   { key: 'employees',        label: 'Colaboradores',        grupo: 'Cadastros' },
   { key: 'stock',            label: 'Estoque',              grupo: 'Operação' },
   { key: 'purchases',        label: 'Compras',              grupo: 'Operação' },
+  // O DESIGNER É UM MÓDULO, e não um canto da produção. Ele imprime o
+  // vegetal (status 8–9 do fluxo) e tem a própria fila — a mesma tela
+  // da fábrica, lendo só a fatia dele. Sem módulo próprio, ou o designer
+  // ganhava a Produção inteira ou não via pedido nenhum.
+  { key: 'designer',         label: 'Designer',             grupo: 'Operação' },
   { key: 'production',       label: 'Produção',             grupo: 'Operação' },
   { key: 'logistics',        label: 'Logística',            grupo: 'Operação' },
   { key: 'returns',          label: 'Devoluções',           grupo: 'Operação' },

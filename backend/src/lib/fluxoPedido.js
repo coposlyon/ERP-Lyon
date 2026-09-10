@@ -66,19 +66,34 @@ const dataBR = d => (d ? String(d).slice(0, 10).split('-').reverse().join('/') :
 // `acao` é o texto do botão. Ele descreve o que a PESSOA está fazendo
 // ("Aprovar a arte"), e não o que o banco vai gravar: quem clica sabe
 // de arte, não de `arte_aprovada`.
+/**
+ * QUEM DÁ CADA PASSO É O DONO DA FASE — ver MODULOS_DO_FLUXO em atencao.js.
+ *
+ *   Financeiro       1–3    realizado, pagamento
+ *   Pedido de Venda  4–7    estoque, arte
+ *   Designer         8–9    vegetal
+ *   Produção        10–23   revelação … embalagem
+ *   Logística       24–28   coleta, trânsito, entrega
+ *
+ * Esta tabela não decide o dono — ela LÊ o dono do catálogo e só
+ * acrescenta quem mais pode ajudar (o estoque confirma estoque; o
+ * comercial registra uma retirada no balcão). Um segundo lugar dizendo
+ * "vegetal é da produção" seria o dia em que o designer não acha o
+ * pedido dele.
+ */
 const REGRAS = {
-  realizado:  { modulos: ['sales', 'pdv'],                acao: 'Confirmar o pedido' },
+  realizado:  { modulos: ['financial', 'sales', 'pdv'],   acao: 'Confirmar o pedido' },
   pagamento:  { modulos: ['financial'],                   acao: 'Confirmar o pagamento' },
-  estoque:    { modulos: ['stock'],                       acao: 'Confirmar o estoque' },
-  arte:       { modulos: ['sales', 'production'],         acao: 'Aprovar a arte' },
-  vegetal:    { modulos: ['production'],                  acao: 'Confirmar o vegetal impresso' },
+  estoque:    { modulos: ['sales', 'stock'],              acao: 'Confirmar o estoque' },
+  arte:       { modulos: ['sales', 'designer'],           acao: 'Aprovar a arte' },
+  vegetal:    { modulos: ['designer'],                    acao: 'Confirmar o vegetal impresso' },
   revelacao:  { modulos: ['production'],                  acao: 'Concluir a revelação' },
   pintura:    { modulos: ['production'],                  acao: 'Concluir a pintura' },
   borda:      { modulos: ['production'],                  acao: 'Concluir a borda' },
   producao:   { modulos: ['production'],                  acao: 'Concluir a produção' },
   qualidade:  { modulos: ['production', 'quality'],       acao: 'Aprovar no controle de qualidade' },
+  foto:       { modulos: ['production'],                  acao: 'Confirmar o envio da foto' },
   embalagem:  { modulos: ['production'],                  acao: 'Concluir a embalagem' },
-  foto:       { modulos: ['production', 'sales'],         acao: 'Confirmar o envio da foto' },
   coleta:     { modulos: ['logistics', 'sales'],          acao: 'Registrar a coleta' },
   transito:   { modulos: ['logistics'],                   acao: 'Confirmar a saída para entrega' },
   entrega:    { modulos: ['logistics', 'sales'],          acao: 'Confirmar a entrega' },
@@ -247,7 +262,10 @@ const REQUISITOS = {
  */
 // A FOTO ENTROU NA LISTA. Ela é trabalho de quem está com a peça na
 // mão, antes de embalar — e não um recado do comercial.
-const FASES_DA_FABRICA = ['vegetal', 'revelacao', 'pintura', 'borda', 'producao', 'qualidade', 'foto', 'embalagem'];
+// A fábrica é da revelação à embalagem. O VEGETAL SAIU: é do Designer
+// (ver MODULOS_DO_FLUXO) — quem imprime o filme é quem desenha, e a
+// serigrafia começa com o filme na mão.
+const FASES_DA_FABRICA = A.MODULOS_DO_FLUXO.producao.fases;
 
 /**
  * O PEDIDO JÁ FOI ENVIADO PARA A PRODUÇÃO?
@@ -346,6 +364,7 @@ function liberacaoDePagamento(venda) {
 // dentro de uma fase — a tela de Produção grava esses quando alguém
 // inicia uma etapa.
 const EM_PROCESSO = {
+  vegetal_processo:     'vegetal',     // o designer com a mao no filme
   revelacao_processo:   'revelacao',
   pintura_processo:     'pintura',
   borda_processo:       'borda',

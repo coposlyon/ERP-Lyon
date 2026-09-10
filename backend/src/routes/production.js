@@ -1,5 +1,22 @@
+// ============================================================
+// O MOTOR DE ETAPAS — UM SÓ, PARA TRÊS MÓDULOS.
+//
+// Designer, Produção e Logística são a MESMA tela: uma fila de pedidos,
+// uma régua de etapas, iniciar/finalizar com dupla confirmação, e o
+// histórico de quem fez o quê. O que muda é a FATIA da régua que cada
+// um vê e opera — o designer imprime o vegetal (8–9), a fábrica vai da
+// revelação à embalagem (10–23), a logística do que sai da porta (24–28).
+//
+// Por isso este arquivo não exporta um router: exporta uma FÁBRICA de
+// router, `criarRouter(modulo)`. `routes/index.js` monta três —
+// /production, /designer e /logistica — cada um preso ao seu módulo.
+// Três cópias deste arquivo seriam três motores para divergir no dia
+// em que a dupla confirmação mudasse.
+//
+// Quem diz de quem é cada etapa é MODULOS_DO_FLUXO, em lib/atencao.js.
+// Aqui só se lê.
+// ============================================================
 const express  = require('express');
-const router   = express.Router();
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
 const { uploadDataUrl } = require('../lib/storage');
@@ -43,7 +60,31 @@ const Prazo = require('../lib/prazoProducao');
  *   tipo 'opcao'   uma entre as opções
  */
 const ETAPAS = {
+  /**
+   * ── DESIGNER ─────────────────────────────────────────────
+   * O vegetal é o filme impresso que a serigrafia vai usar para gravar
+   * a tela. Quem imprime é quem desenha — por isso é do Designer, e não
+   * da fábrica. A fábrica começa com o filme na mão.
+   */
+  vegetal: {
+    modulo: 'designer',
+    label: 'Impressão do vegetal',
+    fase: 'vegetal', processo: 'vegetal_processo',
+    campos: {
+      finish: [
+        { key: 'impressora', tipo: 'texto', label: 'Impressora / equipamento',
+          dica: 'Em qual impressora o vegetal saiu — para achar o padrão quando a tela vela.' },
+        { key: 'conferido_com_arte', tipo: 'sim', obrigatorio: true,
+          label: 'O vegetal foi conferido com a arte aprovada pelo cliente?' },
+        { key: 'quantidade_vegetais', tipo: 'numero', label: 'Quantos vegetais foram impressos',
+          dica: 'Um por arte, normalmente.' },
+      ],
+    },
+  },
+
+  /** ── PRODUÇÃO ───────────────────────────────────────────── */
   revelacao: {
+    modulo: 'producao',
     label: 'Revelação',
     fase: 'revelacao', processo: 'revelacao_processo',
     colunas: { start: 'revelacao_inicio', fim: 'revelacao_fim' },
@@ -77,6 +118,7 @@ const ETAPAS = {
   },
 
   pintura: {
+    modulo: 'producao',
     label: 'Pintura',
     fase: 'pintura', processo: 'pintura_processo',
     colunas: { start: 'pintura_inicio', fim: 'pintura_fim' },
@@ -84,6 +126,7 @@ const ETAPAS = {
   },
 
   borda: {
+    modulo: 'producao',
     // ETAPA NOVA NO CHÃO DE FÁBRICA — o status já existia desde sempre.
     // Sem esta entrada, o pedido chegava em "Aguardando aplicação de
     // borda" e a fábrica não tinha botão nenhum: quem aplicava a borda
@@ -95,6 +138,7 @@ const ETAPAS = {
   },
 
   metalizacao: {
+    modulo: 'producao',
     /**
      * METALIZAÇÃO MUDA O QUE A TELA DIZ, MAS NÃO AVANÇA A RÉGUA.
      *
@@ -109,6 +153,7 @@ const ETAPAS = {
   },
 
   producao: {
+    modulo: 'producao',
     label: 'Produção',
     fase: 'producao', processo: 'producao_processo',
     colunas: { start: 'producao_inicio', fim: 'producao_fim' },
@@ -126,6 +171,7 @@ const ETAPAS = {
   },
 
   qualidade: {
+    modulo: 'producao',
     // A SEGUNDA ETAPA QUE FALTAVA NO CHÃO DE FÁBRICA. "Controle de
     // qualidade" existia como status e como um módulo à parte que fala
     // de lotes de matéria-prima — nada a ver com conferir o pedido.
@@ -146,6 +192,7 @@ const ETAPAS = {
   },
 
   foto: {
+    modulo: 'producao',
     // A FOTO VEM ANTES DA EMBALAGEM, e é por isso que ela é uma etapa:
     // fotografar depois de embalar significa abrir a caixa de novo.
     label: 'Foto',
@@ -160,6 +207,7 @@ const ETAPAS = {
   },
 
   embalagem: {
+    modulo: 'producao',
     label: 'Embalagem',
     fase: 'embalagem', processo: 'embalando_pedido',
     colunas: { start: 'embalagem_inicio', fim: 'embalagem_fim' },
@@ -172,6 +220,65 @@ const ETAPAS = {
         { key: 'conferiu_etiqueta', tipo: 'sim', obrigatorio: true,
           label: 'Conferiu se o pedido está correto com a etiqueta?' },
         CAMPO_PERDA(),
+      ],
+    },
+  },
+
+  /**
+   * ── LOGÍSTICA ────────────────────────────────────────────
+   * O que sai da porta. Coleta (ou retirada no balcão), trânsito e
+   * entrega. Retirada não tem trânsito nem entrega: o motor de fluxo
+   * já leva o pedido de "aguardando coleta" direto a "produto
+   * retirado", e `etapasDoPedido` não desenha o que não vai acontecer.
+   */
+  coleta: {
+    modulo: 'logistica',
+    label: 'Coleta / retirada',
+    fase: 'coleta', processo: 'coleta_processo',
+    campos: {
+      // A transportadora veio buscar.
+      finish: [
+        { key: 'volumes', tipo: 'numero', label: 'Volumes entregues à transportadora', obrigatorio: true },
+        { key: 'conferiu_etiqueta', tipo: 'sim', obrigatorio: true,
+          label: 'Conferiu a etiqueta de cada volume com o pedido?' },
+        { key: 'motorista', tipo: 'texto', label: 'Nome do motorista / conferente',
+          dica: 'Quem assinou o recebimento do lado da transportadora.' },
+      ],
+      // O cliente veio buscar. Os campos são outros porque o fato é outro.
+      finish_retirada: [
+        { key: 'quem_retirou', tipo: 'texto', label: 'Quem retirou', obrigatorio: true },
+        { key: 'documento_conferido', tipo: 'sim', obrigatorio: true,
+          label: 'Conferiu o documento com foto de quem retirou?' },
+        { key: 'conferiu_na_frente', tipo: 'sim', obrigatorio: true,
+          label: 'A mercadoria foi aberta e conferida na frente do cliente?' },
+      ],
+    },
+  },
+
+  transito: {
+    modulo: 'logistica',
+    label: 'Em trânsito',
+    fase: 'transito', processo: null,
+    campos: {
+      finish: [
+        { key: 'rastreio', tipo: 'texto', label: 'Código de rastreio',
+          dica: 'Sem o código o cliente não consegue acompanhar — e liga para o vendedor.' },
+        { key: 'previsao_entrega', tipo: 'texto', label: 'Previsão de entrega (dd/mm)' },
+      ],
+    },
+  },
+
+  entrega: {
+    modulo: 'logistica',
+    label: 'Entrega',
+    fase: 'entrega', processo: null,
+    campos: {
+      finish: [
+        { key: 'recebido_por', tipo: 'texto', label: 'Recebido por', obrigatorio: true },
+        { key: 'entregue_integro', tipo: 'sim', obrigatorio: true,
+          label: 'A mercadoria chegou íntegra, sem avaria?' },
+        { key: 'ocorrencia', tipo: 'texto', label: 'Ocorrência na entrega',
+          dica: 'Deixe em branco se correu tudo bem.' },
       ],
     },
   },
@@ -196,17 +303,45 @@ function CAMPO_PERDA() {
   };
 }
 
-/** As etapas que ESTE pedido pode ter, na ordem em que acontecem. */
-function etapasDoPedido(aplicaveis) {
-  const ordem = ['revelacao', 'pintura', 'borda', 'metalizacao', 'producao', 'qualidade', 'foto', 'embalagem'];
-  return ordem.filter(k => {
+/**
+ * AS ETAPAS DESTE PEDIDO, NESTE MÓDULO, na ordem em que acontecem.
+ *
+ * A ordem é a do fluxo (metalização encaixada dentro da produção). O
+ * filtro é duplo: só as etapas do módulo pedido, e só as que este
+ * pedido contratou — pintura e borda dependem dos itens; a serigrafia
+ * inteira (vegetal, revelação) só existe onde há o que gravar; trânsito
+ * e entrega no endereço não existem em retirada.
+ */
+const ORDEM_DAS_ETAPAS = [
+  'vegetal',
+  'revelacao', 'pintura', 'borda', 'metalizacao', 'producao', 'qualidade', 'foto', 'embalagem',
+  'coleta', 'transito', 'entrega',
+];
+const SO_NA_ENTREGA = new Set(['transito', 'entrega']);
+
+function etapasDoPedido(aplicaveis, modulo, venda = null) {
+  return ORDEM_DAS_ETAPAS.filter(k => {
     const e = ETAPAS[k];
+    if (modulo && e.modulo !== modulo) return false;
+    if (venda && SO_NA_ENTREGA.has(k) && A.ehRetirada(venda)) return false;
     const fase = A.FASES.find(f => f.key === e.fase);
-    // Fase opcional (pintura, borda, serigrafia) só entra se o pedido a
-    // contratou. Metalização não tem fase própria: acompanha a produção.
     if (fase?.opcional) return !!aplicaveis[fase.opcional];
     return true;
   });
+}
+
+/**
+ * OS CAMPOS DE UMA AÇÃO, para ESTE pedido.
+ *
+ * A coleta pergunta coisas diferentes conforme a transportadora vem
+ * buscar ou o cliente vem retirar: `finish_retirada` vence `finish`
+ * quando o pedido é retirada. Um formulário só para os dois casos
+ * perguntaria "nome do motorista" a quem veio de carro próprio.
+ */
+function camposDaAcao(etapa, action, venda) {
+  const c = etapa?.campos || {};
+  if (action === 'finish' && venda && A.ehRetirada(venda) && c.finish_retirada) return c.finish_retirada;
+  return c[action] || [];
 }
 
 /**
@@ -221,12 +356,12 @@ function etapasDoPedido(aplicaveis) {
  * `agora`  é onde ele está (e é a que tem botão).
  * `futura` ainda vem.
  */
-function reguaDoPedido(venda, aplicaveis) {
+function reguaDoPedido(venda, aplicaveis, modulo) {
   const status = venda?.status;
   const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
-  const acoes = acoesDoPedido(venda, aplicaveis);
+  const acoes = acoesDoPedido(venda, aplicaveis, modulo);
 
-  return etapasDoPedido(aplicaveis).map(key => {
+  return etapasDoPedido(aplicaveis, modulo, venda).map(key => {
     const e = ETAPAS[key];
     const fase = A.FASES.find(f => f.key === e.fase);
     const marco = [...log].reverse().find(m => m.stage === key && m.action === 'finish');
@@ -260,10 +395,10 @@ function reguaDoPedido(venda, aplicaveis) {
  * quer dizer "dá para começar a borda"; `borda_processo` quer dizer
  * "dá para terminar". Não há terceira leitura.
  */
-function acoesDoPedido(venda, aplicaveis) {
+function acoesDoPedido(venda, aplicaveis, modulo) {
   const status = venda?.status;
   const acoes = [];
-  for (const key of etapasDoPedido(aplicaveis)) {
+  for (const key of etapasDoPedido(aplicaveis, modulo, venda)) {
     const e = ETAPAS[key];
     const fase = A.FASES.find(f => f.key === e.fase);
     const entrando = (fase?.entrando || []).includes(status);
@@ -286,6 +421,15 @@ function acoesDoPedido(venda, aplicaveis) {
   }
   return acoes;
 }
+
+/**
+ * A FÁBRICA DE ROUTER. `modulo` é 'designer', 'producao' ou 'logistica'
+ * — a chave de MODULOS_DO_FLUXO — e fica preso em cada rota abaixo.
+ */
+function criarRouter(modulo = 'producao') {
+  if (!A.MODULOS_DO_FLUXO[modulo]) throw new Error(`criarRouter: módulo desconhecido "${modulo}"`);
+  const router = express.Router();
+  const ROTULO_MODULO = A.MODULOS_DO_FLUXO[modulo].label;
 
 /**
  * A FILA DA PRODUÇÃO — quem entra e quem não entra.
@@ -327,24 +471,14 @@ router.get('/', async (req, res) => {
       .from('VENDAS')
       .select('*, CLIENTES(name, cpf_cnpj, phone, address), USUARIOS(name), VENDA_ITENS(product_name, quantity, unit_price, total, customization, PRODUTOS(code, name, unit, ink_type))')
       .eq('tenant_id', req.tenantId)
-      .in('status', [
-        // A JANELA DE PRODUÇÃO, agora completa. Faltavam justamente as
-        // fases da própria fábrica — um pedido em "aguardando produção"
-        // ou "aguardando embalagem" não aparecia na tela da produção,
-        // enquanto "em trânsito", que já saiu daqui, aparecia.
-        'aguardando_estoque', 'estoque_confirmado',
-        'aguardando_arte', 'arte_aprovada',
-        'aguardando_vegetal', 'vegetal_impresso',
-        'aguardando_revelacao', 'revelacao_processo', 'revelacao_finalizada',
-        'aguardando_pintura', 'pintura_processo', 'pintura_finalizada',
-        'aguardando_borda', 'borda_processo', 'borda_finalizada',
-        'aguardando_producao', 'producao_processo', 'producao_finalizada',
-        'aguardando_qualidade', 'conferencia_processo', 'qualidade_finalizada',
-        'aguardando_embalagem', 'embalando_pedido', 'embalagem_finalizada',
-        'aguardando_foto',
-        // status antigos (vendas anteriores ao novo fluxo)
-        'confirmed', 'in_production', 'ready',
-      ])
+      /**
+       * A JANELA DESTE MÓDULO, lida do catálogo — e não uma lista
+       * digitada aqui. A produção vê da revelação à embalagem, o
+       * designer vê o vegetal, a logística vê do que sai da porta ao
+       * entregue. Quem decide isso é MODULOS_DO_FLUXO; uma lista
+       * escrita aqui seria a segunda opinião que sempre diverge.
+       */
+      .in('status', A.statusDoModulo(modulo))
       .order('ship_date', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true });
 
@@ -379,16 +513,25 @@ router.get('/', async (req, res) => {
         enviado_producao: envio.enviado,
         enviado_em: envio.em,
         enviado_por: envio.por,
-        // Tem o que a fábrica registrar? É a única pergunta que sobrou:
-        // copo liso não tem arte, vegetal nem tela.
-        interagivel: !!aplicaveis.personalizado,
+        /**
+         * TEM O QUE ESTE MÓDULO FAZER NELE? É a pergunta certa — e não
+         * "é personalizado?", que era a de antes. O copo liso não passa
+         * pela revelação, mas passa pela produção, pela qualidade, pela
+         * foto e pela embalagem; a logística mexe em TODO pedido. Só o
+         * designer, que vive do vegetal, não tem o que fazer num liso.
+         */
+        interagivel: etapasDoPedido(aplicaveis, modulo, s).length > 0,
         // O QUE DÁ PARA FAZER COM ELE AGORA — respondido aqui, e não na
         // tela. A tela desenha o botão; quem decide se ele existe é
         // quem conhece o status e as etapas que este pedido tem.
-        acoes: aplicaveis.personalizado ? acoesDoPedido(s, aplicaveis) : [],
-        etapas: aplicaveis.personalizado ? etapasDoPedido(aplicaveis) : [],
-        regua: aplicaveis.personalizado ? reguaDoPedido(s, aplicaveis) : [],
+        acoes: acoesDoPedido(s, aplicaveis, modulo),
+        etapas: etapasDoPedido(aplicaveis, modulo, s),
+        regua: reguaDoPedido(s, aplicaveis, modulo),
         status_label: A.infoStatus(s.status).label,
+        // De quem é o pedido AGORA — para a fila dizer "está com o
+        // designer" quando o pedido ainda não chegou aqui.
+        modulo_atual: A.moduloDoStatus(s.status),
+        modulo_atual_label: A.MODULOS_DO_FLUXO[A.moduloDoStatus(s.status)]?.label || null,
         // A conta do evento para trás — ver lib/prazoProducao.js.
         prazo: Prazo.prazoDoPedido(s, ctx),
         id: s.id, number: s.number, created_at: s.created_at,
@@ -433,10 +576,15 @@ router.get('/', async (req, res) => {
  */
 router.get('/etapas', (req, res) => {
   res.json({
-    etapas: Object.entries(ETAPAS).map(([key, e]) => ({
-      key, label: e.label, fase: e.fase,
+    modulo, modulo_label: ROTULO_MODULO,
+    etapas: Object.entries(ETAPAS).filter(([, e]) => e.modulo === modulo).map(([key, e]) => ({
+      key, label: e.label, fase: e.fase, modulo: e.modulo,
       exigeFoto: !!e.exigeFoto, mostraMatriz: !!e.mostraMatriz,
-      campos: { start: e.campos?.start || [], finish: e.campos?.finish || [] },
+      campos: {
+        start: e.campos?.start || [],
+        finish: e.campos?.finish || [],
+        finish_retirada: e.campos?.finish_retirada || null,
+      },
     })),
   });
 });
@@ -594,10 +742,16 @@ router.get('/:id', async (req, res) => {
       perdas: perdas || [],
       // O mesmo que a fila diz, para a tela do pedido aberto não ter de
       // recalcular nada por conta própria.
-      acoes: aplicaveis.personalizado ? acoesDoPedido(sale, aplicaveis) : [],
-      etapas: aplicaveis.personalizado ? etapasDoPedido(aplicaveis) : [],
-      regua: aplicaveis.personalizado ? reguaDoPedido(sale, aplicaveis) : [],
+      acoes: acoesDoPedido(sale, aplicaveis, modulo),
+      etapas: etapasDoPedido(aplicaveis, modulo, sale),
+      regua: reguaDoPedido(sale, aplicaveis, modulo),
       status_label: A.infoStatus(sale.status).label,
+      modulo_atual: A.moduloDoStatus(sale.status),
+      // A RÉGUA GLOBAL INTEIRA — os 28 status, com o dono de cada um.
+      // O módulo opera a sua fatia, mas quem abre o pedido precisa ver
+      // onde ele está no caminho todo: "ainda no designer", "já foi
+      // para a logística". É a mesma régua que o cliente vê no portal.
+      linha_do_tempo: A.linhaDoTempo(sale, aplicaveis),
       prazo: Prazo.prazoDoPedido(sale, await Prazo.preparar(req.tenantId, [sale])),
       // A matriz que a revelação gravou, para quem for montar a máquina.
       matriz: matrizDoPedido(sale.production_log),
@@ -760,42 +914,47 @@ router.post('/:id/stage', async (req, res) => {
      * senha duas vezes e só então descobrir que faltava o número da
      * matriz.
      */
-    const campos = etapa.campos?.[action] || [];
+    // A ETAPA PRECISA SER DESTE MÓDULO. A tela do designer nunca
+    // desenha "Finalizar embalagem" — mas a requisição pode vir de uma
+    // aba antiga, de outro módulo, de um curl. O servidor é quem diz.
+    if (etapa.modulo !== modulo) {
+      return res.status(403).json({
+        error: `"${etapa.label}" não é uma etapa de ${ROTULO_MODULO}.`,
+        dica: `Ela é de ${A.MODULOS_DO_FLUXO[etapa.modulo]?.label || etapa.modulo}.`,
+      });
+    }
+
+    // O pedido é lido ANTES dos campos: a coleta pergunta coisas
+    // diferentes conforme é entrega ou retirada, e isso vem do pedido.
+    const { data: sale, error: e0 } = await supabase.from('VENDAS')
+      // Os campos que os REQUISITOS de cada fase leem tambem vem: a coleta
+      // exige transportadora (carrier_id), o transito olha o rastreio, a
+      // arte olha o arquivo. Sem eles o motor recusava o avanco dizendo
+      // "falta transportadora" num pedido que TINHA transportadora.
+      .select(`production_log, production_stage, status, delivery_mode, notes, created_at, production_photos,
+               carrier_id, tracking_code, artwork_url, art_file, event_date, ship_date, transport_days,
+               VENDA_ITENS ( id, product_id, product_name, quantity, customization, PRODUTOS ( id, code, name, ink_type ) )`)
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
+    if (e0 || !sale) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const campos = camposDaAcao(etapa, action, sale);
     const { registro, erro: erroCampo } = conferirCampos(campos, dados);
     if (erroCampo) return res.status(400).json({ error: erroCampo });
 
     const erroSenha = await confirmarIdentidade(req, [password, password_confirma]);
     if (erroSenha) return res.status(403).json({ error: erroSenha });
 
-    const { data: sale, error: e0 } = await supabase.from('VENDAS')
-      .select(`production_log, production_stage, status, delivery_mode, notes, created_at, production_photos,
-               VENDA_ITENS ( id, product_id, product_name, quantity, customization, PRODUTOS ( id, code, name, ink_type ) )`)
-      .eq('id', req.params.id).eq('tenant_id', req.tenantId).single();
-    if (e0 || !sale) return res.status(404).json({ error: 'Pedido não encontrado' });
-
     const itens = (sale.VENDA_ITENS || []).map(i => caracteristicasDoItem(i));
     const aplicaveis = etapasDosItens(itens);
 
     /**
-     * A MESMA PENEIRA DA FILA, AGORA NA AÇÃO.
-     *
-     * A trava do "enviado para produção" MORREU AQUI TAMBÉM. Ela já
-     * tinha saído da fila e do motor, e ficou só neste ponto — com o
-     * efeito exato de antes, mas escondido: o pedido aparecia na tela,
-     * o botão aparecia, e o clique voltava 409 dizendo que o comercial
-     * precisava liberar algo que não existe mais.
+     * A AÇÃO PRECISA SER UMA DAS QUE O PEDIDO PERMITE AGORA, NESTE
+     * MÓDULO. É esta peneira — e não "é personalizado?" — que impede
+     * registrar revelação num copo liso (a revelação não está na lista
+     * dele) e que impede finalizar a embalagem de um pedido que ainda
+     * está na pintura. O histórico só conta o que houve.
      */
-    if (!aplicaveis.personalizado) {
-      return res.status(409).json({
-        error: 'Este pedido não tem personalização — não passa pela serigrafia. '
-             + 'Ele segue pela tela do pedido de venda.',
-      });
-    }
-
-    // A AÇÃO PRECISA SER UMA DAS QUE O PEDIDO PERMITE AGORA. Sem isto,
-    // dava para finalizar a embalagem de um pedido que ainda está na
-    // pintura — e o histórico passaria a contar uma coisa que não houve.
-    const permitidas = acoesDoPedido(sale, aplicaveis);
+    const permitidas = acoesDoPedido(sale, aplicaveis, modulo);
     if (!permitidas.some(a => a.stage === stage && a.action === action)) {
       return res.status(409).json({
         error: `"${etapa.label}" não é o que este pedido espera agora (${A.infoStatus(sale.status).label}).`,
@@ -863,11 +1022,26 @@ router.post('/:id/stage', async (req, res) => {
         { perfil: req.userProfile, acesso: req.acesso },
         { user: { id: req.user?.id || null, name: actor } },
       );
-      if (!passo.erro) {
-        patch.status = passo.status;
-        patch.production_log = passo.log;
-        avancou = passo.status;
+      /**
+       * FINALIZAR QUE NAO ANDA E ERRO, E PRECISA DIZER POR QUE.
+       *
+       * O motor recusa o avanco quando falta um requisito da fase — a
+       * coleta sem transportadora definida, por exemplo. Engolir essa
+       * recusa e gravar o "finalizado" mesmo assim deixava o pedido
+       * marcado como feito e parado no mesmo lugar, e quem clicou saia
+       * achando que tinha andado. Agora a recusa volta com o motivo,
+       * ANTES de gravar qualquer coisa.
+       */
+      if (passo.erro) {
+        return res.status(passo.http || 409).json({
+          error: passo.erro,
+          dica: passo.dica || 'Resolva a pendencia no pedido de venda e tente de novo.',
+          code: passo.code || null,
+        });
       }
+      patch.status = passo.status;
+      patch.production_log = passo.log;
+      avancou = passo.status;
     } else if (reprovado) {
       // Volta a esperar a conferência: o pedido não saiu daqui.
       patch.status = 'aguardando_qualidade';
@@ -953,6 +1127,11 @@ router.post('/:id/stage', async (req, res) => {
       stage: patch.production_stage || sale.production_stage,
       status: patch.status || sale.status,
       status_label: A.infoStatus(patch.status || sale.status).label,
+      // O pedido pode ter SAÍDO deste módulo — a embalagem fechada vai
+      // para a logística. A tela avisa, em vez de o pedido só sumir.
+      modulo_agora: A.moduloDoStatus(patch.status || sale.status),
+      modulo_agora_label: A.MODULOS_DO_FLUXO[A.moduloDoStatus(patch.status || sale.status)]?.label || null,
+      saiu_do_modulo: A.moduloDoStatus(patch.status || sale.status) !== modulo,
       avancou,
       reprovado,
       registrado: registro,
@@ -1102,4 +1281,10 @@ router.delete('/:id/photo', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-module.exports = router;
+  return router;
+}
+
+module.exports = criarRouter;
+// Para quem precisar do catálogo sem montar rota (testes, relatórios).
+module.exports.ETAPAS = ETAPAS;
+module.exports.etapasDoPedido = etapasDoPedido;

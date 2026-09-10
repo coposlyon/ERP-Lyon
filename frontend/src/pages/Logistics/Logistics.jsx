@@ -13,6 +13,11 @@ import { useAuth } from '@/contexts/AuthContext';
 // transportadoras porque e a mesma pessoa que abre as duas — mas e
 // outro trabalho, e por isso e outra aba, e nao mais uma coluna.
 import Expedicao from './Expedicao';
+// A FILA DE ETAPAS DA LOGISTICA: coleta, transito e entrega (status
+// 24-28 da regua), com iniciar/finalizar e dupla confirmacao — a MESMA
+// tela da producao, lendo a fatia da logistica.
+import FilaDeEtapas from '@/components/Fluxo/FilaDeEtapas';
+import { PackageCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const states = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
@@ -536,7 +541,7 @@ function CarrierForm({ carrier, onSaved, onCancel }) {
 
 export default function Logistics() {
   // Qual das duas telas esta aberta. A fila vem primeiro: e o trabalho do dia.
-  const [aba, setAba] = useState('expedicao');
+  const [aba, setAba] = useState('fila');
   const [page, setPage]               = useState(1);
   const [search, setSearch]           = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -627,15 +632,15 @@ export default function Logistics() {
 
   return (
     <div className="space-y-4">
-      <div className="page-header flex-wrap gap-3">
+      <div className="page-header flex-wrap gap-3" hidden={aba === 'fila'}>
         <div>
           <h1 className="page-title flex items-center gap-2">
             <Truck size={24} className="text-primary-600" />
             Logística
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            {aba === 'expedicao'
-              ? 'Pedidos prontos, avisos ao cliente, coleta e documentos'
+            {aba === 'fila' ? 'Coleta · Trânsito · Entrega — as etapas do que sai da porta'
+              : aba === 'expedicao' ? 'Pedidos prontos, avisos ao cliente, coleta e documentos'
               : `${data?.total || 0} transportadoras cadastradas`}
           </p>
         </div>
@@ -654,7 +659,7 @@ export default function Logistics() {
           e a mesma pessoa — mas o trabalho de hoje e a fila, e por isso
           ela abre primeiro. */}
       <div className="flex gap-6 border-b border-gray-200">
-        {[['expedicao', 'Expedição'], ['transportadoras', 'Transportadoras']].map(([k, l]) => (
+        {[['fila', 'Etapas'], ['expedicao', 'Expedição'], ['transportadoras', 'Transportadoras']].map(([k, l]) => (
           <button key={k} onClick={() => setAba(k)}
             className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
               aba === k ? 'border-primary-600 text-primary-600'
@@ -664,6 +669,21 @@ export default function Logistics() {
         ))}
       </div>
 
+      {/* A FILA E O TRABALHO DO DIA: o pedido chega da embalagem, a
+          logistica registra a coleta (ou a retirada no balcao), o
+          transito e a entrega — com senha nas duas portas, como na
+          fabrica. A Expedicao (aba seguinte) e o papelorio em volta:
+          nota, declaracao, etiqueta, aviso ao cliente. */}
+      {aba === 'fila' && (
+        <FilaDeEtapas
+          modulo="logistica"
+          api="/logistica"
+          titulo="Logística"
+          subtitulo="Coleta / retirada · Em trânsito · Entrega"
+          Icone={PackageCheck}
+          cor="green"
+        />
+      )}
       {aba === 'expedicao' && <Expedicao />}
 
       <div className="card" hidden={aba !== 'transportadoras'}>

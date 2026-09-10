@@ -50,7 +50,37 @@ const CORES = {
   concluido: { anel: '#22c55e', fundo: 'rgba(34,197,94,0.14)',  texto: '#4ade80' },
   atual:     { anel: '#f59e0b', fundo: 'rgba(245,158,11,0.18)', texto: '#fbbf24' },
   pendente:  { anel: 'rgba(129,140,248,0.35)', fundo: 'rgba(99,102,241,0.06)', texto: 'rgba(165,180,252,0.65)' },
+  /**
+   * NÃO SE APLICA A ESTE PEDIDO — presente, no lugar dela, apagada.
+   *
+   * A régua é global: todo pedido tem os mesmos 28 status nos mesmos
+   * números, para "estou na etapa 10" querer dizer a mesma coisa no
+   * portal, na fábrica e no telefone. As etapas que ESTE pedido não tem
+   * (pintura num copo sem pintura, serigrafia num copo liso) continuam
+   * desenhadas, cinza e sem número aceso, para o número das outras não
+   * pular — e para ninguém esperar por elas.
+   */
+  nao_se_aplica: { anel: 'rgba(148,163,184,0.18)', fundo: 'transparent', texto: 'rgba(148,163,184,0.35)' },
 };
+
+/**
+ * A RÉGUA EM BLOCOS, UM POR MÓDULO.
+ *
+ * Os 28 balões numa fila só eram uma parede. Separados por quem cuida
+ * de cada trecho — Financeiro, Pedido de Venda, Designer, Produção,
+ * Logística —, a régua conta em que MESA o pedido está, e não só em
+ * que número. O cliente que liga perguntando "com quem está?" tem a
+ * resposta escrita.
+ */
+function blocosPorModulo(passos) {
+  const blocos = [];
+  for (const p of passos || []) {
+    const ultimo = blocos[blocos.length - 1];
+    if (ultimo && ultimo.modulo === p.modulo) ultimo.passos.push(p);
+    else blocos.push({ modulo: p.modulo, label: p.modulo_label || '', passos: [p] });
+  }
+  return blocos;
+}
 
 const CARD = {
   background: 'rgba(12,20,52,0.66)',
@@ -375,11 +405,26 @@ export default function PedidoCliente() {
               Seu pedido está em: <b>{etapaAtual.label}</b>
             </p>
           )}
-          <div className="flex flex-wrap gap-x-2 gap-y-5">
-            {(p.linha_do_tempo || []).map(passo => <Balao key={passo.key} passo={passo} />)}
+          <div className="space-y-4">
+            {blocosPorModulo(p.linha_do_tempo).map(b => (
+              <div key={b.modulo || 'x'}>
+                <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 flex items-center gap-2"
+                  style={{ color: 'rgba(255,255,255,0.45)' }}>
+                  <span className="w-4 h-px" style={{ background: 'rgba(255,255,255,0.2)' }} />
+                  {b.label}
+                  <span className="text-[9px] normal-case tracking-normal font-normal" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    {b.passos[0].passo}–{b.passos[b.passos.length - 1].passo}
+                  </span>
+                </p>
+                <div className="flex flex-wrap gap-x-2 gap-y-5">
+                  {b.passos.map(passo => <Balao key={passo.key} passo={passo} />)}
+                </div>
+              </div>
+            ))}
           </div>
           <p className="text-[11px] mt-4" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            Nem todo pedido passa por todas as etapas — depende do produto e dos processos contratados.
+            Os números são os mesmos em todo pedido. Etapa riscada não se aplica a este pedido
+            (depende do produto e dos processos contratados) — o pedido passa direto por ela.
             {p.itens.length > 1 && ' Clique no olho ao lado de cada produto para ver as etapas dele.'}
           </p>
         </Card>
@@ -591,10 +636,11 @@ function CentralContato({ token, saleId, pedido, onClose }) {
 
 function Balao({ passo }) {
   const Icon = ICONES[passo.icone] || Circle;
-  const c = CORES[passo.estado];
+  const c = CORES[passo.estado] || CORES.pendente;
+  const foraDoPedido = passo.estado === 'nao_se_aplica';
   return (
-    <div className="flex flex-col items-center gap-1 text-center" style={{ width: 92 }}
-      title={`${passo.label}${passo.at ? ` — ${dataHora(passo.at)}` : ''}`}>
+    <div className="flex flex-col items-center gap-1 text-center" style={{ width: 92, opacity: foraDoPedido ? 0.55 : 1 }}
+      title={`${passo.passo}. ${passo.label}${foraDoPedido ? ' — não se aplica a este pedido' : ''}${passo.at ? ` — ${dataHora(passo.at)}` : ''}`}>
       <div className="relative">
         <div className="w-11 h-11 rounded-full flex items-center justify-center"
           style={{ border: `2px solid ${c.anel}`, background: c.fundo,
@@ -602,9 +648,11 @@ function Balao({ passo }) {
           <Icon size={18} style={{ color: c.texto }} />
         </div>
         <span className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
-          style={{ background: c.anel, color: '#0b1020' }}>{passo.ordem ?? passo.passo}</span>
+          style={{ background: c.anel, color: foraDoPedido ? 'rgba(255,255,255,0.35)' : '#0b1020' }}>{passo.passo}</span>
       </div>
-      <span className="text-[10px] leading-tight" style={{ color: c.texto }}>{passo.label}</span>
+      <span className="text-[10px] leading-tight" style={{ color: c.texto, textDecoration: foraDoPedido ? 'line-through' : 'none' }}>
+        {passo.label}
+      </span>
       {passo.at && (
         <span className="text-[9px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
           {new Date(passo.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
@@ -1445,14 +1493,24 @@ function EtapasDoItem({ item, onClose }) {
           nomeArquivo={`arte-${item.codigo || item.produto}`}
           onClose={() => setVendoArte(false)} />
 
-        <div className="flex flex-wrap gap-x-2 gap-y-5">
-          {linha.map(passo => <Balao key={passo.key} passo={passo} />)}
+        <div className="space-y-4">
+          {blocosPorModulo(linha).map(b => (
+            <div key={b.modulo || 'x'}>
+              <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                {b.label}
+              </p>
+              <div className="flex flex-wrap gap-x-2 gap-y-5">
+                {b.passos.map(passo => <Balao key={passo.key} passo={passo} />)}
+              </div>
+            </div>
+          ))}
         </div>
 
         <p className="text-[11px] mt-5" style={{ color: 'rgba(255,255,255,0.4)' }}>
-          As etapas mudam de produto para produto: arte, vegetal e revelação só existem em produto
-          personalizado — o copo liso vai do estoque para a produção sem passar por elas. A pintura só
-          aparece em degradê, bicolor ou jateado, e a aplicação de borda só em quem tem borda contratada.
+          Os números são os mesmos em todo pedido. Etapa riscada não se aplica a este produto: arte,
+          vegetal e revelação só existem em produto personalizado — o copo liso vai do estoque para a
+          produção sem passar por elas; a pintura só em degradê, bicolor ou jateado; a borda só em quem
+          tem borda contratada.
         </p>
       </div>
     </div>

@@ -34,6 +34,7 @@ const StorePayments      = lazy(() => import('@/pages/Sales/StorePayments'));
 const VendedorDashboard  = lazy(() => import('@/pages/Vendedor/VendedorDashboard'));
 const VendedorConfig     = lazy(() => import('@/pages/Vendedor/VendedorConfig'));
 const PedidosVendedor    = lazy(() => import('@/pages/Vendedor/PedidosVendedor'));
+const Designer           = lazy(() => import('@/pages/Designer/Designer'));
 const PedidoDetalhe      = lazy(() => import('@/pages/Vendedor/PedidoDetalhe'));
 const DocumentoPedido    = lazy(() => import('@/pages/Vendedor/DocumentoPedido'));
 const Catalogo           = lazy(() => import('@/pages/Vendedor/Catalogo'));
@@ -348,6 +349,9 @@ function AppRoutes() {
         <Route path="crm"      element={<Mod m="crm"><CRM /></Mod>}      />
         <Route path="marketing" element={<Mod m={['marketing','crm']}><Marketing /></Mod>} />
         <Route path="production" element={<Mod m={['production','quality','stock']}><Production /></Mod>} />
+        {/* O DESIGNER: a impressao do vegetal (status 8-9). Quem tem Producao
+            tambem entra — e o mesmo motor, e a fabrica precisa ver o filme. */}
+        <Route path="designer" element={<Mod m={['designer','production']}><Designer /></Mod>} />
         <Route path="portal/eu"       element={<PortalColaborador />} />
         <Route path="portal/gestor"   element={<PortalGestor />} />
         <Route path="portal/contador" element={<PortalContador />} />

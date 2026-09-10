@@ -553,14 +553,33 @@ export default function PedidoDetalhe() {
               style={{ color: v.textPrimary, borderBottom: `1px solid ${v.divider}` }}>
               <Clock size={16} style={{ color: '#60a5fa' }} /> Linha do Tempo do Pedido
             </h2>
-            <div className="p-4 pedido-fases">
-              {(p.linha_do_tempo || []).map(fase => (
-                <Balao key={fase.key} v={v} fase={fase} atrasado={atrasado} />
+            {/* EM BLOCOS, UM POR MÓDULO. Os 28 balões numa fila eram uma
+                parede; separados por quem cuida de cada trecho, a régua
+                diz em que MESA o pedido está — e é isso que o telefone
+                pergunta. Os números são os do catálogo, fixos. */}
+            <div className="p-4 space-y-4">
+              {blocosDaRegua(p.linha_do_tempo).map(b => (
+                <div key={b.modulo || 'x'}>
+                  <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 flex items-center gap-2"
+                    style={{ color: v.textSubtle }}>
+                    <span className="w-4 h-px" style={{ background: v.divider }} />
+                    {b.label}
+                    <span className="text-[9px] normal-case tracking-normal font-normal" style={{ color: v.textSubtle, opacity: 0.7 }}>
+                      {b.passos[0].passo}–{b.passos[b.passos.length - 1].passo}
+                    </span>
+                  </p>
+                  <div className="pedido-fases">
+                    {b.passos.map(fase => (
+                      <Balao key={fase.key} v={v} fase={fase} atrasado={atrasado} />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
             <p className="text-[11px] px-4 pb-3" style={{ color: v.textSubtle }}>
-              Verde já aconteceu, amarelo está acontecendo agora, roxo ainda vem. Pintura e borda
-              só aparecem quando o pedido passa por elas. Etapa sem data ainda não aconteceu.
+              Verde já aconteceu, amarelo está acontecendo agora, roxo ainda vem. Etapa riscada
+              não se aplica a este pedido — o número dela fica no lugar para a contagem ser a
+              mesma em todo pedido. Etapa sem data ainda não aconteceu.
             </p>
 
             {/* O OUTRO LADO DA MESMA RÉGUA. As bolinhas dizem onde o
@@ -985,19 +1004,34 @@ function AlertaDePrazo({ v, prazo }) {
 
 const dataCurta = d => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—');
 
+/** A régua em blocos consecutivos, um por módulo dono. */
+function blocosDaRegua(passos) {
+  const blocos = [];
+  for (const p of passos || []) {
+    const ultimo = blocos[blocos.length - 1];
+    if (ultimo && ultimo.modulo === p.modulo) ultimo.passos.push(p);
+    else blocos.push({ modulo: p.modulo, label: p.modulo_label || '', passos: [p] });
+  }
+  return blocos;
+}
+
 function Balao({ v, fase, atrasado }) {
   const Icon = ICONES[fase.icone] || Circle;
   const cor = {
     concluido: '#4ade80',
     atual:     atrasado ? '#f87171' : '#fbbf24',
     pendente:  '#8b5cf6',
+    // Não se aplica a este pedido: presente, no lugar, apagada — a régua
+    // é global e o número não pode pular.
+    nao_se_aplica: '#94a3b8',
   }[fase.estado] || '#8b5cf6';
 
-  const apagado = fase.estado === 'pendente';
+  const foraDoPedido = fase.estado === 'nao_se_aplica';
+  const apagado = fase.estado === 'pendente' || foraDoPedido;
 
   return (
-    <div className="flex flex-col items-center gap-1 text-center" style={{ width: '100%' }}
-      title={`${fase.ordem}. ${fase.label}${fase.detalhe ? ` — ${fase.detalhe}` : ''}${fase.at ? ` — ${dataHora(fase.at)}` : ''}`}>
+    <div className="flex flex-col items-center gap-1 text-center" style={{ width: '100%', opacity: foraDoPedido ? 0.5 : 1 }}
+      title={`${fase.passo}. ${fase.label}${foraDoPedido ? ' — não se aplica a este pedido' : ''}${fase.detalhe ? ` — ${fase.detalhe}` : ''}${fase.at ? ` — ${dataHora(fase.at)}` : ''}`}>
       <div className="relative">
         <div className="w-11 h-11 rounded-full flex items-center justify-center"
           style={{
@@ -1009,11 +1043,11 @@ function Balao({ v, fase, atrasado }) {
         </div>
         <span className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
           style={{ background: apagado ? `${cor}66` : cor, color: '#0b1020' }}>
-          {fase.ordem}
+          {fase.passo}
         </span>
       </div>
       <span className="text-[10px] leading-tight font-semibold"
-        style={{ color: apagado ? v.textSubtle : cor }}>{fase.label}</span>
+        style={{ color: apagado ? v.textSubtle : cor, textDecoration: foraDoPedido ? 'line-through' : 'none' }}>{fase.label}</span>
       {fase.at && <span className="text-[9px]" style={{ color: v.textSubtle }}>{horaCurta(fase.at)}</span>}
       {fase.estado === 'atual' && <span className="w-6 h-0.5 rounded-full" style={{ background: cor }} />}
     </div>

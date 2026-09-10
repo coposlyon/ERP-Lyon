@@ -29,6 +29,7 @@ import {
   Calculator, PieChart, Home, Landmark, Star, Trophy,
   MessageSquare, LogOut, LayoutGrid, Globe, CloudUpload, UserPlus, UserMinus,
   Sparkles, Layers, Droplet, FolderTree,
+  PenTool,
 } from 'lucide-react';
 import { SITES } from '@/pages/Sites/registro';
 
@@ -140,6 +141,22 @@ export const menuItems = [
       // vezes por ano — deixa-lo no topo custava um item de leitura em
       // toda vez que alguem procurava o que realmente usa.
       { label: 'Plano de Metas', path: '/vendedor/config', icon: Trophy, adminOnly: true },
+    ],
+  },
+  /**
+   * O DESIGNER, ENTRE O COMERCIAL E A PRODUÇÃO — que é onde ele fica no
+   * fluxo. A ordem do menu é a ordem da régua do pedido:
+   *
+   *   Financeiro (1–3) → Pedido de Venda (4–7) → Designer (8–9)
+   *   → Produção (10–23) → Logística (24–28)
+   *
+   * Quem lê o menu de cima para baixo lê o caminho do pedido.
+   */
+  {
+    label: 'Designer',
+    icon: PenTool,
+    children: [
+      { label: 'Impressão do vegetal', path: '/designer', icon: PenTool, module: ['designer', 'production'] },
     ],
   },
   // PRODUÇÃO VEM LOGO DEPOIS DO COMERCIAL, e não lá embaixo com o
