@@ -8,7 +8,7 @@ const { makeClient } = require('../config/supabase');
 
 const A = require('../lib/atencao');
 const F = require('../lib/fluxoPedido');
-const { etapasDosItens, caracteristicasDoItem } = require('../lib/itensPedido');
+const { etapasDosItens, caracteristicasDoItem, contaDaProducao } = require('../lib/itensPedido');
 
 // Etapas e suas colunas de início/fim
 // Fluxo: Revelação → Pintura → Metalização (opcional) → Produção → Embalagem
@@ -50,6 +50,25 @@ const ETAPAS = {
           dica: 'É por ele que se acha a tela usada, se o copo sair errado.' },
         { key: 'matriz_conferida', tipo: 'sim', obrigatorio: true,
           label: 'Foi informado o número correto da matriz?' },
+        /**
+         * A PERDA DE MATRIZ ENTROU AQUI, e saiu de um botão à parte.
+         *
+         * Ela é a tela que velou, queimou ou não revelou — e isso
+         * acontece EXATAMENTE nesta etapa, na mão de quem está fazendo.
+         * Ficava num botão solto no rodapé da tela, que só alguém que
+         * lembrasse ia clicar depois; o resultado era emulsão saindo do
+         * estoque sem registro e tela recuperada sem ninguém contar.
+         *
+         * Marcada aqui, o sistema calcula emulsão, sensibilizante e
+         * removedor pela área configurada, dá baixa nos três e soma uma
+         * recuperação na vida daquela tela.
+         */
+        { key: 'matriz_perdida', tipo: 'sim',
+          label: 'A matriz foi perdida? (velou, queimou, não revelou)',
+          dica: 'Marque só se a tela precisou ser recuperada. Emulsão, sensibilizante '
+              + 'e removedor saem do estoque, e conta uma recuperação nesta tela.' },
+        { key: 'matriz_motivo', tipo: 'texto', label: 'O que houve com a matriz',
+          dica: 'Opcional — ajuda a achar o padrão quando a mesma tela vela sempre.' },
       ],
     },
   },
@@ -168,8 +187,9 @@ const ETAPAS = {
  */
 function CAMPO_PERDA() {
   return {
-    key: 'perda', tipo: 'numero', label: 'Perdeu alguma unidade?', perda: true,
-    dica: 'Deixe zerado se não houve perda. O que for informado sai do estoque.',
+    key: 'perda', tipo: 'numero', label: 'Perdeu alguma unidade nesta etapa?', perda: true,
+    dica: 'A FÁBRICA REPÕE — o cliente recebe o que pediu. Pediu 200 e quebraram 5? '
+        + 'Saem 205 da linha. O que for informado aqui é custo nosso e sai do estoque.',
   };
 }
 
@@ -441,49 +461,59 @@ router.get('/serigrafia/perdas', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/serigrafia/perda', async (req, res) => {
-  const { sale_id, quadro, motivo, obs, area_cm2, emulsao_g, sensib_g, removedor_ml } = req.body;
-  if (!String(quadro || '').trim()) return res.status(400).json({ error: 'Informe a numeração do quadro.' });
-  try {
-    const cfg = await getSeriConfig(req.tenantId);
-    const area = Number(area_cm2) > 0 ? Number(area_cm2) : (Number(cfg.screen_w) * Number(cfg.screen_h));
-    const m2 = area / 10000;
-    const emu = emulsao_g != null && emulsao_g !== '' ? Number(emulsao_g) : m2 * Number(cfg.emulsao_g_m2 || 0);
-    const sen = sensib_g != null && sensib_g !== '' ? Number(sensib_g) : m2 * Number(cfg.sensib_g_m2 || 0);
-    const rem = removedor_ml != null && removedor_ml !== '' ? Number(removedor_ml) : m2 * Number(cfg.removedor_ml_m2 || 0);
-    const custo = (emu / 1000) * Number(cfg.emulsao_cost_kg || 0)
-                + (sen / 1000) * Number(cfg.sensib_cost_kg || 0)
-                + (rem / 1000) * Number(cfg.removedor_cost_l || 0);
+/**
+ * A PERDA DE MATRIZ — chamada pela REVELAÇÃO, e por mais ninguém.
+ *
+ * Era uma rota com botão próprio no rodapé da tela: "Registrar perda".
+ * Um botão solto para um fato que acontece DENTRO de uma etapa, e que
+ * por isso dependia de alguém lembrar de voltar ali depois. O que
+ * acontecia de verdade era emulsão saindo do estoque sem registro e
+ * tela recuperada sem ninguém contar — os dois números que essa perda
+ * existe para guardar.
+ *
+ * Agora ela é uma caixa marcada ao finalizar a revelação, e este código
+ * é o mesmo de antes: calcula os insumos pela área configurada, dá
+ * baixa nos três e soma uma recuperação na vida daquela tela.
+ */
+async function registrarPerdaMatriz(req, { sale_id, quadro, motivo, obs, area_cm2, emulsao_g, sensib_g, removedor_ml }) {
+  const cfg = await getSeriConfig(req.tenantId);
+  const area = Number(area_cm2) > 0 ? Number(area_cm2) : (Number(cfg.screen_w) * Number(cfg.screen_h));
+  const m2 = area / 10000;
+  const emu = emulsao_g != null && emulsao_g !== '' ? Number(emulsao_g) : m2 * Number(cfg.emulsao_g_m2 || 0);
+  const sen = sensib_g != null && sensib_g !== '' ? Number(sensib_g) : m2 * Number(cfg.sensib_g_m2 || 0);
+  const rem = removedor_ml != null && removedor_ml !== '' ? Number(removedor_ml) : m2 * Number(cfg.removedor_ml_m2 || 0);
+  const custo = (emu / 1000) * Number(cfg.emulsao_cost_kg || 0)
+              + (sen / 1000) * Number(cfg.sensib_cost_kg || 0)
+              + (rem / 1000) * Number(cfg.removedor_cost_l || 0);
 
-    const { data: rec, error } = await supabase.from('PERDAS_MATRIZ').insert({
-      tenant_id: req.tenantId, sale_id: sale_id || null, quadro: String(quadro).trim(),
-      motivo: motivo || null, obs: obs || null, area_cm2: area,
-      emulsao_g: emu, sensib_g: sen, removedor_ml: rem, custo,
-      user_id: req.user?.id || null, user_name: req.user?.name || req.user?.email || null,
-    }).select().single();
-    if (error) throw error;
+  const { data: rec, error } = await supabase.from('PERDAS_MATRIZ').insert({
+    tenant_id: req.tenantId, sale_id: sale_id || null, quadro: String(quadro).trim(),
+    motivo: motivo || null, obs: obs || null, area_cm2: area,
+    emulsao_g: emu, sensib_g: sen, removedor_ml: rem, custo,
+    user_id: req.user?.id || null, user_name: req.userProfile?.name || req.user?.name || req.user?.email || null,
+  }).select().single();
+  if (error) throw error;
 
-    // baixa no estoque dos insumos configurados
-    const baixa = async (pid, qty, label) => {
-      if (!pid || !(qty > 0)) return;
-      try {
-        await supabase.rpc('atualizar_estoque', {
-          p_tenant_id: req.tenantId, p_product_id: pid, p_quantity: -qty, p_type: 'adjustment',
-          p_reference_type: 'matriz_perda', p_reference_id: rec.id, p_user_id: req.user?.id || null,
-          p_notes: `Perda de matriz ${quadro} — ${label}`,
-        });
-      } catch { /* estoque pode não estar configurado */ }
-    };
-    await baixa(cfg.emulsao_product_id, emu, 'emulsão');
-    await baixa(cfg.sensib_product_id, sen, 'sensibilizante');
-    await baixa(cfg.removedor_product_id, rem, 'removedor');
+  // Baixa no estoque dos insumos configurados.
+  const baixa = async (pid, qty, label) => {
+    if (!pid || !(qty > 0)) return;
+    try {
+      await supabase.rpc('atualizar_estoque', {
+        p_tenant_id: req.tenantId, p_product_id: pid, p_quantity: -qty, p_type: 'adjustment',
+        p_reference_type: 'matriz_perda', p_reference_id: rec.id, p_user_id: req.user?.id || null,
+        p_notes: `Perda de matriz ${quadro} — ${label}`,
+      });
+    } catch { /* estoque pode não estar configurado */ }
+  };
+  await baixa(cfg.emulsao_product_id, emu, 'emulsão');
+  await baixa(cfg.sensib_product_id, sen, 'sensibilizante');
+  await baixa(cfg.removedor_product_id, rem, 'removedor');
 
-    const q = await bumpQuadro(req.tenantId, quadro, 'recuperacoes');
-    const precisa_troca = q && (Number(q.recuperacoes) || 0) >= Number(cfg.troca_limite || 0);
-    audit(req, 'create', 'matriz_perda', rec.id, { quadro, motivo, custo });
-    res.status(201).json({ ...rec, quadro_recuperacoes: q?.recuperacoes, precisa_troca });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+  const q = await bumpQuadro(req.tenantId, quadro, 'recuperacoes');
+  const precisa_troca = q && (Number(q.recuperacoes) || 0) >= Number(cfg.troca_limite || 0);
+  audit(req, 'create', 'matriz_perda', rec.id, { quadro, motivo, custo });
+  return { ...rec, quadro_recuperacoes: q?.recuperacoes, precisa_troca };
+}
 
 // ── Detalhe (itens + arte) ────────────────────────────────
 router.get('/:id', async (req, res) => {
@@ -520,6 +550,10 @@ router.get('/:id', async (req, res) => {
       matriz: matrizDoPedido(sale.production_log),
       // Quantas fotos este pedido precisa ter: uma por arte.
       artes: artesDoPedido(items),
+      // Quanto foi vendido, quanto se perdeu e quanto a linha tem de
+      // fazer — ver perdasDoPedido().
+      producao: contaDaProducao(sale.production_log, items,
+        Object.fromEntries(Object.entries(ETAPAS).map(([k, e]) => [k, e.label]))),
       items: (items || []).map(it => ({
         product_id: it.product_id,
         product_code: it.PRODUTOS?.code, product_name: it.product_name || it.PRODUTOS?.name,
@@ -817,6 +851,21 @@ router.post('/:id/stage', async (req, res) => {
       try { await bumpQuadro(req.tenantId, registro.matriz, 'gravacoes'); } catch { /* ignora */ }
     }
 
+    // A TELA QUE VELOU. Ver registrarPerdaMatriz: os insumos saem do
+    // estoque e a recuperação entra na vida daquela tela.
+    let matrizPerdida = null;
+    if (stage === 'revelacao' && action === 'finish' && registro.matriz_perdida && registro.matriz) {
+      try {
+        matrizPerdida = await registrarPerdaMatriz(req, {
+          sale_id: req.params.id,
+          quadro: registro.matriz,
+          motivo: registro.matriz_motivo || 'Informada ao finalizar a revelação',
+        });
+      } catch (e) {
+        console.error('[production/stage] perda de matriz:', e?.message || e);
+      }
+    }
+
     /**
      * RETIRADA NÃO PASSA PELA LOGÍSTICA — E O CLIENTE PRECISA SABER HOJE.
      *
@@ -854,6 +903,26 @@ router.post('/:id/stage', async (req, res) => {
       avancou,
       reprovado,
       registrado: registro,
+      /**
+       * A PERDA NÃO ENCOLHE O PEDIDO — A FÁBRICA REPÕE.
+       *
+       * Vendeu 200 e quebraram 5? Saem 205 da linha, e o cliente recebe
+       * as 200 que pediu. A perda é custo nosso, e não uma entrega
+       * menor: quem compra 200 copos para uma festa de 200 pessoas não
+       * tem o que fazer com 195.
+       *
+       * A tela precisa dizer isso NO MOMENTO em que a perda é
+       * informada, senão a conta de quanto produzir fica na cabeça de
+       * quem está na máquina.
+       */
+      repor: perdidas > 0 ? {
+        unidades: perdidas,
+        recado: `Reponha ${perdidas} unidade(s) — o cliente recebe a quantidade que pediu.`,
+      } : null,
+      matriz_perdida: matrizPerdida
+        ? { quadro: matrizPerdida.quadro, custo: matrizPerdida.custo,
+            recuperacoes: matrizPerdida.quadro_recuperacoes, precisa_troca: matrizPerdida.precisa_troca }
+        : null,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -922,14 +991,19 @@ async function registrarPerda(req, { product_id, product_name, quantity, deduct_
   return data;
 }
 
-router.post('/:id/perda', async (req, res) => {
-  const qty = Number(req.body?.quantity);
-  if (!qty || qty <= 0) return res.status(400).json({ error: 'Informe a quantidade perdida' });
-  try {
-    const perda = await registrarPerda(req, { ...req.body, quantity: qty });
-    res.status(201).json(perda);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+/**
+ * NÃO EXISTE MAIS "REGISTRAR PERDA" AVULSO.
+ *
+ * Havia aqui uma rota com botão próprio, para lançar perda a qualquer
+ * momento. Ela competia com o campo de perda do fecho de cada etapa, e
+ * duas portas para o mesmo fato dão dois números: a mesma quebra
+ * lançada nas duas vira o dobro no estoque, e a lançada em nenhuma some.
+ *
+ * Perda é coisa que acontece DENTRO de uma etapa — na pintura, na
+ * borda, na produção, na embalagem — e é lá que ela é perguntada, a
+ * quem estava com a peça na mão. `registrarPerda` continua existindo,
+ * chamada de dentro do fecho da etapa.
+ */
 
 // ── Anexar foto do copo personalizado (visível ao cliente no site) ──
 router.post('/:id/photo', async (req, res) => {

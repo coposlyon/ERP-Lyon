@@ -290,4 +290,44 @@ function resumoDaArte(itens) {
   };
 }
 
-module.exports = { capacidade, caracteristicasDoItem, etapasDosItens, estadoDaArte, resumoDaArte };
+/**
+ * A CONTA DA FÁBRICA: VENDIDO + PERDIDO = A PRODUZIR.
+ *
+ * "Não existe perda para o cliente." Pediu 200, recebe 200 — se
+ * quebrarem 50 no caminho, a fábrica faz 250. A perda é custo nosso, e
+ * nunca uma entrega menor: quem compra 200 copos para uma festa de 200
+ * pessoas não tem o que fazer com 195.
+ *
+ * Mora aqui, e não na rota da produção, porque duas telas fazem esta
+ * pergunta: a da fábrica (quanto ainda tenho de produzir) e a do pedido
+ * de venda (quanto se perdeu neste pedido). Duas contas do mesmo número
+ * são dois números.
+ *
+ * Só o `finish` conta. O `start` de uma etapa não tem perda, e um
+ * registro avulso lançado duas vezes viraria perda dobrada.
+ */
+function contaDaProducao(log, itens, rotulos = {}) {
+  const vendido = (itens || []).reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+  const porEtapa = {};
+  let perdido = 0;
+  for (const e of (Array.isArray(log) ? log : [])) {
+    if (e.action !== 'finish') continue;
+    const q = Number(e.perda || e.avariadas || 0);
+    if (!q) continue;
+    porEtapa[e.stage] = (porEtapa[e.stage] || 0) + q;
+    perdido += q;
+  }
+  return {
+    vendido,
+    perdido,
+    a_produzir: vendido + perdido,
+    por_etapa: Object.entries(porEtapa).map(([etapa, unidades]) => ({
+      etapa, label: rotulos[etapa] || etapa, unidades,
+    })),
+  };
+}
+
+module.exports = {
+  capacidade, caracteristicasDoItem, etapasDosItens, estadoDaArte, resumoDaArte,
+  contaDaProducao,
+};

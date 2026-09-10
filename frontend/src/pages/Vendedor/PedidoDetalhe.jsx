@@ -568,6 +568,27 @@ export default function PedidoDetalhe() {
                 tempo era um cartaz: quinze fases desenhadas e nenhuma
                 forma de passar de uma para a outra. */}
             <PainelFluxo v={v} id={id} fluxo={p.fluxo} />
+
+            {/* O QUE A FÁBRICA PERDEU — E QUE O CLIENTE NÃO PERDE.
+                A quebra era informada no chão de fábrica e morria lá: o
+                comercial só descobria por WhatsApp. A pergunta que chega
+                no telefone é "vai atrasar?", e a resposta está aqui. */}
+            {p.producao?.perdido > 0 && (
+              <div className="mx-4 mb-4 rounded-xl px-3.5 py-3"
+                style={{ background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.35)' }}>
+                <p className="text-[13px] font-semibold" style={{ color: '#fbbf24' }}>
+                  A fábrica está produzindo {p.producao.a_produzir} unidades
+                </p>
+                <p className="text-[12.5px] mt-0.5" style={{ color: v.textMuted }}>
+                  {p.producao.vendido} vendidas + {p.producao.perdido} perdidas na produção.
+                  <b> O cliente recebe as {p.producao.vendido} que pediu</b> — a perda é reposta pela
+                  fábrica, não sai do pedido dele.
+                </p>
+                <p className="text-[11.5px] mt-1" style={{ color: v.textSubtle }}>
+                  {p.producao.por_etapa.map(e => `${e.label}: ${e.unidades}`).join(' · ')}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Entrega + histórico */}

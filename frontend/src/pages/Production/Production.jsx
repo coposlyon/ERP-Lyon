@@ -303,6 +303,13 @@ export default function Production() {
        * abre na hora, com quem acabou de fechar a caixa.
        */
       if (r?.aviso_cliente) setAvisoRetirada(r.aviso_cliente);
+      // A perda não encolhe o pedido: quem informou precisa ver, agora,
+      // quanto a linha tem de repor.
+      if (r?.repor) toast(r.repor.recado, { icon: '🔁', duration: 9000 });
+      if (r?.matriz_perdida?.precisa_troca) {
+        toast(`Quadro ${r.matriz_perdida.quadro} já tem ${r.matriz_perdida.recuperacoes} recuperações — pode precisar trocar a tela.`,
+          { icon: '⚠️', duration: 9000 });
+      }
     },
     onError: e => toast.error(e.dica ? `${e.error} ${e.dica}` : (e.error || 'Erro ao registrar etapa')),
   });
@@ -320,21 +327,18 @@ export default function Production() {
     onError: e => toast.error(e.error || 'Erro ao salvar'),
   });
 
-  // Perda na produção
-  const [perdaOpen, setPerdaOpen] = useState(false);
-  const [perda, setPerda] = useState({ product_id: '', quantity: '', deduct_stock: true, notes: '' });
-  const perdaMut = useMutation({
-    mutationFn: () => {
-      const it = (detail?.items || []).find(i => i.product_id === perda.product_id);
-      return api.post(`/production/${selId}/perda`, { ...perda, product_name: it?.product_name || null });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries(['production-detail', selId]);
-      setPerdaOpen(false); setPerda({ product_id: '', quantity: '', deduct_stock: true, notes: '' });
-      toast.success('Perda registrada!');
-    },
-    onError: e => toast.error(e.error || 'Erro (rodou a migration 020?)'),
-  });
+  /**
+   * NÃO EXISTE MAIS "REGISTRAR PERDA" AVULSO.
+   *
+   * Havia aqui um botão para lançar perda a qualquer momento. Ele
+   * competia com o campo de perda do fecho de cada etapa, e duas portas
+   * para o mesmo fato dão dois números: a mesma quebra lançada nas duas
+   * vira o dobro no estoque, e a lançada em nenhuma some.
+   *
+   * Perda acontece DENTRO de uma etapa, e é lá que ela é perguntada — a
+   * quem estava com a peça na mão.
+   */
+
   // Foto do produto (visível ao cliente no site)
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoMut = useMutation({
@@ -516,11 +520,10 @@ export default function Production() {
         </div>
       </div>
 
-      {/* Serigrafia — perda de matriz + durabilidade das telas */}
-      <SerigrafiaPanel
-        saleId={selId}
-        defaultQuadro={(detail?.history || []).filter(h => h.stage === 'revelacao' && h.quadro).slice(-1)[0]?.quadro || ''}
-      />
+      {/* Serigrafia — a vida das telas. O painel virou so leitura: a
+          perda de matriz e informada ao finalizar a revelacao, e por
+          isso ele nao precisa mais saber qual pedido esta aberto. */}
+      <SerigrafiaPanel />
 
       {/* Detalhe do pedido selecionado */}
       {selected && (
@@ -637,8 +640,28 @@ export default function Production() {
             <div className="card p-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1.5"><AlertTriangle size={13} /> Perdas na produção</p>
-                <button onClick={() => setPerdaOpen(true)} className="btn-secondary text-xs"><Plus size={13} /> Registrar perda</button>
+                <span className="text-[11px] text-gray-400">informada ao finalizar cada etapa</span>
               </div>
+              {/* A CONTA DA FÁBRICA, escrita.
+                  "Não existe perda para o cliente": pediu 200, recebe
+                  200 — se quebrarem 50, saem 250 da linha. Sem isto
+                  escrito, a soma fica na cabeça de quem está na máquina,
+                  e ninguém a refaz quando a quebra é às cinco de sexta. */}
+              {detail?.producao?.perdido > 0 && (
+                <div className="mb-3 rounded-xl px-3 py-2.5 bg-amber-50 border border-amber-200">
+                  <p className="text-[13px] font-semibold text-amber-900">
+                    Produzir {detail.producao.a_produzir} unidades
+                  </p>
+                  <p className="text-[12px] text-amber-800 mt-0.5">
+                    {detail.producao.vendido} vendidas + {detail.producao.perdido} perdidas.
+                    O cliente recebe as {detail.producao.vendido} que pediu — a fábrica repõe o resto.
+                  </p>
+                  <p className="text-[11.5px] text-amber-700 mt-1">
+                    {detail.producao.por_etapa.map(e => `${e.label}: ${e.unidades}`).join(' · ')}
+                  </p>
+                </div>
+              )}
+
               {(detail?.perdas || []).length === 0 ? (
                 <p className="text-sm text-gray-400">Nenhuma perda registrada.</p>
               ) : (
@@ -692,36 +715,7 @@ export default function Production() {
         </div>
       )}
 
-      {/* Modal: registrar perda */}
-      <Modal isOpen={perdaOpen} onClose={() => setPerdaOpen(false)} title="Registrar perda na produção" size="sm">
-        <div className="space-y-3">
-          <div>
-            <label className="label">Produto</label>
-            <select className="input" value={perda.product_id} onChange={e => setPerda(s => ({ ...s, product_id: e.target.value }))}>
-              <option value="">Selecione o produto...</option>
-              {(detail?.items || []).map((it, i) => <option key={i} value={it.product_id || ''}>{it.product_name}{it.color ? ` — ${it.color}` : ''}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Quantidade perdida</label>
-            <input type="number" min="1" className="input" value={perda.quantity} onChange={e => setPerda(s => ({ ...s, quantity: e.target.value }))} placeholder="0" />
-          </div>
-          <div>
-            <label className="label">Observação</label>
-            <input className="input" value={perda.notes} onChange={e => setPerda(s => ({ ...s, notes: e.target.value }))} placeholder="Ex.: quebra na revelação" />
-          </div>
-          <label className="flex items-center gap-2 text-sm text-gray-600">
-            <input type="checkbox" checked={perda.deduct_stock} onChange={e => setPerda(s => ({ ...s, deduct_stock: e.target.checked }))} className="w-4 h-4 accent-orange-600" />
-            Dar baixa no estoque
-          </label>
-          <div className="flex gap-2 justify-end pt-2">
-            <button onClick={() => setPerdaOpen(false)} className="btn-secondary">Cancelar</button>
-            <button onClick={() => perdaMut.mutate()} disabled={perdaMut.isPending || !perda.quantity} className="btn-primary disabled:opacity-50">
-              {perdaMut.isPending ? 'Salvando...' : 'Registrar'}
-            </button>
-          </div>
-        </div>
-      </Modal>
+
 
       {/* O recado de "pronto para retirada", pronto para enviar. */}
       <Modal isOpen={!!avisoRetirada} onClose={() => setAvisoRetirada(null)}

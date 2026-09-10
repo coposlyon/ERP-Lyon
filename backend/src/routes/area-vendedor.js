@@ -15,7 +15,17 @@ const { paraOBalcao } = require('../lib/retirada');
 const { ORIGENS } = require('../lib/origens');
 const { autorizar, excluirVenda } = require('../lib/excluirVenda');
 const { audit } = require('../lib/audit');
-const { caracteristicasDoItem, etapasDosItens, resumoDaArte } = require('../lib/itensPedido');
+const { caracteristicasDoItem, etapasDosItens, resumoDaArte , contaDaProducao } = require('../lib/itensPedido');
+
+// Os nomes das etapas da fábrica, para a conta das perdas sair legível
+// aqui também. O catálogo inteiro mora em routes/production.js; puxá-lo
+// para cá acoplaria a tela do vendedor às rotas da produção por causa de
+// sete palavras.
+const ROTULO_ETAPA = {
+  revelacao: 'Revelação', pintura: 'Pintura', borda: 'Borda',
+  metalizacao: 'Metalização', producao: 'Produção',
+  qualidade: 'Controle de qualidade', embalagem: 'Embalagem',
+};
 // A ficha de fluxo (onde o pedido esta, o que falta, qual e o botao) sai
 // do mesmo motor que o modulo de Vendas usa para mover o pedido.
 const F = require('../lib/fluxoPedido');
@@ -239,6 +249,20 @@ router.get('/pedidos/:id', async (req, res) => {
       // coisa. Agora e uma regua so. Pintura e borda continuam entrando
       // apenas quando os itens passam por elas.
       linha_do_tempo: A.linhaDoTempo(data, etapasDosItens(itens)),
+
+      /**
+       * O QUE A FÁBRICA PERDEU NESTE PEDIDO — E QUE O CLIENTE NÃO PERDE.
+       *
+       * A perda era informada no chão de fábrica e morria lá: o
+       * comercial só descobria a quebra se alguém contasse por
+       * WhatsApp. Agora ela volta com o pedido.
+       *
+       * E volta com a conta certa: pediu 200, quebraram 5, a linha faz
+       * 205 e o cliente recebe 200. Quem atende o telefone precisa
+       * poder dizer isso de olhar na tela — porque a pergunta que
+       * chega é "vai atrasar?", e não "quantos quebraram".
+       */
+      producao: contaDaProducao(data.production_log, data.VENDA_ITENS, ROTULO_ETAPA),
       // A MESMA LINHA DO TEMPO, MAS COM O BOTAO. Desenhar as fases sem
       // dizer como passar delas era o que fazia esta tela um cartaz: o
       // pedido chegava em "Aguardando financeiro" e morava la. A ficha
