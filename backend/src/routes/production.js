@@ -9,6 +9,9 @@ const { makeClient } = require('../config/supabase');
 const A = require('../lib/atencao');
 const F = require('../lib/fluxoPedido');
 const { etapasDosItens, caracteristicasDoItem, contaDaProducao } = require('../lib/itensPedido');
+// O prazo contado de trás para frente: do evento do cliente até a data
+// em que a mercadoria precisa sair. Ver lib/prazoProducao.js.
+const Prazo = require('../lib/prazoProducao');
 
 // Etapas e suas colunas de início/fim
 // Fluxo: Revelação → Pintura → Metalização (opcional) → Produção → Embalagem
@@ -207,6 +210,45 @@ function etapasDoPedido(aplicaveis) {
 }
 
 /**
+ * A RÉGUA DESTE PEDIDO — TODAS AS ETAPAS, E ONDE ELE ESTÁ.
+ *
+ * A barra da tela mostrava dez botões fixos; virou uma lista só do que
+ * dá para fazer agora, e nisso perdeu o mapa: quem olha precisa ver o
+ * CAMINHO INTEIRO e a bolinha acesa no lugar certo, senão não sabe se
+ * o pedido está no começo ou no fim.
+ *
+ * `feita`  já passou — com a hora e o nome de quem fez.
+ * `agora`  é onde ele está (e é a que tem botão).
+ * `futura` ainda vem.
+ */
+function reguaDoPedido(venda, aplicaveis) {
+  const status = venda?.status;
+  const log = Array.isArray(venda?.production_log) ? venda.production_log : [];
+  const acoes = acoesDoPedido(venda, aplicaveis);
+
+  return etapasDoPedido(aplicaveis).map(key => {
+    const e = ETAPAS[key];
+    const fase = A.FASES.find(f => f.key === e.fase);
+    const marco = [...log].reverse().find(m => m.stage === key && m.action === 'finish');
+    const agora = (fase?.entrando || []).includes(status) || status === e.processo
+      || acoes.some(a => a.stage === key);
+
+    return {
+      key, label: e.label,
+      estado: marco ? 'feita' : agora ? 'agora' : 'futura',
+      em: marco?.at || null,
+      por: marco?.user || null,
+      // O que aquela etapa registrou, para a régua contar a história
+      // sem obrigar a abrir o histórico.
+      matriz: marco?.matriz || null,
+      maquina: marco?.maquina || null,
+      perda: Number(marco?.perda || marco?.avariadas || 0) || null,
+      resultado: marco?.resultado || null,
+    };
+  });
+}
+
+/**
  * O QUE A FÁBRICA PODE FAZER COM ESTE PEDIDO AGORA.
  *
  * Quem responde é o STATUS, e não uma corrente de "a etapa anterior
@@ -317,6 +359,12 @@ router.get('/', async (req, res) => {
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const dias = d => (d ? Math.round((new Date(d + 'T00:00:00') - today) / 86400000) : null);
+
+    // O PRAZO É CALCULADO PARA A LISTA INTEIRA DE UMA VEZ. Feriados e
+    // configuração vêm numa consulta só — perguntar por pedido seriam
+    // oitenta idas ao banco para desenhar uma tela.
+    const ctx = await Prazo.preparar(req.tenantId, data || []);
+
     const rows = (data || []).map(s => {
       const addr = s.CLIENTES?.address || {};
       // prazo de referência: prazo máximo → evento → saída
@@ -339,7 +387,10 @@ router.get('/', async (req, res) => {
         // quem conhece o status e as etapas que este pedido tem.
         acoes: aplicaveis.personalizado ? acoesDoPedido(s, aplicaveis) : [],
         etapas: aplicaveis.personalizado ? etapasDoPedido(aplicaveis) : [],
+        regua: aplicaveis.personalizado ? reguaDoPedido(s, aplicaveis) : [],
         status_label: A.infoStatus(s.status).label,
+        // A conta do evento para trás — ver lib/prazoProducao.js.
+        prazo: Prazo.prazoDoPedido(s, ctx),
         id: s.id, number: s.number, created_at: s.created_at,
         customer: s.CLIENTES?.name || 'Consumidor Final',
         seller: s.USUARIOS?.name || null,
@@ -545,7 +596,9 @@ router.get('/:id', async (req, res) => {
       // recalcular nada por conta própria.
       acoes: aplicaveis.personalizado ? acoesDoPedido(sale, aplicaveis) : [],
       etapas: aplicaveis.personalizado ? etapasDoPedido(aplicaveis) : [],
+      regua: aplicaveis.personalizado ? reguaDoPedido(sale, aplicaveis) : [],
       status_label: A.infoStatus(sale.status).label,
+      prazo: Prazo.prazoDoPedido(sale, await Prazo.preparar(req.tenantId, [sale])),
       // A matriz que a revelação gravou, para quem for montar a máquina.
       matriz: matrizDoPedido(sale.production_log),
       // Quantas fotos este pedido precisa ter: uma por arte.

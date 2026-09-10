@@ -24,7 +24,7 @@ import {
   Truck, Info, Plus, Eye, Download, UploadCloud, PenLine, CircleCheck, Star,
   Circle, Wallet, PenTool, FileImage, FlaskConical, Brush, CircleDashed,
   Settings, PackageOpen, ShieldCheck, Camera, PackageCheck, History, ExternalLink,
-  Loader2, Hourglass, PersonStanding,
+  Loader2, Hourglass, PersonStanding, Siren, CalendarClock,
 } from 'lucide-react';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -569,6 +569,13 @@ export default function PedidoDetalhe() {
                 forma de passar de uma para a outra. */}
             <PainelFluxo v={v} id={id} fluxo={p.fluxo} />
 
+            {/* O PRAZO CONTADO DO EVENTO PARA TRÁS.
+                A data que decide não é a de saída — é a do evento. Se o
+                cliente casa dia 2 e o copo chega dia 3, ele não chegou.
+                A conta era feita de cabeça no dia da venda e nunca mais
+                refeita; aqui ela se refaz a cada abertura da tela. */}
+            <AlertaDePrazo v={v} prazo={p.prazo} />
+
             {/* O QUE A FÁBRICA PERDEU — E QUE O CLIENTE NÃO PERDE.
                 A quebra era informada no chão de fábrica e morria lá: o
                 comercial só descobria por WhatsApp. A pergunta que chega
@@ -922,6 +929,61 @@ function ArteDoItem({ v, item, enviando, onAnexar, onTrocar }) {
     </label>
   );
 }
+
+/**
+ * O ALERTA DE PRAZO — E O DE 24 HORAS.
+ *
+ * Quando a véspera da data limite chega e o pedido ainda não passou da
+ * embalagem, este bloco fica vermelho e diz quantas horas restam. É a
+ * única hora em que alguém ainda pode fazer alguma coisa: no dia
+ * seguinte a resposta já é "não deu".
+ *
+ * Fora disso ele é discreto — verde e pequeno. Alerta que grita todo
+ * dia vira alerta que ninguém lê.
+ */
+function AlertaDePrazo({ v, prazo }) {
+  if (!prazo || prazo.nivel === 'sem_data') {
+    if (!prazo) return null;
+    return (
+      <div className="mx-4 mb-4 rounded-xl px-3.5 py-2.5"
+        style={{ background: 'rgba(148,163,184,0.10)', border: '1px solid rgba(148,163,184,0.30)' }}>
+        <p className="text-[12.5px]" style={{ color: v.textMuted }}>{prazo.recado}</p>
+      </div>
+    );
+  }
+
+  const urgente = prazo.alerta_24h;
+  const cor = prazo.cor === 'vermelho' ? { fundo: 'rgba(248,113,113,0.12)', borda: 'rgba(248,113,113,0.45)', texto: '#fca5a5' }
+    : prazo.cor === 'amarelo' ? { fundo: 'rgba(251,191,36,0.10)', borda: 'rgba(251,191,36,0.35)', texto: '#fbbf24' }
+    : { fundo: 'rgba(74,222,128,0.08)', borda: 'rgba(74,222,128,0.28)', texto: '#4ade80' };
+
+  return (
+    <div className="mx-4 mb-4 rounded-xl px-3.5 py-3"
+      style={{ background: cor.fundo, border: `1px solid ${cor.borda}` }}>
+      <p className="text-[13px] font-bold flex items-center gap-1.5" style={{ color: cor.texto }}>
+        {urgente ? <Siren size={15} /> : <CalendarClock size={14} />}
+        {prazo.label}
+      </p>
+      <p className="text-[12.5px] mt-1 leading-relaxed" style={{ color: v.textMuted }}>
+        {prazo.recado}
+      </p>
+      {prazo.evento && (
+        <p className="text-[11.5px] mt-1.5" style={{ color: v.textSubtle }}>
+          Evento {dataCurta(prazo.evento)} − {prazo.transporte} dia(s) útil(eis) de transporte
+          {prazo.transporte_origem !== 'pedido' ? ` (${prazo.transporte_origem})` : ''} − {prazo.margem} de margem
+          {' = '}sair até <b style={{ color: cor.texto }}>{dataCurta(prazo.limite_saida)}</b>
+        </p>
+      )}
+      {prazo.saida_depois_do_limite && (
+        <p className="text-[11.5px] mt-1 font-semibold" style={{ color: cor.texto }}>
+          A data de saída deste pedido é {dataCurta(prazo.saida_prevista)} — depois do limite.
+        </p>
+      )}
+    </div>
+  );
+}
+
+const dataCurta = d => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—');
 
 function Balao({ v, fase, atrasado }) {
   const Icon = ICONES[fase.icone] || Circle;

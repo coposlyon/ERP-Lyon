@@ -21,6 +21,8 @@ const { caracteristicasDoItem, etapasDosItens, resumoDaArte , contaDaProducao } 
 // aqui também. O catálogo inteiro mora em routes/production.js; puxá-lo
 // para cá acoplaria a tela do vendedor às rotas da produção por causa de
 // sete palavras.
+const Prazo = require('../lib/prazoProducao');
+
 const ROTULO_ETAPA = {
   revelacao: 'Revelação', pintura: 'Pintura', borda: 'Borda',
   metalizacao: 'Metalização', producao: 'Produção',
@@ -263,6 +265,20 @@ router.get('/pedidos/:id', async (req, res) => {
        * chega é "vai atrasar?", e não "quantos quebraram".
        */
       producao: contaDaProducao(data.production_log, data.VENDA_ITENS, ROTULO_ETAPA),
+
+      /**
+       * O PRAZO, CONTADO DO EVENTO PARA TRÁS.
+       *
+       * A data que decide não é a de saída — é a do evento. O cliente
+       * casa dia 2; se o copo chegar dia 3, ele não chegou. A conta
+       * (evento − dias da transportadora − margem) era feita de cabeça
+       * uma vez, no dia da venda, e nunca mais refeita.
+       *
+       * Aqui ela é refeita a cada abertura da tela, e traz junto o
+       * alerta de 24 horas quando a véspera chega com o pedido ainda
+       * parado na fábrica.
+       */
+      prazo: Prazo.prazoDoPedido(data, await Prazo.preparar(req.tenantId, [data])),
       // A MESMA LINHA DO TEMPO, MAS COM O BOTAO. Desenhar as fases sem
       // dizer como passar delas era o que fazia esta tela um cartaz: o
       // pedido chegava em "Aguardando financeiro" e morava la. A ficha

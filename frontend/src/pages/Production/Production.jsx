@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Factory, Play, Check, Search, RefreshCw, Loader2, Save, Image as ImageIcon, AlertTriangle, Clock, Plus, Camera, Trash2, ShieldCheck, ArrowLeft, Lock } from 'lucide-react';
+import { Factory, Play, Check, Search, RefreshCw, Loader2, Save, Image as ImageIcon, AlertTriangle, Clock, Plus, Camera, Trash2, ShieldCheck, ArrowLeft, Lock, Eye, CircleCheck, Circle, CalendarClock, Siren } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import Modal from '@/components/UI/Modal';
@@ -246,6 +246,156 @@ function ConfirmacaoDeEtapa({ etapa, acao, matriz, artes, fotos, onCancelar, onC
   );
 }
 
+/**
+ * A RÉGUA DO PEDIDO — TODAS AS ETAPAS, E ONDE ELE ESTÁ AGORA.
+ *
+ * Isto já foi dez botões fixos (oito sempre apagados) e depois uma
+ * lista magra só do que dava para fazer agora. O primeiro entulhava a
+ * tela; o segundo perdeu o mapa — sem ver o caminho inteiro, quem olha
+ * não sabe se o pedido está no começo ou no fim, nem por onde ele já
+ * passou.
+ *
+ * Agora são as duas coisas ao mesmo tempo: o caminho inteiro desenhado,
+ * a etapa de agora acesa, e os botões SÓ nela. Cada etapa concluída
+ * mostra quando e por quem — e o que ela registrou (matriz, máquina,
+ * perda), porque é isso que se procura quando o copo sai errado.
+ */
+function ReguaDeProcessos({ regua, acoes, onAgir, pendente, aviso }) {
+  if (!regua?.length) {
+    return (
+      <div className="card p-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs flex items-center gap-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+          <AlertTriangle size={13} className="shrink-0" />
+          {aviso || 'Este pedido não passa pelas etapas da fábrica.'}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card p-3 space-y-3">
+      <div className="flex flex-wrap items-stretch gap-1.5">
+        {regua.map((e, i) => {
+          const feita = e.estado === 'feita';
+          const agora = e.estado === 'agora';
+          const detalhes = [
+            e.matriz && `matriz ${e.matriz}`,
+            e.maquina && `máquina ${e.maquina}`,
+            e.perda && `perda ${e.perda}`,
+            e.resultado,
+          ].filter(Boolean).join(' · ');
+
+          return (
+            <div key={e.key} className="flex items-stretch gap-1.5">
+              <div className={`rounded-xl px-3 py-2 border min-w-[118px] ${
+                agora ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-200'
+                  : feita ? 'bg-green-50 border-green-200'
+                  : 'bg-gray-50 border-gray-200'}`}>
+                <p className={`text-[12px] font-semibold flex items-center gap-1 ${
+                  agora ? 'text-blue-800' : feita ? 'text-green-800' : 'text-gray-400'}`}>
+                  {feita ? <CircleCheck size={12} /> : agora ? <Play size={11} /> : <Circle size={11} />}
+                  {e.label}
+                </p>
+                {feita && (
+                  <p className="text-[10.5px] text-green-700 leading-tight mt-0.5">
+                    {fmtDT(e.em)}{e.por ? ` · ${e.por}` : ''}
+                  </p>
+                )}
+                {agora && <p className="text-[10.5px] text-blue-700 mt-0.5">está aqui agora</p>}
+                {detalhes && (
+                  <p className="text-[10.5px] text-gray-500 leading-tight mt-0.5">{detalhes}</p>
+                )}
+              </div>
+              {i < regua.length - 1 && (
+                <span className="self-center text-gray-300 text-xs">›</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* OS BOTÕES SÓ DA ETAPA DE AGORA. Um botão para uma etapa que o
+          pedido já passou (ou ainda não alcançou) é um convite a
+          registrar trabalho que não aconteceu. */}
+      <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-gray-100">
+        {acoes?.length ? acoes.map(a => (
+          <button key={`${a.stage}-${a.action}`} onClick={() => onAgir(a)} disabled={pendente}
+            className={`text-xs font-medium px-3 py-2 rounded-lg text-white disabled:opacity-30 inline-flex items-center gap-1 ${
+              a.action === 'finish' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+            {a.action === 'finish' ? <Check size={13} /> : <Play size={13} />} {TITULO_ACAO(a.stage, a.action)}
+          </button>
+        )) : (
+          <span className="text-xs text-gray-500">
+            Nada para a fábrica fazer neste pedido agora.
+          </span>
+        )}
+        {aviso && (
+          <span className="text-xs flex items-center gap-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            <AlertTriangle size={13} className="shrink-0" /> {aviso}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * O PRAZO, CONTADO DO EVENTO PARA TRÁS.
+ *
+ * A data que decide não é a de saída — é a DO EVENTO. O cliente casa
+ * dia 2 de outubro; se o copo chegar dia 3, ele não chegou.
+ *
+ * A conta (evento − dias da transportadora − margem) era feita de
+ * cabeça, uma vez, no dia da venda, e nunca mais refeita. O pedido
+ * ficava três dias parado esperando a arte, ninguém recalculava nada, e
+ * a descoberta vinha quando não havia mais o que fazer.
+ *
+ * Aqui ela é refeita a cada abertura da tela, e a conta aparece escrita
+ * — "02/10 menos 7 dias úteis menos 2 de margem" — porque um prazo que
+ * não explica de onde saiu é um prazo que ninguém confia.
+ */
+function PrazoDoPedido({ prazo, compacto }) {
+  if (!prazo) return null;
+
+  const CORES = {
+    vermelho: 'bg-red-50 border-red-300 text-red-900',
+    amarelo: 'bg-amber-50 border-amber-300 text-amber-900',
+    verde: 'bg-green-50 border-green-200 text-green-900',
+    cinza: 'bg-gray-50 border-gray-200 text-gray-600',
+  };
+  const urgente = prazo.alerta_24h;
+
+  return (
+    <div className={`rounded-xl border px-3.5 py-3 ${CORES[prazo.cor] || CORES.cinza} ${
+      urgente ? 'ring-2 ring-red-300' : ''}`}>
+      <p className="text-[13px] font-bold flex items-center gap-1.5">
+        {urgente ? <Siren size={15} /> : <CalendarClock size={14} />}
+        {prazo.label}
+      </p>
+      <p className="text-[12.5px] mt-1 leading-relaxed">{prazo.recado}</p>
+
+      {/* A CONTA, ESCRITA. "Por que 21 e não 23?" só se responde
+          perguntando a alguém — a menos que esteja aqui. */}
+      {prazo.evento && !compacto && (
+        <p className="text-[11.5px] mt-1.5 opacity-80">
+          Evento {dataBR(prazo.evento)} − {prazo.transporte} dia(s) útil(eis) de transporte
+          {prazo.transporte_origem !== 'pedido' ? ` (${prazo.transporte_origem})` : ''}
+          {' '}= {dataBR(prazo.limite_sem_margem)} − {prazo.margem} de margem
+          {' '}= <b>sair até {dataBR(prazo.limite_saida)}</b>
+        </p>
+      )}
+
+      {prazo.saida_depois_do_limite && (
+        <p className="text-[11.5px] mt-1.5 font-semibold">
+          A data de saída no pedido é {dataBR(prazo.saida_prevista)} — depois do limite. Corrija no pedido.
+        </p>
+      )}
+    </div>
+  );
+}
+
+const dataBR = d => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—');
+
 export default function Production() {
   const qc = useQueryClient();
   const [filters, setFilters] = useState({ start_date: '', end_date: '', search: '' });
@@ -319,6 +469,10 @@ export default function Production() {
   // O recado de "pronto para retirada", montado pelo servidor ao fechar
   // a embalagem de um pedido que o cliente vem buscar.
   const [avisoRetirada, setAvisoRetirada] = useState(null);
+  // O pedido aberto pelo olho. Separado do `selId` de propósito: clicar
+  // na linha escolhe o pedido (e muda a régua do topo); o olho é que
+  // abre a ficha inteira.
+  const [verAberto, setVerAberto] = useState(false);
 
   const [edit, setEdit] = useState({});
   const saveFields = useMutation({
@@ -381,50 +535,25 @@ export default function Production() {
         <button onClick={() => refetch()} className="btn-secondary"><RefreshCw size={15} className={isFetching ? 'animate-spin' : ''} /> Atualizar</button>
       </div>
 
-      {/* A BARRA DE ETAPAS — só o que dá para fazer agora.
-          Antes eram dez botões fixos, oito deles sempre apagados, e a
-          lista não conhecia borda nem qualidade. Agora o servidor
-          responde quais ações este pedido aceita neste momento, e a
-          barra desenha exatamente essas. */}
-      <div className="card p-3 flex flex-wrap items-center gap-2">
-        {selected?.acoes?.map(a => (
-          <button key={`${a.stage}-${a.action}`}
-            onClick={() => setConfirmando(a)}
-            disabled={stageMut.isPending}
-            className={`text-xs font-medium px-3 py-2.5 lg:py-2 rounded-lg text-white disabled:opacity-30 inline-flex items-center gap-1 ${
-              a.action === 'finish' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
-            {a.action === 'finish' ? <Check size={13} /> : <Play size={13} />} {TITULO_ACAO(a.stage, a.action)}
-          </button>
-        ))}
-
-        {/* O CAMINHO INTEIRO CONTINUA À VISTA — apagado, mas visível.
-            Some a régua, some a noção de onde o pedido está. */}
-        {selected?.interagivel && (selected.etapas || []).length > 0 && (
-          <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-gray-400 ml-1">
-            {(selected.etapas || []).map(k => (
-              <span key={k} className={selected.acoes?.some(a => a.stage === k) ? 'text-gray-900 font-semibold' : ''}>
-                {STEP_LABEL[k] || k}
-              </span>
-            )).reduce((acc, el, i) => acc.length ? [...acc, <span key={`s${i}`}>›</span>, el] : [el], [])}
-          </span>
-        )}
-
-        {selected?.interagivel && !(selected.acoes || []).length && (
-          <span className="text-xs text-gray-500">
-            Nada para a fábrica fazer agora — o pedido está em “{selected.status_label}”.
-          </span>
-        )}
-        {!selected && <span className="text-xs text-gray-400 ml-2">Selecione um pedido na lista.</span>}
-
-        {/* BOTÃO APAGADO SEM EXPLICAÇÃO É BOTÃO QUEBRADO. Quem clica e
-            não acontece nada conclui que o sistema travou. */}
-        {selected && !selected.interagivel && (
-          <span className="text-xs ml-2 flex items-center gap-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-            <AlertTriangle size={13} className="shrink-0" />
-            Pedido sem personalização — não passa pela serigrafia. Ele segue pela tela do pedido de venda.
-          </span>
-        )}
-      </div>
+      {/* A RÉGUA DO PEDIDO SELECIONADO — o caminho inteiro, e onde ele está.
+          Virou uma lista magra de "o que dá para fazer agora" e nisso
+          perdeu o mapa: quem olha precisa ver TODAS as etapas e a
+          bolinha acesa no lugar certo, senão não sabe se o pedido está
+          no começo ou no fim. */}
+      {selected ? (
+        <div className="space-y-3">
+          <PrazoDoPedido prazo={selected.prazo} />
+          <ReguaDeProcessos regua={selected.regua} acoes={selected.acoes}
+            onAgir={setConfirmando} pendente={stageMut.isPending}
+            aviso={!selected.interagivel
+              ? 'Pedido sem personalização — não passa pela serigrafia. Ele segue pela tela do pedido de venda.'
+              : null} />
+        </div>
+      ) : (
+        <div className="card p-3 text-xs text-gray-400">
+          Selecione um pedido na lista para ver as etapas dele.
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="card p-3 flex flex-wrap items-end gap-3">
@@ -462,17 +591,18 @@ export default function Production() {
                 <th className="px-3 py-2 leading-tight"><span className="block text-[9px] text-gray-400">DATA DO</span>EVENTO</th>
                 <th className="px-3 py-2 leading-tight"><span className="block text-[9px] text-gray-400">DATA DE</span>SAÍDA</th>
                 <th className="px-3 py-2 leading-tight"><span className="block text-[9px] text-gray-400">PRAZO MÁX.</span>ENTREGA</th>
-                <th className="px-3 py-2 text-center leading-tight"><span className="block text-[9px] text-gray-400">DIAS</span>P/ PRAZO</th>
+                <th className="px-3 py-2 text-center leading-tight"><span className="block text-[9px] text-gray-400">SAIR ATÉ</span>P/ O EVENTO</th>
                 <th className="px-3 py-2">Transportadora</th>
                 <th className="px-3 py-2">Cidade/UF</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Vendedor</th>
+                <th className="px-3 py-2 text-center">Ver</th>
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={11} className="p-8 text-center text-gray-400"><Loader2 className="animate-spin mx-auto" /></td></tr>}
-              {!isLoading && error && <tr><td colSpan={11} className="p-0"><FalhouAoCarregar erro={error} onTentar={refetch} /></td></tr>}
-              {!isLoading && !error && rows.length === 0 && <tr><td colSpan={11} className="p-0"><FilaVazia /></td></tr>}
+              {isLoading && <tr><td colSpan={12} className="p-8 text-center text-gray-400"><Loader2 className="animate-spin mx-auto" /></td></tr>}
+              {!isLoading && error && <tr><td colSpan={12} className="p-0"><FalhouAoCarregar erro={error} onTentar={refetch} /></td></tr>}
+              {!isLoading && !error && rows.length === 0 && <tr><td colSpan={12} className="p-0"><FilaVazia /></td></tr>}
               {rows.map(r => {
                 const st = STAGES[r.stage] || STAGES.aguardando_producao;
                 const dd = r.diff_deadline ?? r.diff_days;
@@ -492,13 +622,39 @@ export default function Production() {
                     <td className="px-3 py-2 text-gray-500">{fmtDate(r.event_date)}</td>
                     <td className="px-3 py-2 text-gray-500">{fmtDate(r.ship_date)}</td>
                     <td className="px-3 py-2 text-gray-500">{fmtDate(r.max_delivery_date)}</td>
-                    <td className={`px-3 py-2 text-center font-semibold ${late ? 'text-red-600' : soon ? 'text-orange-500' : 'text-gray-600'}`}>
-                      {dd == null ? '—' : late ? `${Math.abs(dd)}d atraso` : `${dd}d`}
+                    {/* O PRAZO REAL, e não os dias até a data digitada.
+                        `diff_days` conta até a saída que alguém digitou;
+                        `prazo` conta do EVENTO para trás, que é o que
+                        decide se o copo chega na festa. */}
+                    <td className="px-3 py-2 text-center whitespace-nowrap">
+                      {r.prazo?.limite_saida ? (
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                          r.prazo.cor === 'vermelho' ? 'bg-red-100 text-red-700'
+                            : r.prazo.cor === 'amarelo' ? 'bg-amber-100 text-amber-700'
+                            : r.prazo.cor === 'verde' ? 'bg-green-100 text-green-700'
+                            : 'bg-gray-100 text-gray-500'}`}
+                          title={r.prazo.recado}>
+                          {r.prazo.alerta_24h && <Siren size={11} />}
+                          {r.prazo.nivel === 'estourado' ? 'estourado'
+                            : r.prazo.dias_ate_limite != null ? `${r.prazo.dias_ate_limite}d` : '—'}
+                        </span>
+                      ) : (
+                        <span className={`text-xs font-semibold ${late ? 'text-red-600' : soon ? 'text-orange-500' : 'text-gray-600'}`}>
+                          {dd == null ? '—' : late ? `${Math.abs(dd)}d atraso` : `${dd}d`}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-gray-500 truncate max-w-[140px]">{r.carrier || '—'}</td>
                     <td className="px-3 py-2 text-gray-500">{r.city ? `${r.city}/${r.uf || ''}` : '—'}</td>
                     <td className="px-3 py-2"><span className={`text-xs font-medium px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span></td>
                     <td className="px-3 py-2 text-gray-500">{r.seller || '—'}</td>
+                    <td className="px-3 py-2 text-center">
+                      <button title="Ver o pedido inteiro"
+                        onClick={ev => { ev.stopPropagation(); setSelId(r.id); setEdit({}); setVerAberto(true); }}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800">
+                        <Eye size={15} />
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -525,8 +681,20 @@ export default function Production() {
           isso ele nao precisa mais saber qual pedido esta aberto. */}
       <SerigrafiaPanel />
 
-      {/* Detalhe do pedido selecionado */}
-      {selected && (
+      {/* O PEDIDO INTEIRO, ABERTO PELO OLHO.
+          Tudo o que se sabe do pedido morava solto no rodapé da tela,
+          embaixo da lista e do painel de serigrafia: para ver os itens
+          de um pedido era preciso clicar na linha e rolar até o fim da
+          página, e o que aparecia lá embaixo não dizia de qual pedido
+          era. Agora abre pelo olho da linha, com o número no título. */}
+      <Modal isOpen={!!selected && verAberto} onClose={() => setVerAberto(false)}
+        title={selected ? `Pedido #${String(selected.number || '').padStart(4, '0')} — ${selected.customer}` : ''}
+        size="full">
+        {selected && (
+          <div className="space-y-4">
+            <PrazoDoPedido prazo={detail?.prazo || selected.prazo} />
+            <ReguaDeProcessos regua={detail?.regua || selected.regua} acoes={selected.acoes}
+              onAgir={a => { setVerAberto(false); setConfirmando(a); }} />
         <div className="grid lg:grid-cols-2 gap-4">
           {/* Itens + dados */}
           <div className="space-y-4">
@@ -713,7 +881,9 @@ export default function Production() {
             </div>
           </div>
         </div>
-      )}
+          </div>
+        )}
+      </Modal>
 
 
 
