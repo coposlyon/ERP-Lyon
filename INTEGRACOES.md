@@ -151,10 +151,15 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   Imprime a memória de cálculo inteira — é com ela que se compara a fatura quando os
   números não batem.
 - **Pré-requisito de cadastro:** a cubagem precisa do peso do produto
-  (`PRODUTOS.weight`, em kg) e das medidas da caixa
+  (`PRODUTOS.weight`, **em gramas** — é o campo "Peso (g)" do cadastro de produto;
+  o cálculo converte) e das medidas da caixa
   (`CATALOGO_EMBALAGEM.caixa_altura/largura/comprimento/caixa_tara`, em cm e kg).
   Faltando qualquer um, a cotação **cai na tabela por estado** e devolve
   `tex_pendencia` dizendo o que falta — a venda não trava, mas o número é o antigo.
+- **Cuidado com as unidades — elas não são as mesmas nas duas telas.** O cadastro de
+  produto trabalha em **mm e g**; as colunas da caixa trabalham em **cm e kg**. E os
+  campos `length`/`width` do produto são a **área de impressão**, não a embalagem:
+  não servem para cubagem e o cálculo não os lê.
 - **Endpoints:** `POST /api/shipping/quote` (agora aceita `itens` e `valor_nota`),
   `GET /api/shipping/total-express/cep/:cep`, `GET /api/shipping/total-express/status`.
 - **Ainda não feito:** `RegistraColeta` e `ObterTracking` (o webservice SOAP do

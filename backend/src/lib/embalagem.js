@@ -71,9 +71,14 @@ async function medirPedido(tenantId, itens = []) {
     const { regra, qtd, produtos: itensDoGrupo } = grupo;
 
     for (const { p, qtd: q } of itensDoGrupo) {
-      const peso = Number(p.weight) || 0;
-      if (!peso) { if (!semPeso.includes(p.name)) semPeso.push(p.name); }
-      else pesoReal += peso * q;
+      // PRODUTOS.weight É EM GRAMAS. A tela grava "Peso (g)" na seção
+      // Dimensões do Produto Acabado, e lib/frete.js já dividia por mil
+      // antes de mim. Ler como quilo aqui multiplicaria a carga por
+      // mil: uma caneca de 340 g viraria 340 kg, e o frete de qualquer
+      // pedido estouraria a última faixa da tabela.
+      const pesoKg = (Number(p.weight) || 0) / 1000;
+      if (!pesoKg) { if (!semPeso.includes(p.name)) semPeso.push(p.name); }
+      else pesoReal += pesoKg * q;
     }
 
     const porCaixa = Number(regra?.caixa_qtd) || 0;
