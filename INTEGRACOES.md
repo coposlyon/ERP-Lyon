@@ -111,6 +111,56 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   cotação depende de CEP de origem/destino, peso, volumes e cubagem — não do
   destinatário em si. Sem as credenciais, a BrasPress simplesmente não aparece — nada quebra.
 
+## 8b. Transportadora Total Express (frete calculado por peso, cubagem e CEP)
+- **Não tem cotação por API.** O manual do webservice da Total Express (EDI ICS V24)
+  só expõe `RegistraColeta` e `ObterTracking` — nenhum método devolve preço. Quem
+  sabe o preço é a **tabela negociada** (`Tabela_MO-0.1-Londrina-PR.xlsb`, origem
+  LONDRINA/PR, Total Standard), que mora no banco desde a migração **118**.
+  Vantagem: a cotação não cai quando a transportadora sai do ar, e o número que o
+  vendedor vê é o mesmo que chega na fatura.
+- **Como o preço se forma** (Anexo III da própria tabela):
+
+      preço da tabela + GRIS + Ad Valorem + ICMS/ISS
+
+  - **preço da tabela** = cruzamento da *geografia comercial* (achada pela faixa de
+    CEP, 59.959 faixas) com a *faixa de peso* (34 faixas, 0,001 a 30 kg). Acima de
+    30 kg, o preço da última faixa + `adicional_kg` por quilo excedente.
+  - **peso considerado** = o **maior** entre o peso real e o cubado
+    (C × L × A em cm ÷ 1.000.000 × **fator 167**). Para copo, quase sempre o cubado.
+  - **GRIS** = % sobre a nota, pelo risco do CEP: Padrão 0,20% · Alto 1,00% ·
+    Altíssimo 2,00%.
+  - **Ad Valorem** = 0,40% até R$ 10.000 · 1,00% até R$ 15.000 · 2,00% acima
+    (mas **acima de R$ 15.000 a Total Express não se responsabiliza pela entrega**).
+  - **Imposto** = ISS 5% quando origem e destino são o mesmo município; ICMS pela
+    matriz da planilha no resto (origem PR: 19,5% dentro do PR, 12% para
+    SP/RJ/MG/SC/RS, 7% para o restante do país).
+- **Como ligar:** Configurações → Transportadora → bloco *Total Express*
+  (`settings.frete.tex_enabled`). Desligada, nada muda: continua valendo a tabela
+  por estado.
+- **Carregar / reajustar a tabela:**
+
+      node backend/scripts/importar-totalexpress.js
+
+  Lê `backend/data/totalexpress/*.csv.gz`. É idempotente — apaga e recarrega na
+  mesma transação, então rodar de novo é como se aplica um reajuste. Tabela nova da
+  Total Express: regerar os três `.csv.gz` da planilha e rodar isto.
+- **Conferir um CEP pela linha de comando:**
+
+      node backend/scripts/cotar-totalexpress.js 01001000 --caixas=10 --cx=40x30x60 --peso=120 --nota=3500
+
+  Imprime a memória de cálculo inteira — é com ela que se compara a fatura quando os
+  números não batem.
+- **Pré-requisito de cadastro:** a cubagem precisa do peso do produto
+  (`PRODUTOS.weight`, em kg) e das medidas da caixa
+  (`CATALOGO_EMBALAGEM.caixa_altura/largura/comprimento/caixa_tara`, em cm e kg).
+  Faltando qualquer um, a cotação **cai na tabela por estado** e devolve
+  `tex_pendencia` dizendo o que falta — a venda não trava, mas o número é o antigo.
+- **Endpoints:** `POST /api/shipping/quote` (agora aceita `itens` e `valor_nota`),
+  `GET /api/shipping/total-express/cep/:cep`, `GET /api/shipping/total-express/status`.
+- **Ainda não feito:** `RegistraColeta` e `ObterTracking` (o webservice SOAP do
+  manual). Exigem liberação de ambiente pela Total Express — IP fixo cadastrado
+  (até 5) ou SSL, e homologação antes da produção.
+
 ## 9. Transportadora J&T Express (cotação + envio + rastreio)
 - **Onde usa:**
   - **Cotação:** loja (`/loja`) → carrinho → "Calcular frete". A opção **J&T Express**

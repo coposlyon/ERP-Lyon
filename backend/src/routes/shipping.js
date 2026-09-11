@@ -27,15 +27,77 @@ router.get('/carriers', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/shipping/quote — o frete do estado do cliente
+// POST /api/shipping/quote — o frete deste pedido
+//
+// `itens` é opcional, e é ele que muda a resposta. Sem itens, devolve o
+// valor da tabela por estado, que é o que a tela do carrinho precisa
+// antes de o cliente escolher produto. Com itens, e estando a Total
+// Express ligada, devolve o frete calculado por peso e cubagem — com a
+// memória de cálculo junto, para o vendedor poder explicar o número.
 router.post('/quote', async (req, res) => {
   try {
-    const { cep, subtotal } = req.body || {};
+    const { cep, subtotal, itens, valor_nota } = req.body || {};
     const uf = (req.body?.uf || ufFromCep(cep) || '').toUpperCase();
     if (!uf) return res.status(400).json({ error: 'Informe o estado (UF) ou um CEP de destino.' });
-    const r = await cotar(req.tenantId, { uf, cep, subtotal });
+    const r = await cotar(req.tenantId, { uf, cep, subtotal, itens, valor_nota });
     res.json(r);
   } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+});
+
+// GET /api/shipping/total-express/cep/:cep — o que a abrangência diz
+//
+// Serve à tela de conferência e ao atendimento: antes de prometer prazo
+// ao cliente, dá para ver se o CEP é atendido, por qual geografia, com
+// que risco e em quantos dias. Não calcula preço — só informa.
+router.get('/total-express/cep/:cep', async (req, res) => {
+  try {
+    const { destinoPorCep } = require('../lib/totalexpress');
+    const d = await destinoPorCep(req.tenantId, req.params.cep);
+    if (!d) return res.status(404).json({ error: 'CEP fora da abrangência da Total Express.' });
+    res.json({ data: d });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/shipping/total-express/status — a tabela está carregada?
+//
+// A tela de configuração precisa saber a diferença entre "desligado" e
+// "ligado mas sem tabela". Os dois mostram frete por estado; só o
+// segundo é um problema a resolver.
+router.get('/total-express/status', async (req, res) => {
+  try {
+    const supabase = require('../config/supabase');
+    const { getFreteConfig } = require('../lib/shipping');
+    const cfg = await getFreteConfig(req.tenantId);
+
+    const conta = async (t) => {
+      const { count } = await supabase.from(t).select('id', { count: 'exact', head: true })
+        .eq('tenant_id', req.tenantId);
+      return count || 0;
+    };
+    const [faixas_cep, tarifas, geografias] = await Promise.all([
+      conta('TOTALEXPRESS_ABRANGENCIA'), conta('TOTALEXPRESS_TARIFAS'), conta('TOTALEXPRESS_GEOGRAFIAS'),
+    ]);
+
+    // O que impede a cotação de funcionar mesmo com tudo ligado: produto
+    // sem peso e categoria sem medida de caixa. Conta-se aqui para a
+    // tela poder dizer o que falta, em vez de só falhar na hora.
+    const { count: semPeso } = await supabase.from('PRODUTOS')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', req.tenantId).eq('is_active', true)
+      .or('weight.is.null,weight.eq.0');
+    const { count: semCaixa } = await supabase.from('CATALOGO_EMBALAGEM')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', req.tenantId).is('caixa_altura', null);
+
+    res.json({
+      enabled: cfg.tex_enabled,
+      municipio_origem: cfg.tex_municipio_origem,
+      imposto_modo: cfg.tex_imposto_modo,
+      iss_pct: cfg.tex_iss_pct,
+      tabela: { faixas_cep, tarifas, geografias },
+      pendencias: { produtos_sem_peso: semPeso || 0, embalagens_sem_medida: semCaixa || 0 },
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // GET /api/shipping/config — o que a tela precisa saber sobre o frete

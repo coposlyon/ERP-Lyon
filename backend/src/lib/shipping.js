@@ -1,15 +1,29 @@
 // ============================================================
-// FRETE — UMA REGRA SÓ: O ESTADO DO CLIENTE.
+// FRETE — DUAS REGRAS, E UMA ORDEM CLARA ENTRE ELAS.
 //
-// Aqui existiam três jeitos de descobrir o valor do frete: a API da J&T,
-// a cotação da BrasPress e uma tabela por estado usada só quando as duas
-// falhavam. Três respostas possíveis para a mesma pergunta, e a que o
-// cliente via dependia de qual servidor estava de pé naquele minuto — o
-// mesmo pedido para Curitiba custava um valor de manhã e outro à tarde.
+// Aqui existiram três jeitos de descobrir o frete: a API da J&T, a
+// cotação da BrasPress e uma tabela por estado usada só quando as duas
+// falhavam. Três respostas para a mesma pergunta, e a que o cliente via
+// dependia de qual servidor estava de pé naquele minuto — o mesmo pedido
+// para Curitiba custava um valor de manhã e outro à tarde. As três
+// viraram uma: o valor digitado por estado, e ponto.
 //
-// Agora o preço é o que a Lyon escreveu na tabela para aquele estado, em
-// Configurações → Transportadora. Sem cotação externa, sem cálculo por
-// peso, sem acréscimo escondido: o valor digitado é o valor cobrado.
+// A TOTAL EXPRESS ENTRA AGORA, e não repete aquele erro. Ela não é uma
+// quarta opinião sobre o mesmo número: ela responde uma pergunta que a
+// tabela por estado não sabe responder — quanto custa ESTE pedido, com
+// este peso, este volume e este CEP. Dez copos e mil copos para o mesmo
+// endereço custam o mesmo na tabela por estado, e é isso que ela conserta.
+//
+// A ORDEM É FIXA E NÃO DEPENDE DE QUEM ESTÁ NO AR:
+//
+//   Total Express   quando está ligada, tem tabela carregada, o pedido
+//                   tem itens mensuráveis e o CEP está na abrangência.
+//   Tabela/estado   em todo o resto — inclusive na pergunta sem pedido
+//                   ("quanto custa para o RJ?"), que é metade das vezes.
+//
+// Nada disso é cotação externa: a tabela da Total Express mora no banco
+// (migração 118). Não há chamada HTTP para dar preço, e por isso não há
+// o dia em que o preço muda porque a transportadora saiu do ar.
 //
 // A BrasPress continua no ERP, mas só onde sempre foi útil de verdade —
 // rastrear a carga pela nota. Ela não decide mais preço.
@@ -60,6 +74,15 @@ async function getFreteConfig(tenantId) {
     table:         Array.isArray(s.table) ? s.table : [],      // [{ uf, price, days }]
     default_price: Number(s.default_price) || 0,               // estado sem valor na tabela
     default_days:  Number(s.default_days) || 0,
+
+    // Total Express — a tabela negociada, calculada por peso, cubagem e
+    // faixa de CEP (migração 118). Desligada por padrão: só passa a
+    // valer quando alguém liga em Configurações, e mesmo ligada só
+    // responde se a tabela estiver carregada e a carga, mensurável.
+    tex_enabled:   !!s.tex_enabled,
+    tex_municipio_origem: s.tex_municipio_origem || 'LONDRINA',
+    tex_iss_pct:   Number(s.tex_iss_pct) || 0.05,
+    tex_imposto_modo: s.tex_imposto_modo || 'por_dentro',
   };
 }
 
@@ -91,11 +114,111 @@ function freteDoEstado(cfg, { uf, subtotal } = {}) {
   };
 }
 
-/** Cotação do pedido: o estado manda. O CEP só serve para descobrir o estado. */
-async function cotar(tenantId, { uf, cep, subtotal } = {}) {
+/**
+ * Cotação do pedido.
+ *
+ * DUAS RESPOSTAS POSSÍVEIS, E A ORDEM É DELIBERADA:
+ *
+ *   1. A TOTAL EXPRESS, quando está ligada, tem tabela carregada e a
+ *      carga pode ser medida. É a resposta boa: cobra pelo que o pedido
+ *      realmente é — peso, espaço, distância e risco do CEP.
+ *
+ *   2. A TABELA POR ESTADO, no resto dos casos. Continua valendo, e
+ *      continua sendo o que responde quando o pedido não tem itens (o
+ *      carrinho pedindo "quanto custa para o RJ?" antes de escolher
+ *      produto), quando falta peso no cadastro, ou quando o CEP está
+ *      fora da abrangência da Total Express.
+ *
+ * Sem itens, nem se tenta a Total Express: sem carga não há peso, e sem
+ * peso o cálculo por peso não existe. O comentário está aqui porque a
+ * tentação de "cotar 1 kg por padrão" é grande e a conta sairia errada
+ * para todo mundo.
+ */
+async function cotar(tenantId, { uf, cep, subtotal, itens, valor_nota } = {}) {
   const cfg = await getFreteConfig(tenantId);
   const estado = String(uf || '').toUpperCase() || ufFromCep(cep);
+
+  const gratis = cfg.free_above > 0 && Number(subtotal) >= cfg.free_above;
+
+  if (cfg.tex_enabled && cep && Array.isArray(itens) && itens.length && !gratis) {
+    const tex = await cotarPelaTotalExpress(tenantId, cfg, { cep, itens, valor_nota, subtotal });
+    if (tex.ok) return tex.cotacao;
+
+    // Não soube calcular. A venda continua: cai na tabela por estado,
+    // que é o que valia antes de tudo isto. O motivo viaja junto em
+    // `tex_pendencia` para a tela poder avisar que o número na frente do
+    // vendedor é o do estado, e não o calculado — falhar em silêncio
+    // aqui significaria cobrar o valor antigo por meses sem ninguém
+    // perceber que o cálculo nunca chegou a rodar.
+    const base = freteDoEstado(cfg, { uf: estado, subtotal });
+    return tex.pendencia ? { ...base, tex_pendencia: tex.pendencia } : base;
+  }
+
   return freteDoEstado(cfg, { uf: estado, subtotal });
+}
+
+/**
+ * A tentativa pela Total Express.
+ *
+ * Devolve `{ ok: true, cotacao }` quando sabe responder, e
+ * `{ ok: false, pendencia }` quando não sabe. `pendencia` só vem
+ * preenchida no caso que dá para consertar — falta de cadastro. CEP
+ * fora da abrangência não é pendência de ninguém: é uma cidade que a
+ * Total Express não atende, e a tabela por estado resolve.
+ */
+async function cotarPelaTotalExpress(tenantId, cfg, { cep, itens, valor_nota, subtotal }) {
+  const { medirPedido } = require('./embalagem');
+  const { cotarTotalExpress, temTabela } = require('./totalexpress');
+
+  if (!(await temTabela(tenantId))) {
+    return { ok: false, pendencia: { motivo: 'A tabela da Total Express não foi carregada neste banco.' } };
+  }
+
+  const medida = await medirPedido(tenantId, itens);
+  if (!medida.ok) {
+    const falta = [
+      medida.sem_peso.length   ? `sem peso: ${medida.sem_peso.slice(0, 3).join(', ')}` : '',
+      medida.sem_medida.length ? `sem medida de caixa: ${medida.sem_medida.slice(0, 3).join(', ')}` : '',
+    ].filter(Boolean).join(' · ');
+    return {
+      ok: false,
+      pendencia: {
+        motivo: `Frete por estado: falta cadastro para calcular (${falta}).`,
+        sem_peso: medida.sem_peso,
+        sem_medida: medida.sem_medida,
+      },
+    };
+  }
+
+  const r = await cotarTotalExpress(tenantId, {
+    cep,
+    peso_real: medida.peso_real,
+    peso_cubado: medida.peso_cubado,
+    valor_nota: Number(valor_nota) || Number(subtotal) || 0,
+    opcoes: {
+      municipio_origem: cfg.tex_municipio_origem,
+      iss_pct: cfg.tex_iss_pct,
+      imposto_modo: cfg.tex_imposto_modo,
+    },
+  });
+
+  // CEP fora da abrangência não é erro: é a hora da tabela por estado.
+  if (!r.ok) return { ok: false, pendencia: null };
+
+  return {
+    ok: true,
+    cotacao: {
+      source: 'total_express',
+      uf: r.memoria.uf,
+      price: r.price,
+      days: r.days,
+      free: false,
+      sem_regra: false,
+      caixas: medida.caixas,
+      memoria: r.memoria,
+      avisos: r.avisos,
+    },
+  };
 }
 
 module.exports = { getFreteConfig, freteDoEstado, cotar, ufFromCep };
