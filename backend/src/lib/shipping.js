@@ -80,7 +80,17 @@ async function getFreteConfig(tenantId) {
     // valer quando alguém liga em Configurações, e mesmo ligada só
     // responde se a tabela estiver carregada e a carga, mensurável.
     tex_enabled:   !!s.tex_enabled,
-    tex_municipio_origem: s.tex_municipio_origem || 'LONDRINA',
+
+    // ANDIRÁ, e não Londrina. A tabela negociada tem "Origem:
+    // LONDRINA/PR" no cabeçalho porque Londrina é a BASE da Total
+    // Express que atende a região — mas a coleta sai da Lyon, que fica
+    // em Andirá (CONFIG_FISCAL: município Andirá, CEP 86380-000).
+    //
+    // A diferença não é cosmética: este campo decide ISS ou ICMS. Com
+    // 'LONDRINA' aqui, entrega dentro de Andirá pagaria ICMS de 19,5%
+    // em vez de ISS de 5%, e entrega para Londrina pagaria ISS sem ser
+    // no mesmo município.
+    tex_municipio_origem: s.tex_municipio_origem || 'ANDIRA',
     tex_iss_pct:   Number(s.tex_iss_pct) || 0.05,
     tex_imposto_modo: s.tex_imposto_modo || 'por_dentro',
   };

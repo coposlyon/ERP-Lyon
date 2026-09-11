@@ -144,3 +144,28 @@ test('frete — repostagem avisa que vai pelos Correios', () => {
   });
   assert.ok(r.avisos.some(a => /repostagem/i.test(a)));
 });
+
+test('frete — o município da origem casa mesmo com acento diferente', () => {
+  // A abrangência da Total Express grava "ANDIRA" (base IBGE); o
+  // cadastro fiscal da Lyon grava "Andirá". Se a comparação fosse
+  // literal, a entrega dentro da própria cidade pagaria ICMS de 19,5%
+  // em vez de ISS.
+  const r = calcular({
+    destino: { ...destinoSP, uf: 'PR', municipio: 'ANDIRA', geografia: 'LDBI' },
+    tarifa: SPC,
+    carga: { peso_real: 0.2, valor_nota: 1000 },
+    opcoes: { municipio_origem: 'Andirá' },
+  });
+  assert.strictEqual(r.memoria.imposto, 'ISS');
+});
+
+test('frete — município diferente continua sendo ICMS', () => {
+  const r = calcular({
+    destino: { ...destinoSP, uf: 'PR', municipio: 'LONDRINA', geografia: 'LDBL' },
+    tarifa: SPC,
+    carga: { peso_real: 0.2, valor_nota: 1000 },
+    opcoes: { municipio_origem: 'Andirá' },
+  });
+  assert.strictEqual(r.memoria.imposto, 'ICMS');
+  assert.strictEqual(r.memoria.aliquota, 19.5);
+});

@@ -72,7 +72,7 @@ const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
   const r = await cotarTotalExpress(tenant, {
     cep, peso_real: pesoReal, peso_cubado: cubado, valor_nota: nota,
     opcoes: {
-      municipio_origem: arg('origem', 'LONDRINA'),
+      municipio_origem: arg('origem', 'ANDIRA'),
       imposto_modo: arg('imposto'),
     },
   });

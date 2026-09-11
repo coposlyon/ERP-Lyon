@@ -81,6 +81,11 @@ function icmsPct(ufDestino) {
 
 const soDigitos = v => String(v || '').replace(/\D/g, '');
 
+/** Nome de município comparável: sem acento, sem caixa, sem sobra. */
+const chaveMunicipio = v => String(v || '')
+  .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+  .trim().toUpperCase();
+
 /**
  * Peso cubado de uma caixa, em kg.
  *
@@ -149,8 +154,14 @@ function calcular({ destino, tarifa, carga, opcoes = {} }) {
 
   // ISS quando origem e destino são o MESMO município; ICMS no resto.
   // É o que a planilha chama de "Frete 1" e "Frete 2".
+  //
+  // A comparação ignora acento de propósito. A abrangência da Total
+  // Express vem da base do IBGE e grava "ANDIRA"; o cadastro fiscal
+  // grava "Andirá". Comparando cru, a cidade da própria empresa nunca
+  // casaria consigo mesma, e toda entrega local sairia com ICMS de
+  // 19,5% no lugar de ISS de 5%.
   const mesmoMunicipio = !!opcoes.municipio_origem
-    && String(opcoes.municipio_origem).trim().toUpperCase() === String(destino.municipio || '').trim().toUpperCase();
+    && chaveMunicipio(opcoes.municipio_origem) === chaveMunicipio(destino.municipio);
 
   const imposto = mesmoMunicipio ? 'ISS' : 'ICMS';
   const aliquota = mesmoMunicipio
