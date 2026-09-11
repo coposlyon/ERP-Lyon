@@ -89,9 +89,10 @@ test('frete — a conta completa de ponta a ponta', () => {
   assert.strictEqual(r.memoria.gris, 2);
   assert.strictEqual(r.memoria.ad_valorem, 4);
   assert.strictEqual(r.memoria.subtotal_sem_imposto, 19.32);
-  // ICMS 12% por dentro: 19,32 / 0,88 = 21,95
+  // ICMS 12% por fora: 19,32 x 1,12 = 21,64
+  // (confirmado pela Total Express em 11/09/2026 — o imposto e somado depois)
   assert.strictEqual(r.memoria.imposto, 'ICMS');
-  assert.strictEqual(r.price, 21.95);
+  assert.strictEqual(r.price, 21.64);
 });
 
 test('frete — o peso cubado manda quando é maior que o real', () => {
@@ -117,12 +118,20 @@ test('frete — mesmo município troca ICMS por ISS', () => {
   assert.strictEqual(r.memoria.aliquota, 5);
 });
 
-test('frete — por fora cobra menos que por dentro, e por isso não é o padrão', () => {
+test('frete — por fora é o padrão, porque é o que a Total Express faz', () => {
   const carga = { peso_real: 0.2, peso_cubado: 0, valor_nota: 1000 };
-  const dentro = calcular({ destino: destinoSP, tarifa: SPC, carga, opcoes: {} });
-  const fora = calcular({ destino: destinoSP, tarifa: SPC, carga, opcoes: { imposto_modo: 'por_fora' } });
-  assert.ok(dentro.price > fora.price);
+  const padrao = calcular({ destino: destinoSP, tarifa: SPC, carga, opcoes: {} });
+  const fora   = calcular({ destino: destinoSP, tarifa: SPC, carga, opcoes: { imposto_modo: 'por_fora' } });
+  assert.strictEqual(padrao.memoria.imposto_modo, 'por_fora');
+  assert.strictEqual(padrao.price, fora.price);
   assert.strictEqual(fora.price, 21.64);   // 19,32 × 1,12
+});
+
+test('frete — por dentro continua disponível, e cobra mais', () => {
+  const carga = { peso_real: 0.2, peso_cubado: 0, valor_nota: 1000 };
+  const dentro = calcular({ destino: destinoSP, tarifa: SPC, carga, opcoes: { imposto_modo: 'por_dentro' } });
+  assert.strictEqual(dentro.price, 21.95);   // 19,32 ÷ 0,88
+  assert.ok(dentro.price > 21.64);
 });
 
 test('frete — risco alto multiplica o GRIS por cinco', () => {

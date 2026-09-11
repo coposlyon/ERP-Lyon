@@ -92,7 +92,9 @@ async function getFreteConfig(tenantId) {
     // no mesmo município.
     tex_municipio_origem: s.tex_municipio_origem || 'ANDIRA',
     tex_iss_pct:   Number(s.tex_iss_pct) || 0.05,
-    tex_imposto_modo: s.tex_imposto_modo || 'por_dentro',
+    // Confirmado pela Total Express em 11/09/2026: o imposto é somado
+    // depois do frete, não embutido nele.
+    tex_imposto_modo: s.tex_imposto_modo || 'por_fora',
   };
 }
 

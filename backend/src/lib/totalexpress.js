@@ -168,12 +168,18 @@ function calcular({ destino, tarifa, carga, opcoes = {} }) {
     ? (Number(opcoes.iss_pct) || 0.05)   // 2% a 5% conforme o município; a planilha simula com 5%
     : icmsPct(destino.uf);
 
-  // POR DENTRO É O PADRÃO, e é a diferença entre cobrar certo e cobrar
-  // 1,5% a menos. No transporte o imposto compõe a própria base: para
-  // sobrar `semImposto` depois de recolher, cobra-se
-  // `semImposto / (1 - alíquota)`. Somar por fora (× 1 + alíquota) dá
-  // sempre menos, e a diferença sai do bolso da Lyon.
-  const porFora = opcoes.imposto_modo === 'por_fora';
+  // POR FORA, e é a Total Express quem disse.
+  //
+  // Eu tinha posto "por dentro" como padrão pelo argumento de que no
+  // transporte o imposto compõe a própria base — é o que a maioria das
+  // transportadoras faz. A Fernanda, do comercial, respondeu em
+  // 11/09/2026: "exatamente, o valor é somado depois, isso é feito por
+  // causa das regiões". Então é × (1 + alíquota), e não ÷ (1 - alíquota).
+  //
+  // A diferença é de ~1,5% para menos, e é a favor do cliente da Lyon.
+  // `por_dentro` continua disponível para o dia em que um contrato novo
+  // trabalhar assim, mas não é mais o padrão de ninguém.
+  const porFora = opcoes.imposto_modo !== 'por_dentro';
   const total = porFora
     ? round2(semImposto * (1 + aliquota))
     : round2(semImposto / (1 - aliquota));

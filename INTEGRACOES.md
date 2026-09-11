@@ -134,6 +134,11 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   - **Imposto** = ISS 5% quando origem e destino são o mesmo município; ICMS pela
     matriz da planilha no resto (origem PR: 19,5% dentro do PR, 12% para
     SP/RJ/MG/SC/RS, 7% para o restante do país).
+    **Somado POR FORA** — `total x (1 + alíquota)`, e não embutido na base.
+    Confirmado pela Total Express (Fernanda, comercial) em 11/09/2026:
+    *"o valor é somado depois, isso é feito por causa das regiões"*.
+    `settings.frete.tex_imposto_modo = 'por_dentro'` inverte, se um contrato
+    futuro trabalhar assim.
 - **Como ligar:** Configurações → Transportadora → bloco *Total Express*
   (`settings.frete.tex_enabled`). Desligada, nada muda: continua valendo a tabela
   por estado.
@@ -162,9 +167,18 @@ mostra uma mensagem clara de "não configurado" — nada quebra.
   não servem para cubagem e o cálculo não os lê.
 - **Endpoints:** `POST /api/shipping/quote` (agora aceita `itens` e `valor_nota`),
   `GET /api/shipping/total-express/cep/:cep`, `GET /api/shipping/total-express/status`.
+- **Confirmado com a Total Express em 11/09/2026** (Fernanda, comercial):
+  - imposto somado **por fora** (item acima);
+  - a tabela com cabeçalho "Origem: LONDRINA/PR" **vale para coleta em Andirá** —
+    *"vale sim, ela é padrão"*;
+  - acima de 30 kg é **mesmo** a última faixa + adicional por quilo sobre o peso
+    total — *"quanto mais peso mais caro o frete fica"*. Não há modalidade
+    alternativa para carga leve e volumosa: para copo, frete alto é o contrato.
 - **Ainda não feito:** `RegistraColeta` e `ObterTracking` (o webservice SOAP do
   manual). Exigem liberação de ambiente pela Total Express — IP fixo cadastrado
-  (até 5) ou SSL, e homologação antes da produção.
+  (até 5) ou SSL, e homologação antes da produção. Em 11/09/2026 o comercial
+  encaminhou a questão do IP/SSL ao **suporte EDI**; sem essa resposta a fase 2
+  não começa.
 
 ## 9. Transportadora J&T Express (cotação + envio + rastreio)
 - **Onde usa:**
