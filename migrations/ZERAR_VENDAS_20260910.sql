@@ -33,12 +33,16 @@
 --   das tabelas de movimento já estava vazio.
 --
 -- O ESTOQUE FOI ZERADO A PEDIDO. Não devolvido: zerado. `current_stock
---   = 0` nos 4 produtos que tinham saldo. As 12 movimentações que não
---   vieram de venda (entradas, inventário, ajustes) continuam lá — elas
---   não são histórico de venda. Isso deixa o extrato do produto
---   contando uma entrada que o saldo zero não reflete; é consequência
---   esperada de zerar em vez de devolver, e se resolve no primeiro
---   inventário.
+--   = 0` nos 4 produtos que tinham saldo.
+--
+-- E A TABELA DE MOVIMENTAÇÃO FICOU VAZIA (2ª passada, 11/09/2026). A
+--   primeira passada apagou só `reference_type = 'sale'` e deixou 12
+--   linhas de pé. Olhando de perto, as 12 eram `adjustment` /
+--   `production`: perdas de produção que `production.js` grava com
+--   `reference_id = saleId` — histórico de venda também, só que sem a
+--   etiqueta 'sale'. Ou seja: o filtro por reference_type não é o
+--   mesmo que "o que veio de pedido". As 12 saíram junto, e a tabela
+--   está zerada.
 --
 -- BACKUP. Oito tabelas com a data no nome, tiradas segundos antes:
 --   bkp_vendas_20260910           bkp_venda_itens_20260910
@@ -79,7 +83,11 @@ DELETE FROM "PEDIDOS_LOJA";
 DELETE FROM "LANCAMENTOS" WHERE reference_type = 'sale';
 
 -- ── a baixa de estoque que a venda fez ───────────────────────
-DELETE FROM "MOVIMENTACOES_ESTOQUE" WHERE reference_type = 'sale';
+-- Sem filtro: as únicas movimentações do banco eram a baixa da venda
+-- ('sale') e as perdas de produção dos mesmos pedidos ('production',
+-- com reference_id = saleId). Nenhuma entrada de compra, nenhum
+-- inventário — não havia o que preservar.
+DELETE FROM "MOVIMENTACOES_ESTOQUE";
 
 -- ── histórico comercial derivado das vendas ──────────────────
 -- `total_12m` e `used_count` são número somado de venda, não cadastro:
@@ -107,7 +115,7 @@ COMMIT;
 
 -- ── conferência (rodada depois; tudo zero) ───────────────────
 -- VENDAS 0 · VENDA_ITENS 0 · ORCAMENTOS 0 · PEDIDOS_LOJA 0 ·
--- LANCAMENTOS sale 0 (fixos 17) · MOV_ESTOQUE sale 0 (resto 12) ·
+-- LANCAMENTOS sale 0 (fixos 17) · MOV_ESTOQUE 0 ·
 -- AUDITORIA 0 · PRIME 0 · clientes com total_12m>0 → 0 ·
 -- produtos com saldo → 0.
 -- Cadastro intacto: 64 clientes · 97 produtos · 7 fornecedores ·
