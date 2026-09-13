@@ -395,13 +395,17 @@ function RedirecionaPersonalizados() {
 }
 
 export default function App() {
+  // O boundary de fora pega erro dos providers: sem ele, uma falha no
+  // AuthProvider desmontava tudo e sobrava a página em branco, sem aviso.
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <ErrorBoundary>
-          <AppRoutes />
-        </ErrorBoundary>
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <ErrorBoundary>
+            <AppRoutes />
+          </ErrorBoundary>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

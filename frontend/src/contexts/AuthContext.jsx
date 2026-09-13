@@ -4,18 +4,33 @@ import { podeVerTela } from '@/lib/menu';
 
 const AuthContext = createContext(null);
 
+// Lê um JSON do localStorage sem derrubar o site. `JSON.stringify(undefined)`
+// não vira texto, e o setItem grava a palavra "undefined" — um login sem
+// tenant deixava isso salvo, e o JSON.parse daqui quebrava o AuthProvider,
+// que fica por fora de tudo: tela branca em TODAS as rotas daquele
+// navegador, inclusive a loja e o catálogo, que nem usam login.
+function lerJson(chave) {
+  const bruto = localStorage.getItem(chave);
+  if (!bruto || bruto === 'undefined' || bruto === 'null') return null;
+  try { return JSON.parse(bruto); } catch { localStorage.removeItem(chave); return null; }
+}
+
+function gravarJson(chave, valor) {
+  if (valor === undefined || valor === null) localStorage.removeItem(chave);
+  else localStorage.setItem(chave, JSON.stringify(valor));
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [tenant, setTenant] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem('user');
-    const storedTenant = localStorage.getItem('tenant');
-    if (stored) {
-      const u = JSON.parse(stored);
+    const u = lerJson('user');
+    const storedTenant = lerJson('tenant');
+    if (u) {
       setUser(u);
-      if (storedTenant) setTenant(JSON.parse(storedTenant));
+      if (storedTenant) setTenant(storedTenant);
 
       // O login guardou um retrato; o acesso pode ter mudado desde então
       // (o admin mexeu no setor, alguém trocou de área). Sem esta
@@ -25,7 +40,7 @@ export function AuthProvider({ children }) {
         .then(a => {
           const atualizado = { ...u, ...a };
           setUser(atualizado);
-          localStorage.setItem('user', JSON.stringify(atualizado));
+          gravarJson('user', atualizado);
         })
         .catch(() => { /* offline ou sessão velha: segue com o retrato */ });
     }
@@ -36,8 +51,8 @@ export function AuthProvider({ children }) {
     const data = await api.post('/auth/login', { email, password });
     localStorage.setItem('access_token', data.access_token);
     localStorage.setItem('refresh_token', data.refresh_token);
-    localStorage.setItem('user', JSON.stringify(data.user));
-    localStorage.setItem('tenant', JSON.stringify(data.user.tenant));
+    gravarJson('user', data.user);
+    gravarJson('tenant', data.user.tenant);
     setUser(data.user);
     setTenant(data.user.tenant);
     return data;
