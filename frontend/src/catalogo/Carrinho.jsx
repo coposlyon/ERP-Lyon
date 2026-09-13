@@ -38,10 +38,16 @@ import {
 } from './ui';
 import { useCarrinho } from './carrinhoContexto';
 
-const HOJE = () => new Date().toISOString().slice(0, 10);
+// A data de HOJE no relógio de quem compra. Em UTC, às 22 h já seria
+// amanhã, e o evento de hoje ficaria bloqueado no calendário.
+const HOJE = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 // A identidade do cliente da loja. Ler a mesma chave é o que faz quem
 // entrou em /loja não precisar se identificar de novo aqui.
+//
+// LOGADO É QUEM TEM `token`. O cadastro guardado sozinho (o /cadastro e a
+// loja gravam só ele) não fecha pedido: o servidor só aceita a chave que
+// o login por CPF + nascimento devolve.
 const CHAVE_CLIENTE = 'lyon_store_customer';
 
 function clienteSalvo() {
@@ -246,20 +252,47 @@ export default function Carrinho() {
   }
 
   // ── Confirmar pedido → cobrança (§30 a §32) ───────────────
+
+  /**
+   * O que ainda falta para virar pedido — null quando está tudo lá.
+   *
+   * Pedido sem CEP não tem para onde ir, sem data não tem prazo, e sem
+   * contato não tem com quem falar. O servidor confere de novo; aqui é
+   * para a pessoa saber o que falta antes de pedir o login.
+   */
+  function faltaParaPedido() {
+    if (!contato.nome.trim() || soDigitos(contato.telefone).length < 10) {
+      return 'Informe seu nome e um telefone com DDD.';
+    }
+    if (!entrega.retirar) {
+      if (soDigitos(entrega.cep).length !== 8) return 'Informe o CEP de entrega.';
+      if (cotando) return 'Aguarde o cálculo do frete.';
+      if (opcoesFrete.length && !frete) return 'Escolha a forma de envio.';
+    }
+    if (!entrega.data_evento) return 'Informe a data do evento.';
+    if (entrega.data_evento < HOJE()) return 'A data do evento não pode estar no passado.';
+    return null;
+  }
+
   async function gerarPagamento(clienteAtual = cliente) {
     if (!itens.length) return;
+    const falta = faltaParaPedido();
+    if (falta) { toast.error(falta); return; }
+    // Sem login não tem pedido: primeiro o CPF, depois a compra.
+    if (!clienteAtual?.token) { setPedindoCadastro(true); return; }
+
     setEnviando('pagamento');
     try {
       const r = await api.postComCodigo('/pagamento', {
-        customer_id: clienteAtual?.id || null,
+        contato: { nome: contato.nome.trim(), telefone: contato.telefone, email: contato.email },
         itens: itensParaServidor(),
         observacao: entrega.observacao,
-        data_evento: entrega.data_evento || null,
-        cep: entrega.cep || null,
+        data_evento: entrega.data_evento,
+        cep: entrega.retirar ? null : entrega.cep,
         retirar: entrega.retirar,
-        frete: valorFrete,
+        // O frete não vai: o servidor refaz pela tabela.
         forma: pagamento,
-      });
+      }, { headers: { Authorization: `Bearer ${clienteAtual.token}` } });
 
       if (r.modo === 'venda') {
         // Sem cobrança configurada o pedido entra direto no Comercial —
@@ -274,7 +307,11 @@ export default function Carrinho() {
       navigate(`/personalizados/pagamento/${r.pedido_id}`);
     } catch (err) {
       if (err.codigo === 'LOGIN_REQUIRED') {
-        // Não é erro: é a hora do cadastro. O carrinho fica onde está.
+        // Não é erro: a chave venceu (ou nunca existiu). Esquece a sessão
+        // e pede o login de novo — o carrinho fica onde está.
+        const semSessao = clienteAtual ? { ...clienteAtual } : null;
+        if (semSessao) { delete semSessao.token; salvarCliente(semSessao); }
+        setCliente(semSessao);
         setPedindoCadastro(true);
       } else {
         toast.error(err.message);
@@ -525,7 +562,7 @@ export default function Carrinho() {
             )}
           </Painel>
 
-          {cliente && (
+          {cliente?.token && (
             <p className="text-[11.5px] px-1 flex items-center gap-1.5" style={{ color: NEON.suave }}>
               <Check size={13} style={{ color: NEON.ciano }} />
               Identificado como <b style={{ color: NEON.texto }}>{String(cliente.name || '').split(/\s+/)[0]}</b>
@@ -678,7 +715,8 @@ function Identificacao({ onEntrou, onFechar }) {
     setOcupado(true); setErro('');
     try {
       const r = await lojaApi.post('/verify-birth', { cpf: soDigitos(cpf), birth_date: nascimento });
-      if (r.success && r.customer) onEntrou(r.customer);
+      // A chave vai junto com o cadastro: é ela que o pagamento aceita.
+      if (r.success && r.customer && r.token) onEntrou({ ...r.customer, token: r.token });
       else setErro('Não consegui confirmar seus dados.');
     } catch (err) { setErro(err.message); }
     finally { setOcupado(false); }

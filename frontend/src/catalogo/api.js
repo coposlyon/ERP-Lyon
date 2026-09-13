@@ -48,8 +48,8 @@ export function codigoDoErro(err) {
   return err?.codigo || null;
 }
 
-catalogoApi.postComCodigo = (url, corpo) =>
-  cliente.post(url, corpo).then(r => r.data).catch(err => {
+catalogoApi.postComCodigo = (url, corpo, config) =>
+  cliente.post(url, corpo, config).then(r => r.data).catch(err => {
     const e = new Error(mensagem(err));
     e.codigo = err?.response?.data?.code || null;
     e.status = err?.response?.status || null;

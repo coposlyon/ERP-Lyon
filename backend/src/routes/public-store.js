@@ -14,6 +14,7 @@ const { precoFaixa, precoComImpressao, PRINT_METHODS } = require('../lib/calc');
 const { fichaPricing } = require('../lib/rateioLib');
 const { uploadDataUrl, uploadPrivado } = require('../lib/storage');
 const { freteDoEstado, ufFromCep, getFreteConfig } = require('../lib/shipping');
+const { assinarSessao } = require('../lib/sessaoCliente');
 const { fetchInstagramMedia } = require('../lib/social');
 const { acharPorDocumento, criarSolicitacao } = require('../lib/cadastroSolicitacoes');
 const { pixConfig, gerarCobrancaPix, qrBase64 } = require('../lib/pixCobranca');
@@ -1336,6 +1337,8 @@ router.post('/check-doc', identityLimiter, async (req, res) => {
 });
 
 // ── Comprova identidade pela data de nascimento e devolve o cliente ──
+// O `token` é a sessão de compra: é ele, e não o id do cadastro, que o
+// pagamento do catálogo aceita (lib/sessaoCliente).
 router.post('/verify-birth', identityLimiter, async (req, res) => {
   const docDigits = soDigitos(req.body.cpf || req.body.cpf_cnpj);
   const birth = String(req.body.birth_date || '').trim(); // ISO AAAA-MM-DD
@@ -1350,7 +1353,7 @@ router.post('/verify-birth', identityLimiter, async (req, res) => {
       // sem coluna birth_date (migration 023 não rodada) → não dá p/ verificar, libera
       ({ data: cli } = await supabase.from('CLIENTES').select(basic)
         .eq('tenant_id', STORE_TENANT).eq('doc_digits', docDigits).limit(1).maybeSingle());
-      if (cli) return res.json({ success: true, customer: cli });
+      if (cli) return res.json({ success: true, customer: cli, token: assinarSessao(cli.id) });
     }
     if (error) { // coluna doc_digits ausente → compara manualmente
       const { data: all } = await supabase.from('CLIENTES').select(full + ', cpf_cnpj').eq('tenant_id', STORE_TENANT).limit(5000);
@@ -1363,12 +1366,12 @@ router.post('/verify-birth', identityLimiter, async (req, res) => {
     if (!cli.birth_date) {
       await supabase.from('CLIENTES').update({ birth_date: birth }).eq('id', cli.id).eq('tenant_id', STORE_TENANT);
       cli.birth_date = birth;
-      return res.json({ success: true, customer: cli });
+      return res.json({ success: true, customer: cli, token: assinarSessao(cli.id) });
     }
     if (String(cli.birth_date).slice(0, 10) !== birth) {
       return res.status(403).json({ error: 'Data de nascimento não confere. Tente novamente.' });
     }
-    res.json({ success: true, customer: cli });
+    res.json({ success: true, customer: cli, token: assinarSessao(cli.id) });
   } catch (err) { fail(res, err); }
 });
 

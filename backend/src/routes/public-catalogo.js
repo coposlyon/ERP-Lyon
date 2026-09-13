@@ -38,6 +38,14 @@ const { criarVendaDoPedido } = require('../lib/pedidoLoja');
 // conta própria, o preço da tela deixaria de bater com o do pedido e a
 // diferença só apareceria no fechamento do mês.
 const { adicionaisDoProduto } = require('../lib/adicionais');
+// Quem compra entra com CPF + nascimento e recebe uma chave assinada; o
+// frete sai da mesma tabela da rota /api/public/frete.
+const { clienteDaSessao } = require('../lib/sessaoCliente');
+const { freteDoEstado, ufFromCep, getFreteConfig } = require('../lib/shipping');
+
+// Hoje no Brasil (UTC-3): em UTC, às 22 h de hoje já seria amanhã e a
+// data do evento de hoje seria recusada.
+const hojeBR = () => new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
 
 // A loja pública serve UM tenant. Mesma origem do public-store.
 const STORE_TENANT = process.env.STORE_TENANT_ID || 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
@@ -577,8 +585,9 @@ async function acharOuCriarLead({ nome, fone, email }) {
 /**
  * "Gerar pagamento".
  *
- * O CLIENTE PRECISA TER CADASTRO (§30). Sem `customer_id` a rota devolve
- * LOGIN_REQUIRED e a tela manda para o cadastro que já existe — o
+ * O CLIENTE PRECISA ESTAR LOGADO (§30). O cliente vem da chave assinada
+ * que o login devolve (lib/sessaoCliente), nunca de um id no corpo. Sem
+ * chave válida a rota devolve LOGIN_REQUIRED e a tela manda para o cadastro que já existe — o
  * carrinho fica no navegador e volta inteiro. Não criamos lead aqui:
  * lead é para orçamento; quem vai pagar tem que ser cliente de verdade,
  * com CPF, porque é esse CPF que vai amarrar o acompanhamento do pedido
@@ -593,9 +602,12 @@ async function acharOuCriarLead({ nome, fone, email }) {
  * navegador manda de valor é descartado.
  */
 router.post('/pagamento', escritaLimiter, async (req, res) => {
+  // SEM `customer_id` E SEM `frete` AQUI. Os dois vinham do navegador e
+  // o servidor acreditava: pedido em nome de qualquer id, frete que a
+  // requisição quisesse.
   const {
-    customer_id, itens = [], observacao, data_evento,
-    cep, retirar, frete, forma,
+    itens = [], observacao, data_evento,
+    cep, retirar, forma, contato = {},
   } = req.body || {};
 
   if (!Array.isArray(itens) || !itens.length) {
@@ -604,8 +616,29 @@ router.post('/pagamento', escritaLimiter, async (req, res) => {
   if (itens.length > 30) {
     return res.status(400).json({ error: 'Muitos itens no mesmo pedido. Fale com um atendente.' });
   }
+
+  // O QUE UM PEDIDO PRECISA TER. A tela confere antes, mas a tela é do
+  // cliente: sem estas travas, o pedido entrava sem saber para onde
+  // mandar, para quando, nem com quem falar.
+  const nome = String(contato.nome || '').trim();
+  const fone = String(contato.telefone || '').replace(/\D/g, '');
+  if (!nome || fone.length < 10) {
+    return res.status(400).json({ error: 'Informe seu nome e um telefone com DDD.' });
+  }
+  const cepDigitos = String(cep || '').replace(/\D/g, '');
+  if (!retirar && cepDigitos.length !== 8) {
+    return res.status(400).json({ error: 'Informe o CEP de entrega.' });
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data_evento || ''))) {
+    return res.status(400).json({ error: 'Informe a data do evento.' });
+  }
+  if (data_evento < hojeBR()) {
+    return res.status(400).json({ error: 'A data do evento não pode estar no passado.' });
+  }
+
+  const customer_id = clienteDaSessao(req);
   if (!customer_id) {
-    return res.status(401).json({ error: 'Faça seu cadastro para finalizar o pedido.', code: 'LOGIN_REQUIRED' });
+    return res.status(401).json({ error: 'Faça login com seu CPF para finalizar o pedido.', code: 'LOGIN_REQUIRED' });
   }
 
   try {
@@ -625,14 +658,26 @@ router.post('/pagamento', escritaLimiter, async (req, res) => {
     }
 
     const subtotal = linhas.reduce((s, i) => s + i.total, 0);
-    // Retirada no local é frete zero, e não "frete que a tela mandou
-    // zero": a regra é do servidor (§26).
-    const freteValor = retirar ? 0 : Math.max(0, Number(frete) || 0);
+    // O FRETE É REFEITO AQUI, pela tabela por estado — a mesma de
+    // /api/public/frete. Retirada no local é frete zero (§26). Estado sem
+    // regra cadastrada não é frete grátis: é frete a combinar, e o
+    // pedido diz isso.
+    let freteValor = 0;
+    let freteACombinar = false;
+    if (!retirar) {
+      const uf = ufFromCep(cepDigitos);
+      if (!uf) return res.status(400).json({ error: 'Não consegui identificar o estado pelo CEP.' });
+      const r = freteDoEstado(await getFreteConfig(STORE_TENANT), { uf, subtotal });
+      if (r.sem_regra) freteACombinar = true;
+      else freteValor = Math.max(0, Number(r.price) || 0);
+    }
 
     const rodape = [
-      'PEDIDO PELO CATÁLOGO PERSONALIZADO',
-      cep ? 'CEP: ' + cep : null,
+      'PEDIDO PELO CATÁLOGO PERSONALIZADO — Contato: ' + nome + ' / ' + (contato.telefone || ''),
+      contato.email ? 'E-mail: ' + contato.email : null,
+      !retirar ? 'CEP: ' + cepDigitos.replace(/(\d{5})(\d{3})/, '$1-$2') : null,
       retirar ? 'Retirada no local' : null,
+      freteACombinar ? 'Frete a combinar (estado sem tabela)' : null,
       data_evento ? 'Data do evento: ' + String(data_evento).split('-').reverse().join('/') : null,
       forma ? 'Forma escolhida pelo cliente: ' + String(forma).toUpperCase() : null,
       observacao ? 'Obs: ' + observacao : null,
@@ -662,13 +707,15 @@ router.post('/pagamento', escritaLimiter, async (req, res) => {
       tenant_id: STORE_TENANT,
       customer_id: cliente.id,
       customer: {
-        name: cliente.name, phone: cliente.phone || cliente.mobile || null,
-        email: cliente.email || null, company: null,
+        // O telefone e o e-mail do formulário são por onde a cliente
+        // quer ser chamada sobre ESTE pedido; o cadastro é o reserva.
+        name: cliente.name, phone: contato.telefone || cliente.phone || cliente.mobile || null,
+        email: contato.email || cliente.email || null, company: null,
       },
       items: itensPedido,
       subtotal, freight: freteValor, total: subtotal + freteValor,
       notes: rodape,
-      event_date: data_evento || null,
+      event_date: data_evento,
     };
 
     /**
