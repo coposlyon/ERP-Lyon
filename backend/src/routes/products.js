@@ -509,9 +509,18 @@ router.get('/categories/list', async (req, res) => {
 });
 
 router.post('/categories', async (req, res) => {
-  const { name } = req.body;
+  const name = String(req.body?.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Nome da categoria é obrigatório' });
   try {
+    // "CRIAR NOVA" COM UM NOME QUE JÁ EXISTE REAPROVEITA A QUE EXISTE.
+    // O cadastro de produto agora cria categoria ali mesmo, e duas
+    // "TWISTER TRADICIONAL" viram dois cards e duas listas pela metade.
+    const { data: parecidas } = await supabase
+      .from('CATEGORIAS').select('*')
+      .eq('tenant_id', req.tenantId).ilike('name', name);
+    const mesma = (parecidas || []).find(c => String(c.name || '').trim().toUpperCase() === name.toUpperCase());
+    if (mesma) return res.json(mesma);
+
     const { data, error } = await supabase
       .from('CATEGORIAS')
       .insert({ tenant_id: req.tenantId, name })

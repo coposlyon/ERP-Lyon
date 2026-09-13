@@ -88,6 +88,9 @@ function corpoDoItem(b) {
     name:        String(b.name || '').trim().slice(0, 160),
     color_name:  b.color_name ? String(b.color_name).trim().slice(0, 80) : null,
     color_hex:   b.color_hex ? String(b.color_hex).trim().slice(0, 9) : null,
+    // A categoria do sub-produto (Tampas, Canudos…). Nome livre: criar
+    // uma nova é digitar um nome que ainda não existe (migração 119).
+    categoria:   b.categoria ? String(b.categoria).trim().slice(0, 80) || null : null,
     base_unit:   UNIDADES.includes(b.base_unit) ? b.base_unit : 'un',
     package_qty:  b.package_qty  === '' || b.package_qty  == null ? null : Number(b.package_qty),
     package_cost: b.package_cost === '' || b.package_cost == null ? null : Number(b.package_cost),

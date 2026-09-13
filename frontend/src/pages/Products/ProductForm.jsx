@@ -56,10 +56,32 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
   // JANELA que precisa saber disso, não ela. Por isso a aba sobe.
   useEffect(() => { onAba?.(aba); }, [aba]); // eslint-disable-line
 
+  // COM AS VAZIAS: a categoria que acabou de ser criada aqui ainda não
+  // tem produto nenhum — e é justamente este produto que vai ser o primeiro.
   const { data: categories = [] } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => api.get('/products/categories/list'),
+    queryKey: ['categories', 'com-vazias'],
+    queryFn: () => api.get('/products/categories/list?incluir_vazias=1'),
   });
+  const [criandoCategoria, setCriandoCategoria] = useState(false);
+  const [nomeNovaCategoria, setNomeNovaCategoria] = useState('');
+  const [salvandoCategoria, setSalvandoCategoria] = useState(false);
+
+  async function criarCategoria() {
+    const nome = nomeNovaCategoria.trim().toUpperCase();
+    if (!nome) { toast.error('Digite o nome da nova categoria'); return; }
+    setSalvandoCategoria(true);
+    try {
+      // Nome que já existe devolve a que existe: o servidor não duplica.
+      const cat = await api.post('/products/categories', { name: nome });
+      await qc.invalidateQueries({ queryKey: ['categories'] });
+      setForm(prev => ({ ...prev, category_id: cat.id }));
+      setCriandoCategoria(false);
+      setNomeNovaCategoria('');
+      toast.success(`Categoria ${cat.name} pronta`);
+    } catch (err) {
+      toast.error(err.error || 'Erro ao criar a categoria');
+    } finally { setSalvandoCategoria(false); }
+  }
 
   const { data: coresCadastradas = [] } = useQuery({
     queryKey: ['itens', 'cor'],
@@ -177,6 +199,11 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.name) { toast.error('Nome do produto é obrigatório'); return; }
+    // PRODUTO NOVO PERGUNTA A CATEGORIA. A tela de Produtos abre nos
+    // cards das categorias: um produto sem categoria não teria card.
+    if (!product?.id && !form.category_id) {
+      toast.error('Escolha a categoria do produto (ou crie uma nova)'); return;
+    }
 
     setLoading(true);
     try {
@@ -346,12 +373,37 @@ export default function ProductForm({ product, onSaved, onCancel, onAba }) {
           <input className="input" value={form.ean} onChange={e => set('ean', e.target.value)} placeholder="7891234567890" />
         </div>
 
-        {/* Categoria — fixa: definida na importação, não editável aqui */}
+        {/* Categoria — escolhe uma que existe ou cria uma nova ali mesmo.
+            Antes era somente-leitura ("vem da importação"), e produto
+            cadastrado à mão nascia sem categoria. */}
         <div>
-          <label className="label">Categoria de produto</label>
-          <input className="input bg-gray-50 text-gray-600 cursor-not-allowed"
-            value={selectedCat?.name || 'Sem categoria'} disabled readOnly />
-          <p className="text-xs text-gray-400 mt-1">A categoria vem da importação e não é editável aqui.</p>
+          <label className="label">Categoria de produto *</label>
+          {criandoCategoria ? (
+            <div className="flex gap-2">
+              <input className="input flex-1" autoFocus value={nomeNovaCategoria} maxLength={80}
+                onChange={e => setNomeNovaCategoria(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); criarCategoria(); } }}
+                placeholder="Ex.: COPO TWISTER 400 ML" />
+              <button type="button" className="btn-primary text-xs shrink-0" onClick={criarCategoria}
+                disabled={salvandoCategoria}>
+                {salvandoCategoria ? <Loader2 size={14} className="animate-spin" /> : 'Criar'}
+              </button>
+              <button type="button" className="btn-secondary text-xs shrink-0"
+                onClick={() => { setCriandoCategoria(false); setNomeNovaCategoria(''); }}>
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <select className="input" value={form.category_id || ''}
+              onChange={e => {
+                if (e.target.value === '__nova__') setCriandoCategoria(true);
+                else set('category_id', e.target.value);
+              }}>
+              <option value="">Selecione a categoria…</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              <option value="__nova__">+ Criar nova categoria…</option>
+            </select>
+          )}
         </div>
 
         <div>

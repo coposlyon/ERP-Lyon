@@ -24,7 +24,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Loader2, Pencil, Trash2, Search, Package, Layers, Sparkles,
   Image as ImageIcon, Upload, X, AlertTriangle, CheckSquare, Square, Tag,
-  Check, Images, Palette,
+  Check, Images, Palette, ArrowLeft,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -49,6 +49,9 @@ export const TIPOS = [
 ];
 // Tipo que não está na lista (algum antigo) mostra um nome neutro, e não
 // o rótulo de outro tipo.
+// Sub-produto antigo, sem categoria, cai aqui em vez de sumir da tela.
+const SEM_CATEGORIA = 'Sem categoria';
+
 const TIPO = k => TIPOS.find(t => t.kind === k)
   || { kind: k, label: 'Itens', singular: 'Item', icon: Package, dica: '' };
 
@@ -107,11 +110,13 @@ function Amostra({ item, size = 40 }) {
 // ════════════════════════════════════════════════════════════
 // FORMULÁRIO DO ITEM
 // ════════════════════════════════════════════════════════════
-function FormItem({ item, kindPadrao, kindTravado, onClose, onSaved }) {
+function FormItem({ item, kindPadrao, kindTravado, categoriaPadrao = '', categorias = [], novaCategoria = false,
+  onClose, onSaved }) {
   const novo = !item?.id;
   const [f, setF] = useState(() => ({
     kind:         item?.kind || kindPadrao || 'acessorio',
     name:         item?.name || '',
+    categoria:    item?.categoria || categoriaPadrao || '',
     color_name:   item?.color_name || '',
     color_hex:    item?.color_hex || '',
     photo_url:    item?.photo_url || '',
@@ -126,6 +131,9 @@ function FormItem({ item, kindPadrao, kindTravado, onClose, onSaved }) {
   }));
   const [salvando, setSalvando] = useState(false);
   const set = (k, v) => setF(o => ({ ...o, [k]: v }));
+  // Digitando uma categoria nova, em vez de escolher uma da lista. Sem
+  // nenhuma categoria ainda, não há o que escolher: já começa digitando.
+  const [criandoCategoria, setCriandoCategoria] = useState(novaCategoria || categorias.length === 0);
 
   // A MESMA CONTA DO SERVIDOR, ANTES DE SALVAR. Sem isto, quem digita
   // "pote de 900 ml por R$ 180" só descobre que dá R$ 0,20 o ml depois
@@ -148,6 +156,11 @@ function FormItem({ item, kindPadrao, kindTravado, onClose, onSaved }) {
 
   async function salvar() {
     if (!f.name.trim()) { toast.error('Informe o nome do item'); return; }
+    // SUB-PRODUTO SEM CATEGORIA NÃO ENTRA: a tela abre nos cards das
+    // categorias, e um sem categoria só apareceria num card "Sem categoria".
+    if (f.kind === 'acessorio' && !String(f.categoria || '').trim()) {
+      toast.error('Escolha a categoria (ou crie uma nova)'); return;
+    }
     setSalvando(true);
     try {
       const corpo = {
@@ -224,6 +237,35 @@ function FormItem({ item, kindPadrao, kindTravado, onClose, onSaved }) {
             </div>
           </div>
         </div>
+
+        {/* ── categoria do sub-produto ── */}
+        {f.kind === 'acessorio' && (
+          <div>
+            <label className="label">Categoria *</label>
+            {criandoCategoria ? (
+              <div className="flex gap-2">
+                <input className="input flex-1" autoFocus value={f.categoria} maxLength={80}
+                  onChange={e => set('categoria', e.target.value)} placeholder="Nome da nova categoria (ex.: Alças)" />
+                {categorias.length > 0 && (
+                  <button type="button" className="btn-secondary text-xs shrink-0"
+                    onClick={() => { setCriandoCategoria(false); set('categoria', categoriaPadrao || ''); }}>
+                    Escolher existente
+                  </button>
+                )}
+              </div>
+            ) : (
+              <select className="input" value={f.categoria}
+                onChange={e => {
+                  if (e.target.value === '__nova__') { setCriandoCategoria(true); set('categoria', ''); }
+                  else set('categoria', e.target.value);
+                }}>
+                <option value="">Selecione a categoria…</option>
+                {categorias.map(c => <option key={c} value={c}>{c}</option>)}
+                <option value="__nova__">+ Criar nova categoria…</option>
+              </select>
+            )}
+          </div>
+        )}
 
         {/* ── foto ── */}
         <div className="flex items-center gap-3">
@@ -855,6 +897,11 @@ export default function Itens({ kind = null }) {
 
   const tipoAtual = kind || aba;
 
+  // SUB-PRODUTOS ABREM NAS CATEGORIAS (Tampas, Canudos…), como Produtos.
+  // O card abre os itens dela; buscar mostra a lista direto.
+  const ehSub = tipoAtual === 'acessorio';
+  const [categoriaAberta, setCategoriaAberta] = useState(null);
+
   const { data: itens = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['itens', tipoAtual || 'todos'],
     queryFn: () => api.get('/itens', { params: tipoAtual ? { kind: tipoAtual } : {} }),
@@ -875,12 +922,31 @@ export default function Itens({ kind = null }) {
     return m;
   }, [aplicacoes]);
 
+  const categoriasSub = useMemo(() => {
+    if (!ehSub) return [];
+    const m = new Map();
+    for (const i of itens) {
+      const c = String(i.categoria || '').trim() || SEM_CATEGORIA;
+      m.set(c, [...(m.get(c) || []), i]);
+    }
+    return [...m.entries()]
+      .map(([nome, doGrupo]) => ({ nome, itens: doGrupo }))
+      .sort((a, b) => (a.nome === SEM_CATEGORIA) - (b.nome === SEM_CATEGORIA)
+        || a.nome.localeCompare(b.nome, 'pt-BR'));
+  }, [ehSub, itens]);
+  // Os nomes que o formulário oferece — "Sem categoria" não é escolha.
+  const nomesCategorias = categoriasSub.map(c => c.nome).filter(n => n !== SEM_CATEGORIA);
+  const emCards = ehSub && !categoriaAberta && !busca.trim();
+
   const lista = useMemo(() => {
     const t = busca.trim().toLowerCase();
-    if (!t) return itens;
-    return itens.filter(i =>
+    const base = ehSub && categoriaAberta
+      ? itens.filter(i => (String(i.categoria || '').trim() || SEM_CATEGORIA) === categoriaAberta)
+      : itens;
+    if (!t) return base;
+    return base.filter(i =>
       `${i.name} ${i.color_name || ''}`.toLowerCase().includes(t));
-  }, [itens, busca]);
+  }, [itens, busca, ehSub, categoriaAberta]);
 
   const selecionados = useMemo(
     () => lista.filter(i => marcados.includes(i.id)), [lista, marcados]);
@@ -910,6 +976,9 @@ export default function Itens({ kind = null }) {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Icone size={22} className="text-primary-600" />
             {t ? t.label : 'Itens'}
+            {ehSub && categoriaAberta && (
+              <span className="font-normal text-gray-400">› {categoriaAberta}</span>
+            )}
           </h1>
           <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
             {t ? t.dica : 'Tudo que entra num copo — com o que se gasta e o que se cobra.'}
@@ -923,7 +992,7 @@ export default function Itens({ kind = null }) {
               com sentido, "todos os itens" não é. */}
           {t && (
             <button className="btn-secondary" onClick={() => setPorCategoria(true)}>
-              <Layers size={16} /> Por categoria
+              <Layers size={16} /> {ehSub ? 'Em quais copos' : 'Por categoria'}
             </button>
           )}
           {/* A PASTA INTEIRA DE UMA VEZ. Dezoito bordas são dezoito
@@ -957,6 +1026,11 @@ export default function Itens({ kind = null }) {
 
       {/* ── busca + ação em massa ── */}
       <div className="flex flex-wrap items-center gap-2">
+        {ehSub && categoriaAberta && (
+          <button className="btn-secondary shrink-0" onClick={() => { setCategoriaAberta(null); setMarcados([]); }}>
+            <ArrowLeft size={15} /> Categorias
+          </button>
+        )}
         <div className="relative flex-1 min-w-[180px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input className="input pl-9" placeholder="Buscar por nome ou cor…"
@@ -967,7 +1041,7 @@ export default function Itens({ kind = null }) {
             <Tag size={15} /> Aplicar {selecionados.length} em…
           </button>
         )}
-        {lista.length > 0 && (
+        {!emCards && lista.length > 0 && (
           <button className="btn-secondary shrink-0"
             onClick={() => setMarcados(marcados.length === lista.length ? [] : lista.map(i => i.id))}>
             {marcados.length === lista.length ? <Square size={15} /> : <CheckSquare size={15} />}
@@ -986,6 +1060,30 @@ export default function Itens({ kind = null }) {
           <AlertTriangle size={22} className="mx-auto mb-2 text-amber-500" />
           <p className="text-sm text-gray-600">{error?.error || 'Não foi possível carregar os itens.'}</p>
           <button className="btn-secondary mt-3" onClick={() => refetch()}>Tentar de novo</button>
+        </div>
+      ) : emCards ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          {categoriasSub.map(c => {
+            const comFoto = c.itens.find(i => i.photo_url) || c.itens[0];
+            return (
+              <button key={c.nome} type="button" onClick={() => setCategoriaAberta(c.nome)}
+                className="text-left rounded-xl border border-gray-200 bg-white p-3 flex items-center gap-3 hover:border-primary-400 hover:shadow-md transition">
+                <Amostra item={comFoto} size={52} />
+                <span className="min-w-0">
+                  <span className="block font-semibold text-sm text-gray-900 truncate">{c.nome}</span>
+                  <span className="block text-xs text-gray-500">
+                    {c.itens.length} {c.itens.length === 1 ? 'sub-produto' : 'sub-produtos'}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+          {/* Categoria nova nasce junto com o primeiro sub-produto dela:
+              é só um nome, e um nome sem nada dentro não teria card. */}
+          <button type="button" onClick={() => setEditando({ novaCategoria: true })}
+            className="rounded-xl border border-dashed border-gray-300 p-3 flex items-center justify-center gap-2 text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition min-h-[78px]">
+            <Plus size={16} /> Nova categoria
+          </button>
         </div>
       ) : lista.length === 0 ? (
         <div className="py-16 text-center text-gray-400">
@@ -1065,6 +1163,9 @@ export default function Itens({ kind = null }) {
         <FormItem
           item={editando.id ? editando : null}
           kindPadrao={tipoAtual}
+          categorias={nomesCategorias}
+          categoriaPadrao={categoriaAberta && categoriaAberta !== SEM_CATEGORIA ? categoriaAberta : ''}
+          novaCategoria={!!editando.novaCategoria}
           // Travado quando a TELA é de um tipo (Sub-Produtos, Cores,
           // Bordas) — que é como Produtos sempre abre esta tela.
           kindTravado={kind}
