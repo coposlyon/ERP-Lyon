@@ -86,7 +86,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
    * item cada. Item novo aparece sozinho, sem deploy.
    */
   const gruposAdic = useMemo(() => {
-    const ROTULO = { cor: 'Cores', acessorio: 'Acessórios', borda: 'Bordas', tinta: 'Tintas', embalagem: 'Embalagem', outro: 'Outros' };
+    const ROTULO = { cor: 'Cores', acessorio: 'Sub-Produtos', borda: 'Bordas' };
     const LIMITE_DE_NOMES = 6;
 
     const porTipo = new Map();
@@ -375,7 +375,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
 
           {itensCad.length === 0 ? (
             <p className="text-xs text-gray-400 rounded-xl border border-dashed border-gray-200 p-3">
-              Nenhum item cadastrado ainda. Cadastre em <b>Cadastros › Acessórios / Bordas / Tintas</b>.
+              Nenhum item cadastrado ainda. Cadastre em <b>Produtos › Sub-Produtos / Bordas</b>.
             </p>
           ) : (
             <>

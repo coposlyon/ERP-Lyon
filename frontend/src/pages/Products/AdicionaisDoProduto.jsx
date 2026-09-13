@@ -182,7 +182,7 @@ export default function AdicionaisDoProduto({ productId, categoryId }) {
   const precoFixo = padroes.reduce((s, a) => s + Number(a.preco || 0), 0);
 
   /**
-   * TIRAR DE ONDE QUER QUE VENHA — ver ModeloDoProduto para o porquê.
+   * TIRAR DE ONDE QUER QUE VENHA.
    * Botão que existe e não age é promessa quebrada; o que a origem
    * muda é o ALCANCE, e é a confirmação que precisa dizer isso.
    */
@@ -295,7 +295,7 @@ export default function AdicionaisDoProduto({ productId, categoryId }) {
 
       <p className="flex items-start gap-1.5 text-[11px] text-gray-400">
         <Info size={12} className="mt-0.5 shrink-0" />
-        Os valores vêm do cadastro do item (Cadastros › Acessórios / Bordas / Tintas).
+        Os valores vêm do cadastro do item (Produtos › Sub-Produtos / Bordas).
         Mudou lá, muda aqui e em todo copo que use o mesmo item.
       </p>
 
