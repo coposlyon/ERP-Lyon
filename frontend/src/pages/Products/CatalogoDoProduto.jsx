@@ -20,7 +20,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Loader2, Save, AlertTriangle, Info, Ruler, Package, Layers, Palette,
-  Droplet, LayoutGrid, Check, RotateCcw, Eye, EyeOff, Sparkles,
+  Droplet, Check, RotateCcw, Eye, EyeOff, Sparkles,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -115,7 +115,6 @@ export default function CatalogoDoProduto({ productId }) {
     }
     if (rascunho.gabarito !== undefined) corpo.gabarito = rascunho.gabarito;
     if (rascunho.embalagem !== undefined) corpo.embalagem = rascunho.embalagem;
-    if (rascunho.familias !== undefined) corpo.familias = rascunho.familias;
     return corpo;
   }
 
@@ -355,39 +354,9 @@ export default function CatalogoDoProduto({ productId }) {
         ]}
         padrao={{ largura_mm: 45, altura_mm: 120, margem_mm: 2, permite_verso: true, observacao: '' }} />
 
-      {/* ── Famílias da vitrine ──────────────────────────── */}
-      <Bloco titulo="Famílias da vitrine" icone={LayoutGrid}
-        ajuda="A família é o card da primeira tela do catálogo. O normal é a família pegar a categoria inteira; marque aqui só se este produto tiver de entrar numa família avulsa.">
-        <div className="grid gap-1.5 sm:grid-cols-2">
-          {ficha.familias.map(f => {
-            const marcadas = rascunho.familias
-              ?? ficha.familias.filter(x => x.via === 'produto').map(x => x.id);
-            const porCategoria = f.via === 'categoria';
-            const marcada = porCategoria || marcadas.includes(f.id);
-            return (
-              <label key={f.id}
-                className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg border ${
-                  marcada ? 'border-violet-300 bg-violet-50' : 'border-gray-200'
-                } ${porCategoria ? 'opacity-70' : 'cursor-pointer hover:bg-gray-50'}`}>
-                <input type="checkbox" checked={marcada} disabled={porCategoria}
-                  onChange={e => setRascunho(a => ({
-                    ...a,
-                    familias: e.target.checked
-                      ? [...marcadas, f.id]
-                      : marcadas.filter(x => x !== f.id),
-                  }))} />
-                <span className="min-w-0 flex-1 truncate">{f.nome}</span>
-                {porCategoria && (
-                  <span className="text-[10px] text-gray-500 shrink-0">pela categoria</span>
-                )}
-              </label>
-            );
-          })}
-          {!ficha.familias.length && (
-            <Vazio texto="Nenhuma família cadastrada. Crie em Configurações → Catálogo." />
-          )}
-        </div>
-      </Bloco>
+      {/* A FAMÍLIA DA VITRINE VEM DA CATEGORIA, sozinha. A marcação por
+          produto ("família avulsa") saiu: ninguém usava, e era mais uma
+          pergunta num cadastro que precisa ser simples. */}
 
       {/* ── Salvar ───────────────────────────────────────── */}
       {/* BARRA, e não um pedaço de conteúdo grudado embaixo. Ela é
