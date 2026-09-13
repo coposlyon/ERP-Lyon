@@ -758,7 +758,7 @@ router.post('/quote', async (req, res) => {
       console.error('[public-store:quote] pedido sem preço:',
         orderItems.map(i => `${i.product_name} x${i.quantity}`).join(', '));
       return res.status(400).json({
-        error: 'Não consegui calcular o valor deste pedido. Fale com um atendente para fecharmos por aqui.',
+        error: 'Preço do produto não configurado corretamente. Contate o atendente.',
         code: 'SEM_PRECO',
       });
     }

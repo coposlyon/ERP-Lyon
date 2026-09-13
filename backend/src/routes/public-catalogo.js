@@ -697,7 +697,7 @@ router.post('/pagamento', escritaLimiter, async (req, res) => {
         (semPreco.length ? semPreco : linhas)
           .map(l => `${l.configuracao?.codigo || '?'} x${l.quantidade}`).join(', '));
       return res.status(400).json({
-        error: 'Não consegui calcular o valor deste pedido. Fale com um atendente para fecharmos por aqui.',
+        error: 'Preço do produto não configurado corretamente. Contate o atendente.',
         code: 'SEM_PRECO',
       });
     }
