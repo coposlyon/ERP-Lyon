@@ -10,7 +10,7 @@
 //
 // POR QUE ADICIONAR AQUI TAMBÉM APLICA EM MASSA. Quem está com o copo
 // aberto é quem sabe que "todo Long Drink leva canudo". Obrigar essa
-// pessoa a sair, ir em Cadastros › Acessórios e voltar era o caminho
+// pessoa a sair, ir em Produtos › Sub-Produtos e voltar era o caminho
 // que ninguém percorria — e o canudo ficava sem cadastrar.
 // ============================================================
 import { useState, useMemo } from 'react';
@@ -131,7 +131,7 @@ function EscolherItens({ productId, categoryId, jaAplicados, onClose, onOk }) {
         ) : lista.length === 0 ? (
           <div className="py-8 text-center text-gray-400 text-sm">
             <Package size={22} className="mx-auto mb-2" />
-            Nenhum item cadastrado ainda. Cadastre em <b>Cadastros › Acessórios</b>.
+            Nenhum item cadastrado ainda. Cadastre em <b>Produtos › Sub-Produtos</b>.
           </div>
         ) : (
           <div className="max-h-72 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
