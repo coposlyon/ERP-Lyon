@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Layers, Upload, Trash2, Loader2, AlertTriangle, RefreshCw, Image as ImageIcon, Eye, ClipboardPaste, Palette } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Layers, Upload, Trash2, Loader2, AlertTriangle, RefreshCw, Image as ImageIcon, Eye, ClipboardPaste, Palette, ArrowLeft } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
@@ -91,6 +91,13 @@ export default function Products() {
   const volumeParam = parseInt(volume) || '';
   const temFiltro = !!(effectiveSearch || categoryId || borderParam || volumeParam);
 
+  // A TELA ABRE NAS CATEGORIAS. Sem nenhum filtro, em vez de 97 linhas de
+  // produto de uma vez, aparecem os cards das categorias; o card abre a
+  // lista daquela categoria. Buscar, ou filtrar por cor e tamanho, leva
+  // direto para a lista — quem digita já sabe o que quer.
+  const emCards = !temFiltro;
+  const totalProdutos = categoriasComProduto.reduce((s, c) => s + (Number(c.product_count) || 0), 0);
+
   async function exportCSV() {
     setExporting(true);
     try {
@@ -110,6 +117,8 @@ export default function Products() {
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['products', page, effectiveSearch, borderParam, volumeParam, categoryId, sort],
+    // Nos cards a lista não aparece: não há por que buscá-la.
+    enabled: !emCards,
     queryFn: () => {
       let url = `/products?page=${page}&limit=50`;
       if (effectiveSearch) url += `&search=${encodeURIComponent(effectiveSearch)}`;
@@ -417,7 +426,9 @@ export default function Products() {
         <div>
           <h1 className="page-title">Produtos</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {data?.total || 0} produto{(data?.total || 0) === 1 ? '' : 's'}
+            {emCards
+              ? `${categoriasComProduto.length} categoria${categoriasComProduto.length === 1 ? '' : 's'} · ${totalProdutos} produto${totalProdutos === 1 ? '' : 's'}`
+              : `${data?.total || 0} produto${(data?.total || 0) === 1 ? '' : 's'}`}
           </p>
         </div>
         <div className="flex gap-2">
@@ -436,6 +447,12 @@ export default function Products() {
       <div className="card">
         {/* Filtros: Tipo → Linha → Cor → Borda → Tamanho → busca → ordenação */}
         <div className="card-header flex flex-wrap items-center gap-2">
+          {categoryId && (
+            <button type="button" className="btn-secondary text-sm"
+              onClick={() => { setCategoryId(''); setPage(1); }}>
+              <ArrowLeft size={15} /> Categorias
+            </button>
+          )}
           {/* Tipo */}
           <select value={categoryId} onChange={e => { setCategoryId(e.target.value); setPage(1); }}
             className="input w-auto text-sm" title="Filtrar por categoria">
@@ -498,14 +515,42 @@ export default function Products() {
 
         </div>
 
-        {/* UMA LISTA SÓ. Havia três abas — Todos, lisos e personalizados —
-            repetindo os mesmos produtos, porque liso e personalizado não
-            são dois cadastros: é o mesmo copo em duas vitrines. Onde cada
-            um aparece está na coluna "Onde aparece". */}
-        {error
-          ? <FalhouAoCarregar erro={error} onTentar={refetch} oQue="os produtos" />
-          : <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => openEdit(row)} />}
-        <Pagination page={page} total={data?.total || 0} limit={50} onPageChange={setPage} />
+        {emCards ? (
+          categoriasComProduto.length === 0 ? (
+            <div className="py-16 text-center text-gray-400">
+              <p className="text-sm">Nenhuma categoria com produto ainda. Use Importar Produtos ou Novo Produto.</p>
+            </div>
+          ) : (
+            <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              {categoriasComProduto.map(c => (
+                <button key={c.id} type="button"
+                  onClick={() => { setCategoryId(c.id); setPage(1); }}
+                  className="text-left rounded-xl border border-gray-200 bg-white overflow-hidden hover:border-primary-400 hover:shadow-md transition">
+                  {/* Fundo claro atrás da foto: os PNGs são recortados, e
+                      o copo preto some sobre o fundo escuro do tema. */}
+                  <span className="h-28 flex items-center justify-center" style={{ background: '#FFF7F1' }}>
+                    {c.image_url
+                      ? <img src={c.image_url} alt="" loading="lazy" className="h-full w-full object-contain p-2" />
+                      : <ImageIcon size={22} className="text-gray-300" />}
+                  </span>
+                  <span className="block px-3 py-2.5">
+                    <span className="block font-semibold text-sm text-gray-900 leading-snug">{c.name}</span>
+                    <span className="block text-xs text-gray-500 mt-0.5">
+                      {c.product_count} produto{Number(c.product_count) === 1 ? '' : 's'}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )
+        ) : (
+          <>
+            {error
+              ? <FalhouAoCarregar erro={error} onTentar={refetch} oQue="os produtos" />
+              : <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => openEdit(row)} />}
+            <Pagination page={page} total={data?.total || 0} limit={50} onPageChange={setPage} />
+          </>
+        )}
       </div>
 
       <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Editar Produto' : 'Novo Produto'}

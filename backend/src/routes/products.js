@@ -453,7 +453,9 @@ router.get('/categories/list', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('CATEGORIAS')
-      .select('*, PRODUTOS(id)')
+      // A foto vem junto: a tela de Produtos abre em cards de categoria,
+      // e o card mostra um copo daquela linha.
+      .select('*, PRODUTOS(id, image_url)')
       .eq('tenant_id', req.tenantId)
       .order('name');
 
@@ -466,10 +468,12 @@ router.get('/categories/list', async (req, res) => {
       const key = name.toUpperCase();
       if (!key || OCULTAR.includes(key)) continue;
       const count = Array.isArray(c.PRODUTOS) ? c.PRODUTOS.length : 0;
-      if (!byName.has(key)) byName.set(key, { id: c.id, tenant_id: c.tenant_id, name, product_count: count });
+      const foto = (c.PRODUTOS || []).map(p => p.image_url).find(Boolean) || null;
+      if (!byName.has(key)) byName.set(key, { id: c.id, tenant_id: c.tenant_id, name, product_count: count, image_url: foto });
       else {
         const e = byName.get(key);
         e.product_count += count;
+        if (!e.image_url) e.image_url = foto;
         if (c.id < e.id) e.id = c.id; // mantém o id mais antigo (canônico)
       }
     }
