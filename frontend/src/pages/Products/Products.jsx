@@ -25,6 +25,9 @@ export default function Products() {
   // causa dela (ver o Modal lá embaixo).
   const [abaProduto, setAbaProduto] = useState('cadastro');
   const [bulkOpen, setBulkOpen] = useState(false);
+  // A categoria com que a edição em massa abre: clicar num card de
+  // categoria abre a edição da categoria inteira, que é o padrão.
+  const [bulkCategoria, setBulkCategoria] = useState('');
   const [importOpen, setImportOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -435,7 +438,7 @@ export default function Products() {
           <button onClick={() => setCatalogOpen(true)} className="btn-secondary">
             <Upload size={16} /> Importar Produtos
           </button>
-          <button onClick={() => setBulkOpen(true)} className="btn-secondary">
+          <button onClick={() => { setBulkCategoria(categoryId || ''); setBulkOpen(true); }} className="btn-secondary">
             <Layers size={16} /> Edição em massa
           </button>
           <button onClick={openNew} className="btn-primary">
@@ -524,7 +527,7 @@ export default function Products() {
             <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
               {categoriasComProduto.map(c => (
                 <button key={c.id} type="button"
-                  onClick={() => { setCategoryId(c.id); setPage(1); }}
+                  onClick={() => { setCategoryId(c.id); setPage(1); setBulkCategoria(c.id); setBulkOpen(true); }}
                   className="text-left rounded-xl border border-gray-200 bg-white overflow-hidden hover:border-primary-400 hover:shadow-md transition">
                   {/* Fundo claro atrás da foto: os PNGs são recortados, e
                       o copo preto some sobre o fundo escuro do tema. */}
@@ -592,7 +595,7 @@ export default function Products() {
         </div>
       )}
 
-      <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
+      <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} categoriaInicial={bulkCategoria} />
       <ImportStockModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
       <ImportProductsModal isOpen={catalogOpen} onClose={() => setCatalogOpen(false)} />
 

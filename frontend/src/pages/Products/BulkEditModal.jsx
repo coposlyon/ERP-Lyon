@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Loader2, Image as ImageIcon, AlertTriangle, Trash2, Check, PlusCircle } from 'lucide-react';
 import api from '@/lib/api';
@@ -6,7 +6,7 @@ import Modal from '@/components/UI/Modal';
 import ComoEntraNoCopo from '@/components/UI/ComoEntraNoCopo';
 import toast from 'react-hot-toast';
 
-export default function BulkEditModal({ isOpen, onClose }) {
+export default function BulkEditModal({ isOpen, onClose, categoriaInicial = '' }) {
   const qc = useQueryClient();
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -42,6 +42,17 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);        // modal de apagar em massa
   const [delPassword, setDelPassword] = useState('');
+
+  // ABERTA POR UM CARD DE CATEGORIA, O PADRÃO É A CATEGORIA INTEIRA.
+  // Quem clica em "Twister" quer mexer nos 35 Twister de uma vez; editar
+  // só alguns é a exceção, e para isso basta marcar os produtos na lista
+  // (o que desliga o "aplicar a todos" — ver `toggle`).
+  useEffect(() => {
+    if (!isOpen || !categoriaInicial) return;
+    setCategoryId(categoriaInicial);
+    setSelected({});
+    setApplyAll(true);
+  }, [isOpen, categoriaInicial]);
 
   const { data: cats } = useQuery({
     queryKey: ['categories-list'],
@@ -126,12 +137,15 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const selectedIds = Object.keys(selected).filter(id => selected[id]);
   const allSelected = products.length > 0 && products.every(p => selected[p.id]);
 
-  function toggle(id) { setSelected(s => ({ ...s, [id]: !s[id] })); }
+  // Marcar um produto é escolher editar SÓ os marcados: o "aplicar a
+  // todos" sai, senão a marcação não mudaria nada e ninguém entenderia.
+  function toggle(id) { setSelected(s => ({ ...s, [id]: !s[id] })); setApplyAll(false); }
   function toggleAll() {
     const n = { ...selected };
     if (allSelected) products.forEach(p => delete n[p.id]);
     else products.forEach(p => { n[p.id] = true; });
     setSelected(n);
+    setApplyAll(false);
   }
   function doSearch(e) { e.preventDefault(); setSearch(searchInput.trim()); }
 
@@ -613,6 +627,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
             <span className="block text-xs text-gray-500 mt-0.5">
               Ignora a seleção e altera todos que casam com o filtro atual (tipo + busca), mesmo além dos {products.length} visíveis.
               {!hasFilter && <b className="text-amber-600"> Sem filtro = aplica ao catálogo inteiro.</b>}
+              <span className="block mt-0.5">Para editar só alguns, marque os produtos na lista — isso desliga esta opção.</span>
             </span>
           </span>
         </label>
