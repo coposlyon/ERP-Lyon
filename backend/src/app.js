@@ -121,6 +121,13 @@ if (fs.existsSync(frontendDist)) {
       else if (filePath.includes(`${path.sep}assets${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     },
   }));
+  // Arquivo que não existe é 404, e não o index.html. Um chunk de um deploy
+  // antigo que voltava HTML com status 200 quebrava o módulo, e o navegador
+  // (e o service worker) guardavam esse HTML no lugar do JS: tela branca.
+  app.get(/^\/assets\/|\.(js|mjs|css|map|png|jpe?g|svg|webp|ico|json|webmanifest|woff2?)$/i, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(404).type('text/plain').send('Not found');
+  });
   // SPA fallback — qualquer rota não-API devolve o index.html (sem cache)
   app.get('*', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
