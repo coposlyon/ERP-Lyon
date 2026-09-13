@@ -229,7 +229,7 @@ function VistaCategoria() {
                   </div>
                 ))}
                 <p className="text-[11px] text-gray-400 pt-1">
-                  Cadastrados em <Link to="/cadastros/itens" className="text-primary-600 hover:underline">Cadastros › Itens</Link>.
+                  Cadastrados em <Link to="/products?secao=subprodutos" className="text-primary-600 hover:underline">Produtos › Sub-Produtos e Bordas</Link>.
                   Mudou lá, muda aqui e em todo copo da categoria.
                 </p>
               </div>
@@ -444,9 +444,9 @@ function VistaProduto() {
                 <Info size={13} className="mt-0.5 shrink-0" />
                 <span>
                   {b.source === 'ficha' ? (
-                    <>Valores da ficha de <Link to="/pricing/formacao" className="text-primary-600 hover:underline">Formação de Preço</Link>, dos <Link to="/cadastros/itens" className="text-primary-600 hover:underline">Cadastros</Link> e do rateio.</>
+                    <>Valores da ficha de <Link to="/pricing/formacao" className="text-primary-600 hover:underline">Formação de Preço</Link>, dos <Link to="/products?secao=subprodutos" className="text-primary-600 hover:underline">Cadastros</Link> e do rateio.</>
                   ) : (
-                    <>Este produto ainda não tem ficha — crie uma na <Link to="/pricing/formacao" className="text-primary-600 hover:underline">Formação de Preço</Link>. Borda, canudo e tinta se cadastram em <Link to="/cadastros/itens" className="text-primary-600 hover:underline">Cadastros › Itens</Link>. <Calculator size={11} className="inline" /></>
+                    <>Este produto ainda não tem ficha — crie uma na <Link to="/pricing/formacao" className="text-primary-600 hover:underline">Formação de Preço</Link>. Bordas e sub-produtos (tampa, canudo) se cadastram em <Link to="/products?secao=subprodutos" className="text-primary-600 hover:underline">Produtos</Link>. <Calculator size={11} className="inline" /></>
                   )}
                 </span>
               </p>

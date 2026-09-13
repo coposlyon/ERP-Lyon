@@ -1,12 +1,12 @@
 // ============================================================
-// CADASTRO DE ITENS — canudo, tampa, borda, tinta, embalagem.
+// CADASTRO DE ITENS — cores, bordas e sub-produtos (tampa, canudo).
 //
 // POR QUE UMA TELA SÓ PARA COISAS TÃO DIFERENTES. Porque a pergunta é
 // a mesma: "o que isto acrescenta na peça, quanto custa e quanto
 // cobra". Quatro telas seriam quatro lugares para a regra de preço
-// divergir. O menu abre esta mesma tela travada em um tipo —
-// Acessórios, Bordas, Tintas — e quem quiser ver tudo junto entra por
-// Cadastros › Itens.
+// divergir. Produtos abre esta mesma tela travada em um tipo — Cores,
+// Bordas, Sub-Produtos. (A aba Itens, com tudo junto, e a de Tintas
+// saíram: repetiam o que as outras já mostravam.)
 //
 // OS DOIS VALORES SÃO O CORAÇÃO DA TELA. `unit_cost` é o que a Lyon
 // GASTA; `unit_price` é o que a Lyon COBRA. Antes só existia o
@@ -22,9 +22,9 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Plus, Loader2, Pencil, Trash2, Search, Package, Layers,
-  Droplet, Box, Sparkles, Image as ImageIcon, Upload, X, AlertTriangle,
-  CheckSquare, Square, Tag, Check, Images, Palette,
+  Plus, Loader2, Pencil, Trash2, Search, Package, Layers, Sparkles,
+  Image as ImageIcon, Upload, X, AlertTriangle, CheckSquare, Square, Tag,
+  Check, Images, Palette,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -36,18 +36,21 @@ import { fmtBRL } from '@/lib/pricingCalc';
 export const TIPOS = [
   { kind: 'cor',       label: 'Cores',      singular: 'Cor',       icon: Palette,
     dica: 'A cor da peça crua. Cada copo do cadastro aponta para uma cor daqui.' },
-  { kind: 'acessorio', label: 'Acessórios', singular: 'Acessório', icon: Sparkles,
-    dica: 'Canudo, tampa, alça, tag — o que a cliente escolhe e faz o preço subir.' },
+  // SUB-PRODUTO É O `acessorio` DO BANCO. O nome mudou na tela; Tampa e
+  // Canudo são os mesmos cadastros. Precisou de outro (alça, tag), é
+  // aqui também.
+  { kind: 'acessorio', label: 'Sub-Produtos', singular: 'Sub-produto', icon: Sparkles,
+    dica: 'Tampas e canudos — o que vai junto com o copo. Cadastre outro sub-produto aqui se precisar.' },
   { kind: 'borda',     label: 'Bordas',     singular: 'Borda',     icon: Layers,
     dica: 'As metalizadas. Cada cor é um item, com a foto que a cliente vê.' },
-  { kind: 'tinta',     label: 'Tintas',     singular: 'Tinta',     icon: Droplet,
-    dica: 'Medida em ml, com o consumo por peça. Entra sempre no custo do personalizado.' },
-  { kind: 'embalagem', label: 'Embalagem',  singular: 'Embalagem', icon: Box,
-    dica: 'Caixa, sacola, plástico — o que sai junto com o pedido.' },
-  { kind: 'outro',     label: 'Outros',     singular: 'Item',      icon: Package,
-    dica: 'O que aparecer amanhã e não couber acima.' },
+  // TINTA, EMBALAGEM E OUTROS SAÍRAM DA TELA. Estavam sem nenhum
+  // cadastro, e Tintas repetia o papel de Cores. O banco ainda aceita
+  // esses tipos (a rota não mudou); só não há mais onde criá-los.
 ];
-const TIPO = k => TIPOS.find(t => t.kind === k) || TIPOS[TIPOS.length - 1];
+// Tipo que não está na lista (algum antigo) mostra um nome neutro, e não
+// o rótulo de outro tipo.
+const TIPO = k => TIPOS.find(t => t.kind === k)
+  || { kind: k, label: 'Itens', singular: 'Item', icon: Package, dica: '' };
 
 const UNIDADES = [
   { v: 'un',    label: 'unidade' },
@@ -182,19 +185,14 @@ function FormItem({ item, kindPadrao, kindTravado, onClose, onSaved }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Tipo</label>
-            {/* TELA DE ACESSÓRIOS NÃO CADASTRA BORDA.
+            {/* TELA DE SUB-PRODUTOS NÃO CADASTRA BORDA.
                 O seletor aberto deixava criar uma borda de dentro dos
                 Acessórios — e ela sumia na hora de salvar, porque a
                 lista da tela filtra por tipo. O item existia e ninguém
-                achava. Onde a tela já tem um tipo, o tipo é aquele; a
-                troca fica em Cadastros › Itens, que é a tela que
-                enxerga todos. */}
+                achava. Onde a tela já tem um tipo, o tipo é aquele. */}
             {kindTravado ? (
               <p className="input bg-gray-50 text-gray-600 flex items-center">
                 {TIPO(f.kind).label}
-                <span className="ml-auto text-[11px] text-gray-400">
-                  para mudar, use Itens (todos)
-                </span>
               </p>
             ) : (
               <select className="input" value={f.kind} onChange={e => set('kind', e.target.value)}>
@@ -214,7 +212,7 @@ function FormItem({ item, kindPadrao, kindTravado, onClose, onSaved }) {
           <div>
             <label className="label">Nome *</label>
             <input className="input" value={f.name} onChange={e => set('name', e.target.value)}
-              placeholder={f.kind === 'tinta' ? 'Tinta plastisol' : f.kind === 'borda' ? 'Borda metalizada' : 'Canudo'} />
+              placeholder={f.kind === 'borda' ? 'Borda metalizada' : f.kind === 'cor' ? 'Azul Bic' : 'Canudo'} />
           </div>
           <div>
             <label className="label">Cor</label>
@@ -935,7 +933,7 @@ export default function Itens({ kind = null }) {
             <Images size={16} /> Enviar fotos
           </button>
           <button className="btn-primary" onClick={() => setEditando({})}>
-            <Plus size={16} /> Novo item
+            <Plus size={16} /> {t ? `Novo ${t.singular.toLowerCase()}` : 'Novo item'}
           </button>
         </div>
       </div>
@@ -1067,9 +1065,8 @@ export default function Itens({ kind = null }) {
         <FormItem
           item={editando.id ? editando : null}
           kindPadrao={tipoAtual}
-          // Travado só quando a TELA é de um tipo (Acessórios, Bordas,
-          // Tintas). Na aba de Itens (todos) a troca continua livre —
-          // aba é filtro, não identidade.
+          // Travado quando a TELA é de um tipo (Sub-Produtos, Cores,
+          // Bordas) — que é como Produtos sempre abre esta tela.
           kindTravado={kind}
           onClose={() => setEditando(null)}
           onSaved={() => { setEditando(null); qc.invalidateQueries({ queryKey: ['itens'] }); }}

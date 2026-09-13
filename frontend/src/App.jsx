@@ -313,13 +313,14 @@ function AppRoutes() {
         <Route path="rateio/historico" element={<Mod m={['financial','products','settings']}><HistoricoRateios /></Mod>} />
         <Route path="rateio/rentabilidade" element={<Mod m={['financial','products','settings']}><Rentabilidade /></Mod>} />
         <Route path="engenharia/insumos" element={<Mod m={['financial','products','settings','production']}><Insumos /></Mod>} />
-        {/* Cadastro de itens: a mesma tela travada por tipo. Quem entra
-            por Acessórios não vê tinta; quem entra por Itens vê tudo. */}
-        <Route path="cadastros/itens"      element={<Mod m={['products','financial','settings','production']}><Itens /></Mod>} />
+        {/* Cadastro de itens: a mesma tela travada por tipo. Itens (todos)
+            e Tintas saíram, e Acessórios virou Sub-Produtos dentro de
+            Produtos — os endereços antigos levam para lá. */}
+        <Route path="cadastros/itens"      element={<Navigate to="/products?secao=subprodutos" replace />} />
         <Route path="cadastros/cores"      element={<Mod m={['products','financial','settings','production']}><Itens kind="cor" /></Mod>} />
-        <Route path="cadastros/acessorios" element={<Mod m={['products','financial','settings','production']}><Itens kind="acessorio" /></Mod>} />
+        <Route path="cadastros/acessorios" element={<Navigate to="/products?secao=subprodutos" replace />} />
         <Route path="cadastros/bordas"     element={<Mod m={['products','financial','settings','production']}><Itens kind="borda" /></Mod>} />
-        <Route path="cadastros/tintas"     element={<Mod m={['products','financial','settings','production']}><Itens kind="tinta" /></Mod>} />
+        <Route path="cadastros/tintas"     element={<Navigate to="/products" replace />} />
         {/* Fiscal */}
         <Route path="fiscal" element={<Mod m="fiscal"><Fiscal /></Mod>} />
         {/* Contábil / Fiscal */}

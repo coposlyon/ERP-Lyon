@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Package, Layers, Upload, Download, Trash2, Loader2, AlertTriangle, RefreshCw, FolderTree, Image as ImageIcon, Eye, ClipboardPaste, Palette, ChevronDown } from 'lucide-react';
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, Layers, Upload, Trash2, Loader2, AlertTriangle, RefreshCw, Image as ImageIcon, Eye, ClipboardPaste, Palette } from 'lucide-react';
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
 import ProductForm from './ProductForm';
 import BulkEditModal from './BulkEditModal';
-import ModeloDoProduto from './ModeloDoProduto';
 import ImportStockModal from './ImportStockModal';
 import ImportProductsModal from './ImportProductsModal';
 import { loadImage, recolorCup, makeCupTemplate } from './recolorCup';
@@ -32,11 +31,6 @@ export default function Products() {
   const [delTarget, setDelTarget] = useState(null); // produto a apagar (confirmação)
   const [exporting, setExporting] = useState(false);
   const [categoryId, setCategoryId] = useState('');
-  // Liso x personalizado. Não são dois estoques: é o MESMO copo em duas
-  // vitrines. Na loja ele sai liso; no catálogo, personalizado. As duas
-  // abas repetem os mesmos produtos de propósito. '' = tudo junto, que é
-  // como a tela sempre funcionou.
-  const [catalogo, setCatalogo] = useState('');
   const [linha, setLinha] = useState('');   // '' | tradicional | degrad | bicolor | jateado
   const [cor, setCor] = useState('');       // nome da cor (ex.: AMARELO LIMÃO)
   const [borda, setBorda] = useState('');   // '' | 'borda' (com) | '-borda' (sem)
@@ -115,7 +109,7 @@ export default function Products() {
   }
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['products', page, effectiveSearch, borderParam, volumeParam, categoryId, sort, catalogo],
+    queryKey: ['products', page, effectiveSearch, borderParam, volumeParam, categoryId, sort],
     queryFn: () => {
       let url = `/products?page=${page}&limit=50`;
       if (effectiveSearch) url += `&search=${encodeURIComponent(effectiveSearch)}`;
@@ -123,80 +117,9 @@ export default function Products() {
       if (volumeParam)     url += `&volume=${volumeParam}`;
       if (categoryId)      url += `&category_id=${categoryId}`;
       if (sort)            url += `&sort=${sort}`;
-      if (catalogo)        url += `&catalogo=${catalogo}`;
       return api.get(url);
     },
   });
-
-  /**
-   * O CATÁLOGO PERSONALIZADO VISTO POR MODELO, e não por cor.
-   *
-   * No cadastro cada COR é um produto — e tem que ser: cor tem estoque,
-   * código, NCM e foto próprios, e é ela que sai na nota. Mas quem abre
-   * a tela para trabalhar não pensa em 24 linhas de Long Drink: pensa
-   * em UM Long Drink de 350 ml que existe em 24 cores. A lista mostrava
-   * o banco; agora mostra o produto.
-   *
-   * O agrupamento é (categoria + capacidade), o MESMO que o catálogo do
-   * cliente já usa para montar seus modelos — uma régua só para as duas
-   * telas, senão o ERP e o site discordam sobre o que é um modelo.
-   *
-   * Tudo de uma vez (limite alto) porque as cores de um modelo não
-   * podem cair em páginas diferentes: meia lista de cores é pior que
-   * lista nenhuma.
-   */
-  const { data: todosPersonalizados, isLoading: carregandoModelos } = useQuery({
-    queryKey: ['produtos-personalizados', effectiveSearch, categoryId],
-    queryFn: () => api.get(`/products?limit=1000&catalogo=personalizado${
-      effectiveSearch ? `&search=${encodeURIComponent(effectiveSearch)}` : ''}${
-      categoryId ? `&category_id=${categoryId}` : ''}`),
-    enabled: catalogo === 'personalizado',
-  });
-
-  const modelos = useMemo(() => {
-    const lista = todosPersonalizados?.data || [];
-    // A capacidade sai do FIM do nome ("... 350 ML"); o que sobra antes
-    // do último hífen é a cor. É a mesma leitura do lib/catalogo.js.
-    const capacidadeDe = nome => {
-      const m = String(nome || '').match(/(\d+(?:[.,]\d+)?)\s*(ML|L)\s*$/i);
-      return m ? `${m[1].replace(',', '.')} ${m[2].toUpperCase()}` : null;
-    };
-    const grupos = new Map();
-    for (const p of lista) {
-      const cap = capacidadeDe(p.name);
-      const categoria = p.CATEGORIAS?.name || 'SEM CATEGORIA';
-      const chave = `${p.category_id || 'sem'}__${cap || 'unico'}`;
-      if (!grupos.has(chave)) {
-        grupos.set(chave, {
-          chave,
-          titulo: [categoria, cap].filter(Boolean).join(' '),
-          categoria,
-          // O ID vai junto: e por ele que a aba "Catalogo personalizado"
-          // grava a regra da categoria inteira.
-          category_id: p.category_id || null,
-          capacidade: cap,
-          cores: [],
-        });
-      }
-      grupos.get(chave).cores.push(p);
-    }
-    return [...grupos.values()]
-      .map(g => ({
-        ...g,
-        cores: g.cores.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-        // Um custo só quando todas as cores custam igual — que é o caso
-        // normal. Divergiu, a tela diz "vários" em vez de mentir uma média.
-        custo: [...new Set(g.cores.map(c => Number(c.cost_price) || 0))].length === 1
-          ? Number(g.cores[0].cost_price) || 0 : null,
-        semFoto: g.cores.filter(c => !c.image_url).length,
-      }))
-      .sort((a, b) => a.titulo.localeCompare(b.titulo, 'pt-BR'));
-  }, [todosPersonalizados]);
-
-  const [modeloAberto, setModeloAberto] = useState(null);
-  // O modelo aberto em JANELA (cores + adicionais), diferente do
-  // acordeão da lista — lá é espiar, aqui é trabalhar.
-  const [modeloJanela, setModeloJanela] = useState(null);
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, is_active }) => api.put(`/products/${id}`, { is_active }),
@@ -446,24 +369,13 @@ export default function Products() {
     },
     // Onde o produto está publicado. Sem esta coluna, descobrir por que
     // um copo não aparece no site exige abrir o cadastro um por um.
-    //
-    // A COLUNA SEGUE A ABA. O mesmo copo é vendido liso na loja E
-    // personalizado no catálogo — é a mesma peça, e as duas marcas
-    // acesas em toda linha eram a verdade. Só que, dentro da aba
-    // "Produtos personalizados", "Loja liso" não é resposta para
-    // pergunta nenhuma: quem está ali quer saber se AQUELE copo está
-    // publicado NAQUELA vitrine, e o segundo selo só empurrava o olho
-    // para o lado errado.
-    //
-    // Em "Todos" as duas continuam aparecendo, porque ali a pergunta é
-    // justamente "onde este copo está?".
     { key: 'show_in_catalogo', label: 'Onde aparece', width: 150,
       render: (_, row) => {
         if (!row.is_active) return <span className="text-xs text-gray-400">—</span>;
         const portas = [
-          row.show_in_catalogo === true && catalogo !== 'liso'
+          row.show_in_catalogo === true
             && { t: 'Catálogo', cls: 'bg-violet-100 text-violet-700' },
-          row.show_in_store !== false && catalogo !== 'personalizado'
+          row.show_in_store !== false
             && { t: 'Loja liso', cls: 'bg-sky-100 text-sky-700' },
         ].filter(Boolean);
         if (!portas.length) {
@@ -506,8 +418,6 @@ export default function Products() {
           <h1 className="page-title">Produtos</h1>
           <p className="text-sm text-gray-500 mt-1">
             {data?.total || 0} produto{(data?.total || 0) === 1 ? '' : 's'}
-            {catalogo === 'liso' && ' — vendidos lisos na loja, sem alteração'}
-            {catalogo === 'personalizado' && ' — no catálogo, com as alterações que o cliente pedir'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -521,23 +431,6 @@ export default function Products() {
             <Plus size={16} /> Novo Produto
           </button>
         </div>
-      </div>
-
-      {/* Onde o produto é vendido. O cadastro é o mesmo e as abas se
-          sobrepõem: quem está nas duas aparece nas duas. */}
-      <div className="flex gap-1 p-1 rounded-lg bg-gray-100 w-fit">
-        {[
-          { k: '', r: 'Todos' },
-          { k: 'liso', r: 'Produtos lisos' },
-          { k: 'personalizado', r: 'Produtos personalizados' },
-        ].map(t => (
-          <button key={t.k} onClick={() => { setCatalogo(t.k); setPage(1); }}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              catalogo === t.k ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-            }`}>
-            {t.r}
-          </button>
-        ))}
       </div>
 
       <div className="card">
@@ -605,120 +498,15 @@ export default function Products() {
 
         </div>
 
-        {/* PERSONALIZADOS: UM MODELO POR LINHA, as cores dentro.
-            A aba "Todos" e a "Produtos lisos" continuam mostrando o
-            cadastro cru — é lá que se confere código, NCM e estoque cor
-            a cor, e achatar isso atrapalharia quem faz esse trabalho. */}
-        {catalogo === 'personalizado' ? (
-          carregandoModelos ? (
-            <div className="py-16 text-center text-gray-400">
-              <Loader2 size={22} className="animate-spin mx-auto mb-2" /> Carregando…
-            </div>
-          ) : modelos.length === 0 ? (
-            <div className="py-16 text-center text-gray-400">
-              <Package size={26} className="mx-auto mb-2" />
-              <p className="text-sm">Nenhum produto personalizado encontrado.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {modelos.map(m => {
-                const aberto = modeloAberto === m.chave;
-                return (
-                  <div key={m.chave} className="rounded-xl border border-gray-200 overflow-hidden">
-                    <div className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-50 transition">
-                    <button type="button"
-                      onClick={() => setModeloAberto(aberto ? null : m.chave)}
-                      className="flex items-center gap-3 flex-1 min-w-0 text-left">
-                      {/* As cores do modelo em miniatura: a linha diz o
-                          que ela contém antes de ser aberta. */}
-                      <span className="flex -space-x-2 shrink-0">
-                        {m.cores.slice(0, 5).map(c => (
-                          c.image_url
-                            ? <img key={c.id} src={c.image_url} alt=""
-                                className="w-8 h-8 rounded-lg object-cover border-2 border-white shadow-sm" />
-                            : <span key={c.id} className="w-8 h-8 rounded-lg bg-gray-100 border-2 border-white" />
-                        ))}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-medium text-gray-900 truncate">{m.titulo}</span>
-                        <span className="block text-xs text-gray-500">
-                          {m.cores.length} {m.cores.length === 1 ? 'cor' : 'cores'}
-                          {m.semFoto > 0 && ` · ${m.semFoto} sem foto`}
-                        </span>
-                      </span>
-                      <span className="text-sm text-gray-600 whitespace-nowrap shrink-0 hidden sm:block">
-                        {m.custo == null ? 'custos variados' : `custo ${fmt(m.custo)}`}
-                      </span>
-                      <ChevronDown size={16}
-                        className={`shrink-0 text-gray-400 transition-transform ${aberto ? 'rotate-180' : ''}`} />
-                    </button>
-                    <button type="button" className="btn-secondary btn-sm shrink-0"
-                      onClick={() => setModeloJanela(m)}>
-                      Abrir modelo
-                    </button>
-                    </div>
-
-                    {aberto && (
-                      <div className="border-t border-gray-100 divide-y divide-gray-50">
-                        {m.cores.map(c => (
-                          <div key={c.id}
-                            className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                            onClick={() => openEdit(c)}>
-                            {c.image_url
-                              ? <img src={c.image_url} alt="" className="w-9 h-9 rounded-lg object-cover border border-gray-200 shrink-0" />
-                              : <span className="w-9 h-9 rounded-lg border border-dashed border-gray-200 bg-gray-50 shrink-0" />}
-                            <span className="font-mono text-[11px] text-gray-400 w-20 shrink-0">{c.code || '—'}</span>
-                            <span className="flex-1 min-w-0 text-sm text-gray-800 truncate">{c.name}</span>
-                            <span className="text-xs text-gray-500 w-24 text-right shrink-0">{fmt(c.cost_price)}</span>
-                            <span className={`text-xs w-16 text-right shrink-0 ${
-                              Number(c.current_stock) > 0 ? 'text-gray-600' : 'text-red-500'}`}>
-                              {Number(c.current_stock) || 0} UN
-                            </span>
-                            <button className="btn-ghost p-1.5 shrink-0" title="Editar"
-                              onClick={e => { e.stopPropagation(); openEdit(c); }}>
-                              <Edit2 size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )
-        ) : (
-          <>
-            {error
-              ? <FalhouAoCarregar erro={error} onTentar={refetch} oQue="os produtos" />
-              : <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => openEdit(row)} />}
-            <Pagination page={page} total={data?.total || 0} limit={50} onPageChange={setPage} />
-          </>
-        )}
+        {/* UMA LISTA SÓ. Havia três abas — Todos, lisos e personalizados —
+            repetindo os mesmos produtos, porque liso e personalizado não
+            são dois cadastros: é o mesmo copo em duas vitrines. Onde cada
+            um aparece está na coluna "Onde aparece". */}
+        {error
+          ? <FalhouAoCarregar erro={error} onTentar={refetch} oQue="os produtos" />
+          : <Table columns={columns} data={data?.data} loading={isLoading} onRowClick={row => openEdit(row)} />}
+        <Pagination page={page} total={data?.total || 0} limit={50} onPageChange={setPage} />
       </div>
-
-      {modeloJanela && (
-        <ModeloDoProduto
-          modelo={modeloJanela}
-          onClose={() => setModeloJanela(null)}
-          onEditarCor={c => { setModeloJanela(null); openEdit(c); }}
-          onNovaCor={m => {
-            setModeloJanela(null);
-            // Nasce já com a categoria e o começo do nome — o que muda
-            // de uma cor para a outra é só a cor.
-            const base = m.cores[0];
-            setEditing({
-              name: `${m.categoria} - `,
-              category_id: base?.category_id || '',
-              cost_price: base?.cost_price ?? '',
-              show_in_catalogo: true,
-              show_in_store: base?.show_in_store !== false,
-              is_active: true,
-            });
-            setModalOpen(true);
-          }}
-        />
-      )}
 
       <Modal isOpen={modalOpen} onClose={closeModal} title={editing ? 'Editar Produto' : 'Novo Produto'}
         size={abaProduto === 'catalogo' ? 'full' : abaProduto === 'adicionais' ? 'xl' : 'lg'}>

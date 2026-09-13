@@ -1,24 +1,23 @@
 // ============================================================
 // TUDO O QUE COMPÕE UM PRODUTO, NUMA TELA SÓ.
 //
-// Cores, acessórios, bordas, tintas, itens e insumos eram seis entradas
-// soltas no menu Cadastros, do lado de Produtos — e nenhuma delas é um
-// cadastro que vive por conta própria: são as PEÇAS do produto. A cor
-// existe porque o copo tem cor; a tinta existe porque a arte é impressa
-// nele. Separadas no menu, obrigavam a sair de Produtos para cadastrar
-// o que só serve a Produtos, e a voltar depois.
+// Produtos, sub-produtos, cores, bordas e insumos. Nenhum deles vive por
+// conta própria: são as PEÇAS do produto — a cor existe porque o copo
+// tem cor, o canudo existe porque vai junto com o copo.
 //
-// Agora são seções da mesma tela. O menu Cadastros ficou com o que de
-// fato é cadastro independente: produtos, clientes, fornecedores.
+// FICOU MAIS SIMPLES DE PROPÓSITO. Havia sete abas: Tintas (sem nenhum
+// cadastro, e que brigava com Cores pelo mesmo papel), Itens (as mesmas
+// linhas das outras abas, todas juntas — parecia cadastro duplicado) e
+// Acessórios, que na prática era tampa e canudo. Agora são cinco, e
+// Acessórios virou Sub-Produtos, ao lado de Produtos.
 //
-// AS ROTAS ANTIGAS CONTINUAM VIVAS. `/cadastros/cores` e as outras
-// respondem como sempre — link salvo, favorito do navegador e a lista
-// de telas que o copiloto de IA conhece não podem quebrar porque um
-// item mudou de lugar no menu.
+// OS ENDEREÇOS ANTIGOS CONTINUAM ABRINDO. `?secao=acessorios` cai em
+// Sub-Produtos; `tintas` e `itens` caem em Produtos. Link salvo não pode
+// quebrar porque uma aba mudou de nome.
 // ============================================================
 import { lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Package, Palette, Sparkles, Layers, Droplet, Box, FlaskConical, Loader2 } from 'lucide-react';
+import { Package, Puzzle, Palette, Layers, FlaskConical, Loader2 } from 'lucide-react';
 
 import Products from './Products';
 
@@ -27,27 +26,24 @@ import Products from './Products';
 const Itens = lazy(() => import('@/pages/Itens/Itens'));
 const Insumos = lazy(() => import('@/pages/Insumos/Insumos'));
 
-// A ordem é a do uso, não a do alfabeto: produto primeiro, depois o que
-// se aplica nele, e insumo por último — que é o que o custo consome e
-// quase nunca muda.
 const SECOES = [
-  { key: 'produtos',   rotulo: 'Produtos',   Icone: Package },
-  { key: 'cores',      rotulo: 'Cores',      Icone: Palette },
-  { key: 'acessorios', rotulo: 'Acessórios', Icone: Sparkles },
-  { key: 'bordas',     rotulo: 'Bordas',     Icone: Layers },
-  { key: 'tintas',     rotulo: 'Tintas',     Icone: Droplet },
-  { key: 'itens',      rotulo: 'Itens',      Icone: Box },
-  { key: 'insumos',    rotulo: 'Insumos',    Icone: FlaskConical },
+  { key: 'produtos',    rotulo: 'Produtos',     Icone: Package },
+  { key: 'subprodutos', rotulo: 'Sub-Produtos', Icone: Puzzle },
+  { key: 'cores',       rotulo: 'Cores',        Icone: Palette },
+  { key: 'bordas',      rotulo: 'Bordas',       Icone: Layers },
+  { key: 'insumos',     rotulo: 'Insumos',      Icone: FlaskConical },
 ];
+
+// Nome antigo → aba de hoje.
+const APELIDOS = { acessorios: 'subprodutos' };
 
 export default function ProdutosShell() {
   // A seção mora no ENDEREÇO (?secao=cores), e não num useState: assim
-  // dá para mandar o link direto da aba de tintas para alguém, e o
-  // botão voltar do navegador faz o que a pessoa espera.
+  // dá para mandar o link direto de uma aba para alguém, e o botão
+  // voltar do navegador faz o que a pessoa espera.
   const [params, setParams] = useSearchParams();
-  const atual = SECOES.some(s => s.key === params.get('secao'))
-    ? params.get('secao')
-    : 'produtos';
+  const pedida = APELIDOS[params.get('secao')] || params.get('secao');
+  const atual = SECOES.some(s => s.key === pedida) ? pedida : 'produtos';
 
   function irPara(key) {
     const p = new URLSearchParams(params);
@@ -74,12 +70,12 @@ export default function ProdutosShell() {
         <Suspense fallback={
           <div className="flex justify-center py-12"><Loader2 className="animate-spin text-gray-300" /></div>
         }>
-          {atual === 'cores'      && <Itens kind="cor" />}
-          {atual === 'acessorios' && <Itens kind="acessorio" />}
-          {atual === 'bordas'     && <Itens kind="borda" />}
-          {atual === 'tintas'     && <Itens kind="tinta" />}
-          {atual === 'itens'      && <Itens />}
-          {atual === 'insumos'    && <Insumos />}
+          {/* Sub-produto é o tipo `acessorio` no banco: o nome mudou na
+              tela, os cadastros (Tampa, Canudo) são os mesmos. */}
+          {atual === 'subprodutos' && <Itens kind="acessorio" />}
+          {atual === 'cores'       && <Itens kind="cor" />}
+          {atual === 'bordas'      && <Itens kind="borda" />}
+          {atual === 'insumos'     && <Insumos />}
         </Suspense>
       )}
     </div>
