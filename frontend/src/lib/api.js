@@ -17,6 +17,22 @@ const api = axios.create({
 const rotaPublica = url =>
   /^\/?acompanhar(\/|$)/.test(String(url || '').replace(/^\/api/, ''));
 
+// A PÁGINA aberta é do cliente (loja, catálogo, cadastro)? Lá, sessão do
+// ERP vencida não é problema de ninguém: o AuthProvider confere o acesso
+// em toda abertura, e o 401 jogava quem abriu o link do catálogo na tela
+// de login — e o clear() levava junto o carrinho do visitante.
+const paginaPublica = () =>
+  /^\/(loja|personalizados|catalogo|acompanhar|cadastro)/.test(window.location.pathname);
+
+function derrubarSessao() {
+  if (paginaPublica()) {
+    ['access_token', 'refresh_token', 'user', 'tenant'].forEach(k => localStorage.removeItem(k));
+    return;
+  }
+  localStorage.clear();
+  window.location.href = '/login';
+}
+
 api.interceptors.request.use((config) => {
   // O ACOMPANHAMENTO DO CLIENTE NÃO LEVA O TOKEN DO ERP.
   //
@@ -49,12 +65,10 @@ api.interceptors.response.use(
           error.config.headers.Authorization = `Bearer ${res.data.access_token}`;
           return api.request(error.config);
         } catch {
-          localStorage.clear();
-          window.location.href = '/login';
+          derrubarSessao();
         }
       } else {
-        localStorage.clear();
-        window.location.href = '/login';
+        derrubarSessao();
       }
     }
     return Promise.reject(error.response?.data || error);
