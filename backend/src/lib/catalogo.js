@@ -421,6 +421,9 @@ async function acabamentosDoGrupo(tenantId, produtos, catPorId) {
       acabamento_id: null,
       cores: itens.length,
       imagem: itens.map(primeiraFoto).find(Boolean) || null,
+      // Uma foto por cor, para o card ir passando por elas. Só a
+      // primeira fazia a grade inteira parecer a mesma caneca parada.
+      imagens: [...new Set(itens.map(primeiraFoto).filter(Boolean))],
       preco_de: Math.min(...itens.map(p => precoDe(p)).filter(v => v > 0), Infinity),
       qtd_minima: Math.max(...itens.map(p => p.min_order_qty || 1)),
       origem: 'peca',
@@ -444,6 +447,7 @@ async function acabamentosDoGrupo(tenantId, produtos, catPorId) {
         acabamento_id: a.id,
         cores: baseItens.length,
         imagem: baseItens.map(primeiraFoto).find(Boolean) || null,
+        imagens: [...new Set(baseItens.map(primeiraFoto).filter(Boolean))],
         preco_de: Math.min(...baseItens.map(p => precoDe(p)).filter(v => v > 0), Infinity),
         qtd_minima: Math.max(...baseItens.map(p => p.min_order_qty || 1)),
         origem: 'acabamento',

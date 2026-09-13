@@ -37,10 +37,14 @@ import { useCarrinho } from './carrinhoContexto';
  * São as do CADASTRO, uma por cor. Um acabamento com 14 cores tem 14
  * fotos reais — mostrar só a primeira faria a grade inteira parecer a
  * mesma caneca repetida.
+ *
+ * `inicio` DESENCONTRA OS CARDS. Os acabamentos aplicados usam as fotos
+ * da mesma peça base, na mesma ordem: começando todos do zero, a grade
+ * trocava junta e mostrava sete vezes a mesma cor.
  */
-function FotoModelo({ imagens, imagem, alt }) {
+function FotoModelo({ imagens, imagem, alt, inicio = 0 }) {
   const fotos = (imagens && imagens.length ? imagens : [imagem]).filter(Boolean);
-  const [i, setI] = useState(0);
+  const [i, setI] = useState(() => (fotos.length ? inicio % fotos.length : 0));
 
   useEffect(() => {
     if (fotos.length <= 1) return undefined;
@@ -168,7 +172,7 @@ export default function Modelos() {
                 <span className={`relative rounded-lg mb-3 flex items-center justify-center overflow-hidden ${
                   porAcabamento ? 'h-36' : 'h-28'}`}
                   style={{ background: '#FFF7F1' }}>
-                  <FotoModelo imagens={m.imagens} imagem={m.imagem} alt={m.nome} />
+                  <FotoModelo imagens={m.imagens} imagem={m.imagem} alt={m.nome} inicio={i * 3} />
                 </span>
 
                 <span className="block font-semibold text-[13.5px] leading-snug" style={{ color: NEON.texto }}>
