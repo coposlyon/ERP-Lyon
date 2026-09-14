@@ -159,13 +159,15 @@ function freteDoEstado(cfg, { uf, subtotal } = {}) {
  * tentação de "cotar 1 kg por padrão" é grande e a conta sairia errada
  * para todo mundo.
  */
-async function cotar(tenantId, { uf, cep, subtotal, itens, valor_nota } = {}) {
+async function cotar(tenantId, { uf, cep, subtotal, itens, valor_nota, forcar_total_express } = {}) {
   const cfg = await getFreteConfig(tenantId);
   const estado = String(uf || '').toUpperCase() || ufFromCep(cep);
 
   const gratis = cfg.free_above > 0 && Number(subtotal) >= cfg.free_above;
 
-  if (cfg.tex_enabled && cep && Array.isArray(itens) && itens.length && !gratis) {
+  // `forcar_total_express` é do simulador da Logística: confere a conta
+  // antes de ela ser ligada para o cliente.
+  if ((cfg.tex_enabled || forcar_total_express) && cep && Array.isArray(itens) && itens.length && !gratis) {
     const tex = await cotarPelaTotalExpress(tenantId, cfg, { cep, itens, valor_nota, subtotal });
     if (tex.ok) return tex.cotacao;
 
@@ -192,33 +194,31 @@ async function cotar(tenantId, { uf, cep, subtotal, itens, valor_nota } = {}) {
  * Total Express não atende, e a tabela por estado resolve.
  */
 async function cotarPelaTotalExpress(tenantId, cfg, { cep, itens, valor_nota, subtotal }) {
-  const { medirPedido } = require('./embalagem');
+  // A caixa sai do cadastro de Logística → Caixas e frete: caixa padrão
+  // ou a menor, peso da caixa cheia ÷ unidades, acréscimo por ocupação
+  // e o valor das caixas (lib/logisticaCaixas.js).
+  const { medirComCaixas, aplicarAoFrete } = require('./logisticaCaixas');
   const { cotarTotalExpress, temTabela } = require('./totalexpress');
 
   if (!(await temTabela(tenantId))) {
     return { ok: false, pendencia: { motivo: 'A tabela da Total Express não foi carregada neste banco.' } };
   }
 
-  const medida = await medirPedido(tenantId, itens);
-  if (!medida.ok) {
-    const falta = [
-      medida.sem_peso.length   ? `sem peso: ${medida.sem_peso.slice(0, 3).join(', ')}` : '',
-      medida.sem_medida.length ? `sem medida de caixa: ${medida.sem_medida.slice(0, 3).join(', ')}` : '',
-    ].filter(Boolean).join(' · ');
+  const envio = await medirComCaixas(tenantId, itens);
+  if (!envio.ok) {
     return {
       ok: false,
       pendencia: {
-        motivo: `Frete por estado: falta cadastro para calcular (${falta}).`,
-        sem_peso: medida.sem_peso,
-        sem_medida: medida.sem_medida,
+        motivo: `Frete por estado: falta cadastro de caixa para calcular (${envio.faltas.slice(0, 3).join(' · ')}).`,
+        faltas: envio.faltas,
       },
     };
   }
 
   const r = await cotarTotalExpress(tenantId, {
     cep,
-    peso_real: medida.peso_real,
-    peso_cubado: medida.peso_cubado,
+    peso_real: envio.peso_real,
+    peso_cubado: envio.peso_cubado,
     valor_nota: Number(valor_nota) || Number(subtotal) || 0,
     opcoes: {
       municipio_origem: cfg.tex_municipio_origem,
@@ -230,20 +230,42 @@ async function cotarPelaTotalExpress(tenantId, cfg, { cep, itens, valor_nota, su
   // CEP fora da abrangência não é erro: é a hora da tabela por estado.
   if (!r.ok) return { ok: false, pendencia: null };
 
+  const conta = aplicarAoFrete(r.price, envio);
   return {
     ok: true,
     cotacao: {
       source: 'total_express',
       uf: r.memoria.uf,
-      price: r.price,
+      // O preço é o que o cliente paga: frete + acréscimo + caixas.
+      price: conta.total,
       days: r.days,
       free: false,
       sem_regra: false,
-      caixas: medida.caixas,
-      memoria: r.memoria,
+      volumes: envio.volumes,
+      caixas: envio.detalhe.map(d => ({ nome: d.caixa.nome, volumes: d.volumes, unidades: d.unidades, caixa_pequena: d.caixa_pequena })),
+      memoria: {
+        ...r.memoria,
+        frete_total_express: conta.frete_base,
+        ocupacao_pct: envio.ocupacao_pct,
+        acrescimo_pct: envio.aplica_acrescimo ? envio.acrescimo_pct : 0,
+        acrescimo_valor: conta.acrescimo,
+        valor_caixas: conta.valor_caixas,
+      },
       avisos: r.avisos,
     },
   };
 }
 
-module.exports = { getFreteConfig, freteDoEstado, cotar, ufFromCep };
+/** Uma linha legível do frete calculado, para o rodapé do pedido. */
+function resumoDoFrete(c) {
+  if (!c || c.source !== 'total_express') return null;
+  const brl = v => `R$ ${(Number(v) || 0).toFixed(2).replace('.', ',')}`;
+  const m = c.memoria || {};
+  const cx = (c.caixas || []).map(x => `${x.volumes}× ${x.nome}`).join(', ');
+  return `Frete Total Express ${brl(c.price)} = frete ${brl(m.frete_total_express)}`
+    + (m.acrescimo_valor ? ` + ${m.acrescimo_pct}% ocupação ${m.ocupacao_pct}% (${brl(m.acrescimo_valor)})` : '')
+    + (m.valor_caixas ? ` + caixas ${brl(m.valor_caixas)}` : '')
+    + (cx ? ` · ${cx}` : '');
+}
+
+module.exports = { getFreteConfig, freteDoEstado, cotar, ufFromCep, resumoDoFrete };

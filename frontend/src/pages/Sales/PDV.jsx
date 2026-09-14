@@ -199,6 +199,31 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [couponInput, setCouponInput] = useState('');
   const [coupon, setCoupon] = useState(null); // { coupon_id, code, discount_type, discount_value }
   const [carrierId, setCarrierId] = useState(''); // transportadora desta venda
+  // O frete calculado pela mesma conta do site: Total Express com as
+  // caixas de Logística → Caixas e frete, ou a tabela por estado.
+  const [cotandoFrete, setCotandoFrete] = useState(false);
+  async function calcularFrete() {
+    const cep = String(selectedCustomer?.address?.zip || '').replace(/\D/g, '');
+    if (cep.length !== 8) { toast.error('O cliente não tem CEP válido no cadastro.'); return; }
+    if (!items.length) { toast.error('Adicione os produtos antes de calcular o frete.'); return; }
+    setCotandoFrete(true);
+    try {
+      const sub = items.reduce((s, i) => s + i.quantity * i.unit_price - (i.discount || 0), 0);
+      const r = await api.post('/shipping/quote', {
+        cep, subtotal: sub, valor_nota: sub,
+        itens: items.map(i => ({ product_id: i.product_id, quantity: i.quantity })),
+      });
+      if (r.sem_regra) { toast.error('Sem frete cadastrado para esse estado. Informe o valor à mão.'); return; }
+      setFreightInput(maskMoney(r.price));
+      if (r.source === 'total_express') {
+        const m = r.memoria || {};
+        toast.success(`Total Express: ${fmt(r.price)} — frete ${fmt(m.frete_total_express)}${m.acrescimo_valor ? ` + ${m.acrescimo_pct}% (${fmt(m.acrescimo_valor)})` : ''}${m.valor_caixas ? ` + caixas ${fmt(m.valor_caixas)}` : ''}`, { duration: 8000 });
+      } else {
+        toast(`Frete por estado: ${fmt(r.price)}${r.tex_pendencia ? ` — ${r.tex_pendencia.motivo}` : ''}`, { duration: 8000 });
+      }
+    } catch (e) { toast.error(e?.error || 'Não foi possível calcular o frete'); }
+    finally { setCotandoFrete(false); }
+  }
   const [freightInput, setFreightInput] = useState(''); // valor do frete (R$) — editável
   const [quoteNumber, setQuoteNumber] = useState(''); // nº da cotação do frete na transportadora
 
@@ -1368,6 +1393,10 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
               onChange={e => setFreightInput(e.target.value.replace(/[^\d.,]/g, ''))}
               onBlur={() => { if (freightInput.trim() !== '') setFreightInput(maskMoney(parseMoney(freightInput))); }}
               placeholder="0,00" />
+            <button type="button" onClick={calcularFrete} disabled={cotandoFrete}
+              className="mt-1 text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
+              {cotandoFrete ? <Loader2 size={12} className="animate-spin" /> : <Truck size={12} />} calcular frete
+            </button>
           </div>
 
           {/* Nº da cotação do frete */}

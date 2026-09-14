@@ -130,6 +130,8 @@ router.use('/price-tables',   requireModules('price-tables','sales','pdv'), pric
 router.use('/coupons',   requireModules('sales','pdv','price-tables','settings'), require('./coupons'));
 router.use('/financial-config', requireModules('financial','settings'), financialConfigRoutes);
 router.use('/logistics', requireModules('logistics'), logisticsRoutes);
+// Caixas, regras de embalagem e simulador do frete (Logística → Caixas e frete).
+router.use('/logistica-caixas', requireModules('logistics'), require('./logisticaCaixas'));
 // A FILA DA EXPEDICAO. Mora ao lado do cadastro de transportadoras
 // porque e a mesma pessoa que abre as duas — mas e outro trabalho:
 // quais pedidos estao prontos, quais ja foram avisados, qual espera

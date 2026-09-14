@@ -664,10 +664,16 @@ router.post('/pagamento', escritaLimiter, async (req, res) => {
     // pedido diz isso.
     let freteValor = 0;
     let freteACombinar = false;
+    let freteDetalhe = null;
     if (!retirar) {
       const uf = ufFromCep(cepDigitos);
       if (!uf) return res.status(400).json({ error: 'Não consegui identificar o estado pelo CEP.' });
-      const r = freteDoEstado(await getFreteConfig(STORE_TENANT), { uf, subtotal });
+      const { cotar, resumoDoFrete } = require('../lib/shipping');
+      const r = await cotar(STORE_TENANT, {
+        uf, cep: cepDigitos, subtotal, valor_nota: subtotal,
+        itens: linhas.map(l => ({ product_id: l.product_id, quantity: l.quantidade })),
+      });
+      freteDetalhe = resumoDoFrete(r);
       if (r.sem_regra) freteACombinar = true;
       else freteValor = Math.max(0, Number(r.price) || 0);
     }
@@ -678,6 +684,7 @@ router.post('/pagamento', escritaLimiter, async (req, res) => {
       !retirar ? 'CEP: ' + cepDigitos.replace(/(\d{5})(\d{3})/, '$1-$2') : null,
       retirar ? 'Retirada no local' : null,
       freteACombinar ? 'Frete a combinar (estado sem tabela)' : null,
+      freteDetalhe,
       data_evento ? 'Data do evento: ' + String(data_evento).split('-').reverse().join('/') : null,
       forma ? 'Forma escolhida pelo cliente: ' + String(forma).toUpperCase() : null,
       observacao ? 'Obs: ' + observacao : null,

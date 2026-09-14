@@ -1596,8 +1596,10 @@ router.post('/frete', async (req, res) => {
       }
     }
 
-    const cfg = await getFreteConfig(STORE_TENANT);
-    const r = freteDoEstado(cfg, { uf, subtotal });
+    // Total Express (quando ligada e com as caixas cadastradas) ou a
+    // tabela por estado — a mesma conta do pedido e do ERP.
+    const { cotar } = require('../lib/shipping');
+    const r = await cotar(STORE_TENANT, { uf, cep, subtotal, valor_nota: subtotal, itens: items.map(i => ({ product_id: i.product_id, quantity: Number(i.quantity) || 0 })) });
 
     // Estado sem valor cadastrado: dizer "a combinar" é honesto; mandar
     // R$ 0,00 seria prometer frete grátis que ninguém combinou.
@@ -1611,9 +1613,9 @@ router.post('/frete', async (req, res) => {
     res.json({
       uf,
       options: [{
-        id: 'estado',
-        company: 'Entrega',
-        service: r.free ? 'Frete gr\u00e1tis' : 'Padr\u00e3o',
+        id: r.source === 'total_express' ? 'total_express' : 'estado',
+        company: r.source === 'total_express' ? 'Total Express' : 'Entrega',
+        service: r.free ? 'Frete gr\u00e1tis' : (r.memoria?.valor_caixas ? 'Padr\u00e3o (inclui embalagem)' : 'Padr\u00e3o'),
         price: r.price,
         days: r.days,
       }],

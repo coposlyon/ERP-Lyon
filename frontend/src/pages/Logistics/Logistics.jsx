@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 // transportadoras porque e a mesma pessoa que abre as duas — mas e
 // outro trabalho, e por isso e outra aba, e nao mais uma coluna.
 import Expedicao from './Expedicao';
+import CaixasFrete from './CaixasFrete';
 // A FILA DE ETAPAS DA LOGISTICA: coleta, transito e entrega (status
 // 24-28 da regua), com iniciar/finalizar e dupla confirmacao — a MESMA
 // tela da producao, lendo a fatia da logistica.
@@ -641,6 +642,7 @@ export default function Logistics() {
           <p className="text-sm text-gray-500 mt-1">
             {aba === 'fila' ? 'Coleta · Trânsito · Entrega — as etapas do que sai da porta'
               : aba === 'expedicao' ? 'Pedidos prontos, avisos ao cliente, coleta e documentos'
+              : aba === 'caixas' ? 'Caixas, regras de embalagem e simulador de frete'
               : `${data?.total || 0} transportadoras cadastradas`}
           </p>
         </div>
@@ -659,7 +661,7 @@ export default function Logistics() {
           e a mesma pessoa — mas o trabalho de hoje e a fila, e por isso
           ela abre primeiro. */}
       <div className="flex gap-6 border-b border-gray-200">
-        {[['fila', 'Etapas'], ['expedicao', 'Expedição'], ['transportadoras', 'Transportadoras']].map(([k, l]) => (
+        {[['fila', 'Etapas'], ['expedicao', 'Expedição'], ['transportadoras', 'Transportadoras'], ['caixas', 'Caixas e frete']].map(([k, l]) => (
           <button key={k} onClick={() => setAba(k)}
             className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
               aba === k ? 'border-primary-600 text-primary-600'
@@ -685,6 +687,7 @@ export default function Logistics() {
         />
       )}
       {aba === 'expedicao' && <Expedicao />}
+      {aba === 'caixas' && <CaixasFrete />}
 
       <div className="card" hidden={aba !== 'transportadoras'}>
         <div className="card-header">
