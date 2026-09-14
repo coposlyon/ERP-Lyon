@@ -272,8 +272,8 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
 
   return (
     <>
-    <Modal isOpen={isOpen} onClose={handleClose} title="Edição em massa" size="lg">
-      <div className="space-y-4 max-h-[85vh] overflow-y-auto pr-1">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Edição em massa" size="full">
+      <div className="space-y-4">
         <p className="text-sm text-gray-500">
           Filtre por <b>categoria</b> ou <b>modelo</b>, selecione os produtos e defina o que quer alterar.
           Só os campos preenchidos são aplicados.
@@ -406,7 +406,7 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
                   dezoito bordas e vinte e cinco cores continuam sendo
                   uma fieira só, e o chip de cima não teria a que
                   corresponder na hora de conferir. */}
-              <div className="max-h-56 overflow-y-auto rounded-xl border border-gray-200">
+              <div className="max-h-[40vh] overflow-y-auto rounded-xl border border-gray-200">
                 {gruposAdic.map(g => (
                   <div key={g.chave}>
                     {gruposAdic.length > 1 && (
