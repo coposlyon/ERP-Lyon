@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Truck, PackageCheck, Search, RefreshCw, Loader2, FileText, Tag, MessageCircle,
-  FileCheck2, Clock, PersonStanding, ExternalLink, CircleCheck, AlertTriangle, Printer,
+  FileCheck2, Clock, PersonStanding, ExternalLink, CircleCheck, AlertTriangle, Printer, Send,
 } from 'lucide-react';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
@@ -188,6 +188,68 @@ function PerguntaVolumes({ acao, onConfirmar, onCancelar, enviando }) {
   );
 }
 
+/**
+ * O LOTE DA TOTAL EXPRESS.
+ *
+ * A Total Express proíbe transmitir pedido a pedido: a coleta vai em
+ * lote, uma vez por expedição. Aqui se vê quem está pronto e quem não
+ * está, com o motivo — antes de transmitir, e não na resposta de erro.
+ */
+function LoteTotalExpress({ tex, selecionados, onMudar, enviando, onCancelar, onEnviar }) {
+  const pedidos = tex?.pedidos || [];
+  const alternar = id => {
+    const s = new Set(selecionados);
+    if (s.has(id)) s.delete(id); else s.add(id);
+    onMudar(s);
+  };
+  return (
+    <div className="space-y-3">
+      {!tex?.configurado && (
+        <p className="text-[12.5px] rounded-xl px-3 py-2 bg-amber-50 border border-amber-200 text-amber-900">
+          O acesso ao webservice não está configurado. Preencha em Configurações → Frete.
+        </p>
+      )}
+      {tex?.migracao_pendente && (
+        <p className="text-[12.5px] rounded-xl px-3 py-2 bg-amber-50 border border-amber-200 text-amber-900">
+          A migração 120 ainda não foi aplicada no banco.
+        </p>
+      )}
+      <p className="text-[13px] text-gray-600">
+        Serviço: <b>{tex?.servico || '—'}</b>. Só vão os pedidos com NF-e autorizada e cadastro completo.
+      </p>
+      {pedidos.length === 0 ? (
+        <p className="text-sm text-gray-400">Nenhum pedido da Total Express esperando coleta.</p>
+      ) : (
+        <ul className="divide-y divide-gray-100 border border-gray-200 rounded-xl max-h-[50vh] overflow-y-auto">
+          {pedidos.map(p => (
+            <li key={p.id} className="px-3 py-2 flex items-start gap-3">
+              <input type="checkbox" className="mt-1" disabled={!p.pronto}
+                checked={p.pronto && selecionados.has(p.id)} onChange={() => alternar(p.id)} />
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-gray-800">{p.codigo} · {p.cliente || '—'}</p>
+                <p className="text-[11.5px] text-gray-500">
+                  {[p.cidade, p.uf].filter(Boolean).join(' / ') || 'sem cidade'}
+                  {p.nota ? ` · NF ${p.nota}` : ''}
+                  {p.volumes ? ` · ${p.volumes} volume(s)` : ''}
+                  {p.peso ? ` · ${p.peso} kg` : ''}
+                </p>
+                {!p.pronto && <p className="text-[11.5px] text-amber-700 mt-0.5">{p.problemas.join(' ')}</p>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex justify-end gap-2 pt-1">
+        <button className="btn-secondary" onClick={onCancelar} disabled={enviando}>Cancelar</button>
+        <button className="btn-primary" disabled={enviando || !selecionados.size || !tex?.configurado}
+          onClick={() => onEnviar([...selecionados])}>
+          {enviando ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Transmitir {selecionados.size} pedido(s)
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Expedicao() {
   const qc = useQueryClient();
   const [faixa, setFaixa] = useState('a_expedir');
@@ -235,6 +297,41 @@ export default function Expedicao() {
     onError: e => toast.error(e.error || 'Não foi possível emitir a nota'),
   });
 
+  // TOTAL EXPRESS: o lote de coletas e o rastreio.
+  const [loteTex, setLoteTex] = useState(null);   // { selecionados: Set }
+  const { data: tex } = useQuery({
+    queryKey: ['tex-pendentes'],
+    queryFn: () => api.get('/shipping/total-express/pendentes'),
+    retry: false,
+  });
+  const texProntos = (tex?.pedidos || []).filter(p => p.pronto);
+
+  const enviarTex = useMutation({
+    mutationFn: ids => api.post('/shipping/total-express/registrar-coleta', { sale_ids: ids }),
+    onSuccess: r => {
+      setLoteTex(null);
+      if (r.enviados?.length) toast.success(`${r.enviados.length} pedido(s) transmitido(s) à Total Express`);
+      if (r.rejeitados?.length) {
+        toast.error(`Recusados: ${r.rejeitados.map(x => `${x.pedido} (${x.erro})`).join('; ')}`, { duration: 9000 });
+      }
+      if (r.falhas?.length) toast.error(r.falhas.map(f => f.mensagem).join(' · '), { duration: 9000 });
+      qc.invalidateQueries({ queryKey: ['tex-pendentes'] });
+      recarregar();
+    },
+    onError: e => toast.error(e.error || 'Não foi possível transmitir à Total Express'),
+  });
+
+  const rastreioTex = useMutation({
+    mutationFn: () => api.post('/shipping/total-express/rastreio/sincronizar'),
+    onSuccess: r => {
+      toast.success(r.encomendas
+        ? `Rastreio: ${r.status_novos} status novo(s), ${r.pedidos_avancados} pedido(s) atualizado(s)`
+        : 'Nenhum rastreio novo da Total Express.');
+      recarregar();
+    },
+    onError: e => toast.error(e.error || 'Não foi possível atualizar o rastreio'),
+  });
+
   async function papel(pedido, tipo, volumes) {
     try {
       const r = await api.get(`/expedicao/${pedido.id}/${tipo}${volumes ? `?volumes=${volumes}` : ''}`);
@@ -267,6 +364,20 @@ export default function Expedicao() {
           <span className="text-[12px] ml-1 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800">
             {c.a_avisar} pedido(s) pronto(s) e o cliente ainda não sabe.
           </span>
+        )}
+
+        {tex?.transportadora_cadastrada && (
+          <>
+            <button className="btn-secondary btn-sm"
+              onClick={() => setLoteTex({ selecionados: new Set(texProntos.map(p => p.id)) })}>
+              <Send size={13} /> Total Express
+              {tex.pedidos?.length ? ` (${texProntos.length}/${tex.pedidos.length})` : ''}
+            </button>
+            <button className="btn-secondary btn-sm" onClick={() => rastreioTex.mutate()} disabled={rastreioTex.isPending}
+              title="Buscar agora os status novos na Total Express">
+              {rastreioTex.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Rastreio
+            </button>
+          </>
         )}
 
         <form className="ml-auto flex gap-2" onSubmit={e => { e.preventDefault(); setBuscaAtiva(busca); }}>
@@ -333,6 +444,10 @@ export default function Expedicao() {
                   )}
                   <Marca ok={!!l.nota}
                     texto={l.nota ? `NF ${l.nota.numero || ''} ${l.nota.status || ''}`.trim() : 'Sem nota emitida'} />
+                  {l.total_express && (
+                    <Marca ok texto={`Total Express · ${l.total_express.ultimo_status
+                      || `transmitido ${dataHora(l.total_express.created_at)}`}`} />
+                  )}
                 </div>
               </div>
 
@@ -370,6 +485,12 @@ export default function Expedicao() {
                   <Tag size={13} /> Etiqueta de volume
                 </button>
 
+                {l.total_express?.link_rastreio && (
+                  <a className="btn-secondary btn-sm" href={l.total_express.link_rastreio} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink size={13} /> Rastrear
+                  </a>
+                )}
+
                 <button className="btn-secondary btn-sm ml-auto" onClick={() => setHistorico(l)}>
                   <Clock size={13} /> Histórico
                 </button>
@@ -398,6 +519,16 @@ export default function Expedicao() {
                 setPerguntando(null);
               }
             }} />
+        )}
+      </Modal>
+
+      <Modal isOpen={!!loteTex} onClose={() => setLoteTex(null)} title="Enviar coletas à Total Express" size="md">
+        {loteTex && (
+          <LoteTotalExpress tex={tex} selecionados={loteTex.selecionados}
+            onMudar={s => setLoteTex({ selecionados: s })}
+            enviando={enviarTex.isPending}
+            onCancelar={() => setLoteTex(null)}
+            onEnviar={ids => enviarTex.mutate(ids)} />
         )}
       </Modal>
 

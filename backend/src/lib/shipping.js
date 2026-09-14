@@ -95,6 +95,19 @@ async function getFreteConfig(tenantId) {
     // Confirmado pela Total Express em 11/09/2026: o imposto é somado
     // depois do frete, não embutido nele.
     tex_imposto_modo: s.tex_imposto_modo || 'por_fora',
+
+    // O WEBSERVICE da Total Express (EDI ICS V24): transmite as coletas e
+    // traz o rastreio. Não tem nada a ver com o preço acima — é a outra
+    // metade da integração (lib/totalexpressWs.js).
+    tex_ws_url:      s.tex_ws_url || process.env.TOTALEXPRESS_WS_URL || 'https://edi.totalexpress.com.br/webservice24.php',
+    tex_ws_user:     s.tex_ws_user || process.env.TOTALEXPRESS_WS_USER || '',
+    tex_ws_password: s.tex_ws_password || process.env.TOTALEXPRESS_WS_PASSWORD || '',
+    // REID: o código da empresa na Total Express, usado no link de rastreio.
+    tex_reid:        String(s.tex_reid || process.env.TOTALEXPRESS_REID || ''),
+    // Serviço contratado (manual, campo TipoServico): 1 = Expresso.
+    tex_servico:     Number(s.tex_servico) || 1,
+    tex_natureza:    s.tex_natureza || 'COPOS PERSONALIZADOS',
+    tex_carrier_id:  s.tex_carrier_id || null,
   };
 }
 

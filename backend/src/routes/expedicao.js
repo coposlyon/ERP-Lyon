@@ -151,6 +151,20 @@ router.get('/', async (req, res) => {
     // As notas emitidas destes pedidos, numa consulta só. Perguntar por
     // pedido seriam quarenta idas ao banco para desenhar uma tela.
     const ids = (data || []).map(v => v.id);
+    // O ENVIO À TOTAL EXPRESS, quando houve: protocolo, último status e
+    // o link de rastreio, para a linha dizer que a coleta já foi
+    // transmitida sem ninguém abrir o histórico.
+    const enviosTex = {};
+    try {
+      const idsTex = (data || []).map(v => v.id);
+      if (idsTex.length) {
+        const { data: es } = await supabase.from('TOTALEXPRESS_ENVIOS')
+          .select('sale_id, protocolo, created_at, link_rastreio, awb, ultimo_status, ultimo_status_em')
+          .eq('tenant_id', req.tenantId).eq('situacao', 'enviado').in('sale_id', idsTex);
+        for (const e of es || []) enviosTex[e.sale_id] = e;
+      }
+    } catch { /* migração 120 ainda não aplicada: a fila segue sem isso */ }
+
     const notas = {};
     if (ids.length) {
       try {
@@ -189,6 +203,7 @@ router.get('/', async (req, res) => {
         transportadora: transportadoras[v.carrier_id]?.trade_name
           || transportadoras[v.carrier_id]?.name || null,
         rastreio: v.tracking_code || null,
+        total_express: enviosTex[v.id] || null,
         quem_retira: v.pickup_person?.nome || null,
         nota: notas[v.id] || null,
         // O que já foi feito aqui — para o botão não repetir o que já

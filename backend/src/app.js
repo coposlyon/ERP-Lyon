@@ -185,6 +185,10 @@ async function iniciar() {
 
   app.listen(PORT, () => {
     console.log(`Dator ERP Backend running on port ${PORT}`);
+    // Rastreio da Total Express de hora em hora. Só age em empresa com o
+    // webservice configurado e encomenda ainda não entregue.
+    try { require('./lib/totalexpressServico').iniciarAgendamento(); }
+    catch (err) { console.error('[total-express] agendamento não iniciou:', err.message); }
   });
 }
 

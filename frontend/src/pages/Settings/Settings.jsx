@@ -492,6 +492,8 @@ export default function Settings() {
               )}
             </div>
 
+            <TotalExpressWebservice frete={form.settings?.frete || {}} setFrete={setFrete} isAdmin={isAdmin} />
+
             {isAdmin && (
               <div className="flex justify-end">
                 <button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="btn-primary">
@@ -805,6 +807,99 @@ function TabelaFretePorEstado({ linhas, aoMudar, isAdmin }) {
         <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mt-3">
           Nenhum estado tem valor: o site vai dizer ao cliente que o frete será combinado depois.
         </p>
+      )}
+    </div>
+  );
+}
+
+// ── Total Express: o webservice de coleta e rastreio ─────────
+//
+// O preço continua saindo da tabela negociada. Aqui mora só o acesso ao
+// webservice (EDI ICS V24), que transmite as coletas da Expedição e traz
+// o rastreio de volta. A conta da Total Express também libera por IP: o
+// teste mostra o IP do servidor, que é o número a mandar para eles.
+const SERVICOS_TOTAL_EXPRESS = [
+  [1, 'Expresso'], [2, 'Especial'], [3, 'Standard com transferência rodoviária'],
+  [4, 'Entrega Fácil'], [5, 'Premium'], [6, 'Standard'], [7, 'Super Expresso'],
+];
+
+function TotalExpressWebservice({ frete, setFrete, isAdmin }) {
+  const [teste, setTeste] = useState(null);
+  const [testando, setTestando] = useState(false);
+
+  async function testar() {
+    setTestando(true);
+    try { setTeste(await api.get('/shipping/total-express/diagnostico')); }
+    catch (e) { setTeste({ erro: e.error || 'Não foi possível testar agora.' }); }
+    finally { setTestando(false); }
+  }
+
+  const liberado = !!teste?.acesso?.ok;
+  return (
+    <div className="border-t border-gray-100 pt-5">
+      <h3 className="font-medium text-gray-900">Total Express — coleta e rastreio (webservice)</h3>
+      <p className="text-sm text-gray-500 mt-1">
+        Com o acesso preenchido, a <b>Expedição</b> transmite as coletas em lote para a Total Express,
+        e o rastreio volta sozinho de hora em hora, atualizando a etapa do pedido.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+        <div>
+          <label className="label">Usuário</label>
+          <input className="input font-mono" autoComplete="off" value={frete.tex_ws_user || ''}
+            onChange={e => setFrete('tex_ws_user', e.target.value)} disabled={!isAdmin} />
+        </div>
+        <div>
+          <label className="label">Senha</label>
+          <input type="password" className="input font-mono" autoComplete="new-password" value={frete.tex_ws_password || ''}
+            onChange={e => setFrete('tex_ws_password', e.target.value)} disabled={!isAdmin} />
+        </div>
+        <div>
+          <label className="label">REID (código da empresa na Total Express)</label>
+          <input className="input font-mono" value={frete.tex_reid || ''}
+            onChange={e => setFrete('tex_reid', e.target.value)} disabled={!isAdmin} />
+        </div>
+        <div>
+          <label className="label">Serviço contratado</label>
+          <select className="input" value={frete.tex_servico || 1}
+            onChange={e => setFrete('tex_servico', Number(e.target.value))} disabled={!isAdmin}>
+            {SERVICOS_TOTAL_EXPRESS.map(([v, n]) => <option key={v} value={v}>{v} — {n}</option>)}
+          </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label">Natureza da mercadoria (vai no CT-e)</label>
+          <input className="input" maxLength={25} value={frete.tex_natureza || ''} placeholder="COPOS PERSONALIZADOS"
+            onChange={e => setFrete('tex_natureza', e.target.value)} disabled={!isAdmin} />
+        </div>
+      </div>
+
+      {isAdmin && (
+        <div className="mt-3 flex items-center gap-2">
+          <button type="button" className="btn-secondary" onClick={testar} disabled={testando}>
+            {testando ? 'Testando…' : 'Testar conexão'}
+          </button>
+          <span className="text-xs text-gray-400">Salve antes de testar.</span>
+        </div>
+      )}
+
+      {teste && (
+        <div className={`mt-3 text-sm rounded-lg px-3 py-2 border ${
+          liberado ? 'bg-green-50 border-green-200 text-green-800' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+          {teste.erro ? teste.erro : (
+            <>
+              <p><b>{liberado ? 'Acesso liberado.' : (teste.acesso?.mensagem || 'Usuário e senha ainda não configurados.')}</b></p>
+              {teste.ip_do_servidor && (
+                <p className="mt-1">
+                  IP de saída deste servidor: <b className="font-mono">{teste.ip_do_servidor}</b>
+                  {!liberado && ' — envie este IP à Total Express (edi@totalexpress.com.br) para liberarem o acesso.'}
+                </p>
+              )}
+              {!teste.transportadora_cadastrada && (
+                <p className="mt-1">Cadastre a transportadora "Total Express" em Logística para os pedidos poderem usá-la.</p>
+              )}
+              {!teste.migracao_aplicada && <p className="mt-1">A migração 120 ainda não foi aplicada no banco.</p>}
+            </>
+          )}
+        </div>
       )}
     </div>
   );

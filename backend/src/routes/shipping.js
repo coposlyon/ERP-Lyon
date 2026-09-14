@@ -124,5 +124,64 @@ router.get('/braspress/track/:nf', async (req, res) => {
   } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 });
 
+// ════════════════════════════════════════════════════════════
+// TOTAL EXPRESS — O WEBSERVICE (coleta e rastreio)
+// ════════════════════════════════════════════════════════════
+const texServico = () => require('../lib/totalexpressServico');
+
+// GET /api/shipping/total-express/diagnostico
+//
+// O IP de saída deste servidor e se a Total Express aceita o acesso. A
+// conta deles só aceita IP cadastrado: com usuário e senha certos, um IP
+// novo ainda recebe "Acesso Negado". Este é o número que se manda para
+// eles liberarem.
+router.get('/total-express/diagnostico', async (req, res) => {
+  if (req.userProfile?.role !== 'admin') {
+    return res.status(403).json({ error: 'Apenas administradores podem testar o acesso.' });
+  }
+  try { res.json(await texServico().diagnostico(req.tenantId)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/shipping/total-express/pendentes — quem está pronto para ir, e
+// quem não está com o motivo escrito.
+router.get('/total-express/pendentes', async (req, res) => {
+  try {
+    const r = await texServico().pendentes(req.tenantId);
+    res.json({ ...r, pedidos: r.pedidos.map(({ _encomenda, _nota_numero, ...p }) => p) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/shipping/total-express/registrar-coleta — o LOTE. A Total
+// Express proíbe transmitir pedido a pedido.
+router.post('/total-express/registrar-coleta', async (req, res) => {
+  const ids = Array.isArray(req.body?.sale_ids) ? req.body.sale_ids : [];
+  try {
+    const quem = req.userProfile?.name || req.user?.email || 'Usuário';
+    const r = await texServico().registrarColeta(req.tenantId, ids, quem);
+    audit(req, 'create', 'total-express-coleta', r.remessa, {
+      enviados: r.enviados.length, rejeitados: r.rejeitados.length, falhas: r.falhas.length,
+    });
+    res.json(r);
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+});
+
+// POST /api/shipping/total-express/rastreio/sincronizar — o botão de
+// "atualizar agora". O automático já roda de hora em hora; o intervalo
+// mínimo aqui é para ninguém martelar o serviço deles.
+const ultimaSincronizacao = {};
+router.post('/total-express/rastreio/sincronizar', async (req, res) => {
+  const agora = Date.now();
+  if (agora - (ultimaSincronizacao[req.tenantId] || 0) < 5 * 60 * 1000) {
+    return res.status(429).json({ error: 'O rastreio foi atualizado há menos de 5 minutos. A Total Express gera os retornos de hora em hora.' });
+  }
+  ultimaSincronizacao[req.tenantId] = agora;
+  try {
+    const r = await texServico().sincronizarRastreio(req.tenantId, { dataConsulta: req.body?.data || null });
+    if (!r.ok) return res.status(502).json({ error: r.mensagem, ip_bloqueado: r.ip_bloqueado || null });
+    res.json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
 module.exports.ufFromCep = ufFromCep;
