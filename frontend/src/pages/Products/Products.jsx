@@ -74,9 +74,10 @@ export default function Products() {
   );
 
   // Opções dos filtros (cores e tamanhos que existem no catálogo)
+  // Dentro de uma categoria, cores e tamanhos são só os dela.
   const { data: filterOpts } = useQuery({
-    queryKey: ['product-filters'],
-    queryFn: () => api.get('/products/filters'),
+    queryKey: ['product-filters', categoryId],
+    queryFn: () => api.get(`/products/filters${categoryId ? `?category_id=${categoryId}` : ''}`),
   });
   const colorOptions = filterOpts?.colors || [];
   const volumeOptions = filterOpts?.volumes || [];

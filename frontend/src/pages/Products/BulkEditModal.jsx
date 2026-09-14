@@ -56,12 +56,18 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
     queryFn: () => api.get('/products/categories/list'),
     enabled: isOpen,
   });
+  // Os tamanhos seguem a categoria escolhida: só os que existem nela.
   const { data: filterOpts } = useQuery({
-    queryKey: ['product-filters'],
-    queryFn: () => api.get('/products/filters'),
+    queryKey: ['product-filters', categoryId],
+    queryFn: () => api.get(`/products/filters${categoryId ? `?category_id=${categoryId}` : ''}`),
     enabled: isOpen,
   });
   const volumeOptions = filterOpts?.volumes || [];
+  // Trocou de categoria e o tamanho escolhido não existe nela: volta
+  // para "Todos", senão a lista fica vazia sem motivo aparente.
+  useEffect(() => {
+    if (size && filterOpts && !volumeOptions.some(v => parseInt(v) === Number(size))) setSize('');
+  }, [filterOpts]); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: suppliersData } = useQuery({
     queryKey: ['suppliers-list'],
     queryFn: () => api.get('/suppliers?limit=200&is_active=true'),

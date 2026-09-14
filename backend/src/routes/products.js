@@ -668,11 +668,15 @@ router.post('/images/clear-generated', async (req, res) => {
 // cores citadas nos nomes (com acento, como estão no banco) e tamanhos (ML).
 router.get('/filters', async (req, res) => {
   try {
-    const { data, error } = await supabase
+    // Com `category_id`, só as cores e os tamanhos QUE EXISTEM naquela
+    // categoria. Oferecer 180 ML dentro da Caneca Slim (que só tem 400)
+    // é um filtro que só existe para dar em "Nenhum produto".
+    let q = supabase
       .from('PRODUTOS')
       .select('name')
-      .eq('tenant_id', req.tenantId)
-      .limit(5000);
+      .eq('tenant_id', req.tenantId);
+    if (req.query.category_id) q = q.eq('category_id', req.query.category_id);
+    const { data, error } = await q.limit(5000);
     if (error) throw error;
 
     // agrupa por forma normalizada e usa a grafia mais comum como rótulo
