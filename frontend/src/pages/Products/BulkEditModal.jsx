@@ -20,7 +20,7 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
   const [ncm, setNcm] = useState('');
   const [cst, setCst] = useState('');
   const [cfop, setCfop] = useState('');
-  const [inkType, setInkType] = useState('');       // '' = N/A (não altera) | PP | PS
+  const [inkType, setInkType] = useState('');       // '' = OFF (não altera) | PP | PS
   // Publicação em massa. '' = não altera | 'sim' | 'nao'. No cadastro
   // existe um produto POR COR: colocar um modelo no ar de uma em uma
   // seriam 24 cliques, e é assim que metade das cores fica esquecida.
@@ -488,7 +488,7 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
         <div>
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Fornecedor</p>
           <select className="input w-full sm:w-72" value={supplierId} onChange={e => setSupplierId(e.target.value)}>
-            <option value="">N/A</option>
+            <option value="">OFF</option>
             <option value="__none__">Limpar (sem fornecedor)</option>
             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
@@ -510,7 +510,7 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Tinta do copo</p>
           <div className="flex flex-wrap gap-2">
             {[
-              ['', 'N/A'],
+              ['', 'OFF'],
               ['PP', 'PP'],
               ['PS', 'PS'],
             ].map(([v, label]) => (
