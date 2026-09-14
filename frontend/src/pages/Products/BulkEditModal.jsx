@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Loader2, Image as ImageIcon, AlertTriangle, Trash2, Check, PlusCircle } from 'lucide-react';
 import api from '@/lib/api';
@@ -6,7 +6,7 @@ import Modal from '@/components/UI/Modal';
 import ComoEntraNoCopo from '@/components/UI/ComoEntraNoCopo';
 import toast from 'react-hot-toast';
 
-export default function BulkEditModal({ isOpen, onClose }) {
+export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
   const qc = useQueryClient();
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -42,6 +42,14 @@ export default function BulkEditModal({ isOpen, onClose }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);        // modal de apagar em massa
   const [delPassword, setDelPassword] = useState('');
+
+  // ABERTA DE DENTRO DE UMA CATEGORIA, A EDIÇÃO FICA PRESA NELA. Quem está
+  // em "Caneca Slim" e clica em Edição em massa quer mexer na Caneca Slim;
+  // poder trocar para "Todas as categorias" ali dentro é o caminho para
+  // alterar o catálogo inteiro sem querer.
+  useEffect(() => {
+    if (isOpen) setCategoryId(categoriaFixa || '');
+  }, [isOpen, categoriaFixa]);
 
   const { data: cats } = useQuery({
     queryKey: ['categories-list'],
@@ -310,7 +318,9 @@ export default function BulkEditModal({ isOpen, onClose }) {
         </p>
         {/* Filtros */}
         <div className="flex flex-wrap items-center gap-2">
-          <select className="input w-full sm:w-auto sm:min-w-[190px] max-w-full" value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+          <select className="input w-full sm:w-auto sm:min-w-[190px] max-w-full disabled:opacity-80 disabled:cursor-not-allowed"
+            value={categoryId} onChange={e => setCategoryId(e.target.value)} disabled={!!categoriaFixa}
+            title={categoriaFixa ? 'Edição limitada à categoria aberta. Volte para Categorias para editar outra.' : undefined}>
             <option value="">Todas as categorias</option>
             {(cats || []).filter(c => c.product_count > 0).map(c => <option key={c.id} value={c.id}>{c.name} ({c.product_count})</option>)}
           </select>
@@ -608,7 +618,7 @@ export default function BulkEditModal({ isOpen, onClose }) {
           <input type="checkbox" checked={applyAll} onChange={e => setApplyAll(e.target.checked)} className="mt-0.5 w-4 h-4 accent-violet-600" />
           <span>
             <span className="font-medium text-gray-800">
-              Aplicar a TODOS os {totalMatching} produtos {hasFilter ? 'do filtro' : 'do catálogo'}
+              Aplicar a TODOS os {totalMatching} produtos {categoriaFixa ? 'desta categoria' : hasFilter ? 'do filtro' : 'do catálogo'}
             </span>
             <span className="block text-xs text-gray-500 mt-0.5">
               Ignora a seleção e altera todos que casam com o filtro atual (tipo + busca), mesmo além dos {products.length} visíveis.

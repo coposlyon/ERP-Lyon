@@ -592,7 +592,8 @@ export default function Products() {
         </div>
       )}
 
-      <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
+      {/* Dentro de uma categoria, a edição em massa só enxerga ela. */}
+      <BulkEditModal isOpen={bulkOpen} onClose={() => setBulkOpen(false)} categoriaFixa={categoryId || ''} />
       <ImportStockModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
       <ImportProductsModal isOpen={catalogOpen} onClose={() => setCatalogOpen(false)} />
 
