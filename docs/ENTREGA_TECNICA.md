@@ -1,6 +1,6 @@
 # ERP Lyon Copos — Documentação Técnica de Entrega
 
-Relação do que está sendo entregue — repositório, documentação, scripts, banco e acessos — e de como o sistema opera. Complementa `SETUP.md` (instalação local), `ESTRUTURA_BANCO.md` (tabelas) e `INTEGRACOES.md` (APIs externas). Nenhuma senha ou chave está escrita aqui: os **nomes** das credenciais estão listados na seção 6 e os **valores** são entregues à CONTRATANTE por canal separado.
+Relação do que está sendo entregue — repositório, documentação, scripts, banco e acessos — e de como o sistema opera. Complementa `SETUP.md` (instalação local), `ESTRUTURA_BANCO.md` (tabelas) e `INTEGRACOES.md` (APIs externas). Nenhuma senha ou chave está escrita aqui: os **nomes** das credenciais estão listados na seção 6 e os **valores** são entregues à Lyon Copos por canal separado.
 
 ---
 
