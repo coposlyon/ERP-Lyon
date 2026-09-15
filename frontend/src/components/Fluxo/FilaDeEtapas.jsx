@@ -318,42 +318,68 @@ function ReguaDeProcessos({ regua, statusDoModulo, acoes, onAgir, pendente, avis
    * era 16. Agora é o mesmo desenho, o mesmo número, em toda tela —
    * aqui aparecem só os deste módulo, e o pedido acende onde está.
    */
-  const CORES = {
-    concluido:     { anel: '#22c55e', fundo: '#dcfce7', texto: '#166534' },
-    atual:         { anel: '#2563eb', fundo: '#dbeafe', texto: '#1e40af' },
-    pendente:      { anel: '#cbd5e1', fundo: '#f8fafc', texto: '#94a3b8' },
-    nao_se_aplica: { anel: '#e2e8f0', fundo: 'transparent', texto: '#cbd5e1' },
+  /**
+   * CORES POR CLASSE, NUNCA POR HEX. O tema escuro do ERP remapeia as
+   * classes do Tailwind (bg-green-100 vira verde-escuro, text-gray-500
+   * vira cinza-claro); um `style={{ background: '#dcfce7' }}` passa
+   * batido e vira uma mancha clara no meio do marinho — foi assim que a
+   * régua nasceu ilegível. E o ERP inteiro roda com zoom 0,8: 10px de
+   * texto viram 8. Tudo aqui é maior por isso.
+   */
+  const ESTILO = {
+    concluido: {
+      anel: 'border-green-500 bg-green-100 dark:bg-green-900/50',
+      icone: 'text-green-700 dark:text-green-300',
+      badge: 'bg-green-500 text-white',
+      texto: 'text-green-800 dark:text-green-200',
+    },
+    atual: {
+      anel: 'border-blue-500 bg-blue-100 dark:bg-blue-900/60 ring-4 ring-blue-500/25',
+      icone: 'text-blue-700 dark:text-blue-200',
+      badge: 'bg-blue-600 text-white',
+      texto: 'text-blue-800 dark:text-blue-100 font-semibold',
+    },
+    pendente: {
+      anel: 'border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800/60',
+      icone: 'text-gray-400 dark:text-slate-400',
+      badge: 'bg-gray-300 dark:bg-slate-600 text-gray-700 dark:text-slate-100',
+      texto: 'text-gray-500 dark:text-slate-300',
+    },
+    nao_se_aplica: {
+      anel: 'border-dashed border-gray-200 dark:border-slate-700 bg-transparent',
+      icone: 'text-gray-300 dark:text-slate-600',
+      badge: 'bg-gray-200 dark:bg-slate-700 text-gray-400 dark:text-slate-500',
+      texto: 'text-gray-400 dark:text-slate-500 line-through',
+    },
   };
   const dataCurta = iso => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
 
   return (
-    <div className="card p-3 space-y-3">
-      <div className="flex flex-wrap gap-x-2 gap-y-4">
+    <div className="card p-4 space-y-4">
+      <div className="flex flex-wrap gap-x-3 gap-y-5">
         {(statusDoModulo || []).map(p => {
           const Icon = ICONES[p.icone] || Circle;
-          const c = CORES[p.estado] || CORES.pendente;
+          const e = ESTILO[p.estado] || ESTILO.pendente;
           const fora = p.estado === 'nao_se_aplica';
           const rotulo = p.em_processo ? (p.em_processo_label || p.label) : p.label;
           return (
-            <div key={p.key} className="flex flex-col items-center text-center gap-1"
-              style={{ width: 96, opacity: fora ? 0.45 : 1 }}
+            <div key={p.key} className={`flex flex-col items-center text-center gap-1.5 ${fora ? 'opacity-60' : ''}`}
+              style={{ width: 118 }}
               title={`${p.passo}. ${p.label}${fora ? ' — não se aplica a este pedido' : ''}${p.at ? ` — ${dataCurta(p.at)}` : ''}${p.user ? ` · ${p.user}` : ''}`}>
               <div className="relative">
-                <div className="w-11 h-11 rounded-full flex items-center justify-center"
-                  style={{ border: `2px solid ${c.anel}`, background: c.fundo,
-                           boxShadow: p.estado === 'atual' ? `0 0 0 4px ${c.fundo}` : 'none' }}>
-                  <Icon size={18} style={{ color: c.texto }} />
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center border-2 ${e.anel}`}>
+                  <Icon size={24} className={e.icone} />
                 </div>
-                <span className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
-                  style={{ background: fora ? '#cbd5e1' : c.anel }}>{p.passo}</span>
+                <span className={`absolute -top-1.5 -left-1.5 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${e.badge}`}>
+                  {p.passo}
+                </span>
               </div>
-              <span className="text-[10.5px] leading-tight font-medium"
-                style={{ color: c.texto, textDecoration: fora ? 'line-through' : 'none' }}>
-                {rotulo}
-              </span>
-              {p.em_processo && <span className="text-[9px] font-semibold text-blue-600">em andamento</span>}
+              <span className={`text-[12px] leading-tight ${e.texto}`}>{rotulo}</span>
+              {p.em_processo && (
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-300">em andamento</span>
+              )}
               {p.at && !p.em_processo && (
-                <span className="text-[9px] text-gray-400">{dataCurta(p.at)}</span>
+                <span className="text-[10px] text-gray-400 dark:text-slate-400">{dataCurta(p.at)}</span>
               )}
             </div>
           );
@@ -365,15 +391,15 @@ function ReguaDeProcessos({ regua, statusDoModulo, acoes, onAgir, pendente, avis
           próximo balão. Um botão para uma etapa que o pedido já passou
           (ou ainda não alcançou) é um convite a registrar trabalho que
           não aconteceu. */}
-      <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-gray-100">
+      <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100 dark:border-slate-700">
         {acoes?.length ? acoes.map(a => (
           <button key={`${a.stage}-${a.action}`} onClick={() => onAgir(a)} disabled={pendente}
-            className={`text-xs font-medium px-3 py-2 rounded-lg text-white disabled:opacity-30 inline-flex items-center gap-1 ${
+            className={`text-sm font-semibold px-4 py-2.5 rounded-lg text-white disabled:opacity-30 inline-flex items-center gap-1.5 ${
               a.action === 'finish' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
-            {a.action === 'finish' ? <Check size={13} /> : <Play size={13} />} {TITULO_ACAO(a.stage, a.action)}
+            {a.action === 'finish' ? <Check size={16} /> : <Play size={16} />} {TITULO_ACAO(a.stage, a.action)}
           </button>
         )) : (
-          <span className="text-xs text-gray-500">
+          <span className="text-sm text-gray-500 dark:text-slate-300">
             Nada para fazer neste pedido agora — ele está com outro módulo.
           </span>
         )}
@@ -407,28 +433,28 @@ function CaminhoGlobal({ linha, moduloAqui }) {
     else blocos.push({ modulo: p.modulo, label: p.modulo_label || '', passos: [p] });
   }
   const COR = {
-    concluido: 'bg-green-100 text-green-800 border-green-200',
-    atual: 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-200',
-    pendente: 'bg-white text-gray-500 border-gray-200',
-    nao_se_aplica: 'bg-gray-50 text-gray-300 border-gray-100 line-through',
+    concluido: 'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700',
+    atual: 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-300/60',
+    pendente: 'bg-white dark:bg-slate-800 text-gray-500 dark:text-slate-300 border-gray-200 dark:border-slate-600',
+    nao_se_aplica: 'bg-gray-50 dark:bg-transparent text-gray-300 dark:text-slate-600 border-gray-100 dark:border-slate-700 line-through',
   };
   return (
     <div className="card p-3">
-      <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+      <p className="text-[12px] font-semibold text-gray-500 dark:text-slate-300 uppercase tracking-wide mb-2.5">
         Caminho completo do pedido
       </p>
       <div className="flex flex-wrap gap-3">
         {blocos.map(b => (
           <div key={b.modulo || 'x'}
-            className={`rounded-lg px-2 py-1.5 border ${b.modulo === moduloAqui ? 'border-blue-300 bg-blue-50/40' : 'border-gray-100'}`}>
-            <p className={`text-[10px] font-semibold uppercase tracking-wide mb-1 ${
-              b.modulo === moduloAqui ? 'text-blue-700' : 'text-gray-400'}`}>
+            className={`rounded-lg px-2.5 py-2 border ${b.modulo === moduloAqui ? 'border-blue-400 bg-blue-50/40 dark:bg-blue-900/30' : 'border-gray-100 dark:border-slate-700'}`}>
+            <p className={`text-[11px] font-semibold uppercase tracking-wide mb-1.5 ${
+              b.modulo === moduloAqui ? 'text-blue-700 dark:text-blue-300' : 'text-gray-400 dark:text-slate-400'}`}>
               {b.label}{b.modulo === moduloAqui ? ' · aqui' : ''}
             </p>
             <div className="flex flex-wrap gap-1">
               {b.passos.map(p => (
                 <span key={p.key} title={`${p.passo}. ${p.label}${p.estado === 'nao_se_aplica' ? ' — não se aplica' : ''}`}
-                  className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${COR[p.estado] || COR.pendente}`}>
+                  className={`text-[12px] px-2 py-1 rounded border font-semibold ${COR[p.estado] || COR.pendente}`}>
                   {p.passo}
                 </span>
               ))}
@@ -458,36 +484,37 @@ function CaminhoGlobal({ linha, moduloAqui }) {
 function PrazoDoPedido({ prazo, compacto }) {
   if (!prazo) return null;
 
+  // Classes, não hex — o tema escuro remapeia classes (ver ESTILO acima).
   const CORES = {
-    vermelho: 'bg-red-50 border-red-300 text-red-900',
-    amarelo: 'bg-amber-50 border-amber-300 text-amber-900',
-    verde: 'bg-green-50 border-green-200 text-green-900',
-    cinza: 'bg-gray-50 border-gray-200 text-gray-600',
+    vermelho: { caixa: 'bg-red-50 dark:bg-red-950/60 border-red-300 dark:border-red-700', titulo: 'text-red-800 dark:text-red-200', texto: 'text-red-900 dark:text-red-100', sub: 'text-red-700 dark:text-red-300' },
+    amarelo:  { caixa: 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700', titulo: 'text-amber-800 dark:text-amber-200', texto: 'text-amber-900 dark:text-amber-100', sub: 'text-amber-700 dark:text-amber-300' },
+    verde:    { caixa: 'bg-green-50 dark:bg-green-950/50 border-green-300 dark:border-green-700', titulo: 'text-green-800 dark:text-green-200', texto: 'text-green-900 dark:text-green-100', sub: 'text-green-700 dark:text-green-300' },
+    cinza:    { caixa: 'bg-gray-50 dark:bg-slate-800/60 border-gray-200 dark:border-slate-600', titulo: 'text-gray-700 dark:text-slate-200', texto: 'text-gray-600 dark:text-slate-300', sub: 'text-gray-500 dark:text-slate-400' },
   };
+  const c = CORES[prazo.cor] || CORES.cinza;
   const urgente = prazo.alerta_24h;
 
   return (
-    <div className={`rounded-xl border px-3.5 py-3 ${CORES[prazo.cor] || CORES.cinza} ${
-      urgente ? 'ring-2 ring-red-300' : ''}`}>
-      <p className="text-[13px] font-bold flex items-center gap-1.5">
-        {urgente ? <Siren size={15} /> : <CalendarClock size={14} />}
+    <div className={`rounded-xl border px-4 py-3.5 ${c.caixa} ${urgente ? 'ring-2 ring-red-400/60' : ''}`}>
+      <p className={`text-[15px] font-bold flex items-center gap-2 ${c.titulo}`}>
+        {urgente ? <Siren size={18} /> : <CalendarClock size={17} />}
         {prazo.label}
       </p>
-      <p className="text-[12.5px] mt-1 leading-relaxed">{prazo.recado}</p>
+      <p className={`text-[13.5px] mt-1.5 leading-relaxed ${c.texto}`}>{prazo.recado}</p>
 
       {/* A CONTA, ESCRITA. "Por que 21 e não 23?" só se responde
           perguntando a alguém — a menos que esteja aqui. */}
       {prazo.evento && !compacto && (
-        <p className="text-[11.5px] mt-1.5 opacity-80">
+        <p className={`text-[12.5px] mt-2 ${c.sub}`}>
           Evento {dataBR(prazo.evento)} − {prazo.transporte} dia(s) útil(eis) de transporte
           {prazo.transporte_origem !== 'pedido' ? ` (${prazo.transporte_origem})` : ''}
           {' '}= {dataBR(prazo.limite_sem_margem)} − {prazo.margem} de margem
-          {' '}= <b>sair até {dataBR(prazo.limite_saida)}</b>
+          {' '}= <b className={c.titulo}>sair até {dataBR(prazo.limite_saida)}</b>
         </p>
       )}
 
       {prazo.saida_depois_do_limite && (
-        <p className="text-[11.5px] mt-1.5 font-semibold">
+        <p className={`text-[12.5px] mt-2 font-semibold ${c.titulo}`}>
           A data de saída no pedido é {dataBR(prazo.saida_prevista)} — depois do limite. Corrija no pedido.
         </p>
       )}
