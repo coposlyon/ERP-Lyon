@@ -22,6 +22,7 @@ const { caracteristicasDoItem, etapasDosItens, resumoDaArte , contaDaProducao } 
 // para cá acoplaria a tela do vendedor às rotas da produção por causa de
 // sete palavras.
 const Prazo = require('../lib/prazoProducao');
+const { avisosDoPedido } = require('../lib/documentoPedido');
 
 const ROTULO_ETAPA = {
   revelacao: 'Revelação', pintura: 'Pintura', borda: 'Borda',
@@ -374,23 +375,6 @@ async function resumoDoCliente(tenantId, customerId, cliente) {
     // se cadastrou em 2024 e comprou em 2026 é cliente desde 2024.
     cliente_desde: cliente?.created_at || null,
   };
-}
-
-/**
- * Os avisos do pedido: o padrão da empresa (Configurações) mais o que
- * for específico deste pedido. Ficam no banco e não no código porque
- * mudam com a política comercial — o custo de alterar arte não é
- * decisão de programador.
- */
-async function avisosDoPedido(tenantId, venda) {
-  let padrao = [];
-  try {
-    const { data } = await supabase.from('EMPRESAS').select('settings').eq('id', tenantId).maybeSingle();
-    const cfg = data?.settings?.pedido_avisos;
-    if (Array.isArray(cfg)) padrao = cfg;
-  } catch { /* sem configuração: só os do pedido */ }
-  const doPedido = Array.isArray(venda.avisos) ? venda.avisos : [];
-  return [...padrao, ...doPedido].map(String).filter(Boolean);
 }
 
 /**

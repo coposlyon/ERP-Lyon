@@ -158,13 +158,14 @@ export default function PedidoCliente() {
    * — os três, inclusive os que apareciam habilitados. O cliente
    * clicava e recebia o aviso de que nada ia acontecer.
    *
-   * O pedido em PDF é a impressão desta tela: o navegador oferece
-   * "salvar como PDF" e o cliente fica com a folha do que está vendo.
+   * O pedido em PDF é a MESMA folha do ERP (Pedido de Venda —
+   * Documento), aberta em página própria: antes era a impressão desta
+   * tela, e o cliente saía com um papel diferente do vendedor.
    * Comprovante e nota fiscal vêm do servidor — o comprovante como link
    * assinado, que expira, porque o arquivo é privado.
    */
   async function baixar(doc) {
-    if (doc.key === 'pedido') { window.print(); return; }
+    if (doc.key === 'pedido') { navigate(`/acompanhar/pedido/${id}/documento`); return; }
     try {
       const r = await api.get(`/acompanhar/pedido/${id}/documento/${doc.key}`,
         { headers: { Authorization: `Bearer ${token}` } });

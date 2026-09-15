@@ -1,0 +1,1 @@
+import{j as o,bl as e}from"./index-BcWlDEmt.js";import{F as r}from"./FilaDeEtapas-DJZMTwM2.js";import"./ids-Ckw8YApL.js";import"./Modal-CIO2-OYw.js";function p(){return o.jsx(r,{modulo:"designer",api:"/designer",titulo:"Designer",subtitulo:"Impressão do vegetal — da arte aprovada ao filme pronto para a revelação",Icone:e,cor:"violet"})}export{p as default};

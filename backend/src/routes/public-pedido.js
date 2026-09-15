@@ -35,6 +35,7 @@ const { caracteristicasDoItem, estadoDaArte } = require('../lib/itensPedido');
 // A arte que chega move o pedido, e quem decide para onde é o motor de
 // etapas — a mesma régua da tela do vendedor.
 const Auto = require('../lib/pedidoAutomacao');
+const { carregarDocumento } = require('../lib/documentoPedido');
 const { carregarParaFluxo, gravarPasso } = require('../lib/fluxoCarga');
 
 const SEGREDO = process.env.PEDIDO_TOKEN_SECRET
@@ -498,8 +499,8 @@ router.post('/pedido/:id/retirada-confirmada', exigirToken, async (req, res) => 
  *                ficar guardado na aba do navegador.
  *   nfe          a DANFE, que já é pública por natureza.
  *
- * `pedido` não passa por aqui: a folha do pedido é a própria tela, e
- * quem quiser PDF usa o "salvar como PDF" da impressão do navegador.
+ * `pedido` não passa por aqui: tem rota própria, /documento-pedido,
+ * que devolve a mesma folha do ERP.
  */
 router.get('/pedido/:id/documento/:tipo', exigirToken, async (req, res) => {
   try {
@@ -526,6 +527,24 @@ router.get('/pedido/:id/documento/:tipo', exigirToken, async (req, res) => {
 
     return res.status(400).json({ error: 'Documento desconhecido.' });
   } catch (err) { res.status(500).json({ error: 'Não foi possível abrir o documento' }); }
+});
+
+/**
+ * GET /acompanhar/pedido/:id/documento-pedido
+ *
+ * O PEDIDO EM PDF É O MESMO DO ERP. O portal imprimia a própria tela de
+ * acompanhamento e o cliente saía com um papel diferente do "Pedido de
+ * Venda — Documento" do vendedor. Esta rota entrega os dados da MESMA
+ * folha, no formato de /area-vendedor/pedidos/:id.
+ */
+router.get('/pedido/:id/documento-pedido', exigirToken, async (req, res) => {
+  try {
+    const saleId = await pedidoDoCliente(req.params.id, req.customerId);
+    if (!saleId) return res.status(404).json({ error: 'Pedido não encontrado.' });
+    const doc = await carregarDocumento(saleId);
+    if (!doc) return res.status(404).json({ error: 'Pedido não encontrado.' });
+    res.json(doc);
+  } catch (err) { res.status(500).json({ error: 'Não foi possível abrir o pedido em PDF' }); }
 });
 
 router.get('/pedido/:id', exigirToken, async (req, res) => {

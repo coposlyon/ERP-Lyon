@@ -16,6 +16,7 @@ import CadastroTransportadora from '@/pages/Public/CadastroTransportadora';
 import AcompanharPedido from '@/pages/Public/AcompanharPedido';
 import PedidoCliente from '@/pages/Public/PedidoCliente';
 import MeusPedidos from '@/pages/Public/MeusPedidos';
+import DocumentoCliente from '@/pages/Public/DocumentoCliente';
 
 // Páginas do ERP carregadas sob demanda (code-splitting por rota) —
 // cada uma vira um chunk próprio, deixando a carga inicial leve.
@@ -218,6 +219,7 @@ function AppRoutes() {
       <Route path="/acompanhar" element={<AcompanharPedido />} />
       <Route path="/acompanhar/pedidos" element={<MeusPedidos />} />
       <Route path="/acompanhar/pedido/:id" element={<PedidoCliente />} />
+      <Route path="/acompanhar/pedido/:id/documento" element={<DocumentoCliente />} />
       <Route path="/login" element={user ? <Navigate to={homePath} replace /> : <Login />} />
       {/* App de marcação de ponto — tela cheia, todo colaborador acessa */}
       <Route path="/marcacao" element={<PrivateRoute><MarcacaoPonto /></PrivateRoute>} />
