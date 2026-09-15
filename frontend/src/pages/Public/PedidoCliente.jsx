@@ -72,6 +72,22 @@ const CORES = {
  * que número. O cliente que liga perguntando "com quem está?" tem a
  * resposta escrita.
  */
+const COR_DO_MODULO = {
+  financeiro: '#fbbf24', vendas: '#fb923c', designer: '#a78bfa', producao: '#60a5fa', logistica: '#4ade80',
+};
+
+/** Os módulos presentes na régua, na ordem, com a faixa de números. */
+function legendaDosModulos(passos) {
+  const vistos = [];
+  for (const p of passos || []) {
+    const u = vistos[vistos.length - 1];
+    if (u && u.modulo === p.modulo) { u.ate = p.passo; continue; }
+    vistos.push({ modulo: p.modulo, label: p.modulo_label || '', de: p.passo, ate: p.passo, cor: COR_DO_MODULO[p.modulo] || '#94a3b8' });
+  }
+  return vistos.map(m => ({ ...m, faixa: `${m.de}–${m.ate}` }));
+}
+
+/** Os blocos por módulo — a régua por ITEM ainda usa (o espaço lá é curto). */
 function blocosPorModulo(passos) {
   const blocos = [];
   for (const p of passos || []) {
@@ -405,22 +421,21 @@ export default function PedidoCliente() {
               Seu pedido está em: <b>{etapaAtual.label}</b>
             </p>
           )}
-          <div className="space-y-4">
-            {blocosPorModulo(p.linha_do_tempo).map(b => (
-              <div key={b.modulo || 'x'}>
-                <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 flex items-center gap-2"
-                  style={{ color: 'rgba(255,255,255,0.45)' }}>
-                  <span className="w-4 h-px" style={{ background: 'rgba(255,255,255,0.2)' }} />
-                  {b.label}
-                  <span className="text-[9px] normal-case tracking-normal font-normal" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                    {b.passos[0].passo}–{b.passos[b.passos.length - 1].passo}
-                  </span>
-                </p>
-                <div className="flex flex-wrap gap-x-2 gap-y-5">
-                  {b.passos.map(passo => <Balao key={passo.key} passo={passo} />)}
-                </div>
-              </div>
+          {/* Uma régua só, alinhada; o módulo é a cor da faixa embaixo do
+              balão, com a legenda em cima. Blocos separados por módulo
+              esticavam cada grupo pela largura inteira e ficava feio. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
+            {legendaDosModulos(p.linha_do_tempo).map(m => (
+              <span key={m.modulo} className="text-[10.5px] font-semibold uppercase tracking-wide inline-flex items-center gap-1.5"
+                style={{ color: m.cor }}>
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: m.cor }} />
+                {m.label}
+                <span className="font-normal normal-case tracking-normal" style={{ color: 'rgba(255,255,255,0.4)' }}>{m.faixa}</span>
+              </span>
             ))}
+          </div>
+          <div className="flex flex-wrap gap-x-2 gap-y-5">
+            {(p.linha_do_tempo || []).map(passo => <Balao key={passo.key} passo={passo} corModulo={COR_DO_MODULO[passo.modulo]} />)}
           </div>
           <p className="text-[11px] mt-4" style={{ color: 'rgba(255,255,255,0.4)' }}>
             Os números são os mesmos em todo pedido. Etapa riscada não se aplica a este pedido
@@ -634,7 +649,7 @@ function CentralContato({ token, saleId, pedido, onClose }) {
   );
 }
 
-function Balao({ passo }) {
+function Balao({ passo, corModulo }) {
   const Icon = ICONES[passo.icone] || Circle;
   const c = CORES[passo.estado] || CORES.pendente;
   const foraDoPedido = passo.estado === 'nao_se_aplica';
@@ -657,6 +672,9 @@ function Balao({ passo }) {
         <span className="text-[9px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
           {new Date(passo.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
         </span>
+      )}
+      {corModulo && (
+        <span className="w-8 h-[3px] rounded-full mt-0.5" style={{ background: corModulo, opacity: foraDoPedido ? 0.3 : 0.85 }} />
       )}
     </div>
   );

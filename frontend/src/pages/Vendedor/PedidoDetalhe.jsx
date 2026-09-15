@@ -557,23 +557,27 @@ export default function PedidoDetalhe() {
                 parede; separados por quem cuida de cada trecho, a régua
                 diz em que MESA o pedido está — e é isso que o telefone
                 pergunta. Os números são os do catálogo, fixos. */}
-            <div className="p-4 space-y-4">
-              {blocosDaRegua(p.linha_do_tempo).map(b => (
-                <div key={b.modulo || 'x'}>
-                  <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 flex items-center gap-2"
-                    style={{ color: v.textSubtle }}>
-                    <span className="w-4 h-px" style={{ background: v.divider }} />
-                    {b.label}
-                    <span className="text-[9px] normal-case tracking-normal font-normal" style={{ color: v.textSubtle, opacity: 0.7 }}>
-                      {b.passos[0].passo}–{b.passos[b.passos.length - 1].passo}
-                    </span>
-                  </p>
-                  <div className="pedido-fases">
-                    {b.passos.map(fase => (
-                      <Balao key={fase.key} v={v} fase={fase} atrasado={atrasado} />
-                    ))}
-                  </div>
-                </div>
+            {/* UMA RÉGUA SÓ, E O MÓDULO É UMA COR.
+                A primeira versão quebrava em cinco blocos, um por módulo,
+                cada um esticado pela largura inteira: a Logística com
+                cinco balões a um palmo de distância, a Produção com
+                catorze espremidos. Ficou feio e desalinhado. Agora os 28
+                balões correm numa grade só, alinhados em colunas, e o
+                módulo aparece como a cor da faixa embaixo de cada balão —
+                com a legenda no topo dizendo quem é cada cor. */}
+            <div className="px-4 pt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+              {legendaDosModulos(p.linha_do_tempo).map(m => (
+                <span key={m.modulo} className="text-[11px] font-semibold uppercase tracking-wide inline-flex items-center gap-1.5"
+                  style={{ color: m.cor }}>
+                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: m.cor }} />
+                  {m.label}
+                  <span className="font-normal normal-case tracking-normal" style={{ color: v.textSubtle }}>{m.faixa}</span>
+                </span>
+              ))}
+            </div>
+            <div className="p-4 pedido-fases">
+              {(p.linha_do_tempo || []).map(fase => (
+                <Balao key={fase.key} v={v} fase={fase} atrasado={atrasado} corModulo={COR_DO_MODULO[fase.modulo]} />
               ))}
             </div>
             <p className="text-[11px] px-4 pb-3" style={{ color: v.textSubtle }}>
@@ -1004,18 +1008,31 @@ function AlertaDePrazo({ v, prazo }) {
 
 const dataCurta = d => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—');
 
-/** A régua em blocos consecutivos, um por módulo dono. */
-function blocosDaRegua(passos) {
-  const blocos = [];
+/**
+ * A COR DE CADA MÓDULO — a mesma em toda tela que fala de fluxo.
+ * Financeiro âmbar, Pedido de Venda laranja, Designer roxo, Produção
+ * azul, Logística verde. Quem lê a régua uma vez aprende as cinco.
+ */
+const COR_DO_MODULO = {
+  financeiro: '#fbbf24',
+  vendas:     '#fb923c',
+  designer:   '#a78bfa',
+  producao:   '#60a5fa',
+  logistica:  '#4ade80',
+};
+
+/** Os módulos presentes na régua, na ordem, com a faixa de números de cada um. */
+function legendaDosModulos(passos) {
+  const vistos = [];
   for (const p of passos || []) {
-    const ultimo = blocos[blocos.length - 1];
-    if (ultimo && ultimo.modulo === p.modulo) ultimo.passos.push(p);
-    else blocos.push({ modulo: p.modulo, label: p.modulo_label || '', passos: [p] });
+    const u = vistos[vistos.length - 1];
+    if (u && u.modulo === p.modulo) { u.ate = p.passo; continue; }
+    vistos.push({ modulo: p.modulo, label: p.modulo_label || '', de: p.passo, ate: p.passo, cor: COR_DO_MODULO[p.modulo] || '#94a3b8' });
   }
-  return blocos;
+  return vistos.map(m => ({ ...m, faixa: `${m.de}–${m.ate}` }));
 }
 
-function Balao({ v, fase, atrasado }) {
+function Balao({ v, fase, atrasado, corModulo }) {
   const Icon = ICONES[fase.icone] || Circle;
   const cor = {
     concluido: '#4ade80',
@@ -1046,10 +1063,14 @@ function Balao({ v, fase, atrasado }) {
           {fase.passo}
         </span>
       </div>
-      <span className="text-[10px] leading-tight font-semibold"
+      <span className="text-[10.5px] leading-tight font-semibold"
         style={{ color: apagado ? v.textSubtle : cor, textDecoration: foraDoPedido ? 'line-through' : 'none' }}>{fase.label}</span>
       {fase.at && <span className="text-[9px]" style={{ color: v.textSubtle }}>{horaCurta(fase.at)}</span>}
       {fase.estado === 'atual' && <span className="w-6 h-0.5 rounded-full" style={{ background: cor }} />}
+      {/* A faixa do módulo: a mesma cor da legenda, discreta, embaixo. */}
+      {corModulo && (
+        <span className="w-8 h-[3px] rounded-full mt-0.5" style={{ background: corModulo, opacity: foraDoPedido ? 0.3 : 0.85 }} />
+      )}
     </div>
   );
 }
