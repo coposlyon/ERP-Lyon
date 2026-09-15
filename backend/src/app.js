@@ -201,6 +201,9 @@ async function iniciar() {
     // webservice configurado e encomenda ainda não entregue.
     try { require('./lib/totalexpressServico').iniciarAgendamento(); }
     catch (err) { console.error('[total-express] agendamento não iniciou:', err.message); }
+    // Backup diário automático de cada empresa (Configurações › Backup).
+    try { require('./lib/backup').iniciarAgendamento(); }
+    catch (err) { console.error('[backup] agendamento não iniciou:', err.message); }
   });
 }
 

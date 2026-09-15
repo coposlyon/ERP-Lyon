@@ -186,5 +186,7 @@ router.use('/cadastro-requests', requireRole(['admin']), require('./cadastro-req
 router.use('/employees', requireRole(['admin']), employeesRoutes);
 router.use('/users',     requireRole(['admin']), usersRoutes);
 router.use('/audit',     requireRole(['admin']), auditRoutes);
+// Backup redundante e recuperação de desastre (lib/backup.js).
+router.use('/backups',   requireRole(['admin']), require('./backups'));
 
 module.exports = router;

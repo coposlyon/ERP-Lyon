@@ -72,6 +72,7 @@ const Reports            = lazy(() => import('@/pages/Reports/Reports'));
 const Settings           = lazy(() => import('@/pages/Settings/Settings'));
 const Users              = lazy(() => import('@/pages/Settings/Users'));
 const Audit              = lazy(() => import('@/pages/Settings/Audit'));
+const Backups            = lazy(() => import('@/pages/Settings/Backups'));
 const CadastroAprovacoes = lazy(() => import('@/pages/Settings/CadastroAprovacoes'));
 const Feriados           = lazy(() => import('@/pages/Settings/Feriados'));
 const CatalogoAdmin      = lazy(() => import('@/pages/Settings/CatalogoAdmin'));
@@ -336,6 +337,7 @@ function AppRoutes() {
         {/* Matriz setor × módulo — quem enxerga o quê no ERP */}
         <Route path="permissoes" element={<Mod m="settings"><Permissoes /></Mod>} />
         <Route path="audit" element={<AdminOnly><Audit /></AdminOnly>} />
+        <Route path="backups" element={<AdminOnly><Backups /></AdminOnly>} />
         {/* Aprovação das alterações pedidas pelos links públicos de cadastro */}
         <Route path="cadastro-aprovacoes" element={<AdminOnly><CadastroAprovacoes /></AdminOnly>} />
         <Route path="feriados" element={<Mod m={['settings','hr']}><Feriados /></Mod>} />

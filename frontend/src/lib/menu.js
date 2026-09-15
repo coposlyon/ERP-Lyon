@@ -29,7 +29,7 @@ import {
   Calculator, PieChart, Home, Landmark, Star, Trophy,
   MessageSquare, LogOut, LayoutGrid, Globe, CloudUpload, UserPlus, UserMinus,
   Sparkles, Layers, Droplet, FolderTree,
-  PenTool,
+  PenTool, DatabaseBackup,
 } from 'lucide-react';
 import { SITES } from '@/pages/Sites/registro';
 
@@ -328,6 +328,7 @@ export const menuItems = [
       { label: 'Catálogo',  path: '/catalogo-admin', icon: LayoutGrid, module: 'settings' },
       { label: 'Usuários',  path: '/users',    icon: Users,        adminOnly: true },
       { label: 'Auditoria', path: '/audit',    icon: ScrollText,   adminOnly: true },
+      { label: 'Backup',    path: '/backups',  icon: DatabaseBackup, adminOnly: true },
     ],
   },
 ];

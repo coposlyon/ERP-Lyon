@@ -75,7 +75,7 @@ Todo pedido percorre a **mesma régua de 28 status**, e cada faixa pertence a um
 Metas do mês, pedidos por status, comissão prevista, ranking. A **Área do vendedor** (layout enxuto) mostra só o que o vendedor precisa: pedidos, catálogo para enviar, agenda e comunicação com o gerente.
 
 ### 3.3 Lyon Prime (`/lyon-prime`)
-Programa de fidelidade: pontos por compra, faixas e benefícios. Configurável pelo administrador.
+Classificação dos clientes em **estrelas pelo faturamento dos últimos 12 meses**, com benefícios por nível e **Selo de Confiança**. **Recalcular estrelas** refaz a classificação de todos.
 
 ### 3.4 Catálogo e Loja (o "marketplace" da Lyon)
 - **/catalogo** — copos personalizados: o cliente monta o pedido (modelo, cor, quantidade, arte), vê o preço pela faixa de quantidade e fecha. Vira um pedido de venda normal, origem *catálogo*.
@@ -118,7 +118,7 @@ As três telas funcionam do mesmo jeito:
 
 **Designer (`/designer`)** — imprime o vegetal a partir da arte aprovada.
 
-**Produção (`/production`)** — revelação (nº da matriz; matriz perdida gera reposição), pintura, borda, produção (máquina), qualidade (aprovado/reprovado, avariadas), foto (obrigatória, vai para o portal do cliente), embalagem (checklist + "houve perda?"). Ao finalizar a embalagem de um pedido **para retirada**, o cliente recebe aviso automático.
+**Produção (`/production`)** — revelação (nº da matriz; matriz perdida gera reposição), pintura, borda, produção (código da máquina de Maquinários, ex.: M001 — o lote entra no desgaste dela), qualidade (aprovado/reprovado, avariadas), foto (obrigatória, vai para o portal do cliente), embalagem (checklist + "houve perda?"). Ao finalizar a embalagem de um pedido **para retirada**, o cliente recebe aviso automático.
 
 **Logística (`/logistics`)** — abas *Etapas* (coleta, trânsito, entrega), *Expedição* (avisar cliente, declaração de conteúdo, etiqueta, NF) e *Transportadoras* (prazo em dias úteis por transportadora — é ele que alimenta o cálculo de prazo do pedido). Retirada no balcão: quem retirou, documento conferido, conferiu na frente.
 
@@ -151,11 +151,17 @@ Escolha **mês** ou **período** → **Excel completo com 6 abas** (Resumo, Lan�
 
 ## 7. Engenharia de Custos
 
-- **Formação de Preço** — ficha por produto: insumos, mão de obra, overhead, impostos → preço mínimo / ideal / premium, com faixas por quantidade.
-- **Despesas Fixas / Variáveis** — o que entra no rateio (folha administrativa vem do RH sozinha).
-- **Rateio por Categoria / por Pedido** — quanto de custo fixo cada linha e cada pedido carregam.
-- **Painel de Rentabilidade** — margem por produto, vendedor, cliente, região e canal; ponto de equilíbrio; produtos abaixo da meta com preço sugerido (**só sugere — não altera preço sozinho**).
-- **Simulador de Metas** e **Histórico de Rateios** (fotos mensais).
+A ordem do menu segue a conta: o que a empresa **tem** (máquinas, computadores), o que ela **gasta** (insumos, despesas) e o que sai disso (preço).
+
+- **Maquinários** (`/engenharia/maquinarios`) — cada máquina em seis abas: **Cadastro**; **Produção e Desgaste** (produção acumulada, média por hora, % de desgaste, progresso até a revisão — a etapa Produção dos pedidos lança o lote sozinha pelo código da máquina); **Manutenção** (registro de revisão com custo e tempo de parada, checklist com periodicidade e "marcar como executado"); **Peças e Componentes** (estoque, mínimo, vida útil, compatibilidade, troca com baixa de estoque); **Depreciação e Reposição** (depreciação linear mensal e acumulada, valor contábil, reserva mensal sugerida, projeção de troca, diferença a complementar); **Histórico** (todos os eventos, com filtro e exportação).
+- **Computadores e TI** (`/engenharia/computadores`) — a mesma tela para computadores, impressoras, rede e licenças, sem a aba de produção.
+- **Insumos e Materiais** — custo por unidade e por peça (por consumo ou vida útil), fornecedores, histórico de preço e estoque do insumo.
+- **Despesas Fixas** — o que entra no rateio. Linhas automáticas: salários da administração (RH) e **custo mensal de cada máquina e computador** (depreciação + manutenção, somente leitura — depreciação não vira conta a pagar).
+- **Despesas Variáveis** — mão de obra da produção (RH), comissões, taxas de meios de pagamento e de canais, fretes de compra.
+- **Formação de Preço** — ficha **por categoria**: produtos (inclusive subcategorias e categorias sem produto), sub-produtos, cores, bordas, tintas, embalagens e insumos. Custo do copo, lote, tela, tinta, embalagem, frete e rateio → imposto e margem → faixas por quantidade. **Ver o que vai mudar** e só então aplicar — o preço nunca muda sozinho.
+- **Tabela de Preços** — tabelas comerciais com desconto geral (Atacado, Revenda).
+
+As telas de análise (Análise de Produtos, Rateio por Categoria/Pedido, Painel de Rentabilidade, Simulador de Metas, Histórico de Rateios) saíram do menu para enxugar o grupo; os endereços continuam funcionando.
 
 ---
 
@@ -170,7 +176,7 @@ Escolha **mês** ou **período** → **Excel completo com 6 abas** (Resumo, Lan�
 ## 9. Estoque, Compras e Relatórios
 
 - **Estoque** — saldo por produto, movimentos (entrada, saída, ajuste, devolução), a baixa do pedido acontece sozinha no status 4→5.
-- **Compras** — pedido de compra ao fornecedor, entrada de nota, gera contas a pagar.
+- **Compras** — compra ao fornecedor (ou importação do XML da NF-e de entrada): os itens **entram no estoque ao salvar**. A conta a pagar da compra é lançada no Financeiro.
 - **Relatórios** — vendas, produtos, clientes, financeiro; **Previsão de Demanda** por histórico.
 
 ---
@@ -195,6 +201,7 @@ Painel RH · Colaboradores (admissão digital pelo link de convite, documentos, 
 - **Catálogo** — produtos, faixas de preço e gabaritos do catálogo público.
 - **Usuários** — criar, desativar, redefinir senha, setor.
 - **Auditoria** — quem fez o quê, quando, em que registro. Nada é apagado do sistema: cancelado/desativado fica visível aqui.
+- **Backup** — cópia completa dos dados da empresa, automática a cada 24 h e sob demanda, guardada fora do banco (Storage privado), com SHA-256, verificação de integridade, download e restauração por script (ver Treinamento, Parte 14.8).
 - **Sites** — os sites públicos da Lyon (institucional, catálogo, loja) e seus editores.
 
 ---

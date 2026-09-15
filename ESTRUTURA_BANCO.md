@@ -1,6 +1,8 @@
 # Estrutura do banco - ERP Lyon
 
-Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou chave.
+Gerado do information_schema por `node backend/scripts/gerar-estrutura-banco.js`. Somente estrutura: nenhum dado, senha, token ou chave.
+
+Gerado em 2026-09-15 · 117 tabelas · última migração aplicada: 125 (122 registradas).
 
 
 ## AGENDA_VENDEDOR
@@ -17,6 +19,11 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **done_at** timestamp with time zone
 - **created_at** timestamp with time zone NOT NULL
 - **updated_at** timestamp with time zone NOT NULL
+- **end_at** timestamp with time zone
+- **dia_inteiro** boolean NOT NULL default false
+- **local** text
+- **participantes** uuid[] NOT NULL default '{}'::uuid[]
+- **da_empresa** boolean NOT NULL default false
 
 ## ALERTAS_PEDIDO
 
@@ -56,6 +63,25 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **entity_id** text
 - **details** jsonb
 - **created_at** timestamp with time zone
+
+## BACKUPS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **criado_em** timestamp with time zone NOT NULL
+- **concluido_em** timestamp with time zone
+- **origem** character varying NOT NULL default 'manual'::character varying
+- **status** character varying NOT NULL default 'gerando'::character varying
+- **arquivo** text
+- **bytes** bigint
+- **bytes_json** bigint
+- **sha256** character varying
+- **tabelas** integer
+- **linhas** bigint
+- **detalhes** jsonb NOT NULL default '{}'::jsonb
+- **erro** text
+- **usuario** character varying
+- **user_id** uuid
 
 ## CADASTRO_SOLICITACOES
 
@@ -119,6 +145,10 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **min_caixas** integer NOT NULL default 1
 - **created_at** timestamp with time zone NOT NULL
 - **updated_at** timestamp with time zone NOT NULL
+- **caixa_altura** numeric
+- **caixa_largura** numeric
+- **caixa_comprimento** numeric
+- **caixa_tara** numeric
 
 ## CATALOGO_FAMILIAS
 
@@ -202,6 +232,27 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **is_active** boolean default true
 - **created_at** timestamp with time zone
 
+## CHAT_LEITURAS
+
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **user_id** uuid NOT NULL -> USUARIOS
+- **canal** text NOT NULL default 'geral'::text
+- **lido_ate** timestamp with time zone NOT NULL
+
+## CHAT_MENSAGENS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **canal** text NOT NULL default 'geral'::text
+- **user_id** uuid -> USUARIOS
+- **user_name** text
+- **body** text NOT NULL
+- **reply_to** uuid -> CHAT_MENSAGENS
+- **mencionados** uuid[] NOT NULL default '{}'::uuid[]
+- **deleted_at** timestamp with time zone
+- **edited_at** timestamp with time zone
+- **created_at** timestamp with time zone NOT NULL
+
 ## CLIENTES
 
 - **id** uuid NOT NULL
@@ -282,6 +333,7 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **preco_adicional** numeric NOT NULL default 0
 - **no_catalogo** boolean NOT NULL default true
 - **preco_metodo** text
+- **faixas** jsonb NOT NULL default '[]'::jsonb
 
 ## CONFIG_CORES
 
@@ -359,6 +411,8 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **focus_token_producao** text
 - **updated_at** timestamp with time zone
 - **aliquota_venda** numeric
+- **recebidas_versao** bigint NOT NULL default 0
+- **recebidas_sync_at** timestamp with time zone
 
 ## CONFIG_PROCESSOS
 
@@ -372,6 +426,7 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **preco_adicional** numeric NOT NULL default 0
 - **linha_tinta** text
 - **preco_metodo** text
+- **faixas** jsonb NOT NULL default '[]'::jsonb
 
 ## CONSULTAS_CREDITO
 
@@ -530,7 +585,7 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **tenant_id** uuid NOT NULL
 - **name** text NOT NULL
 - **daily_minutes** integer NOT NULL default 480
-- **weekdays** ARRAY NOT NULL default '{1,2,3,4,5}'::integer[]
+- **weekdays** int4[] NOT NULL default '{1,2,3,4,5}'::integer[]
 - **entry_time** time without time zone
 - **exit_time** time without time zone
 - **break_minutes** integer default 60
@@ -607,6 +662,7 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **product_id** uuid -> PRODUTOS
 - **min_stock** numeric NOT NULL default 0
 - **cost_source** character varying NOT NULL default 'manual'::character varying
+- **current_stock** numeric NOT NULL default 0
 
 ## INSUMO_FORNECEDORES
 
@@ -623,6 +679,21 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **created_at** timestamp with time zone
 - **updated_at** timestamp with time zone
 
+## INSUMO_MOVIMENTOS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **insumo_id** uuid NOT NULL -> INSUMOS
+- **tipo** character varying NOT NULL
+- **quantity** numeric NOT NULL
+- **saldo_apos** numeric NOT NULL default 0
+- **unit_cost** numeric
+- **total** numeric
+- **reference** character varying
+- **notes** text
+- **user_name** character varying
+- **created_at** timestamp with time zone
+
 ## INSUMO_PRECOS
 
 - **id** uuid NOT NULL
@@ -637,6 +708,40 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **reference** character varying
 - **user_name** character varying
 - **created_at** timestamp with time zone
+
+## ITEM_APLICACOES
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **item_id** uuid NOT NULL -> ITENS
+- **category_id** uuid
+- **product_id** uuid
+- **padrao** boolean NOT NULL default false
+- **consumo** numeric
+- **created_at** timestamp with time zone NOT NULL
+
+## ITENS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **kind** character varying NOT NULL default 'acessorio'::character varying
+- **name** character varying NOT NULL
+- **color_name** character varying
+- **color_hex** character varying
+- **photo_url** text
+- **base_unit** character varying NOT NULL default 'un'::character varying
+- **package_qty** numeric
+- **package_cost** numeric
+- **unit_cost** numeric NOT NULL default 0
+- **unit_price** numeric NOT NULL default 0
+- **consumo** numeric NOT NULL default 1
+- **supplier_id** uuid -> FORNECEDORES
+- **notes** text
+- **is_active** boolean NOT NULL default true
+- **seq** integer NOT NULL default 0
+- **created_at** timestamp with time zone NOT NULL
+- **updated_at** timestamp with time zone NOT NULL
+- **categoria** character varying
 
 ## LANCAMENTOS
 
@@ -677,6 +782,39 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **receipt_at** timestamp with time zone
 - **receipt_by** text
 - **boleto_url** text
+- **receipt_amount** numeric
+- **paid_by** text
+- **paid_at** timestamp with time zone
+
+## LOGISTICA_CAIXAS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **nome** character varying NOT NULL
+- **largura_cm** numeric NOT NULL
+- **altura_cm** numeric NOT NULL
+- **comprimento_cm** numeric NOT NULL
+- **peso_cheia_kg** numeric
+- **valor** numeric NOT NULL default 0
+- **ativo** boolean NOT NULL default true
+- **observacao** text
+- **created_at** timestamp with time zone
+- **updated_at** timestamp with time zone
+
+## LOGISTICA_REGRAS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **category_id** uuid NOT NULL -> CATEGORIAS
+- **capacidade_ml** integer
+- **caixa_id** uuid -> LOGISTICA_CAIXAS
+- **unidades_por_caixa** integer
+- **caixa_pequena_id** uuid -> LOGISTICA_CAIXAS
+- **unidades_caixa_pequena** integer
+- **ativo** boolean NOT NULL default true
+- **observacao** text
+- **created_at** timestamp with time zone
+- **updated_at** timestamp with time zone
 
 ## LYON_PRIME_HISTORICO
 
@@ -690,6 +828,138 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **total_12m** numeric
 - **note** text
 - **created_at** timestamp with time zone NOT NULL
+
+## MALOTES_CONTADOR
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL
+- **competencia** date NOT NULL
+- **enviado_em** timestamp with time zone NOT NULL
+- **enviado_por** text
+- **user_id** uuid
+- **destinatario** text
+- **observacao** text
+- **resumo** jsonb NOT NULL default '{}'::jsonb
+- **itens** jsonb NOT NULL default '[]'::jsonb
+- **created_at** timestamp with time zone NOT NULL
+
+## MAQUINAS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **grupo** character varying NOT NULL default 'maquinario'::character varying
+- **codigo** character varying NOT NULL
+- **nome** character varying NOT NULL
+- **tipo** character varying
+- **setor** character varying
+- **status** character varying NOT NULL default 'operacao'::character varying
+- **fabricante** character varying
+- **modelo** character varying
+- **numero_serie** character varying
+- **supplier_id** uuid -> FORNECEDORES
+- **fornecedor_nome** character varying
+- **localizacao** character varying
+- **responsavel** character varying
+- **data_aquisicao** date
+- **nota_fiscal** character varying
+- **garantia_ate** date
+- **valor_aquisicao** numeric NOT NULL default 0
+- **valor_residual** numeric NOT NULL default 0
+- **vida_util_anos** numeric NOT NULL default 10
+- **vida_util_unidades** numeric
+- **meta_reposicao** numeric NOT NULL default 0
+- **valor_venda_estimado** numeric NOT NULL default 0
+- **reserva_reposicao** numeric NOT NULL default 0
+- **entra_no_rateio** boolean NOT NULL default true
+- **capacidade_hora** numeric
+- **producao_inicial** numeric NOT NULL default 0
+- **horas_iniciais** numeric NOT NULL default 0
+- **intervalo_revisao_unidades** numeric
+- **producao_ultima_revisao** numeric
+- **ultima_revisao** date
+- **proxima_revisao** date
+- **observacoes** text
+- **created_at** timestamp with time zone
+- **updated_at** timestamp with time zone
+- **fornecedor_telefone** character varying
+- **fornecedor_email** character varying
+
+## MAQUINA_EVENTOS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **maquina_id** uuid NOT NULL -> MAQUINAS
+- **data** date NOT NULL default CURRENT_DATE
+- **tipo** character varying NOT NULL
+- **descricao** text
+- **responsavel** character varying
+- **fornecedor** character varying
+- **custo** numeric NOT NULL default 0
+- **producao_impactada** numeric
+- **horas_parada** numeric
+- **status** character varying NOT NULL default 'concluido'::character varying
+- **peca_id** uuid -> MAQUINA_PECAS
+- **manutencao_id** uuid -> MAQUINA_MANUTENCOES
+- **detalhes** jsonb NOT NULL default '{}'::jsonb
+- **user_id** uuid
+- **created_at** timestamp with time zone
+
+## MAQUINA_MANUTENCOES
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **maquina_id** uuid NOT NULL -> MAQUINAS
+- **item** character varying NOT NULL
+- **tipo** character varying NOT NULL default 'preventiva'::character varying
+- **periodicidade** character varying NOT NULL default 'mensal'::character varying
+- **ultima_execucao** date
+- **proxima_execucao** date
+- **responsavel** character varying
+- **custo_previsto** numeric NOT NULL default 0
+- **ativo** boolean NOT NULL default true
+- **observacao** text
+- **created_at** timestamp with time zone
+- **updated_at** timestamp with time zone
+
+## MAQUINA_PECAS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **codigo** character varying NOT NULL
+- **nome** character varying NOT NULL
+- **categoria** character varying
+- **fabricante** character varying
+- **supplier_id** uuid -> FORNECEDORES
+- **fornecedor_nome** character varying
+- **fornecedor_telefone** character varying
+- **valor_unitario** numeric NOT NULL default 0
+- **estoque** numeric NOT NULL default 0
+- **estoque_minimo** numeric NOT NULL default 0
+- **vida_util_meses** numeric
+- **ultima_troca** date
+- **proxima_troca** date
+- **maquinas** uuid[] NOT NULL default '{}'::uuid[]
+- **ativo** boolean NOT NULL default true
+- **observacao** text
+- **created_at** timestamp with time zone
+- **updated_at** timestamp with time zone
+
+## MAQUINA_PRODUCOES
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **maquina_id** uuid NOT NULL -> MAQUINAS
+- **data** date NOT NULL default CURRENT_DATE
+- **produto** character varying
+- **product_id** uuid -> PRODUTOS
+- **venda_id** uuid -> VENDAS
+- **quantidade** numeric NOT NULL default 0
+- **perdas** numeric NOT NULL default 0
+- **horas** numeric NOT NULL default 0
+- **operador** character varying
+- **origem** character varying NOT NULL default 'manual'::character varying
+- **observacao** text
+- **created_at** timestamp with time zone
 
 ## MENSAGENS_INTERNAS
 
@@ -733,12 +1003,34 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **name** text NOT NULL
 - **is_capital** boolean NOT NULL default false
 - **metro_name** text
-- **districts** ARRAY NOT NULL default '{}'::text[]
+- **districts** text[] NOT NULL default '{}'::text[]
 - **ddd** text
 - **population** integer
 - **cep_start** text
 - **cep_end** text
 - **synced_at** timestamp with time zone NOT NULL
+
+## NFE_RECEBIDAS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **chave** character varying NOT NULL
+- **nome_emitente** character varying
+- **documento_emitente** character varying
+- **valor_total** numeric NOT NULL default 0
+- **data_emissao** timestamp with time zone
+- **situacao** character varying
+- **tipo_nfe** character varying
+- **nfe_completa** boolean NOT NULL default false
+- **manifestacao** character varying
+- **manifestacao_at** timestamp with time zone
+- **manifestacao_proto** character varying
+- **xml** text
+- **purchase_id** uuid
+- **versao** bigint NOT NULL default 0
+- **raw** jsonb
+- **created_at** timestamp with time zone NOT NULL
+- **updated_at** timestamp with time zone NOT NULL
 
 ## NOTAS_FISCAIS
 
@@ -748,8 +1040,8 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **number** integer
 - **series** character varying default '001'::character varying
 - **key** character varying
-- **type** character varying default 'nfe'::character varying
-- **status** character varying default 'pending'::character varying
+- **type** text default 'nfe'::character varying
+- **status** text default 'pending'::character varying
 - **xml_content** text
 - **pdf_url** text
 - **protocol** character varying
@@ -878,8 +1170,8 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 ## PEDIDOS_REPOSICAO
 
 - **id** uuid NOT NULL
-- **tenant_id** uuid NOT NULL
-- **supplier_id** uuid
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **supplier_id** uuid -> FORNECEDORES
 - **supplier_name** text NOT NULL default ''::text
 - **products** jsonb NOT NULL default '[]'::jsonb
 - **status** text NOT NULL default 'pending'::text
@@ -890,6 +1182,12 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **completed_at** timestamp with time zone
 - **completed_by** uuid
 - **protocol_number** text
+- **public_token** text
+- **token_expira_em** timestamp with time zone
+- **resposta** jsonb
+- **respondido_em** timestamp with time zone
+- **cotacao_url** text
+- **tentativas** integer NOT NULL default 0
 
 ## PERDAS_MATRIZ
 
@@ -1048,6 +1346,7 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **tipo_id** uuid -> TIPOS_PRODUTO
 - **ink_type** text
 - **show_in_catalogo** boolean NOT NULL default false
+- **cor_item_id** uuid -> ITENS
 
 ## PRODUTO_AMBIENTE
 
@@ -1148,6 +1447,27 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **base_salary** numeric
 - **is_active** boolean default true
 - **created_at** timestamp with time zone
+
+## RH_CONVITES_ADMISSAO
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **token** text NOT NULL
+- **expires_at** timestamp with time zone NOT NULL
+- **convidado_nome** text
+- **convidado_email** text
+- **status** text NOT NULL default 'aberto'::text
+- **dados** jsonb
+- **employee_id** uuid -> CLIENTES
+- **created_by** uuid
+- **created_by_name** text
+- **submitted_at** timestamp with time zone
+- **reviewed_at** timestamp with time zone
+- **reviewed_by** uuid
+- **reviewed_by_name** text
+- **motivo_recusa** text
+- **created_at** timestamp with time zone NOT NULL
+- **updated_at** timestamp with time zone NOT NULL
 
 ## RH_DEPARTAMENTOS
 
@@ -1536,6 +1856,69 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **name** text NOT NULL
 - **created_at** timestamp with time zone NOT NULL
 
+## TOTALEXPRESS_ABRANGENCIA
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **cep_ini** integer NOT NULL
+- **cep_fim** integer NOT NULL
+- **uf** character varying
+- **ibge** character varying
+- **municipio** character varying
+- **base** character varying
+- **risco** character varying
+- **prazo** integer
+- **atendimento** character varying
+- **localidade** character varying
+- **geografia** character varying NOT NULL
+
+## TOTALEXPRESS_ENVIOS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **sale_id** uuid NOT NULL -> VENDAS
+- **pedido** character varying NOT NULL
+- **cod_remessa** character varying
+- **protocolo** character varying
+- **situacao** character varying NOT NULL default 'enviado'::character varying
+- **erro** text
+- **awb** character varying
+- **ultimo_status_codigo** integer
+- **ultimo_status** text
+- **ultimo_status_em** timestamp with time zone
+- **link_rastreio** text
+- **resposta** jsonb
+- **enviado_por** text
+- **created_at** timestamp with time zone
+- **updated_at** timestamp with time zone
+
+## TOTALEXPRESS_GEOGRAFIAS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **geografia** character varying NOT NULL
+- **adicional_kg** numeric NOT NULL default 0
+
+## TOTALEXPRESS_LOTES
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **cod_retorno** bigint NOT NULL
+- **data_geracao** timestamp with time zone
+- **conteudo** jsonb NOT NULL
+- **processado_em** timestamp with time zone
+- **erro** text
+- **created_at** timestamp with time zone
+
+## TOTALEXPRESS_TARIFAS
+
+- **id** uuid NOT NULL
+- **tenant_id** uuid NOT NULL -> EMPRESAS
+- **geografia** character varying NOT NULL
+- **peso_ini** numeric NOT NULL
+- **peso_fim** numeric NOT NULL
+- **preco** numeric NOT NULL
+
 ## TRANSPORTADORAS
 
 - **id** uuid NOT NULL
@@ -1548,7 +1931,7 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **whatsapp** text
 - **contact_name** text
 - **rntrc** text
-- **vehicle_types** ARRAY default '{}'::text[]
+- **vehicle_types** text[] default '{}'::text[]
 - **address** jsonb default '{}'::jsonb
 - **observations** text
 - **is_active** boolean NOT NULL default true
@@ -1557,10 +1940,11 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **pickup_schedule** jsonb default '[]'::jsonb
 - **ie** text
 - **documents** jsonb NOT NULL default '{}'::jsonb
+- **is_pickup** boolean NOT NULL default false
 
 ## USUARIOS
 
-- **id** uuid NOT NULL
+- **id** uuid NOT NULL -> users
 - **tenant_id** uuid NOT NULL -> EMPRESAS
 - **name** character varying NOT NULL
 - **email** character varying NOT NULL
@@ -1640,6 +2024,7 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **receipt_url** text
 - **delivery_mode** text
 - **pickup_person** jsonb
+- **idempotency_key** text
 
 ## VENDA_ITENS
 
@@ -1653,6 +2038,7 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **total** numeric NOT NULL
 - **customization** jsonb
 - **created_at** timestamp with time zone
+- **adicionais** jsonb NOT NULL default '[]'::jsonb
 
 ## VENDEDORES
 
@@ -1660,7 +2046,7 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **tenant_id** uuid NOT NULL
 - **is_active** boolean NOT NULL default true
 - **region_label** text
-- **territory** ARRAY NOT NULL default '{}'::text[]
+- **territory** text[] NOT NULL default '{}'::text[]
 - **plan_group** text NOT NULL default 'padrao'::text
 - **top_clients** integer NOT NULL default 10
 - **created_at** timestamp with time zone NOT NULL
@@ -1689,7 +2075,7 @@ Gerado do information_schema. Somente estrutura: nenhum dado, senha, token ou ch
 - **plan_group** text NOT NULL default 'padrao'::text
 - **name** text NOT NULL
 - **seq** integer NOT NULL default 1
-- **months** ARRAY NOT NULL default '{}'::integer[]
+- **months** int4[] NOT NULL default '{}'::integer[]
 - **monthly_goal** numeric NOT NULL default 0
 - **cycle_bonus** numeric NOT NULL default 0
 - **cycle_months** integer NOT NULL default 3
