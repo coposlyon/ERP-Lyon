@@ -1,4 +1,6 @@
-require('dotenv').config();
+// O .env e procurado em varios lugares e o log diz qual carregou — ver
+// config/env.js. Precisa ser a PRIMEIRA linha: tudo abaixo le process.env.
+require('./config/env').carregarAmbiente();
 const express = require('express');
 const cors    = require('cors');
 const helmet  = require('helmet');
