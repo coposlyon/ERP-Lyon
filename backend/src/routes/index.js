@@ -118,6 +118,7 @@ router.use('/itens',     requireModules('financial','products','settings','produ
 // configuração da empresa. Aqui só se lê as três listas.
 router.use('/lancamento', requireModules('sales','pdv','products','settings','financial','production'), require('./lancamento'));
 router.use('/contabil',  requireModules('financial','fiscal','settings'), require('./contabil'));
+router.use('/contador',  requireModules('financial','fiscal','settings'), require('./contador'));
 router.use('/fiscal',    requireModules('fiscal'), fiscalRoutes);
 router.use('/reports',   requireModules('reports'), reportsRoutes);
 router.use('/settings',  requireModules('settings'), settingsRoutes);

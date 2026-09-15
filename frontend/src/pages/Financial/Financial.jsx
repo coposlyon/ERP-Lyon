@@ -8,6 +8,7 @@ import {
 import api from '@/lib/api';
 import { Table, Pagination } from '@/components/UI/Table';
 import Modal from '@/components/UI/Modal';
+import { Malote } from '@/pages/Contabil/Contador';
 import { format, parseISO, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
@@ -1220,6 +1221,7 @@ export default function Financial() {
             ['payable','Contas a Pagar'],
             ['cashflow','Fluxo de Caixa'],
             ['dre','DRE / Resultado'],
+            ['malote','Malote de Pagamentos'],
           ].map(([k, l]) => (
             <button key={k} onClick={() => { setTab(k); setPage(1); }}
               className={`pb-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${tab === k ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-900'}`}>
@@ -1232,6 +1234,8 @@ export default function Financial() {
           <div className="card-body"><CashflowView /></div>
         ) : tab === 'dre' ? (
           <div className="card-body"><DREView /></div>
+        ) : tab === 'malote' ? (
+          <div className="card-body"><Malote /></div>
         ) : (
           <>
             <MesNavegador mes={mes} onMudar={mudarMes} pendencias={tab === 'receivable' ? pendencias : null} />

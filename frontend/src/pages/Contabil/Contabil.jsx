@@ -14,6 +14,7 @@ import {
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import Modal from '@/components/UI/Modal';
+import { Exportacao, Malote, Margem } from './Contador';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, ChartTooltip, ChartLegend);
 
@@ -86,6 +87,9 @@ function VisaoGeral({ month, setTab }) {
     ['Compras', ShoppingCart, '/purchases'],
     ['Bancos', Landmark, () => setTab('bancos')],
     ['DRE', FileText, () => setTab('dre')],
+    ['Margem', TrendingUp, () => setTab('margem')],
+    ['Malote', Receipt, () => setTab('malote')],
+    ['Contador', FileDown, () => setTab('contador')],
   ];
 
   return (
@@ -880,7 +884,10 @@ const TABS = [
   ['bancos', 'Bancos'],
   ['conciliacao', 'Conciliação'],
   ['dre', 'DRE'],
+  ['margem', 'Margem Consolidada'],
   ['tributario', 'Tributário'],
+  ['malote', 'Malote de Pagamentos'],
+  ['contador', 'Exportação p/ Contador'],
 ];
 
 export default function Contabil() {
@@ -915,6 +922,9 @@ export default function Contabil() {
       {tab === 'conciliacao' && <Conciliacao />}
       {tab === 'dre' && <DRE />}
       {tab === 'tributario' && <Tributario />}
+      {tab === 'margem' && <Margem />}
+      {tab === 'malote' && <Malote />}
+      {tab === 'contador' && <Exportacao />}
     </div>
   );
 }
