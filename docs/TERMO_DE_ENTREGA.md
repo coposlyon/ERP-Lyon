@@ -19,7 +19,7 @@ O CONTRATADO declara que, nesta data, **entregou à CONTRATANTE todo o objeto do
 | 1ª | análise, programação e implantação | sistema implantado e em operação; histórico completo das alterações no repositório |
 | 1ª | homologação | sistema disponível para uso e conferência da CONTRATANTE desde a implantação |
 | 1ª | treinamento | *Treinamento Completo* — passo a passo de todos os módulos, com checklists e rotinas por setor |
-| 1ª | documentação técnica | *Documentação de Entrega*, *Manual do Sistema*, `SETUP.md`, `ESTRUTURA_BANCO.md`, `INTEGRACOES.md` |
+| 1ª | documentação técnica | no repositório: pasta `docs/` (manual do sistema e documentação técnica), `SETUP.md`, `ESTRUTURA_BANCO.md`, `INTEGRACOES.md` |
 | 1ª | banco de dados | banco Supabase com esquema completo em `migrations/` (até a migração 125) |
 | 1ª | integrações e APIs | API REST do sistema e integrações com código pronto (NF-e, PIX, boleto, transportadoras, WhatsApp, Google) |
 | 1ª | entrega integral do código-fonte | repositório `coposlyon/ERP-Lyon`, de titularidade da CONTRATANTE |
@@ -31,7 +31,7 @@ O CONTRATADO declara que, nesta data, **entregou à CONTRATANTE todo o objeto do
 | 2ª | controladoria | Contábil / Fiscal: DRE, conciliação, margem consolidada, malote e exportação para o contador |
 | 2ª | RH | colaboradores, admissão, ponto, férias, folha, documentos, eSocial, desligamentos e portais |
 | 2ª | marketplaces | canais próprios de venda on-line: catálogo personalizado e loja, integrados a pedidos, estoque e financeiro |
-| 7ª | repositórios, documentação, credenciais, scripts e banco | repositório, documentos deste termo, scripts em `backend/scripts/` e relação de acessos da *Documentação de Entrega* (seção 9), com os valores enviados à CONTRATANTE |
+| 7ª | repositórios, documentação, credenciais, scripts e banco | repositório com a documentação, scripts em `backend/scripts/`, banco de dados e acessos administrativos enviados à CONTRATANTE |
 | 11ª | backups, auditoria, controle de acessos e recuperação de desastre | backup automático diário com verificação e restauração, trilha de auditoria, permissões por setor e por tela, procedimentos de recuperação |
 
 As integrações que dependem de contas ou credenciais da própria CONTRATANTE (certificado digital e emissor de NF-e, contrato de cobrança bancária, gateway PIX, liberação de IP da Total Express, WhatsApp Business, leiaute do escritório contábil) foram entregues com o código pronto; a ativação depende apenas do cadastro dessas credenciais pela CONTRATANTE, conforme `INTEGRACOES.md`.
@@ -48,14 +48,11 @@ Novas programações, alterações, funcionalidades ou serviços solicitados a p
 
 O CONTRATADO **renuncia ao recebimento do restante do valor pendente** do sistema, nada mais tendo a cobrar da CONTRATANTE em razão deste contrato.
 
-## 4. Documentos que acompanham este termo
+## 4. Documento que acompanha este termo
 
-1. *Treinamento Completo* — `docs/pdf/Treinamento_Completo_ERP_Lyon_Copos.pdf`
-2. *Documentação de Entrega* — `docs/pdf/Documentacao_de_Entrega_ERP_Lyon_Copos.pdf`
-3. *Manual do Sistema* — `docs/pdf/Manual_do_Sistema_ERP_Lyon_Copos.pdf`
-4. Repositório `coposlyon/ERP-Lyon` e relação de acessos
+*Treinamento Completo* do ERP Lyon Copos — passo a passo de todos os módulos.
 
-O envio deste termo e dos documentos acima à CONTRATANTE, por e-mail ou mensagem, fica registrado como prova da entrega, nos termos da Cláusula 19ª do contrato.
+O envio deste termo e do *Treinamento Completo* à CONTRATANTE, por e-mail ou mensagem, fica registrado como prova da entrega, nos termos da Cláusula 19ª do contrato.
 
 15 de setembro de 2026.
 
