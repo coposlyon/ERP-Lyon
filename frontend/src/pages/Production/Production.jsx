@@ -5,13 +5,24 @@ import { Factory } from 'lucide-react';
 import FilaDeEtapas from '@/components/Fluxo/FilaDeEtapas';
 import SerigrafiaPanel from './SerigrafiaPanel';
 
+// O que aparece embaixo do título: os status 10 a 21 da régua, pelo
+// número e nome (os mesmos de backend/src/lib/atencao.js).
+const STATUS_DA_PRODUCAO = [
+  '10 Aguardando revelação', '11 Revelação finalizada',
+  '12 Aguardando pintura', '13 Pintura finalizada',
+  '14 Aguardando aplicação de borda', '15 Borda finalizada',
+  '16 Aguardando produção', '17 Produção finalizada',
+  '18 Aguardando controle de qualidade', '19 Controle de qualidade finalizado',
+  '20 Aguardando foto', '21 Foto enviada',
+];
+
 export default function Production() {
   return (
     <FilaDeEtapas
       modulo="producao"
       api="/production"
       titulo="Produção"
-      subtitulo="Revelação · Pintura · Borda · Produção · Qualidade · Foto · Embalagem"
+      subtitulo={STATUS_DA_PRODUCAO.join(' · ')}
       Icone={Factory}
       cor="orange"
       extras={<SerigrafiaPanel />}

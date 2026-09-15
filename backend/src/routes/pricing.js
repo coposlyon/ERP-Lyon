@@ -282,6 +282,13 @@ function pickSheetBody(body) {
   for (const k of SHEET_FIELDS) if (body[k] !== undefined) out[k] = body[k];
   if (out.is_master !== undefined) out.is_master = !!out.is_master;
   if (out.category_id === '') out.category_id = null;
+  // A chave dos sub-produtos/cores/bordas/insumos não é uuid: ela mora
+  // em `category` (texto), e a lista devolve como `category_id` para a
+  // tela não precisar saber a diferença.
+  if (out.category_id && !ehUuid(out.category_id)) {
+    out.category = String(out.category_id);
+    out.category_id = null;
+  }
   if (out.name !== undefined) out.name = String(out.name || '').trim();
   if (out.calc_quantity !== undefined) out.calc_quantity = Math.max(1, parseInt(out.calc_quantity) || 1);
   if (out.print_colors !== undefined) out.print_colors = Math.min(Math.max(parseInt(out.print_colors) || 1, 0), 8);
@@ -323,69 +330,130 @@ function pickSheetBody(body) {
  * ajuste; a que vai para R$ 3,00 é outra conversa, e quem clica tem de
  * ver isso na tela.
  */
-router.get('/categorias', async (req, res) => {
-  try {
-    const [{ data: cats, error: e1 }, { data: prods, error: e2 }] = await Promise.all([
-      supabase.from('CATEGORIAS').select('id, name').eq('tenant_id', req.tenantId).order('name'),
-      supabase.from('PRODUTOS')
-        .select('id, category_id, sale_price, cost_price, is_active, price_tiers, min_order_qty')
-        .eq('tenant_id', req.tenantId).eq('is_active', true).limit(5000),
-    ]);
-    if (e1) throw e1;
-    if (e2) throw e2;
+/**
+ * TUDO O QUE TEM CADASTRO ENTRA NA LISTA — e não só as categorias de
+ * produto que já têm produto.
+ *
+ * A lista trazia só CATEGORIAS com produto ativo. Ficavam de fora a
+ * categoria recém-criada (0 produtos), os sub-produtos (Tampas,
+ * Canudos — que a Lyon cobra por peça), as cores e bordas (idem) e os
+ * insumos. Quem abria a Formação de Preço para precificar uma tampa
+ * não achava tampa em lugar nenhum.
+ *
+ * A chave de cada grupo diz onde o preço será gravado:
+ *   <uuid>                    CATEGORIAS → PRODUTOS.sale_price
+ *   itens:acessorio:<nome>    ITENS (sub-produto da categoria) → unit_price
+ *   itens:<tipo>              ITENS do tipo (cor, borda, tinta,
+ *                             embalagem, outro) → unit_price
+ *   insumos:<categoria>       INSUMOS — não têm preço de venda; a ficha
+ *                             fica como custo de referência
+ *
+ * SUBCATEGORIA entra com o nome do pai na frente ("CANECA › SLIM"), logo
+ * abaixo dele. Insumo lista as categorias da empresa (Engenharia de
+ * Custos) mesmo sem insumo cadastrado: a ficha pode nascer antes.
+ */
+const TIPOS_ITENS = [['cor', 'Cores', 'cor'], ['borda', 'Bordas', 'borda'], ['tinta', 'Tintas', 'item'], ['embalagem', 'Embalagens', 'item'], ['outro', 'Outros itens', 'item']];
+const CATEGORIAS_INSUMO_PADRAO = ['Tintas', 'Solventes', 'Thinner', 'Emulsão', 'Telas / Poliéster', 'Vegetal', 'Recuperador', 'Fita', 'Embalagem', 'Caixa', 'Rótulo', 'Outros'];
+const CHAVE_ITENS = /^itens:(acessorio|cor|borda|tinta|embalagem|outro)(?::(.+))?$/;
+const CHAVE_INSUMO = /^insumos:(.+)$/;
+const ehUuid = v => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || ''));
 
+router.get('/categorias', async (req, res) => {
+  const media = xs => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
+  const r2 = v => Math.round(v * 100) / 100;
+  const resumo = (lista, precoDe, custoDe) => {
+    const precos = lista.map(precoDe).map(Number).filter(v => v > 0);
+    const custos = lista.map(custoDe).map(Number).filter(v => v > 0);
+    return {
+      produtos: lista.length, com_preco: precos.length,
+      preco_medio: r2(media(precos)),
+      preco_min: precos.length ? r2(Math.min(...precos)) : 0,
+      preco_max: precos.length ? r2(Math.max(...precos)) : 0,
+      custo_medio: r2(media(custos)),
+    };
+  };
+  try {
+    const [catsBrutas, prods, itens, insumos, empresa] = await Promise.all([
+      supabase.from('CATEGORIAS').select('id, name, parent_id').eq('tenant_id', req.tenantId).order('name').then(r => { if (r.error) throw r.error; return r.data || []; }),
+      supabase.from('PRODUTOS').select('id, category_id, sale_price, cost_price, is_active, price_tiers, min_order_qty')
+        .eq('tenant_id', req.tenantId).eq('is_active', true).limit(5000).then(r => { if (r.error) throw r.error; return r.data || []; }),
+      supabase.from('ITENS').select('id, kind, categoria, unit_price, unit_cost, is_active')
+        .eq('tenant_id', req.tenantId).neq('is_active', false).limit(5000).then(r => r.data || []),
+      supabase.from('INSUMOS').select('id, category, package_price, package_qty, is_active')
+        .eq('tenant_id', req.tenantId).neq('is_active', false).limit(5000).then(r => r.data || []),
+      supabase.from('EMPRESAS').select('settings').eq('id', req.tenantId).maybeSingle().then(r => r.data || null, () => null),
+    ]);
+
+    // Pai primeiro, filhos logo abaixo com o nome do pai na frente.
+    const porId = new Map(catsBrutas.map(c => [c.id, c]));
+    const nomeCompleto = c => {
+      const nomes = [c.name];
+      for (let p = porId.get(c.parent_id), n = 0; p && n < 5; p = porId.get(p.parent_id), n++) nomes.unshift(p.name);
+      return nomes.join(' › ');
+    };
+    const cats = catsBrutas.map(c => ({ ...c, name: nomeCompleto(c), subcategoria: !!porId.get(c.parent_id) }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+    // ── Produtos: TODAS as categorias, com ou sem produto ──
     const porCat = new Map();
-    for (const p of prods || []) {
+    for (const p of prods) {
       if (!p.category_id) continue;
       if (!porCat.has(p.category_id)) porCat.set(p.category_id, []);
       porCat.get(p.category_id).push(p);
     }
-
-    const media = xs => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
-    const r2 = v => Math.round(v * 100) / 100;
-
-    // Categoria sem produto não entra: não há a quem aplicar o preço, e
-    // escolhê-la só levaria a uma conta que não vale para ninguém.
-    const comProduto = (cats || []).filter(c => (porCat.get(c.id) || []).length > 0);
-
-    res.json(comProduto.map(c => {
+    const produtos = cats.map(c => {
       const lista = porCat.get(c.id) || [];
-      const precos = lista.map(p => Number(p.sale_price) || 0).filter(v => v > 0);
-      const custos = lista.map(p => Number(p.cost_price) || 0).filter(v => v > 0);
+      const listas = lista.map(p => JSON.stringify(p.price_tiers || []));
+      const minimos = lista.map(p => Number(p.min_order_qty) || 0).filter(v => v > 0);
       return {
-        id: c.id, name: c.name,
-        produtos: lista.length,
-        // QUANTOS TÊM PREÇO, e não só a média dos que têm. A média
-        // ignora o zero — então uma categoria com um produto a R$ 4,53
-        // e nove zerados aparecia como "hoje R$ 4,53", que descreve um
-        // décimo da categoria e esconde justamente o que precisa de
-        // preço.
-        com_preco: precos.length,
-        preco_medio: r2(media(precos)),
-        preco_min: precos.length ? r2(Math.min(...precos)) : 0,
-        preco_max: precos.length ? r2(Math.max(...precos)) : 0,
-        // O custo do cadastro é um bom chute inicial para a matéria-prima:
-        // é o que se paga pelo copo cru. A tela oferece, não impõe.
-        custo_medio: r2(media(custos)),
-        // AS FAIXAS QUE JÁ VALEM HOJE — o ponto de partida do bloco de
-        // desconto por volume na ficha. Elas foram escritas antes, na
-        // tela do modelo, e recomeçar do zero faria a ficha apagar sem
-        // querer o que já estava no ar.
-        //
-        // `divergem` é a verdade quando os produtos da categoria não
-        // concordam entre si: mostrar uma das listas calado seria
-        // esconder que as outras existem.
-        ...(() => {
-          const listas = lista.map(p => JSON.stringify(p.price_tiers || []));
-          const minimos = lista.map(p => Number(p.min_order_qty) || 0).filter(v => v > 0);
-          return {
-            faixas: lista.find(p => (p.price_tiers || []).length)?.price_tiers || [],
-            faixas_divergem: new Set(listas).size > 1,
-            min_pedido: minimos.length ? Math.max(...minimos) : 0,
-          };
-        })(),
+        id: c.id, name: c.name, subcategoria: c.subcategoria, tipo: 'produto', grupo: 'Produtos', unidade: 'produto',
+        aplica_em: 'PRODUTOS', tem_faixas: true,
+        ...resumo(lista, p => p.sale_price, p => p.cost_price),
+        faixas: lista.find(p => (p.price_tiers || []).length)?.price_tiers || [],
+        faixas_divergem: new Set(listas).size > 1,
+        min_pedido: minimos.length ? Math.max(...minimos) : 0,
       };
-    }));
+    });
+
+    // ── Sub-produtos (ITENS acessório), por categoria ──
+    const acess = itens.filter(i => i.kind === 'acessorio');
+    const catsAcess = [...new Set(acess.map(i => (i.categoria || '').trim() || 'Sem categoria'))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const subprodutos = catsAcess.map(nome => {
+      const lista = acess.filter(i => ((i.categoria || '').trim() || 'Sem categoria') === nome);
+      return {
+        id: `itens:acessorio:${nome}`, name: nome, tipo: 'subproduto', grupo: 'Sub-produtos', unidade: 'item',
+        aplica_em: 'ITENS', tem_faixas: false,
+        ...resumo(lista, i => i.unit_price, i => i.unit_cost), faixas: [], faixas_divergem: false, min_pedido: 0,
+      };
+    });
+
+    // ── Cores, bordas, tintas, embalagens e outros (ITENS) — todos, mesmo vazios ──
+    const tipos = TIPOS_ITENS.map(([kind, label, unidade]) => {
+      const lista = itens.filter(i => i.kind === kind);
+      return {
+        id: `itens:${kind}`, name: label, tipo: kind, grupo: 'Cadastro', unidade,
+        aplica_em: 'ITENS', tem_faixas: false,
+        ...resumo(lista, i => i.unit_price, i => i.unit_cost), faixas: [], faixas_divergem: false, min_pedido: 0,
+      };
+    });
+
+    // ── Insumos, por categoria (custo de referência; sem preço de venda) ──
+    const salvas = empresa?.settings?.insumo_categories;
+    const catsIns = [...new Set([
+      ...(Array.isArray(salvas) && salvas.length ? salvas : CATEGORIAS_INSUMO_PADRAO).map(c => String(c || '').trim()).filter(Boolean),
+      ...insumos.map(i => (i.category || '').trim() || 'Outros'),
+    ])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const insumosPorCat = catsIns.map(nome => {
+      const lista = insumos.filter(i => ((i.category || '').trim() || 'Outros') === nome);
+      const custoUn = i => (Number(i.package_qty) > 0 ? Number(i.package_price) / Number(i.package_qty) : Number(i.package_price));
+      return {
+        id: `insumos:${nome}`, name: nome, tipo: 'insumo', grupo: 'Insumos', unidade: 'insumo',
+        aplica_em: null, tem_faixas: false, sem_preco_de_venda: true,
+        ...resumo(lista, () => 0, custoUn), faixas: [], faixas_divergem: false, min_pedido: 0,
+      };
+    });
+
+    res.json([...produtos, ...subprodutos, ...tipos, ...insumosPorCat]);
   } catch (err) {
     console.error('[pricing/categorias]', err.message);
     res.status(500).json({ error: 'Erro ao listar as categorias' });
@@ -481,6 +549,47 @@ router.post('/aplicar-categoria', async (req, res) => {
       error: `A primeira faixa começa em ${faixas[0].min_qty} un, abaixo do mínimo do pedido (${minimo} un).`,
     });
   }
+
+  // ── Insumos não têm preço de venda ──
+  if (CHAVE_INSUMO.test(categoryId)) {
+    return res.status(400).json({ error: 'Insumo não tem preço de venda — a ficha vale como custo de referência, e nada é aplicado.' });
+  }
+
+  // ── Sub-produtos, cores e bordas: o preço vai em ITENS.unit_price ──
+  const mItens = categoryId.match(CHAVE_ITENS);
+  if (mItens) {
+    const [, kind, categoria] = mItens;
+    const rotulo = kind === 'acessorio'
+      ? (categoria || 'Sem categoria')
+      : (TIPOS_ITENS.find(t => t[0] === kind)?.[1] || kind);
+    try {
+      const { data: lista, error } = await supabase.from('ITENS').select('id, name, color_name, unit_price, categoria')
+        .eq('tenant_id', req.tenantId).eq('kind', kind).neq('is_active', false).order('name').limit(5000);
+      if (error) throw error;
+      const itens = (lista || []).filter(i => kind !== 'acessorio'
+        || ((i.categoria || '').trim() || 'Sem categoria') === (categoria || 'Sem categoria'));
+      const novo = Math.round(preco * 100) / 100;
+      const alvo = itens.map(i => ({
+        id: i.id, code: '', name: i.name || i.color_name || '',
+        de: Math.round((Number(i.unit_price) || 0) * 100) / 100, para: novo, faixa_muda: false, minimo_muda: false,
+      }));
+      const mudam = alvo.filter(x => x.de !== x.para);
+      const base = { categoria: rotulo, produtos: alvo.length, alterados: mudam.length, preco: novo, faixas: null, min_order_qty: null, faixas_alteradas: 0 };
+      if (simular) return res.json({ simulado: true, ...base, itens: mudam.slice(0, 200) });
+      if (!mudam.length) return res.json({ ok: true, ...base });
+      const { error: erroUp } = await supabase.from('ITENS')
+        .update({ unit_price: novo, updated_at: new Date().toISOString() })
+        .in('id', mudam.map(x => x.id)).eq('tenant_id', req.tenantId);
+      if (erroUp) throw erroUp;
+      audit(req, 'update', 'item', categoryId, { preco_por_categoria: rotulo, preco: novo, itens: alvo.length, alterados: mudam.length });
+      return res.json({ ok: true, ...base });
+    } catch (err) {
+      console.error('[pricing/aplicar-categoria/itens]', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  if (!ehUuid(categoryId)) return res.status(400).json({ error: 'Categoria inválida.' });
 
   try {
     const { data: cat } = await supabase.from('CATEGORIAS')
@@ -583,7 +692,7 @@ router.get('/sheets', async (req, res) => {
   const { search, include_inactive } = req.query;
   try {
     let q = supabase.from('PRECIFICACOES')
-      .select('*, PRODUTOS(id, name, sale_price)')
+      .select('*, PRODUTOS!PRECIFICACOES_product_id_fkey(id, name, sale_price)')
       .eq('tenant_id', req.tenantId)
       .order('updated_at', { ascending: false })
       .limit(500);
@@ -594,7 +703,9 @@ router.get('/sheets', async (req, res) => {
     }
     const { data, error } = await q;
     if (error) throw error;
-    res.json(data || []);
+    res.json((data || []).map(f => (
+      !f.category_id && /^(itens|insumos):/.test(f.category || '') ? { ...f, category_id: f.category } : f
+    )));
   } catch (err) {
     if (missing042(err)) return err042(res);
     console.error('[pricing/sheets]', err.message);
@@ -605,7 +716,7 @@ router.get('/sheets', async (req, res) => {
 router.get('/sheets/:id', async (req, res) => {
   try {
     const { data, error } = await supabase.from('PRECIFICACOES')
-      .select('*, PRODUTOS(id, name, sale_price)')
+      .select('*, PRODUTOS!PRECIFICACOES_product_id_fkey(id, name, sale_price)')
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Ficha não encontrada' });
@@ -685,7 +796,7 @@ router.get('/report', async (req, res) => {
   try {
     const [{ data, error }, fixed] = await Promise.all([
       supabase.from('PRECIFICACOES')
-        .select('id, name, category, capacity, print_type, calc_quantity, tax_pct, margin_ideal_pct, cost_direct, cost_subtotal, cost_unit, overhead_unit, price_min, price_ideal, price_premium, updated_at, PRODUTOS(id, name, sale_price)')
+        .select('id, name, category, capacity, print_type, calc_quantity, tax_pct, margin_ideal_pct, cost_direct, cost_subtotal, cost_unit, overhead_unit, price_min, price_ideal, price_premium, updated_at, PRODUTOS!PRECIFICACOES_product_id_fkey(id, name, sale_price)')
         .eq('tenant_id', req.tenantId).eq('is_active', true)
         .order('updated_at', { ascending: false }).limit(1000),
       fixedOverview(req.tenantId),

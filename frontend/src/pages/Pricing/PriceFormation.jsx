@@ -57,6 +57,12 @@ import { buildSheetReportHtml, openPrintWindow } from '@/utils/pricingReportHtml
 import { Moeda, Quantidade, Percentual } from './pecas';
 
 /** Informado é diferente de zero: "de graça" e "não perguntei" não são a mesma coisa. */
+/** "1 produto / 3 produtos", "1 item / 2 itens", "1 cor / 5 cores"… */
+const plural = (u, n) => {
+  const um = { produto: 'produto', item: 'item', cor: 'cor', borda: 'borda', insumo: 'insumo' }[u] || u;
+  const varios = { produto: 'produtos', item: 'itens', cor: 'cores', borda: 'bordas', insumo: 'insumos' }[u] || `${u}s`;
+  return n === 1 ? um : varios;
+};
 const temValor = v => v !== '' && v != null && numInput(v) !== 0;
 
 export default function PriceFormation() {
@@ -318,22 +324,41 @@ export default function PriceFormation() {
             <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
               className="input text-sm w-full max-w-md">
               <option value="">— escolha a categoria —</option>
-              {categorias.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name} — {c.produtos} produto{c.produtos !== 1 ? 's' : ''}
-                  {c.com_preco === 0
-                    ? ' · sem preço'
-                    : c.com_preco < c.produtos
-                      ? ` · ${c.com_preco} com preço`
-                      : ` · hoje ${fmtBRL(c.preco_medio)}`}
-                </option>
-              ))}
+              {/* TUDO O QUE TEM CADASTRO, em grupos: Produtos (todas as
+                  categorias, mesmo sem produto), Sub-produtos (Tampas,
+                  Canudos…), Cadastro (Cores, Bordas) e Insumos. */}
+              {['Produtos', 'Sub-produtos', 'Cadastro', 'Insumos'].map(grupo => {
+                const lista = categorias.filter(c => (c.grupo || 'Produtos') === grupo);
+                if (!lista.length) return null;
+                return (
+                  <optgroup key={grupo} label={grupo}>
+                    {lista.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} — {c.produtos} {plural(c.unidade || 'produto', c.produtos)}
+                        {c.sem_preco_de_venda
+                          ? (c.custo_medio > 0 ? ` · custo médio ${fmtBRL(c.custo_medio)}` : '')
+                          : c.produtos === 0
+                            ? ' · nenhum cadastrado ainda'
+                            : c.com_preco === 0
+                              ? ' · sem preço'
+                              : c.com_preco < c.produtos
+                                ? ` · ${c.com_preco} com preço`
+                                : ` · hoje ${fmtBRL(c.preco_medio)}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
             </select>
             {cat && (
               <p className="text-[12px] text-gray-500 mt-2 flex items-center gap-1.5 flex-wrap">
                 <Package size={13} />
-                <b>{cat.produtos}</b> produto{cat.produtos !== 1 ? 's' : ''} nesta categoria
-                {cat.com_preco === 0 ? (
+                <b>{cat.produtos}</b> {plural(cat.unidade || 'produto', cat.produtos)} nesta categoria
+                {cat.sem_preco_de_venda ? (
+                  <span className="text-amber-600">· insumo não tem preço de venda — a ficha vale como custo de referência</span>
+                ) : cat.produtos === 0 ? (
+                  <span className="text-amber-600">· cadastre produtos nela para o preço ter onde ir; a ficha pode ser salva desde já</span>
+                ) : cat.com_preco === 0 ? (
                   <span className="text-amber-600">· nenhum tem preço ainda</span>
                 ) : (
                   <>
@@ -454,6 +479,8 @@ export default function PriceFormation() {
                   divididos pelo lote — então sabe dizer quanto o copo
                   custa em 500 e em 1000, em vez de deixar o desconto no
                   chute. */}
+              {/* Item e insumo não têm faixa de quantidade: o preço vai direto na peça. */}
+              {cat?.tem_faixas !== false && (
               <Bloco n={4} titulo="Quanto o preço cai quando o pedido é grande?"
                 ajuda="O desconto por volume desta categoria. Sem faixa, todo pedido sai pelo preço de tabela."
                 direita={<span className="text-[11px] text-gray-400">vai junto no “Aplicar”</span>}>
@@ -534,6 +561,7 @@ export default function PriceFormation() {
                   <ComoFicaNoCatalogo faixas={faixas} minPedido={minPedido} tabela={calc.price_ideal} />
                 </div>
               </Bloco>
+              )}
             </>
           )}
         </div>
@@ -760,8 +788,9 @@ function AplicarNaCategoria({
     return (
       <div className="card p-4">
         <p className="text-[13px] text-gray-700">
-          Pôr <b>{fmtBRL(preco)}</b> em todos os <b>{cat.produtos}</b> produto
-          {cat.produtos !== 1 ? 's' : ''} de <b>{cat.name}</b>.
+          {cat.sem_preco_de_venda
+            ? <>Insumo não tem preço de venda: a ficha de <b>{cat.name}</b> fica salva como custo de referência.</>
+            : <>Pôr <b>{fmtBRL(preco)}</b> em todos os <b>{cat.produtos}</b> {plural(cat.unidade || 'produto', cat.produtos)} de <b>{cat.name}</b>.</>}
         </p>
         {oQueVai}
         {impedido && (
@@ -769,7 +798,7 @@ function AplicarNaCategoria({
             Corrija as faixas acima antes de aplicar.
           </p>
         )}
-        <button onClick={onSimular} disabled={simulando || !cat.produtos || impedido}
+        <button onClick={onSimular} disabled={simulando || !cat.produtos || impedido || cat.sem_preco_de_venda}
           className="btn-secondary text-sm w-full justify-center mt-3 disabled:opacity-45">
           {simulando ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
           Ver o que vai mudar
