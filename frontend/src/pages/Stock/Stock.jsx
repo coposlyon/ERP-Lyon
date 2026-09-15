@@ -794,17 +794,26 @@ export default function Stock() {
 
       const totalGeral = itens.reduce((s, p) => s + p.qtd * p.custo, 0);
 
-      const msg = [
-        `Olá ${group.name}! 👋`, ``,
-        `Segue nossa Solicitação de Compra — ${format(new Date(), 'dd/MM/yyyy')} | CONTROLE: ${protocol}`, ``,
-        linhas, ``,
-        `💰 Total Geral: ${fmt(totalGeral)}`, ``,
-        `Atenciosamente,`, tenant?.name || '', tenant?.phone || '',
-      ].join('\n');
+      /**
+       * A JANELA ABRE ANTES DE ESPERAR O SERVIDOR. O navegador só deixa
+       * abrir aba nova no clique; depois de um `await` ele bloqueia como
+       * pop-up. Então a aba nasce vazia agora e recebe o endereço do
+       * WhatsApp quando a mensagem estiver pronta.
+       */
+      const aba = window.open('', '_blank');
 
-      window.open(`https://wa.me/${full}?text=${encodeURIComponent(msg)}`, '_blank');
-
+      /**
+       * PRIMEIRO A SOLICITAÇÃO, DEPOIS A MENSAGEM.
+       *
+       * A mensagem ia antes de a solicitação existir — e por isso saía
+       * sem o link do portal: o endereço /fornecedor/<token> só nasce
+       * quando o pedido é gravado. O fornecedor recebia a lista, o
+       * total e nada para preencher. Agora o pedido é criado (ou, no
+       * reenvio, o link do pedido existente é buscado) e o link entra
+       * na mensagem.
+       */
       let payable = null;
+      let link = null;
       if (!existingOrder && group.id) {
         const resp = await api.post('/stock/replenishment-orders', {
           supplier_id: group.id, supplier_name: group.name,
@@ -812,10 +821,33 @@ export default function Stock() {
         }).catch(e => { if (e?.response?.status === 409) return null; throw e; });
         if (resp === null) qc.invalidateQueries({ queryKey: ['replenishment-orders-pending'] });
         payable = resp?.payable || null;
+        link = resp?.link || null;
+        // O link não veio junto (falhou ao gerar)? Tenta de novo pelo id.
+        if (!link?.url && resp?.id) {
+          link = await api.post(`/stock/replenishment-orders/${resp.id}/link`, {}).catch(() => null);
+        }
       } else if (existingOrder?.id) {
+        link = await api.post(`/stock/replenishment-orders/${existingOrder.id}/link`, {}).catch(() => null);
         await api.post(`/stock/replenishment-orders/${existingOrder.id}/log-resend`)
           .catch(e => console.warn('log-resend:', e.message));
       }
+
+      const msg = [
+        `Olá ${group.name}! 👋`, ``,
+        `Segue nossa Solicitação de Compra — ${format(new Date(), 'dd/MM/yyyy')} | CONTROLE: ${protocol}`, ``,
+        linhas, ``,
+        `💰 Total Geral: ${fmt(totalGeral)}`, ``,
+        ...(link?.url ? [
+          `🔗 Confirme pelo link o que você tem disponível e envie a cotação:`,
+          link.url, ``,
+          `O link é pessoal da sua empresa — para abrir, confirme o CNPJ e o telefone do cadastro.`, ``,
+        ] : []),
+        `Atenciosamente,`, tenant?.name || '', tenant?.phone || '',
+      ].join('\n');
+
+      const destino = `https://wa.me/${full}?text=${encodeURIComponent(msg)}`;
+      if (aba) aba.location.href = destino; else window.open(destino, '_blank');
+      if (!link?.url) toast.error('A mensagem saiu sem o link do portal — gere o link em Solicitações e reenvie.', { duration: 7000 });
 
       qc.invalidateQueries({ queryKey: ['replenishment-orders-pending'] });
       qc.invalidateQueries({ queryKey: ['stock-movements'] });
