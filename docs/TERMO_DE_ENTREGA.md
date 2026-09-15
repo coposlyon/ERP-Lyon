@@ -40,9 +40,15 @@ As integrações que dependem de contas ou credenciais da própria CONTRATANTE (
 
 A CONTRATANTE comunicou ao CONTRATADO que não pretende seguir com o projeto. Com a entrega registrada neste termo, **o projeto está concluído e encerrado**.
 
+**Ambas as partes concordam com o encerramento do projeto e do contato.**
+
 Novas programações, alterações, funcionalidades ou serviços solicitados a partir desta data **não fazem parte do objeto do contrato**.
 
-## 3. Documentos que acompanham este termo
+## 3. Valor pendente
+
+O CONTRATADO **renuncia ao recebimento do restante do valor pendente** do sistema, nada mais tendo a cobrar da CONTRATANTE em razão deste contrato.
+
+## 4. Documentos que acompanham este termo
 
 1. *Treinamento Completo* — `docs/pdf/Treinamento_Completo_ERP_Lyon_Copos.pdf`
 2. *Documentação de Entrega* — `docs/pdf/Documentacao_de_Entrega_ERP_Lyon_Copos.pdf`
