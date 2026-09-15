@@ -210,7 +210,25 @@ function linhaDoTempo(venda, aplicaveis = {}, opcoes = {}) {
     quando.set('iniciando_pedido', { at: venda.created_at, user: null });
   }
 
-  const atual = infoStatus(venda?.status);
+  /**
+   * "EM PROCESSO" ACENDE O BALÃO DA ETAPA — e não nenhum.
+   *
+   * Os status de meio ("Revelação em processo", "Embalando pedido") não
+   * têm número na régua: são a mesma etapa, dita de outro jeito. Só que
+   * a régua comparava `p.key === venda.status` e, com o pedido em
+   * `revelacao_processo`, NENHUM balão acendia — a fábrica estava com a
+   * mão no copo e a tela do cliente mostrava tudo apagado, como se o
+   * pedido tivesse sumido entre duas etapas.
+   *
+   * Agora o "em processo" acende o balão do "aguardando" da mesma fase,
+   * com a marca `em_processo` para a tela dizer "em andamento" em vez de
+   * "aguardando".
+   */
+  const emProcessoDe = PROCESSO_DA_FASE[venda?.status]
+    ? (FASES.find(f => f.key === PROCESSO_DA_FASE[venda?.status])?.entrando || [])[0] || null
+    : null;
+  const statusNaRegua = emProcessoDe || venda?.status;
+  const atual = infoStatus(statusNaRegua);
   const passoAtual = atual.passo || 0;
 
   // Pintura e borda só entram quando o pedido passa por elas. Um pedido
@@ -280,7 +298,7 @@ function linhaDoTempo(venda, aplicaveis = {}, opcoes = {}) {
       || null;
     let estado;
     if (!p.aplica) estado = 'nao_se_aplica';
-    else if (p.key === venda?.status) estado = 'atual';
+    else if (p.key === statusNaRegua) estado = 'atual';
     else if (retirada && p.key === 'entregue' && venda?.status === 'produto_retirado') estado = 'atual';
     else if (visita) estado = 'concluido';
     // Passou do ponto sem registro no log: a etapa ficou para trás
@@ -302,6 +320,9 @@ function linhaDoTempo(venda, aplicaveis = {}, opcoes = {}) {
       modulo: p.modulo || null,
       modulo_label: p.modulo ? MODULOS_DO_FLUXO[p.modulo]?.label : null,
       aplica: p.aplica,
+      // O pedido está com a mão nesta etapa agora (status "em processo").
+      em_processo: !!(emProcessoDe && p.key === emProcessoDe),
+      em_processo_label: emProcessoDe && p.key === emProcessoDe ? infoStatus(venda?.status).label : null,
       at: visita?.at || null,
       user: visita?.user || null,
     };

@@ -527,6 +527,10 @@ router.get('/', async (req, res) => {
         acoes: acoesDoPedido(s, aplicaveis, modulo),
         etapas: etapasDoPedido(aplicaveis, modulo, s),
         regua: reguaDoPedido(s, aplicaveis, modulo),
+        // OS STATUS NUMERADOS DESTE MÓDULO — os mesmos balões da linha do
+        // tempo do cliente e do vendedor, só a fatia daqui. É o que a
+        // tela desenha quando o pedido é selecionado.
+        regua_status: A.linhaDoTempo(s, aplicaveis).filter(x => x.modulo === modulo),
         status_label: A.infoStatus(s.status).label,
         // De quem é o pedido AGORA — para a fila dizer "está com o
         // designer" quando o pedido ainda não chegou aqui.
@@ -745,6 +749,7 @@ router.get('/:id', async (req, res) => {
       acoes: acoesDoPedido(sale, aplicaveis, modulo),
       etapas: etapasDoPedido(aplicaveis, modulo, sale),
       regua: reguaDoPedido(sale, aplicaveis, modulo),
+      regua_status: A.linhaDoTempo(sale, aplicaveis).filter(x => x.modulo === modulo),
       status_label: A.infoStatus(sale.status).label,
       modulo_atual: A.moduloDoStatus(sale.status),
       // A RÉGUA GLOBAL INTEIRA — os 28 status, com o dono de cada um.

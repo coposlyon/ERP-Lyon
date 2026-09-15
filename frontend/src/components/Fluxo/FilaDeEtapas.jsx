@@ -14,7 +14,19 @@
 // ============================================================
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Factory, Play, Check, Search, RefreshCw, Loader2, Save, Image as ImageIcon, AlertTriangle, Clock, Plus, Camera, Trash2, ShieldCheck, ArrowLeft, Lock, Eye, CircleCheck, Circle, CalendarClock, Siren } from 'lucide-react';
+import {
+  Factory, Play, Check, Search, RefreshCw, Loader2, Save, Image as ImageIcon, AlertTriangle, Clock, Plus,
+  Camera, Trash2, ShieldCheck, ArrowLeft, Lock, Eye, CircleCheck, Circle, CalendarClock, Siren,
+  // Os ícones dos balões — os mesmos nomes do catálogo (lib/atencao.js).
+  Wallet, Package, PenTool, FileImage, FlaskConical, Brush, CircleDashed, Settings,
+  PackageOpen, ShieldQuestion, ImageUp, PackageSearch, PackageCheck, Truck, Hourglass, FileCheck, GlassWater,
+} from 'lucide-react';
+
+const ICONES = {
+  CircleCheck, Wallet, Hourglass, Package, PenTool, FileImage, FileCheck, FlaskConical, Brush,
+  CircleDashed, GlassWater, Settings, PackageOpen, ShieldQuestion, ShieldCheck, Camera, ImageUp,
+  Truck, PackageCheck, PackageSearch,
+};
 import api from '@/lib/api';
 import { id4 } from '@/lib/ids';
 import Modal from '@/components/UI/Modal';
@@ -284,63 +296,75 @@ function ConfirmacaoDeEtapa({ etapa, acao, matriz, artes, fotos, onCancelar, onC
  * mostra quando e por quem — e o que ela registrou (matriz, máquina,
  * perda), porque é isso que se procura quando o copo sai errado.
  */
-function ReguaDeProcessos({ regua, acoes, onAgir, pendente, aviso }) {
-  if (!regua?.length) {
+function ReguaDeProcessos({ regua, statusDoModulo, acoes, onAgir, pendente, aviso }) {
+  if (!regua?.length && !statusDoModulo?.length) {
     return (
       <div className="card p-3 flex flex-wrap items-center gap-2">
         <span className="text-xs flex items-center gap-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
           <AlertTriangle size={13} className="shrink-0" />
-          {aviso || 'Este pedido não passa pelas etapas da fábrica.'}
+          {aviso || 'Este pedido não passa pelas etapas deste módulo.'}
         </span>
       </div>
     );
   }
 
+  /**
+   * OS MESMOS BALÕES DA LINHA DO TEMPO — só a fatia deste módulo.
+   *
+   * A produção via "fichas de etapa" (Revelação, Pintura…) enquanto o
+   * cliente e o vendedor viam "status numerados" (10 Aguardando
+   * revelação, 11 Revelação finalizada…). Duas linguagens para a mesma
+   * coisa: o vendedor dizia "está no 16" e a fábrica não sabia o que
+   * era 16. Agora é o mesmo desenho, o mesmo número, em toda tela —
+   * aqui aparecem só os deste módulo, e o pedido acende onde está.
+   */
+  const CORES = {
+    concluido:     { anel: '#22c55e', fundo: '#dcfce7', texto: '#166534' },
+    atual:         { anel: '#2563eb', fundo: '#dbeafe', texto: '#1e40af' },
+    pendente:      { anel: '#cbd5e1', fundo: '#f8fafc', texto: '#94a3b8' },
+    nao_se_aplica: { anel: '#e2e8f0', fundo: 'transparent', texto: '#cbd5e1' },
+  };
+  const dataCurta = iso => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
+
   return (
     <div className="card p-3 space-y-3">
-      <div className="flex flex-wrap items-stretch gap-1.5">
-        {regua.map((e, i) => {
-          const feita = e.estado === 'feita';
-          const agora = e.estado === 'agora';
-          const detalhes = [
-            e.matriz && `matriz ${e.matriz}`,
-            e.maquina && `máquina ${e.maquina}`,
-            e.perda && `perda ${e.perda}`,
-            e.resultado,
-          ].filter(Boolean).join(' · ');
-
+      <div className="flex flex-wrap gap-x-2 gap-y-4">
+        {(statusDoModulo || []).map(p => {
+          const Icon = ICONES[p.icone] || Circle;
+          const c = CORES[p.estado] || CORES.pendente;
+          const fora = p.estado === 'nao_se_aplica';
+          const rotulo = p.em_processo ? (p.em_processo_label || p.label) : p.label;
           return (
-            <div key={e.key} className="flex items-stretch gap-1.5">
-              <div className={`rounded-xl px-3 py-2 border min-w-[118px] ${
-                agora ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-200'
-                  : feita ? 'bg-green-50 border-green-200'
-                  : 'bg-gray-50 border-gray-200'}`}>
-                <p className={`text-[12px] font-semibold flex items-center gap-1 ${
-                  agora ? 'text-blue-800' : feita ? 'text-green-800' : 'text-gray-400'}`}>
-                  {feita ? <CircleCheck size={12} /> : agora ? <Play size={11} /> : <Circle size={11} />}
-                  {e.label}
-                </p>
-                {feita && (
-                  <p className="text-[10.5px] text-green-700 leading-tight mt-0.5">
-                    {fmtDT(e.em)}{e.por ? ` · ${e.por}` : ''}
-                  </p>
-                )}
-                {agora && <p className="text-[10.5px] text-blue-700 mt-0.5">está aqui agora</p>}
-                {detalhes && (
-                  <p className="text-[10.5px] text-gray-500 leading-tight mt-0.5">{detalhes}</p>
-                )}
+            <div key={p.key} className="flex flex-col items-center text-center gap-1"
+              style={{ width: 96, opacity: fora ? 0.45 : 1 }}
+              title={`${p.passo}. ${p.label}${fora ? ' — não se aplica a este pedido' : ''}${p.at ? ` — ${dataCurta(p.at)}` : ''}${p.user ? ` · ${p.user}` : ''}`}>
+              <div className="relative">
+                <div className="w-11 h-11 rounded-full flex items-center justify-center"
+                  style={{ border: `2px solid ${c.anel}`, background: c.fundo,
+                           boxShadow: p.estado === 'atual' ? `0 0 0 4px ${c.fundo}` : 'none' }}>
+                  <Icon size={18} style={{ color: c.texto }} />
+                </div>
+                <span className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                  style={{ background: fora ? '#cbd5e1' : c.anel }}>{p.passo}</span>
               </div>
-              {i < regua.length - 1 && (
-                <span className="self-center text-gray-300 text-xs">›</span>
+              <span className="text-[10.5px] leading-tight font-medium"
+                style={{ color: c.texto, textDecoration: fora ? 'line-through' : 'none' }}>
+                {rotulo}
+              </span>
+              {p.em_processo && <span className="text-[9px] font-semibold text-blue-600">em andamento</span>}
+              {p.at && !p.em_processo && (
+                <span className="text-[9px] text-gray-400">{dataCurta(p.at)}</span>
               )}
             </div>
           );
         })}
       </div>
 
-      {/* OS BOTÕES SÓ DA ETAPA DE AGORA. Um botão para uma etapa que o
-          pedido já passou (ou ainda não alcançou) é um convite a
-          registrar trabalho que não aconteceu. */}
+      {/* OS BOTÕES SÓ DA ETAPA DE AGORA. Iniciar leva o "aguardando" para
+          "em andamento"; finalizar leva ao "finalizada" e acende o
+          próximo balão. Um botão para uma etapa que o pedido já passou
+          (ou ainda não alcançou) é um convite a registrar trabalho que
+          não aconteceu. */}
       <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-gray-100">
         {acoes?.length ? acoes.map(a => (
           <button key={`${a.stage}-${a.action}`} onClick={() => onAgir(a)} disabled={pendente}
@@ -640,7 +664,7 @@ export default function FilaDeEtapas({
       {selected ? (
         <div className="space-y-3">
           <PrazoDoPedido prazo={selected.prazo} />
-          <ReguaDeProcessos regua={selected.regua} acoes={selected.acoes}
+          <ReguaDeProcessos regua={selected.regua} statusDoModulo={selected.regua_status} acoes={selected.acoes}
             onAgir={setConfirmando} pendente={stageMut.isPending}
             aviso={!selected.interagivel
               ? 'Pedido sem personalização — não passa pela serigrafia. Ele segue pela tela do pedido de venda.'
@@ -789,7 +813,8 @@ export default function FilaDeEtapas({
         {selected && (
           <div className="space-y-4">
             <PrazoDoPedido prazo={detail?.prazo || selected.prazo} />
-            <ReguaDeProcessos regua={detail?.regua || selected.regua} acoes={selected.acoes}
+            <ReguaDeProcessos regua={detail?.regua || selected.regua}
+              statusDoModulo={detail?.regua_status || selected.regua_status} acoes={selected.acoes}
               onAgir={a => { setVerAberto(false); setConfirmando(a); }} />
             <CaminhoGlobal linha={detail?.linha_do_tempo} moduloAqui={modulo} />
         <div className="grid lg:grid-cols-2 gap-4">
