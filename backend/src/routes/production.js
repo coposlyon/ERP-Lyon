@@ -148,6 +148,9 @@ const ETAPAS = {
      */
     label: 'Metalização',
     fase: 'producao', processo: 'metalizacao_processo', avancaAoTerminar: false,
+    // Metalização é acabamento de BORDA: copo sem borda não tem o que
+    // metalizar, e o botão "Iniciar Metalização" não pode aparecer nele.
+    exige: 'borda',
     colunas: { start: 'metalizacao_inicio', fim: 'metalizacao_fim' },
     campos: { finish: [CAMPO_PERDA()] },
   },
@@ -324,6 +327,9 @@ function etapasDoPedido(aplicaveis, modulo, venda = null) {
     const e = ETAPAS[k];
     if (modulo && e.modulo !== modulo) return false;
     if (venda && SO_NA_ENTREGA.has(k) && A.ehRetirada(venda)) return false;
+    // Etapa que só existe com uma característica do item (metalização → borda),
+    // mesmo quando a fase dela (produção) vale para todo pedido.
+    if (e.exige && !aplicaveis[e.exige]) return false;
     const fase = A.FASES.find(f => f.key === e.fase);
     if (fase?.opcional) return !!aplicaveis[fase.opcional];
     return true;
