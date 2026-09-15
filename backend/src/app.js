@@ -14,7 +14,17 @@ const { captureError } = require('./lib/observability');
 const { rodarMigracoes, estadoMigracoes } = require('./lib/migrate');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+/**
+ * A PORTA DO DISCLOUD E 8080, E NAO E NEGOCIAVEL.
+ *
+ * Aplicacao do tipo "site" na Discloud so recebe trafego na 8080: o
+ * proxy deles bate ali e em mais nenhuma. Com PORT=3001 no painel o
+ * servidor subia, o log dizia "running on port 3001", e o site mostrava
+ * "Servico indisponivel" — de pe e surdo. Em producao, 8080 vence o que
+ * o painel disser; na maquina local continua 3001.
+ */
+const NO_DISCLOUD = !!process.env.DISCLOUD_APP_ID || require('fs').existsSync('/home/node/discloud.config');
+const PORT = NO_DISCLOUD ? 8080 : (process.env.PORT || 3001);
 
 // Discloud (e maioria dos hosts) roda atrás de proxy reverso
 app.set('trust proxy', 1);
