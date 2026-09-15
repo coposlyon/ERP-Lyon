@@ -104,7 +104,10 @@ async function fixedExpenses(tenantId) {
     if (error) ({ data, error } = await sel('id, name, amount, notes, due_day, is_active, employee_id'));
     if (error) ({ data, error } = await sel('id, name, amount, notes, due_day, is_active'));
     if (error) throw error;
-    return data || [];
+    // As máquinas entram como linhas CALCULADAS (depreciação + manutenção),
+    // somente leitura — ver lib/maquinas.js.
+    const maquinas = await require('./maquinas').linhasDoRateio(tenantId);
+    return [...(data || []), ...maquinas];
   } catch { return []; } // migração 040 pendente
 }
 

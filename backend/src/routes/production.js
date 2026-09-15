@@ -164,7 +164,7 @@ const ETAPAS = {
     campos: {
       start: [
         { key: 'maquina', tipo: 'texto', label: 'Número da máquina', obrigatorio: true,
-          dica: 'Em qual máquina este pedido está rodando.' },
+          dica: 'Código do cadastro de Maquinários (ex.: M001). Ao finalizar, o lote entra na produção e no desgaste dela.' },
       ],
       finish: [CAMPO_PERDA()],
     },
@@ -1075,6 +1075,18 @@ router.post('/:id/stage', async (req, res) => {
         });
       } catch (e) {
         console.error('[production/stage] perda:', e?.message || e);
+      }
+    }
+
+    // PRODUÇÃO CONCLUÍDA = O LOTE ENTRA NA VIDA DA MÁQUINA (Engenharia de
+    // Custos › Maquinários): quantidade, horas e operador medem o desgaste.
+    if (stage === 'producao' && action === 'finish') {
+      try {
+        await require('../lib/maquinas').registrarProducaoDoPedido(req, {
+          venda: { ...sale, id: req.params.id }, log, perdas: perdidas, operador: actor,
+        });
+      } catch (e) {
+        console.error('[production/stage] maquina:', e?.message || e);
       }
     }
 

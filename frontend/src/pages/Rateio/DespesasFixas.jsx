@@ -27,6 +27,7 @@ const CAT_META = {
   Comercial:      { text: '#dc2626', bg: '#fef2f2', border: '#fecaca', dot: '#ef4444' },
   RH:             { text: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', dot: '#22c55e' },
   Outros:         { text: '#4b5563', bg: '#f9fafb', border: '#e5e7eb', dot: '#9ca3af' },
+  Depreciação:    { text: '#4338ca', bg: '#eef2ff', border: '#c7d2fe', dot: '#6366f1' },
 };
 const CATEGORIES = Object.keys(CAT_META);
 const LEGEND_ORDER = ['Marketing', 'Administrativa', 'Tecnologia', 'Financeiro', 'Logística', 'RH', 'Outros'];
@@ -38,6 +39,8 @@ const ORIGINS = {
   rh:         { label: 'RH',         cls: 'bg-green-50 text-green-700 border-green-200' },
   financeiro: { label: 'Financeiro', cls: 'bg-teal-50 text-teal-700 border-teal-200' },
   contratos:  { label: 'Contratos',  cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  // Calculada em Engenharia de Custos › Maquinários (depreciação + manutenção).
+  maquinario: { label: 'Maquinários', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
 };
 const originOf = e => e.origin || (e.employee_id ? 'rh' : 'manual');
 
@@ -618,8 +621,15 @@ export default function DespesasFixas() {
                         <td className={`px-2 py-2 whitespace-nowrap ${isSoon(due) && active ? 'text-red-500 font-medium' : 'text-gray-600'}`}>
                           {fmtDate(due)}
                         </td>
-                        <td className="px-2 py-2"><StatusPill active={active} onToggle={() => toggleActive(exp)} /></td>
+                        <td className="px-2 py-2">{exp.readonly ? <StatusPill active={active} onToggle={() => {}} /> : <StatusPill active={active} onToggle={() => toggleActive(exp)} />}</td>
                         <td className="px-2 py-2">
+                          {exp.readonly ? (
+                            <div className="flex items-center justify-center">
+                              <a className="text-[11.5px] text-primary-600 hover:underline whitespace-nowrap"
+                                href={`/engenharia/${exp.category === 'Tecnologia' ? 'computadores' : 'maquinarios'}?id=${exp.maquina_id}`}
+                                title="Calculada pela depreciação e manutenção — edite no cadastro do equipamento">abrir equipamento</a>
+                            </div>
+                          ) : (
                           <div className="flex items-center justify-center gap-1">
                             <button className="btn-ghost p-1.5 text-blue-600" title="Editar" onClick={() => setModal(exp)}>
                               <Pencil size={14} />
@@ -628,6 +638,7 @@ export default function DespesasFixas() {
                               <Trash2 size={14} />
                             </button>
                           </div>
+                          )}
                         </td>
                       </tr>
                     );

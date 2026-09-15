@@ -232,15 +232,23 @@ export const menuItems = [
     label: 'Engenharia de Custos',
     icon: PieChart,
     children: [
-      { label: 'Formação de Preço', path: '/pricing/formacao', icon: Calculator, module: 'financial' },
-      { label: 'Análise de Produtos', path: '/pricing', icon: LineChart, module: 'financial', exact: true },
+      // O GRUPO SEGUE A ORDEM DA CONTA: o que a empresa TEM (máquinas,
+      // computadores), o que ela GASTA (insumos, despesas) e o que sai
+      // disso (formação de preço, tabela de preços).
+      //
+      // Saíram do menu Análise de Produtos, Rateio por Categoria, Rateio
+      // por Pedido, Painel de Rentabilidade, Simulador de Metas e
+      // Histórico de Rateios: eram seis leituras da mesma conta que a
+      // Formação de Preço e as Despesas Fixas já mostram. As rotas
+      // continuam de pé — link salvo não quebra, e as telas de Despesas
+      // Fixas e Formação de Preço seguem apontando para elas.
+      { label: 'Maquinários', path: '/engenharia/maquinarios', icon: Factory, module: 'financial' },
+      { label: 'Computadores e TI', path: '/engenharia/computadores', icon: Monitor, module: 'financial' },
+      { label: 'Insumos e Materiais', path: '/engenharia/insumos', icon: FlaskConical, module: 'financial' },
       { label: 'Despesas Fixas', path: '/rateio/despesas-fixas', icon: Home, module: 'financial' },
       { label: 'Despesas Variáveis', path: '/rateio/despesas-variaveis', icon: Percent, module: 'financial' },
-      { label: 'Rateio por Categoria', path: '/rateio/produto', icon: FolderTree, module: 'financial' },
-      { label: 'Rateio por Pedido', path: '/rateio/pedido', icon: ShoppingCart, module: 'financial' },
-      { label: 'Painel de Rentabilidade', path: '/rateio/rentabilidade', icon: LineChart, module: 'financial' },
-      { label: 'Simulador de Metas', path: '/rateio/metas', icon: Target, module: 'financial' },
-      { label: 'Histórico de Rateios', path: '/rateio/historico', icon: ScrollText, module: 'financial' },
+      { label: 'Formação de Preço', path: '/pricing/formacao', icon: Calculator, module: 'financial' },
+      { label: 'Tabela de Preços', path: '/price-tables', icon: Tag, module: 'price-tables' },
     ],
   },
   {

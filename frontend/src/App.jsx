@@ -64,6 +64,7 @@ const SimuladorMetas     = lazy(() => import('@/pages/Rateio/SimuladorMetas'));
 const HistoricoRateios   = lazy(() => import('@/pages/Rateio/HistoricoRateios'));
 const Rentabilidade      = lazy(() => import('@/pages/Rateio/Rentabilidade'));
 const Insumos            = lazy(() => import('@/pages/Insumos/Insumos'));
+const Maquinarios        = lazy(() => import('@/pages/Maquinarios/Maquinarios'));
 const Itens              = lazy(() => import('@/pages/Itens/Itens'));
 const Fiscal             = lazy(() => import('@/pages/Fiscal/Fiscal'));
 const Contabil           = lazy(() => import('@/pages/Contabil/Contabil'));
@@ -313,6 +314,8 @@ function AppRoutes() {
         <Route path="rateio/historico" element={<Mod m={['financial','products','settings']}><HistoricoRateios /></Mod>} />
         <Route path="rateio/rentabilidade" element={<Mod m={['financial','products','settings']}><Rentabilidade /></Mod>} />
         <Route path="engenharia/insumos" element={<Mod m={['financial','products','settings','production']}><Insumos /></Mod>} />
+        <Route path="engenharia/maquinarios" element={<Mod m={['financial','products','settings','production']}><Maquinarios grupo="maquinario" key="maquinario" /></Mod>} />
+        <Route path="engenharia/computadores" element={<Mod m={['financial','products','settings','production']}><Maquinarios grupo="ti" key="ti" /></Mod>} />
         {/* Cadastro de itens: a mesma tela travada por tipo. Itens (todos)
             e Tintas saíram, e Acessórios virou Sub-Produtos dentro de
             Produtos — os endereços antigos levam para lá. */}
