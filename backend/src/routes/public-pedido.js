@@ -85,14 +85,16 @@ function dataISO(entrada) {
 // `delivery_mode` (migracao 090) responde entrega ou retirada; `notes`
 // carrega o texto antigo do catalogo, que e o que responde pelos pedidos
 // gravados antes de a coluna existir.
+//
+// `production_photos` sao as fotos do pedido pronto: a fabrica tira uma
+// por arte, e ate entao so a tela da producao as lia. (Este comentario
+// ja morou DENTRO da lista e derrubou o portal de novo em 09/09.)
 const CAMPOS_PEDIDO = `
   id, number, status, origin, subtotal, freight, total, payment_method,
   created_at, operation_date, event_date, ship_date, delivery_date,
   collect_date, transport_days, freight_quote, tracking_code,
   carrier_id, user_id, tenant_id, production_log,
   delivery_mode, notes, pickup_person, receipt_url,
-  // As fotos do pedido pronto. A fabrica tira uma por arte, e ate agora
-  // so a tela da producao as lia — quem comprou nunca via.
   production_photos,
   CLIENTES ( id, display_id, name, cpf_cnpj, phone, mobile, email, address, rating ),
   VENDA_ITENS ( id, product_name, quantity, unit_price, total, customization,
@@ -103,6 +105,9 @@ const CAMPOS_PEDIDO = `
 async function carregarPedido(saleId) {
   const { data: venda, error } = await supabase.from('VENDAS')
     .select(CAMPOS_PEDIDO).eq('id', saleId).maybeSingle();
+  // O erro NAO pode ser engolido calado: foi assim que o portal inteiro
+  // passou a dizer "Pedido nao encontrado" sem deixar rastro no log.
+  if (error) console.error('[acompanhar/carregarPedido]', error.message);
   if (error || !venda) return null;
 
   const [transportadora, danfe, avisos, comprovante] = await Promise.all([
