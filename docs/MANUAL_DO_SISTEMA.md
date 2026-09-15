@@ -1,6 +1,6 @@
 # ERP Lyon Copos — Manual do Sistema
 
-**Versão:** setembro/2026 · **Endereço:** https://lyoncopos.online · **Suporte:** Pablo Flores Santarem
+**Versão:** setembro/2026 · **Endereço:** https://lyoncopos.online
 
 Este manual é para quem usa o sistema no dia a dia: vendedor, financeiro, designer, fábrica, logística, RH e gestão. Cada capítulo diz **o que a tela faz, quem usa e o que acontece quando você clica**. O capítulo 2 é o mais importante — ele explica o caminho de um pedido do início ao fim, e todos os outros módulos giram em torno dele.
 

@@ -1,6 +1,6 @@
 # ERP Lyon Copos — Roteiro de Treinamento
 
-Cinco encontros de **até 1 hora**, um por setor, mais um de gestão. Cada encontro tem: o que a pessoa precisa saber fazer, um exercício prático com um pedido de teste e um checklist de "consegue fazer sozinho". O treinamento está concluído quando **todos os itens de todos os checklists estiverem marcados** — é esse o registro de aceite da Cláusula 3ª do contrato.
+Roteiro para a própria equipe da Lyon treinar cada setor: cinco encontros de **até 1 hora**, um por setor, mais um de gestão. Cada encontro tem o que a pessoa precisa saber fazer, um exercício prático com um pedido de teste e um checklist de "consegue fazer sozinho". Quem conduz é o administrador do sistema, com o Manual do Sistema ao lado.
 
 > **Pedido de teste:** use o cliente **"CLIENTE DE TESTE — NÃO FATURAR"** e escreva `[PEDIDO DE TESTE]` nas observações. Ao final, um administrador cancela o pedido — o sistema não apaga nada, então o histórico do treino fica visível na Auditoria.
 
@@ -136,14 +136,3 @@ Cinco encontros de **até 1 hora**, um por setor, mais um de gestão. Cada encon
 - [ ] Executar a rotina de fechamento mensal de ponta a ponta
 
 ---
-
-## Registro de conclusão
-
-| Encontro | Data | Participantes | Checklist completo? | Assinatura |
-|---|---|---|---|---|
-| 1 — Comercial | | | ☐ | |
-| 2 — Financeiro | | | ☐ | |
-| 3 — Designer/Produção | | | ☐ | |
-| 4 — Logística | | | ☐ | |
-| 5 — RH/Cadastros | | | ☐ | |
-| 6 — Gestão | | | ☐ | |

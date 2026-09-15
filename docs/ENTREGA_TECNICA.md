@@ -1,6 +1,6 @@
 # ERP Lyon Copos — Documentação Técnica de Entrega
 
-Documento previsto na **Cláusula 7ª** do contrato (entrega de repositórios, documentação, credenciais, scripts e banco). Complementa `SETUP.md` (instalação local), `ESTRUTURA_BANCO.md` (tabelas) e `INTEGRACOES.md` (APIs externas). Nenhuma senha ou chave está escrita aqui: os **nomes** das credenciais estão listados na seção 6 e os **valores** são entregues à CONTRATANTE por canal separado.
+Relação do que está sendo entregue — repositório, documentação, scripts, banco e acessos — e de como o sistema opera. Complementa `SETUP.md` (instalação local), `ESTRUTURA_BANCO.md` (tabelas) e `INTEGRACOES.md` (APIs externas). Nenhuma senha ou chave está escrita aqui: os **nomes** das credenciais estão listados na seção 6 e os **valores** são entregues à CONTRATANTE por canal separado.
 
 ---
 
@@ -28,8 +28,8 @@ navegador ──► Discloud (Node 18+, porta 8080) ──► Supabase (Postgres
 
 ## 2. Repositório e código-fonte
 
-- **Repositório oficial (propriedade da CONTRATANTE):** https://github.com/coposlyon/ERP-Lyon — branch `main`.
-- Cada commit descreve o que mudou e por quê (histórico completo desde o início do projeto). O `git log` é a trilha de alterações da Cláusula 14ª.
+- **Repositório oficial (propriedade da Lyon Copos):** https://github.com/coposlyon/ERP-Lyon — branch `main`.
+- Cada commit descreve o que mudou e por quê (histórico completo desde o início do projeto). O `git log` é a trilha completa de alterações.
 - Estrutura:
 
 ```
@@ -66,7 +66,7 @@ docs/                        este documento, manual e treinamento
 
 ---
 
-## 4. Segurança da informação (Cláusula 11ª)
+## 4. Segurança da informação
 
 | Exigência | Como está atendida |
 |---|---|
@@ -108,7 +108,7 @@ pg_restore --no-owner --dbname="$DATABASE_URL" lyon_YYYYMMDD.dump
 
 ## 6. Credenciais e acessos a entregar (nomes)
 
-Entregues à CONTRATANTE em canal separado, nunca neste arquivo nem no repositório.
+Entregues à Lyon Copos em canal separado, nunca neste arquivo nem no repositório.
 
 **Contas administrativas**
 - GitHub — organização/usuário `coposlyon` (dono do repositório)
@@ -121,17 +121,13 @@ Entregues à CONTRATANTE em canal separado, nunca neste arquivo nem no repositó
 **Variáveis de ambiente do servidor** (as 11 em produção hoje; o `.env.example` documenta todas as ~60 opcionais)
 `NODE_ENV` `PORT` `FRONTEND_URL` `SUPABASE_URL` `SUPABASE_ANON_KEY` `SUPABASE_SERVICE_KEY` `DATABASE_URL` `GROQ_API_KEY` `GOOGLE_CLIENT_ID` `GOOGLE_CLIENT_SECRET` `GOOGLE_REFRESH_TOKEN`
 
-**Integrações que dependem de credenciais da CONTRATANTE** (código pronto, aguardando)
+**Integrações que dependem de credenciais da própria Lyon** (código pronto; ativar é colar as variáveis e fazer um deploy)
 - Certificado digital A1 + emissor de NF-e (`fiscal`)
 - Banco: boleto/CNAB (`BOLETO_*`), PIX com gateway (`MP_*`) — hoje PIX manual Nubank por decisão do cliente
 - Transportadoras: Total Express (`TOTALEXPRESS_*`, bloqueado por liberação de IP do lado deles), Braspress, Melhor Envio
 - WhatsApp Business (`WHATSAPP_*`), Meta/Instagram (`FB_*`, `IG_*`), e-mail (`RESEND_*`)
 - Leiaute do escritório contábil para a exportação (hoje genérica em Excel/CSV)
 
+**Com a entrega dos acessos acima, a Lyon Copos passa a ter controle integral do sistema: código, banco, hospedagem, domínio e integrações.** Qualquer desenvolvedor consegue operar e evoluir o ERP a partir deste documento, do `SETUP.md` e do histórico do repositório.
+
 ---
-
-## 7. Garantia e suporte (Cláusulas 12ª e 13ª)
-
-- Garantia de **6 meses** a partir da homologação definitiva para erros de programação, sem custo.
-- Canal: WhatsApp/e-mail do CONTRATADO. Falha **crítica** (sistema fora do ar, pedido não anda, dinheiro errado) tem prioridade sobre qualquer outra demanda.
-- Ao relatar: tela, o que clicou, o que esperava, o que aconteceu, e o número do pedido/conta. A Auditoria e o histórico do pedido geralmente já contam o resto.
