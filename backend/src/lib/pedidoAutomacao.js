@@ -196,10 +196,50 @@ async function avancarAposArte(tenantId, venda, aplicaveis, req) {
 async function avancarAposPagamento(tenantId, venda, aplicaveis, req) {
   const r = F.avancar(venda, aplicaveis, {}, req, null, { doFinanceiro: true });
   if (r.erro || r.fase?.key !== 'pagamento') return null;
-  return { status: r.status, log: r.log };
+  // Depois do pagamento, o que já está feito anda junto (estoque; a
+  // arte, se já veio). Parar em "aguardando estoque" seria trocar uma
+  // trava por outra.
+  const depois = { ...venda, status: r.status, production_log: r.log };
+  const resto = avancarOQueJaEstaFeito(depois, aplicaveis, req, { pagamentoAutomatico: false });
+  return resto || { status: r.status, log: r.log };
+}
+
+/**
+ * O PEDIDO ANDA QUANDO A CONTA ANDA — POR QUALQUER PORTA.
+ *
+ * O Financeiro tem três jeitos de dizer "este dinheiro entrou": o botão
+ * Pagar, a conferência do comprovante e a confirmação da parcela. Só o
+ * terceiro empurrava o pedido. Quem clicava Pagar e depois conferia
+ * — o caminho mais natural — deixava a conta verde e o pedido preso em
+ * "aguardando financeiro", esperando um clique que não existe em tela
+ * nenhuma. Ninguém tem que chamar o desenvolvedor para passar status.
+ *
+ * Esta função é a única porta de saída: carrega o pedido, pergunta ao
+ * motor se a etapa de pagamento está cumprida (comprovante conferido
+ * e valor coberto, ou liberação registrada) e, se estiver, grava o
+ * passo com a marca de quem confirmou. Se não estiver, não faz nada —
+ * a exigência continua onde estava, visível na ficha do pedido.
+ *
+ * Nunca lança: uma falha aqui não desfaz o pagamento, que já está
+ * gravado. Devolve o status novo, ou null.
+ */
+async function avancarPedidoDaConta(tenantId, vendaId, req, origem = 'financeiro') {
+  if (!vendaId) return null;
+  try {
+    const { carregarParaFluxo, gravarPasso } = require('./fluxoCarga');
+    const carga = await carregarParaFluxo(tenantId, vendaId);
+    if (!carga) return null;
+    const passo = await avancarAposPagamento(tenantId, carga.venda, carga.aplicaveis, req);
+    if (!passo) return null;
+    await gravarPasso(tenantId, vendaId, passo);
+    return passo.status;
+  } catch (e) {
+    console.error(`[pedido/avancarPedidoDaConta:${origem}]`, e?.message || e);
+    return null;
+  }
 }
 
 module.exports = {
   confirmaPagamentoSozinho, confirmarPagamentoAoNascer,
-  avancarOQueJaEstaFeito, avancarAposArte, avancarAposPagamento, CHAVE,
+  avancarOQueJaEstaFeito, avancarAposArte, avancarAposPagamento, avancarPedidoDaConta, CHAVE,
 };

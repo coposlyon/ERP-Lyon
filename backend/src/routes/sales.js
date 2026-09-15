@@ -239,7 +239,7 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const { data: sale, error: saleError } = await supabase
+    let { data: sale, error: saleError } = await supabase
       .from('VENDAS')
       .select('*, CLIENTES(*), USUARIOS(name)')
       .eq('id', req.params.id)
@@ -247,6 +247,19 @@ router.get('/:id', async (req, res) => {
       .single();
 
     if (saleError || !sale) return res.status(404).json({ error: 'Venda não encontrada' });
+
+    /**
+     * O PEDIDO SE CONSERTA AO ABRIR. Se ele está em "aguardando
+     * financeiro" e a conta já foi paga e conferida (por qualquer porta
+     * do Financeiro, inclusive versões antigas que não avisavam o
+     * pedido), anda agora — antes de mostrar. Ninguém liga para o
+     * desenvolvedor pedindo para passar status.
+     */
+    if (sale.status === 'aguardando_financeiro') {
+      const novo = await Auto.avancarPedidoDaConta(req.tenantId, sale.id, req, 'abrir-pedido');
+      if (novo) ({ data: sale } = await supabase.from('VENDAS').select('*, CLIENTES(*), USUARIOS(name)')
+        .eq('id', req.params.id).eq('tenant_id', req.tenantId).single());
+    }
 
     // Esconder na lista e deixar abrir pelo endereço não é esconder: o
     // id vaza num print, num link colado no grupo, no histórico do

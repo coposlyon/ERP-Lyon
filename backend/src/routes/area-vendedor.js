@@ -184,6 +184,19 @@ router.get('/pedidos/:id', async (req, res) => {
     let { data, error } = await supabase.from('VENDAS').select(CAMPOS)
       .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
 
+    /**
+     * O PEDIDO SE CONSERTA AO ABRIR. Se ele está em "aguardando
+     * financeiro" e a conta já foi paga e conferida (por qualquer porta
+     * do Financeiro, inclusive versões antigas que não avisavam o
+     * pedido), anda agora — antes de mostrar. Ninguém liga para o
+     * desenvolvedor pedindo para passar status.
+     */
+    if (data?.status === 'aguardando_financeiro') {
+      const novo = await Auto.avancarPedidoDaConta(req.tenantId, data.id, req, 'abrir-pedido');
+      if (novo) ({ data, error } = await supabase.from('VENDAS').select(CAMPOS)
+        .eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle());
+    }
+
     if (error && /column|does not exist|schema cache/i.test(error.message || '')) {
       const basico = CAMPOS
         .replace(/\n      art_file, production_photos,/, '')

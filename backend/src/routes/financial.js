@@ -15,7 +15,6 @@ const { sendWhatsApp, normalizarNumero } = require('../lib/whatsapp');
 // Confirmar a conta MOVE O PEDIDO: a etapa de Pagamento deixou de ser um
 // botão na tela do pedido e passou a ser consequência daqui.
 const Auto = require('../lib/pedidoAutomacao');
-const { carregarParaFluxo, gravarPasso } = require('../lib/fluxoCarga');
 // O historico de uma conta fala do pedido que a gerou: o codigo (PV-0007)
 // e o nome da etapa saem das mesmas fontes que a tela do pedido usa.
 const { codigoPedido } = require('../lib/pedidoCodigo');
@@ -135,10 +134,14 @@ router.post('/pay/:id', async (req, res) => {
       .single();
 
     if (error) throw error;
+    // Pagou tudo? O pedido anda — pela mesma porta da confirmação.
+    const pedido_status = status === 'paid' && transaction.type === 'receivable'
+      ? await Auto.avancarPedidoDaConta(req.tenantId, transaction.reference_type === 'sale' ? transaction.reference_id : null, req, 'pay')
+      : null;
     audit(req, 'payment', 'financial', req.params.id, {
-      description: transaction.description, paid_amount, status, payment_method,
+      description: transaction.description, paid_amount, status, payment_method, pedido_avancou: pedido_status,
     });
-    res.json(data);
+    res.json({ ...data, pedido_status });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -205,8 +208,10 @@ router.post('/receipts/:id/conferir', async (req, res) => {
       status: req.body?.status, nota: req.body?.nota, req,
     });
     if (r.erro) return res.status(400).json({ error: r.erro });
-    audit(req, 'update', 'comprovante', req.params.id, { conferencia: req.body?.status });
-    res.json(r);
+    // Conferiu uma parcela que já estava paga? O pedido anda agora.
+    const pedido_status = await Auto.avancarPedidoDaConta(req.tenantId, r.parcela?.reference_type === 'sale' ? r.parcela.reference_id : null, req, 'conferir');
+    audit(req, 'update', 'comprovante', req.params.id, { conferencia: req.body?.status, pedido_avancou: pedido_status });
+    res.json({ ...r, pedido_status });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -231,20 +236,8 @@ router.post('/receipts/:id/confirmar', async (req, res) => {
      * Falhar aqui não desfaz o pagamento — ele já está gravado, e o
      * pior caso é o pedido ficar onde estava até a próxima confirmação.
      */
-    let avancou = null;
-    const vendaId = r.parcela?.reference_id;
-    if (vendaId) {
-      try {
-        const carga = await carregarParaFluxo(req.tenantId, vendaId);
-        const passo = carga && await Auto.avancarAposPagamento(req.tenantId, carga.venda, carga.aplicaveis, req);
-        if (passo) {
-          await gravarPasso(req.tenantId, vendaId, passo);
-          avancou = passo.status;
-        }
-      } catch (e) {
-        console.error('[financial/confirmar] avanco do pedido:', e?.message || e);
-      }
-    }
+    const avancou = await Auto.avancarPedidoDaConta(req.tenantId,
+      r.parcela?.reference_type === 'sale' ? r.parcela.reference_id : null, req, 'confirmar');
 
     audit(req, 'payment', 'financial', req.params.id, {
       confirmou: r.confirmado_por, aplicados: r.aplicados, sobra: r.sobra,
