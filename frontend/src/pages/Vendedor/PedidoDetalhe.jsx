@@ -463,7 +463,25 @@ export default function PedidoDetalhe() {
                 </>
               )}
               {p.retirada?.autorizado?.nome && (
-                <Campo v={v} rotulo="Quem retira" valor={p.retirada.autorizado.nome} />
+                <Campo v={v} rotulo="Autorizado a retirar" valor={p.retirada.autorizado.nome} />
+              )}
+              {/* QUEM RETIROU DE FATO, registrado pela Logística na baixa
+                  da retirada. Autorizado e quem retirou nem sempre são a
+                  mesma pessoa — e é este que responde "entregaram para
+                  quem?". Enquanto ninguém retirou, o campo diz isso. */}
+              {p.retirada && (
+                <Campo v={v} rotulo="Quem retirou" valor={p.retirada.retirou
+                  ? <span>
+                      <span className="font-semibold">{p.retirada.retirou.nome}</span>
+                      {p.retirada.retirou.em && (
+                        <span className="block text-[11px] opacity-70">
+                          {new Date(p.retirada.retirou.em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                          {' · registrado por '}{p.retirada.retirou.registrado_por}
+                          {p.retirada.retirou.documento_conferido ? ' · documento conferido' : ''}
+                        </span>
+                      )}
+                    </span>
+                  : 'Ainda não retirado'} />
               )}
             </Bloco>
 

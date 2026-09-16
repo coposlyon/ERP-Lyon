@@ -249,7 +249,9 @@ router.get('/pedidos/:id', async (req, res) => {
       status_label: info.label,
       // Retirada: quem está autorizado a buscar, com o CPF INTEIRO —
       // é ele que confere com o documento na mão da pessoa no balcão.
-      retirada: A.ehRetirada(data) ? { autorizado: paraOBalcao(data.pickup_person) } : null,
+      retirada: A.ehRetirada(data)
+        ? { autorizado: paraOBalcao(data.pickup_person), retirou: quemRetirou(data.production_log) }
+        : null,
       status_cor: info.cor,
       atencao: A.calcularAtencao(data, new Date(), alertas.get(data.id) || null),
       // A MESMA REGUA DO CLIENTE, e nao mais uma resumida.
@@ -374,6 +376,30 @@ async function resumoDoCliente(tenantId, customerId, cliente) {
     // "Cliente desde" é o cadastro, não a primeira compra: o cliente que
     // se cadastrou em 2024 e comprou em 2026 é cliente desde 2024.
     cliente_desde: cliente?.created_at || null,
+  };
+}
+
+/**
+ * QUEM DE FATO RETIROU — o que a logística registrou no balcão.
+ *
+ * "Quem retira" é quem o cliente AUTORIZOU pelo portal; quem retirou é
+ * quem apareceu, teve o documento conferido e levou a mercadoria. Os dois
+ * nem sempre são a mesma pessoa, e é o segundo que responde "entregaram
+ * para quem?".
+ *
+ * O nome mora no histórico: a baixa da retirada na Logística grava
+ * `quem_retirou` no marco da etapa, e a confirmação feita pelo cliente no
+ * portal grava o mesmo campo. Vale o registro mais recente.
+ */
+function quemRetirou(log) {
+  const marco = [...(Array.isArray(log) ? log : [])].reverse()
+    .find(e => e && String(e.quem_retirou || '').trim());
+  if (!marco) return null;
+  return {
+    nome: String(marco.quem_retirou).trim(),
+    em: marco.at || null,
+    registrado_por: marco.stage === 'coleta' ? (marco.user || 'Logística') : 'Cliente, pelo portal',
+    documento_conferido: marco.documento_conferido === true,
   };
 }
 
