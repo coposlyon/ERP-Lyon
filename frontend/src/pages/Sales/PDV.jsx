@@ -277,34 +277,6 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   const [shipDate, setShipDate] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
 
-  // NENHUMA DATA DO PEDIDO E ANTERIOR A DATA DA OPERACAO.
-  //
-  // Aqui havia o contrario: uma data retroativa era EMPURRADA em
-  // silencio para o ano seguinte (operacao 01/09/2026 + evento 29/07
-  // virava 29/07/2027). A intencao era boa e o efeito era pessimo — a
-  // pessoa digitava uma data, via outra aparecer, e nao havia como
-  // saber por que. Corrigir sozinho o que se entendeu errado e a forma
-  // mais cara de errar.
-  //
-  // Agora o sistema NAO corrige: ele avisa e nao deixa salvar. O pedido
-  // e feito antes do evento, da saida e da entrega — nunca depois.
-  const dataBR = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
-
-  const errosDeData = (() => {
-    const e = {};
-    if (operationDate && eventDate && eventDate < operationDate) {
-      e.evento = `O evento não pode ser antes da data da operação (${dataBR(operationDate)}) — o pedido é feito antes do evento, não depois.`;
-    }
-    if (operationDate && shipDate && shipDate < operationDate) {
-      e.saida = `A saída não pode ser antes da data da operação (${dataBR(operationDate)}).`;
-    }
-    if (shipDate && deliveryDate && deliveryDate < shipDate) {
-      e.entrega = `A entrega não pode ser antes da saída (${dataBR(shipDate)}).`;
-    } else if (operationDate && deliveryDate && deliveryDate < operationDate) {
-      e.entrega = `A entrega não pode ser antes da data da operação (${dataBR(operationDate)}).`;
-    }
-    return e;
-  })();
 
   // Mudou a data da operação → replica o ano dela nas outras datas
   function changeOperationDate(v) {
@@ -489,6 +461,43 @@ export default function PDV({ onDone, mode = 'sale', customerId = null }) {
   // retirada, ela se comporta como a opção fixa.
   const isRetirada = carrierId === RETIRADA || !!carrierSel?.is_pickup;
   const carrierLabel = carrierId === RETIRADA ? 'RETIRAR NO LOCAL' : nomeCarrier(carrierSel);
+
+  // NENHUMA DATA DO PEDIDO E ANTERIOR A DATA DA OPERACAO.
+  //
+  // Aqui havia o contrario: uma data retroativa era EMPURRADA em
+  // silencio para o ano seguinte (operacao 01/09/2026 + evento 29/07
+  // virava 29/07/2027). A intencao era boa e o efeito era pessimo — a
+  // pessoa digitava uma data, via outra aparecer, e nao havia como
+  // saber por que. Corrigir sozinho o que se entendeu errado e a forma
+  // mais cara de errar.
+  //
+  // Agora o sistema NAO corrige: ele avisa e nao deixa salvar. O pedido
+  // e feito antes do evento, da saida e da entrega — nunca depois.
+  const dataBR = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
+
+  const errosDeData = (() => {
+    const e = {};
+    if (operationDate && eventDate && eventDate < operationDate) {
+      e.evento = `O evento não pode ser antes da data da operação (${dataBR(operationDate)}) — o pedido é feito antes do evento, não depois.`;
+    }
+    if (operationDate && shipDate && shipDate < operationDate) {
+      e.saida = `A saída não pode ser antes da data da operação (${dataBR(operationDate)}).`;
+    }
+    // A ENTREGA E DEPOIS DA SAIDA, NUNCA NO MESMO DIA.
+    //
+    // Mercadoria que sai hoje chega amanha ou depois: previsao igual a
+    // saida e o pedido prometendo ao cliente o que a transportadora nao
+    // faz. A retirada e a excecao — ali quem busca e o cliente, e sair e
+    // entregar podem ser o mesmo dia.
+    if (shipDate && deliveryDate && (deliveryDate < shipDate || (deliveryDate === shipDate && !isRetirada))) {
+      e.entrega = deliveryDate === shipDate
+        ? `A previsão de entrega precisa ser depois da data de saída (${dataBR(shipDate)}) — o pedido não sai e chega no mesmo dia.`
+        : `A entrega não pode ser antes da saída (${dataBR(shipDate)}).`;
+    } else if (operationDate && deliveryDate && deliveryDate < operationDate) {
+      e.entrega = `A entrega não pode ser antes da data da operação (${dataBR(operationDate)}).`;
+    }
+    return e;
+  })();
 
   // Tipos (categorias) de produto — para o filtro do painel de produtos
   const { data: productTypes = [] } = useQuery({

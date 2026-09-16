@@ -312,6 +312,17 @@ router.post('/', validate(saleSchema), async (req, res) => {
     origin, // de onde veio o cliente (Shopee, WhatsApp, Site...) — migração 067
   } = req.body;
 
+  // A ENTREGA E DEPOIS DA SAIDA, NUNCA NO MESMO DIA — a mesma regra da
+  // tela de pedido, aqui para que nenhum outro caminho grave o que ela
+  // recusa. Na retirada quem busca e o cliente, e o mesmo dia vale.
+  {
+    const saida = ship_date ? String(ship_date).slice(0, 10) : null;
+    const entrega = delivery_date ? String(delivery_date).slice(0, 10) : null;
+    if (saida && entrega && (entrega < saida || (entrega === saida && delivery_mode !== 'retirada'))) {
+      return res.status(400).json({ error: 'A previsão de entrega precisa ser depois da data de saída.' });
+    }
+  }
+
   if (!items || items.length === 0) {
     return res.status(400).json({ error: 'A venda deve ter ao menos um item' });
   }
