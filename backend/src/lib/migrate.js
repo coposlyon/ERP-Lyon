@@ -106,7 +106,7 @@ async function rodarMigracoes({ dry = false, alvo = null, log = console.log } = 
   // Postgres direto (porta 5432 bloqueada, por exemplo) fica pendurado
   // no connect e o servidor nunca chega ao listen — 503 permanente.
   const client = new Client({
-    connectionString: url,
+    connectionString: require('./databaseUrl').urlDoBanco(url),
     ssl: { rejectUnauthorized: false },
     connectionTimeoutMillis: 15000,
     statement_timeout: 120000,

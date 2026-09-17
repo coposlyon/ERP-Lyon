@@ -32,7 +32,7 @@ async function conectar() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL não definida — o backup lê o banco por conexão direta.');
   const { Client } = require('pg');
-  const client = new Client({ connectionString: url, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000, statement_timeout: 300000 });
+  const client = new Client({ connectionString: require('./databaseUrl').urlDoBanco(url), ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000, statement_timeout: 300000 });
   await client.connect();
   return client;
 }
