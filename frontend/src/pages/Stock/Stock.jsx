@@ -1031,12 +1031,13 @@ export default function Stock() {
       {/* ── Card principal ───────────────────────────────────────── */}
       <div className="card">
         <div className="card-header flex items-center gap-4 flex-wrap">
-          {/* Tabs */}
-          <div className="flex gap-4 flex-1">
+          {/* Tabs — no celular rolam de lado dentro da própria faixa, em
+              vez de empurrar a página inteira para fora da tela. */}
+          <div className="flex gap-4 flex-1 min-w-0 w-full sm:w-auto overflow-x-auto -mb-px">
             {TABS.map(t => (
               <button key={t.key}
                 onClick={() => { setTab(t.key); setPage(1); }}
-                className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                className={`pb-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
                   tab === t.key
                     ? 'border-primary-600 text-primary-600'
                     : 'border-transparent text-gray-500 hover:text-gray-900'
