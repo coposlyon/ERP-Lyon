@@ -290,7 +290,9 @@ export default function Carrinho() {
         data_evento: entrega.data_evento,
         cep: entrega.retirar ? null : entrega.cep,
         retirar: entrega.retirar,
-        // O frete não vai: o servidor refaz pela tabela.
+        // O valor do frete não vai: vai só a transportadora escolhida, e o
+        // servidor refaz a conta.
+        frete_opcao: entrega.retirar ? null : (frete?.id || null),
         forma: pagamento,
       }, { headers: { Authorization: `Bearer ${clienteAtual.token}` } });
 

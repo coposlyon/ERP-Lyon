@@ -62,7 +62,7 @@ test('frete final — base + 12% + caixas', () => {
 });
 
 test('cadastro incompleto — não chuta, diz o que falta', () => {
-  const semUnidades = L.calcularEnvio([{ nome: 'Twister 550 ml', quantidade: 50, regra: { ...REGRA_LD, unidades_por_caixa: null } }], CAIXAS);
+  const semUnidades = L.calcularEnvio([{ nome: 'Twister 550 ml', quantidade: 50, regra: { ...REGRA_LD, unidades_por_caixa: null } }], CAIXAS, { unidades_padrao: 0 });
   assert.strictEqual(semUnidades.ok, false);
   assert.match(semUnidades.faltas.join(' '), /unidades cabem na caixa/);
   const semRegra = L.calcularEnvio([{ nome: 'Taça Gin', quantidade: 10, regra: null }], CAIXAS);
@@ -85,6 +85,16 @@ test('capacidade — lida do nome do produto', () => {
 });
 
 test('configuração — padrões da Lyon quando nada foi salvo', () => {
-  assert.deepStrictEqual(L.configLogistica({}), { acrescimo_pct: 12, ocupacao_limite_pct: 70, cobrar_caixa: true });
-  assert.deepStrictEqual(L.configLogistica({ logistica: { acrescimo_pct: '0', cobrar_caixa: false } }), { acrescimo_pct: 0, ocupacao_limite_pct: 70, cobrar_caixa: false });
+  assert.deepStrictEqual(L.configLogistica({}), { acrescimo_pct: 12, ocupacao_limite_pct: 70, cobrar_caixa: true, unidades_padrao: 50 });
+  assert.deepStrictEqual(L.configLogistica({ logistica: { acrescimo_pct: '0', cobrar_caixa: false } }), { acrescimo_pct: 0, ocupacao_limite_pct: 70, cobrar_caixa: false, unidades_padrao: 50 });
+});
+
+test('unidades padrão — regra sem unidades usa o padrão (50) e avisa', () => {
+  const e = L.calcularEnvio([{ nome: 'Twister 550 ml', quantidade: 120, regra: { ...REGRA_LD, unidades_por_caixa: null, caixa_pequena_id: null } }], CAIXAS);
+  assert.strictEqual(e.ok, true);
+  assert.strictEqual(e.volumes, 3);                 // 120 ÷ 50, para cima
+  assert.strictEqual(e.usou_unidades_padrao, true);
+  const daRegra = L.calcularEnvio(grupo(250), CAIXAS);
+  assert.strictEqual(daRegra.usou_unidades_padrao, false);
+  assert.strictEqual(L.configLogistica({ logistica: { unidades_padrao: '60' } }).unidades_padrao, 60);
 });

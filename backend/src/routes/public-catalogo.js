@@ -607,7 +607,7 @@ router.post('/pagamento', escritaLimiter, async (req, res) => {
   // requisição quisesse.
   const {
     itens = [], observacao, data_evento,
-    cep, retirar, forma, contato = {},
+    cep, retirar, forma, contato = {}, frete_opcao,
   } = req.body || {};
 
   if (!Array.isArray(itens) || !itens.length) {
@@ -658,21 +658,24 @@ router.post('/pagamento', escritaLimiter, async (req, res) => {
     }
 
     const subtotal = linhas.reduce((s, i) => s + i.total, 0);
-    // O FRETE É REFEITO AQUI, pela tabela por estado — a mesma de
-    // /api/public/frete. Retirada no local é frete zero (§26). Estado sem
-    // regra cadastrada não é frete grátis: é frete a combinar, e o
-    // pedido diz isso.
+    // O FRETE É REFEITO AQUI, com a mesma conta de /api/public/frete. Do
+    // navegador vem só QUAL transportadora o cliente escolheu
+    // (`frete_opcao`), nunca o valor. Retirada no local é frete zero
+    // (§26). Estado sem regra cadastrada não é frete grátis: é frete a
+    // combinar, e o pedido diz isso.
     let freteValor = 0;
     let freteACombinar = false;
     let freteDetalhe = null;
     if (!retirar) {
       const uf = ufFromCep(cepDigitos);
       if (!uf) return res.status(400).json({ error: 'Não consegui identificar o estado pelo CEP.' });
-      const { cotar, resumoDoFrete } = require('../lib/shipping');
-      const r = await cotar(STORE_TENANT, {
+      const { cotarOpcoes, idDaOpcao, resumoDoFrete } = require('../lib/shipping');
+      const { opcoes } = await cotarOpcoes(STORE_TENANT, {
         uf, cep: cepDigitos, subtotal, valor_nota: subtotal,
         itens: linhas.map(l => ({ product_id: l.product_id, quantity: l.quantidade })),
       });
+      // A escolhida, se ainda existir; senão a mais barata.
+      const r = opcoes.find(o => idDaOpcao(o) === frete_opcao) || opcoes[0];
       freteDetalhe = resumoDoFrete(r);
       if (r.sem_regra) freteACombinar = true;
       else freteValor = Math.max(0, Number(r.price) || 0);

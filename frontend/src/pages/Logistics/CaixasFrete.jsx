@@ -180,7 +180,13 @@ function RegrasGerais({ config, texEnabled, pode, onSalvo }) {
   return (
     <div className="card p-4 space-y-3">
       <h3 className="font-semibold text-gray-900">Regras gerais de cobrança</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div>
+          <label className="label">Copos por caixa (padrão)</label>
+          <input type="number" min="1" step="1" className="input" value={f.unidades_padrao ?? 50}
+            onChange={e => setF(o => ({ ...o, unidades_padrao: e.target.value }))} disabled={!pode} />
+          <p className="text-[11px] text-gray-500 mt-1">Vale quando a regra da categoria não informa as unidades.</p>
+        </div>
         <div>
           <label className="label">Acréscimo sobre o frete (%)</label>
           <input type="number" min="0" step="0.5" className="input" value={f.acrescimo_pct}

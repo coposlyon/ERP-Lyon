@@ -75,6 +75,7 @@ router.put('/config', async (req, res) => {
       ...(b.acrescimo_pct !== undefined ? { acrescimo_pct: Math.max(0, Number(b.acrescimo_pct) || 0) } : {}),
       ...(b.ocupacao_limite_pct !== undefined ? { ocupacao_limite_pct: Math.min(100, Math.max(0, Number(b.ocupacao_limite_pct) || 0)) } : {}),
       ...(b.cobrar_caixa !== undefined ? { cobrar_caixa: !!b.cobrar_caixa } : {}),
+      ...(b.unidades_padrao !== undefined ? { unidades_padrao: Math.max(1, Math.floor(Number(b.unidades_padrao) || 0)) } : {}),
     };
     const frete = { ...(settings.frete || {}), ...(b.tex_enabled !== undefined ? { tex_enabled: !!b.tex_enabled } : {}) };
     const { error } = await supabase.from('EMPRESAS')

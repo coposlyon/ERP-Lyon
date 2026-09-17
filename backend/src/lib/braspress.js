@@ -86,6 +86,7 @@ async function braspressCotar(cfg, opts) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: bpAuth(c) },
     body: JSON.stringify(body),
+    ...(opts?.timeoutMs ? { signal: AbortSignal.timeout(opts.timeoutMs) } : {}),
   });
   const raw = await resp.json().catch(() => ({}));
   if (!resp.ok) {

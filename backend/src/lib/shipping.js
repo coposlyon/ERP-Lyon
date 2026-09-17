@@ -25,8 +25,12 @@
 // (migração 118). Não há chamada HTTP para dar preço, e por isso não há
 // o dia em que o preço muda porque a transportadora saiu do ar.
 //
-// A BrasPress continua no ERP, mas só onde sempre foi útil de verdade —
-// rastrear a carga pela nota. Ela não decide mais preço.
+// A BRASPRESS VOLTOU AO PREÇO, mas só no carrinho do site/catálogo e
+// como OPÇÃO ao lado da Total Express (cotarOpcoes): o cliente vê as
+// duas e escolhe. A carga que vai para ela é a mesma das caixas — peso,
+// medidas e volumes de Logística → Caixas e frete, com o acréscimo de
+// ocupação e o valor das caixas. Se a API dela não responder, a opção
+// some e sobra a outra (ou a tabela por estado); o carrinho não trava.
 // ============================================================
 const supabase = require('../config/supabase');
 
@@ -193,7 +197,7 @@ async function cotar(tenantId, { uf, cep, subtotal, itens, valor_nota, forcar_to
  * fora da abrangência não é pendência de ninguém: é uma cidade que a
  * Total Express não atende, e a tabela por estado resolve.
  */
-async function cotarPelaTotalExpress(tenantId, cfg, { cep, itens, valor_nota, subtotal }) {
+async function cotarPelaTotalExpress(tenantId, cfg, { cep, itens, valor_nota, subtotal, envio: medido }) {
   // A caixa sai do cadastro de Logística → Caixas e frete: caixa padrão
   // ou a menor, peso da caixa cheia ÷ unidades, acréscimo por ocupação
   // e o valor das caixas (lib/logisticaCaixas.js).
@@ -204,7 +208,7 @@ async function cotarPelaTotalExpress(tenantId, cfg, { cep, itens, valor_nota, su
     return { ok: false, pendencia: { motivo: 'A tabela da Total Express não foi carregada neste banco.' } };
   }
 
-  const envio = await medirComCaixas(tenantId, itens);
+  const envio = medido || await medirComCaixas(tenantId, itens);
   if (!envio.ok) {
     return {
       ok: false,
@@ -251,21 +255,135 @@ async function cotarPelaTotalExpress(tenantId, cfg, { cep, itens, valor_nota, su
         acrescimo_valor: conta.acrescimo,
         valor_caixas: conta.valor_caixas,
       },
-      avisos: r.avisos,
+      avisos: [...(r.avisos || []), ...avisosDoEnvio(envio)],
     },
   };
 }
 
+function avisosDoEnvio(envio) {
+  return envio?.usou_unidades_padrao
+    ? [`Unidades por caixa pelo padrão (${envio.config?.unidades_padrao ?? 50}) — a regra da categoria não informa.`]
+    : [];
+}
+
+/**
+ * A cotação pela BrasPress, com a mesma carga das caixas.
+ *
+ * A API quer as medidas em METROS e o peso em kg. O peso é o real; o
+ * cubado a própria BrasPress calcula pelas medidas. Por cima do frete
+ * dela entram as mesmas regras da Lyon: acréscimo por ocupação e o
+ * valor das caixas.
+ */
+async function cotarPelaBraspress(tenantId, cfg, { cep, valor_nota, subtotal, envio }) {
+  const { braspressCotar } = require('./braspress');
+  const { aplicarAoFrete } = require('./logisticaCaixas');
+  if (!envio?.ok) return { ok: false };
+
+  const cubagem = envio.detalhe.map(d => ({
+    comprimento: (Number(d.caixa.comprimento_cm) || 0) / 100,
+    largura: (Number(d.caixa.largura_cm) || 0) / 100,
+    altura: (Number(d.caixa.altura_cm) || 0) / 100,
+    volumes: d.volumes,
+  }));
+
+  let r;
+  try {
+    r = await braspressCotar(cfg, {
+      cepOrigem: cfg.origin_cep,
+      cepDestino: cep,
+      vlrMercadoria: Number(valor_nota) || Number(subtotal) || 0,
+      peso: envio.peso_real,
+      volumes: envio.volumes,
+      cubagem,
+      timeoutMs: 8000,
+    });
+  } catch (err) {
+    console.warn('[frete] BrasPress sem cotação:', err.message);
+    return { ok: false };
+  }
+  if (!(Number(r.price) > 0)) return { ok: false };
+
+  const conta = aplicarAoFrete(r.price, envio);
+  return {
+    ok: true,
+    cotacao: {
+      source: 'braspress',
+      uf: ufFromCep(cep),
+      price: conta.total,
+      days: r.days,
+      free: false,
+      sem_regra: false,
+      volumes: envio.volumes,
+      caixas: envio.detalhe.map(d => ({ nome: d.caixa.nome, volumes: d.volumes, unidades: d.unidades, caixa_pequena: d.caixa_pequena })),
+      memoria: {
+        cotacao_id: r.id,
+        frete_braspress: conta.frete_base,
+        ocupacao_pct: envio.ocupacao_pct,
+        acrescimo_pct: envio.aplica_acrescimo ? envio.acrescimo_pct : 0,
+        acrescimo_valor: conta.acrescimo,
+        valor_caixas: conta.valor_caixas,
+      },
+      avisos: avisosDoEnvio(envio),
+    },
+  };
+}
+
+/**
+ * As opções de envio para o CLIENTE escolher no carrinho.
+ *
+ * Total Express (se ligada) e BrasPress (se configurada), cada uma com
+ * a carga das caixas, da mais barata para a mais cara. Nenhuma das duas
+ * respondeu — cadastro de caixa incompleto, CEP fora, API fora do ar —
+ * vale a tabela por estado, como sempre. Frete grátis também é a tabela.
+ *
+ * Devolve `{ opcoes: [cotacao...], pendencias: [...] }`.
+ */
+async function cotarOpcoes(tenantId, { uf, cep, subtotal, itens, valor_nota } = {}) {
+  const cfg = await getFreteConfig(tenantId);
+  const estado = String(uf || '').toUpperCase() || ufFromCep(cep);
+  const gratis = cfg.free_above > 0 && Number(subtotal) >= cfg.free_above;
+  const pendencias = [];
+  const opcoes = [];
+
+  const { bpReady } = require('./braspress');
+  const usaTex = !!cfg.tex_enabled;
+  const usaBp = !!cfg.bp_enabled && bpReady(cfg) && !!cfg.origin_cep;
+
+  if ((usaTex || usaBp) && cep && Array.isArray(itens) && itens.length && !gratis) {
+    const { medirComCaixas } = require('./logisticaCaixas');
+    const envio = await medirComCaixas(tenantId, itens);
+    if (!envio.ok) {
+      pendencias.push({ motivo: `Falta cadastro de caixa para calcular (${envio.faltas.slice(0, 3).join(' · ')}).`, faltas: envio.faltas });
+    } else {
+      const [tex, bp] = await Promise.all([
+        usaTex ? cotarPelaTotalExpress(tenantId, cfg, { cep, itens, valor_nota, subtotal, envio }) : null,
+        usaBp ? cotarPelaBraspress(tenantId, cfg, { cep, valor_nota, subtotal, envio }) : null,
+      ]);
+      if (tex?.ok) opcoes.push(tex.cotacao); else if (tex?.pendencia) pendencias.push(tex.pendencia);
+      if (bp?.ok) opcoes.push(bp.cotacao);
+    }
+  }
+
+  if (!opcoes.length) return { opcoes: [freteDoEstado(cfg, { uf: estado, subtotal })], pendencias };
+  opcoes.sort((a, b) => a.price - b.price);
+  return { opcoes, pendencias };
+}
+
+/** Id estável de uma cotação — o que o carrinho devolve como escolha. */
+const idDaOpcao = c => (c?.source === 'total_express' || c?.source === 'braspress' ? c.source : 'estado');
+
 /** Uma linha legível do frete calculado, para o rodapé do pedido. */
 function resumoDoFrete(c) {
-  if (!c || c.source !== 'total_express') return null;
+  if (!c || (c.source !== 'total_express' && c.source !== 'braspress')) return null;
   const brl = v => `R$ ${(Number(v) || 0).toFixed(2).replace('.', ',')}`;
   const m = c.memoria || {};
   const cx = (c.caixas || []).map(x => `${x.volumes}× ${x.nome}`).join(', ');
-  return `Frete Total Express ${brl(c.price)} = frete ${brl(m.frete_total_express)}`
+  const nome = c.source === 'braspress' ? 'BrasPress' : 'Total Express';
+  const base = c.source === 'braspress' ? m.frete_braspress : m.frete_total_express;
+  return `Frete ${nome} ${brl(c.price)} = frete ${brl(base)}`
     + (m.acrescimo_valor ? ` + ${m.acrescimo_pct}% ocupação ${m.ocupacao_pct}% (${brl(m.acrescimo_valor)})` : '')
     + (m.valor_caixas ? ` + caixas ${brl(m.valor_caixas)}` : '')
     + (cx ? ` · ${cx}` : '');
 }
 
-module.exports = { getFreteConfig, freteDoEstado, cotar, ufFromCep, resumoDoFrete };
+module.exports = { getFreteConfig, freteDoEstado, cotar, cotarOpcoes, idDaOpcao, ufFromCep, resumoDoFrete };

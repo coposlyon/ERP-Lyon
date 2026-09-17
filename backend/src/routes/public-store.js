@@ -1596,10 +1596,12 @@ router.post('/frete', async (req, res) => {
       }
     }
 
-    // Total Express (quando ligada e com as caixas cadastradas) ou a
-    // tabela por estado — a mesma conta do pedido e do ERP.
-    const { cotar } = require('../lib/shipping');
-    const r = await cotar(STORE_TENANT, { uf, cep, subtotal, valor_nota: subtotal, itens: items.map(i => ({ product_id: i.product_id, quantity: Number(i.quantity) || 0 })) });
+    // Total Express e BrasPress (as que estiverem ligadas, com a carga
+    // das caixas) para o cliente escolher; nenhuma respondendo, a tabela
+    // por estado. /catalogo/pagamento refaz esta mesma conta.
+    const { cotarOpcoes, idDaOpcao } = require('../lib/shipping');
+    const { opcoes } = await cotarOpcoes(STORE_TENANT, { uf, cep, subtotal, valor_nota: subtotal, itens: items.map(i => ({ product_id: i.product_id, quantity: Number(i.quantity) || 0 })) });
+    const r = opcoes[0];
 
     // Estado sem valor cadastrado: dizer "a combinar" é honesto; mandar
     // R$ 0,00 seria prometer frete grátis que ninguém combinou.
@@ -1612,13 +1614,13 @@ router.post('/frete', async (req, res) => {
 
     res.json({
       uf,
-      options: [{
-        id: r.source === 'total_express' ? 'total_express' : 'estado',
-        company: r.source === 'total_express' ? 'Total Express' : 'Entrega',
-        service: r.free ? 'Frete gr\u00e1tis' : (r.memoria?.valor_caixas ? 'Padr\u00e3o (inclui embalagem)' : 'Padr\u00e3o'),
-        price: r.price,
-        days: r.days,
-      }],
+      options: opcoes.map(o => ({
+        id: idDaOpcao(o),
+        company: o.source === 'total_express' ? 'Total Express' : o.source === 'braspress' ? 'BrasPress' : 'Entrega',
+        service: o.free ?'Frete gr\u00e1tis' : (o.memoria?.valor_caixas ? 'Padr\u00e3o (inclui embalagem)' : 'Padr\u00e3o'),
+        price: o.price,
+        days: o.days,
+      })),
     });
   } catch (err) { fail(res, err); }
 });

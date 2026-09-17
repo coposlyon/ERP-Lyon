@@ -30,7 +30,9 @@ let _supabase;
 const db = () => (_supabase ||= require('../config/supabase'));
 const { pesoCubado } = require('./totalexpress');
 
-const CONFIG_PADRAO = { acrescimo_pct: 12, ocupacao_limite_pct: 70, cobrar_caixa: true };
+// unidades_padrao: quantos copos vão numa caixa quando a regra da
+// categoria não diz. A regra, quando preenchida, sempre vence.
+const CONFIG_PADRAO = { acrescimo_pct: 12, ocupacao_limite_pct: 70, cobrar_caixa: true, unidades_padrao: 50 };
 
 const round2 = v => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
 const round3 = v => Math.round((Number(v) + Number.EPSILON) * 1000) / 1000;
@@ -48,6 +50,7 @@ function configLogistica(settings) {
     acrescimo_pct: numOu(l.acrescimo_pct, CONFIG_PADRAO.acrescimo_pct),
     ocupacao_limite_pct: numOu(l.ocupacao_limite_pct, CONFIG_PADRAO.ocupacao_limite_pct),
     cobrar_caixa: l.cobrar_caixa !== false,
+    unidades_padrao: Math.max(0, Math.floor(numOu(l.unidades_padrao, CONFIG_PADRAO.unidades_padrao))),
   };
 }
 
@@ -68,7 +71,7 @@ const cubadoDaCaixa = c => pesoCubado({ altura: c?.altura_cm, largura: c?.largur
  * Nunca chuta: caixa sem medida ou regra sem unidades por caixa é um
  * frete que sairia errado, e quem descobriria seria a fatura.
  */
-function medirGrupo({ nome, quantidade, regra, caixas }) {
+function medirGrupo({ nome, quantidade, regra, caixas, unidadesPadrao }) {
   const Q = Math.max(0, Number(quantidade) || 0);
   const faltas = [];
   const rotulo = nome || 'Produto';
@@ -76,7 +79,8 @@ function medirGrupo({ nome, quantidade, regra, caixas }) {
   if (!regra) return { ok: false, faltas: [`${rotulo}: sem regra de caixa cadastrada.`] };
 
   const caixa = caixas.get(regra.caixa_id) || null;
-  const U = Number(regra.unidades_por_caixa) || 0;
+  const daRegra = Number(regra.unidades_por_caixa) || 0;
+  const U = daRegra || Number(unidadesPadrao) || 0;
   if (!caixa) faltas.push(`${rotulo}: a regra não tem caixa padrão.`);
   if (!U) faltas.push(`${rotulo}: falta informar quantas unidades cabem na caixa.`);
   if (caixa && !(Number(caixa.peso_cheia_kg) > 0)) faltas.push(`${rotulo}: a caixa "${caixa.nome}" está sem o peso da caixa cheia.`);
@@ -104,6 +108,8 @@ function medirGrupo({ nome, quantidade, regra, caixas }) {
     unidades: Q,
     caixa: { id: usada.id, nome: usada.nome, largura_cm: Number(usada.largura_cm), altura_cm: Number(usada.altura_cm), comprimento_cm: Number(usada.comprimento_cm), valor: Number(usada.valor) || 0 },
     caixa_pequena: ehPequena,
+    unidades_por_caixa: U,
+    unidades_padrao_usado: !daRegra,
     volumes,
     capacidade,
     peso_unitario_kg: round3(pesoUnitario),
@@ -119,7 +125,7 @@ function medirGrupo({ nome, quantidade, regra, caixas }) {
  */
 function calcularEnvio(grupos, caixas, config = CONFIG_PADRAO) {
   const cfg = { ...CONFIG_PADRAO, ...config };
-  const medidos = (grupos || []).map(g => medirGrupo({ ...g, caixas }));
+  const medidos = (grupos || []).map(g => medirGrupo({ ...g, caixas, unidadesPadrao: cfg.unidades_padrao }));
   const faltas = medidos.flatMap(m => m.faltas || []);
   if (!medidos.length) return { ok: false, faltas: ['Pedido sem itens.'], detalhe: [] };
   if (faltas.length) return { ok: false, faltas, detalhe: medidos };
@@ -141,6 +147,7 @@ function calcularEnvio(grupos, caixas, config = CONFIG_PADRAO) {
     ocupacao_limite_pct: Number(cfg.ocupacao_limite_pct),
     valor_caixas: cfg.cobrar_caixa ? valorBruto : 0,
     valor_caixas_bruto: valorBruto,
+    usou_unidades_padrao: medidos.some(m => m.unidades_padrao_usado),
     detalhe: medidos,
   };
 }
