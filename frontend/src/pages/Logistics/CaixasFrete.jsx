@@ -58,8 +58,8 @@ export default function CaixasFrete() {
       <div className="card">
         <div className="card-header flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h3 className="font-semibold text-gray-900">Regras por produto</h3>
-            <p className="text-xs text-gray-500">Em que caixa cada produto viaja, quantas unidades cabem e a caixa menor para pedido pequeno.</p>
+            <h3 className="font-semibold text-gray-900">Regras por categoria</h3>
+            <p className="text-xs text-gray-500">Uma regra vale para todos os produtos da categoria (todas as cores). O tamanho só separa quando a mesma categoria tem copos de ml diferentes.</p>
           </div>
           {pode && <button className="btn-primary btn-sm" onClick={() => setRegraEdit({})}><Plus size={14} /> Nova regra</button>}
         </div>
@@ -67,7 +67,7 @@ export default function CaixasFrete() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
               <tr>
-                <th className="text-left px-3 py-2">Produto</th>
+                <th className="text-left px-3 py-2">Categoria · tamanho</th>
                 <th className="text-left px-3 py-2">Caixa padrão</th>
                 <th className="text-right px-3 py-2">Unid./caixa</th>
                 <th className="text-left px-3 py-2">Pedido pequeno</th>
@@ -80,14 +80,15 @@ export default function CaixasFrete() {
                 <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">Nenhuma regra cadastrada.</td></tr>
               )}
               {regras.map(r => {
-                const faltas = [!r.caixa_id && 'sem caixa', !r.unidades_por_caixa && 'sem unidades por caixa'].filter(Boolean);
+                const faltas = [!r.caixa_id && 'sem caixa'].filter(Boolean);
+                const padrao = data.config?.unidades_padrao;
                 return (
                   <tr key={r.id} className={r.ativo === false ? 'opacity-50' : ''}>
                     <td className="px-3 py-2 font-medium text-gray-800">
                       {nomeCategoria(r.category_id)}{r.capacidade_ml ? ` · ${r.capacidade_ml} ml` : ' · todos os tamanhos'}
                     </td>
                     <td className="px-3 py-2">{nomeCaixa(r.caixa_id) || <span className="text-gray-400">—</span>}</td>
-                    <td className="px-3 py-2 text-right">{r.unidades_por_caixa || <span className="text-gray-400">—</span>}</td>
+                    <td className="px-3 py-2 text-right">{r.unidades_por_caixa || <span className="text-gray-400" title="Usando o padrão das regras gerais">{padrao} (padrão)</span>}</td>
                     <td className="px-3 py-2 text-gray-600">
                       {r.caixa_pequena_id ? `até ${r.unidades_caixa_pequena} un. na ${nomeCaixa(r.caixa_pequena_id)}` : <span className="text-gray-400">sem caixa menor</span>}
                     </td>
