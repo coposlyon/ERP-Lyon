@@ -10,6 +10,7 @@ import {
   Loader2, Plus, Pencil, Building2, Landmark, Scale, FileText,
   TrendingUp, TrendingDown, Wallet, ShoppingCart, Package, Boxes,
   BarChart3, Receipt, Users, Printer, FileDown, AlertTriangle, X, Save, Ban,
+  Paperclip, Trash2, ExternalLink,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -317,6 +318,7 @@ function EmpresaModal({ open, initial, onClose, onSaved }) {
   const f = form || {
     razao_social: initial?.razao_social || '', nome_fantasia: initial?.nome_fantasia || '',
     cnpj: initial?.cnpj || '', regime: initial?.regime || 'simples',
+    inscricao_estadual: initial?.inscricao_estadual || '', inscricao_municipal: initial?.inscricao_municipal || '',
     annual_limit: initial?.annual_limit != null ? String(initial.annual_limit) : '4800000',
     aliquota: initial?.aliquota != null ? String(initial.aliquota) : '4',
     cert_expiry: initial?.cert_expiry || '', is_default: !!initial?.is_default,
@@ -356,6 +358,15 @@ function EmpresaModal({ open, initial, onClose, onSaved }) {
           <input className="input" value={f.cnpj} placeholder="00.000.000/0001-00" onChange={e => set({ cnpj: e.target.value })} />
         </div>
         <div>
+          <label className="label">Inscrição Estadual (IE)</label>
+          <input className="input" value={f.inscricao_estadual} placeholder="Isento, se não tiver"
+            onChange={e => set({ inscricao_estadual: e.target.value })} />
+        </div>
+        <div>
+          <label className="label">Inscrição Municipal (IM)</label>
+          <input className="input" value={f.inscricao_municipal} onChange={e => set({ inscricao_municipal: e.target.value })} />
+        </div>
+        <div>
           <label className="label">Regime Tributário</label>
           <select className="input" value={f.regime} onChange={e => set({ regime: e.target.value })}>
             {Object.entries(REGIMES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -378,6 +389,9 @@ function EmpresaModal({ open, initial, onClose, onSaved }) {
           Empresa padrão dos pedidos (vendas sem empresa definida contam para ela)
         </label>
       </div>
+      {isEdit
+        ? <Certidoes companyId={initial.id} />
+        : <p className="text-xs text-gray-400 mt-3">Salve a empresa para anexar as certidões.</p>}
       <div className="flex justify-end gap-2 pt-4 border-t mt-4">
         <button className="btn-secondary" onClick={() => { setForm(null); onClose(); }}><X size={14} /> Cancelar</button>
         <button className="btn-primary" disabled={saving} onClick={save}>
@@ -385,6 +399,136 @@ function EmpresaModal({ open, initial, onClose, onSaved }) {
         </button>
       </div>
     </Modal>
+  );
+}
+
+// ── Certidões da empresa ────────────────────────────────────
+// CND Federal, Estadual, Municipal, FGTS e Trabalhista, com validade. O
+// arquivo abre por link temporário: certidão traz a situação fiscal do
+// CNPJ e não pode circular por link permanente.
+const TIPOS_CERTIDAO = {
+  federal: 'CND Federal (Receita/PGFN)',
+  estadual: 'CND Estadual',
+  municipal: 'CND Municipal',
+  fgts: 'CRF — FGTS',
+  trabalhista: 'CNDT — Trabalhista',
+  outra: 'Outra',
+};
+const SITUACAO_CERTIDAO = {
+  valida: ['Válida', 'bg-green-100 text-green-700'],
+  vencendo: ['Vence em breve', 'bg-amber-100 text-amber-700'],
+  vencida: ['Vencida', 'bg-red-100 text-red-700'],
+  sem_validade: ['Sem validade', 'bg-gray-100 text-gray-600'],
+};
+
+function Certidoes({ companyId }) {
+  const vazio = { tipo: 'federal', descricao: '', numero: '', emissao: '', validade: '', arquivo: null, arquivo_nome: '' };
+  const [novo, setNovo] = useState(vazio);
+  const [enviando, setEnviando] = useState(false);
+  const { data: lista = [], isLoading, error, refetch } = useQuery({
+    queryKey: ['contabil-certidoes', companyId],
+    queryFn: () => api.get(`/contabil/companies/${companyId}/certidoes`),
+    retry: false,
+  });
+
+  function escolherArquivo(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { toast.error('Arquivo acima de 8 MB'); e.target.value = ''; return; }
+    const r = new FileReader();
+    r.onload = () => setNovo(n => ({ ...n, arquivo: r.result, arquivo_nome: file.name }));
+    r.readAsDataURL(file);
+  }
+
+  async function salvar() {
+    if (!novo.arquivo) { toast.error('Anexe o arquivo da certidão'); return; }
+    setEnviando(true);
+    try {
+      await api.post(`/contabil/companies/${companyId}/certidoes`, novo);
+      toast.success('Certidão anexada');
+      setNovo(vazio);
+      refetch();
+    } catch (err) { toast.error(err.error || 'Erro ao anexar'); }
+    finally { setEnviando(false); }
+  }
+
+  async function apagar(c) {
+    if (!confirm(`Apagar a certidão "${TIPOS_CERTIDAO[c.tipo] || c.tipo}"?`)) return;
+    try { await api.delete(`/contabil/certidoes/${c.id}`); toast.success('Certidão apagada'); refetch(); }
+    catch (err) { toast.error(err.error || 'Erro ao apagar'); }
+  }
+
+  return (
+    <div className="border-t mt-4 pt-4 space-y-3">
+      <p className="font-semibold text-gray-900 text-sm flex items-center gap-1.5"><Paperclip size={14} /> Certidões da empresa</p>
+
+      {error ? (
+        <p className="text-xs text-amber-700">{error.error || 'Não foi possível carregar as certidões.'}</p>
+      ) : isLoading ? (
+        <Loader2 size={16} className="animate-spin text-primary-500" />
+      ) : lista.length === 0 ? (
+        <p className="text-xs text-gray-400">Nenhuma certidão anexada.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {lista.map(c => {
+            const [rotulo, cls] = SITUACAO_CERTIDAO[c.situacao] || SITUACAO_CERTIDAO.sem_validade;
+            return (
+              <div key={c.id} className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-gray-800 truncate">{TIPOS_CERTIDAO[c.tipo] || c.tipo}{c.descricao ? ` — ${c.descricao}` : ''}</p>
+                  <p className="text-[11px] text-gray-400">
+                    {c.numero ? `Nº ${c.numero} · ` : ''}emitida {dBR(c.emissao)} · validade {dBR(c.validade)}
+                  </p>
+                </div>
+                <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 whitespace-nowrap ${cls}`}>{rotulo}</span>
+                {c.link && (
+                  <a href={c.link} target="_blank" rel="noreferrer" className="btn-ghost p-1.5 text-blue-600" title="Abrir arquivo">
+                    <ExternalLink size={14} />
+                  </a>
+                )}
+                <button className="btn-ghost p-1.5 text-red-500" title="Apagar" onClick={() => apagar(c)}><Trash2 size={14} /></button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="rounded-lg bg-gray-50 p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div>
+          <label className="label">Tipo</label>
+          <select className="input" value={novo.tipo} onChange={e => setNovo(n => ({ ...n, tipo: e.target.value }))}>
+            {Object.entries(TIPOS_CERTIDAO).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Número / código (opcional)</label>
+          <input className="input" value={novo.numero} onChange={e => setNovo(n => ({ ...n, numero: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label">Emissão</label>
+          <input type="date" className="input" value={novo.emissao} onChange={e => setNovo(n => ({ ...n, emissao: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label">Validade</label>
+          <input type="date" className="input" value={novo.validade} onChange={e => setNovo(n => ({ ...n, validade: e.target.value }))} />
+        </div>
+        {novo.tipo === 'outra' && (
+          <div className="md:col-span-2">
+            <label className="label">Descrição</label>
+            <input className="input" value={novo.descricao} onChange={e => setNovo(n => ({ ...n, descricao: e.target.value }))} />
+          </div>
+        )}
+        <div className="md:col-span-2 flex flex-wrap items-center gap-2">
+          <label className="btn-secondary cursor-pointer">
+            <Paperclip size={14} /> {novo.arquivo_nome || 'Escolher arquivo (PDF ou imagem)'}
+            <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" onChange={escolherArquivo} />
+          </label>
+          <button className="btn-primary ml-auto" disabled={enviando || !novo.arquivo} onClick={salvar}>
+            {enviando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Anexar certidão
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -419,6 +563,11 @@ function Empresas() {
               <div className="min-w-0">
                 <p className="font-bold text-gray-900 truncate">{c.razao_social}</p>
                 <p className="text-xs text-gray-400">{c.nome_fantasia ? `${c.nome_fantasia} · ` : ''}{c.cnpj || 'sem CNPJ'}</p>
+                {(c.inscricao_estadual || c.inscricao_municipal) && (
+                  <p className="text-xs text-gray-400">
+                    {[c.inscricao_estadual && `IE ${c.inscricao_estadual}`, c.inscricao_municipal && `IM ${c.inscricao_municipal}`].filter(Boolean).join(' · ')}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-1">
                 {c.is_default && <span className="badge badge-blue">Padrão</span>}

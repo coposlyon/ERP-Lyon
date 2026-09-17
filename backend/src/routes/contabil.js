@@ -9,6 +9,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 const { audit } = require('../lib/audit');
+const { uploadPrivado, linkAssinado } = require('../lib/storage');
 const { getConfig, productCostMap, fixedOverview } = require('../lib/rateioLib');
 
 const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -135,7 +136,7 @@ router.get('/companies', async (req, res) => {
   }
 });
 
-const COMPANY_FIELDS = ['razao_social', 'nome_fantasia', 'cnpj', 'regime', 'annual_limit', 'aliquota', 'cert_expiry', 'is_default', 'notes'];
+const COMPANY_FIELDS = ['razao_social', 'nome_fantasia', 'cnpj', 'inscricao_estadual', 'inscricao_municipal', 'regime', 'annual_limit', 'aliquota', 'cert_expiry', 'is_default', 'notes'];
 function pickCompany(body) {
   const out = {};
   for (const k of COMPANY_FIELDS) if (body[k] !== undefined) out[k] = body[k];
@@ -143,8 +144,23 @@ function pickCompany(body) {
   if (out.annual_limit !== undefined) out.annual_limit = Math.max(0, Number(out.annual_limit) || 0);
   if (out.aliquota !== undefined) out.aliquota = Math.min(Math.max(Number(out.aliquota) || 0, 0), 95);
   if (out.cert_expiry === '') out.cert_expiry = null;
+  for (const k of ['inscricao_estadual', 'inscricao_municipal']) {
+    if (out[k] !== undefined) out[k] = String(out[k] || '').trim() || null;
+  }
   if (out.regime !== undefined && !['mei', 'simples', 'presumido', 'real'].includes(out.regime)) out.regime = 'simples';
   return out;
+}
+
+/**
+ * IE e IM chegaram na migração 126. Até ela rodar, o banco recusa as
+ * duas colunas — e a empresa não pode deixar de salvar por isso: tenta
+ * com elas e, se o banco não as conhece, salva o resto.
+ */
+async function semInscricoesSeFaltar(body, gravar) {
+  const r = await gravar(body);
+  if (!r.error || !/inscricao_(estadual|municipal)/i.test(r.error.message || '')) return r;
+  const { inscricao_estadual, inscricao_municipal, ...resto } = body;
+  return gravar(resto);
 }
 
 router.post('/companies', async (req, res) => {
@@ -154,8 +170,8 @@ router.post('/companies', async (req, res) => {
     if (body.is_default) {
       await supabase.from('CONTABIL_EMPRESAS').update({ is_default: false }).eq('tenant_id', req.tenantId);
     }
-    const { data, error } = await supabase.from('CONTABIL_EMPRESAS')
-      .insert({ ...body, tenant_id: req.tenantId }).select().single();
+    const { data, error } = await semInscricoesSeFaltar(body, b => supabase.from('CONTABIL_EMPRESAS')
+      .insert({ ...b, tenant_id: req.tenantId }).select().single());
     if (error) throw error;
     audit(req, 'create', 'contabil_company', data.id, { razao_social: data.razao_social, cnpj: data.cnpj });
     res.status(201).json(data);
@@ -172,9 +188,9 @@ router.put('/companies/:id', async (req, res) => {
     if (body.is_default) {
       await supabase.from('CONTABIL_EMPRESAS').update({ is_default: false }).eq('tenant_id', req.tenantId);
     }
-    const { data, error } = await supabase.from('CONTABIL_EMPRESAS')
-      .update({ ...body, updated_at: new Date().toISOString() })
-      .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single();
+    const { data, error } = await semInscricoesSeFaltar(body, b => supabase.from('CONTABIL_EMPRESAS')
+      .update({ ...b, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id).eq('tenant_id', req.tenantId).select().single());
     if (error) throw error;
     audit(req, 'update', 'contabil_company', data.id, body);
     res.json(data);
@@ -182,6 +198,91 @@ router.put('/companies/:id', async (req, res) => {
     if (missing043(err)) return err043(res);
     console.error('[contabil/companies PUT]', err.message);
     res.status(500).json({ error: 'Erro ao atualizar a empresa' });
+  }
+});
+
+// ── Certidões da empresa (migração 126) ────────────────────
+//
+// CND Federal, Estadual, Municipal, FGTS, Trabalhista... com emissão,
+// validade e o arquivo. O arquivo fica no bucket privado e só abre por
+// link assinado, que expira: certidão traz a situação fiscal do CNPJ.
+const TIPOS_CERTIDAO = ['federal', 'estadual', 'municipal', 'fgts', 'trabalhista', 'outra'];
+const faltou126 = err => /CONTABIL_CERTIDOES|42P01|schema cache/i.test(err?.message || '');
+const err126 = res => res.status(400).json({
+  error: 'Rode a migração 126_empresa_ie_certidoes.sql no Supabase para usar as certidões.',
+  migration_needed: true,
+});
+
+router.get('/companies/:id/certidoes', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('CONTABIL_CERTIDOES')
+      .select('*').eq('tenant_id', req.tenantId).eq('company_id', req.params.id)
+      .order('validade', { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    const hoje = todayISO();
+    const lista = await Promise.all((data || []).map(async c => ({
+      ...c,
+      link: await linkAssinado(c.arquivo, 600),
+      situacao: !c.validade ? 'sem_validade' : c.validade < hoje ? 'vencida'
+        : (new Date(c.validade) - new Date(hoje)) / 86400000 <= 15 ? 'vencendo' : 'valida',
+    })));
+    res.json(lista);
+  } catch (err) {
+    if (faltou126(err)) return err126(res);
+    res.status(500).json({ error: 'Erro ao carregar as certidões' });
+  }
+});
+
+router.post('/companies/:id/certidoes', async (req, res) => {
+  const b = req.body || {};
+  const tipo = TIPOS_CERTIDAO.includes(b.tipo) ? b.tipo : null;
+  if (!tipo) return res.status(400).json({ error: 'Escolha o tipo da certidão' });
+  if (!b.arquivo) return res.status(400).json({ error: 'Anexe o arquivo da certidão' });
+  if (!/^data:(application\/pdf|image\/(png|jpe?g|webp));base64,/.test(b.arquivo)) {
+    return res.status(400).json({ error: 'A certidão precisa ser PDF ou imagem (PNG, JPG)' });
+  }
+  const data = v => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null);
+  try {
+    const { data: emp, error: e1 } = await supabase.from('CONTABIL_EMPRESAS')
+      .select('id').eq('id', req.params.id).eq('tenant_id', req.tenantId).maybeSingle();
+    if (e1) throw e1;
+    if (!emp) return res.status(404).json({ error: 'Empresa não encontrada' });
+
+    const caminho = await uploadPrivado(b.arquivo, `certidoes/${req.tenantId}`);
+    if (!caminho) return res.status(500).json({ error: 'Não foi possível guardar o arquivo' });
+
+    const { data: row, error } = await supabase.from('CONTABIL_CERTIDOES').insert({
+      tenant_id: req.tenantId, company_id: emp.id, tipo,
+      descricao: String(b.descricao || '').trim().slice(0, 120) || null,
+      numero: String(b.numero || '').trim().slice(0, 80) || null,
+      emissao: data(b.emissao), validade: data(b.validade),
+      arquivo: caminho, arquivo_nome: String(b.arquivo_nome || '').slice(0, 200) || null,
+      observacao: String(b.observacao || '').trim() || null,
+      created_by: req.user?.id || null,
+    }).select().single();
+    if (error) throw error;
+    audit(req, 'create', 'contabil_certidao', row.id, { company_id: emp.id, tipo, validade: row.validade });
+    res.status(201).json(row);
+  } catch (err) {
+    if (faltou126(err)) return err126(res);
+    console.error('[contabil/certidoes POST]', err.message);
+    res.status(500).json({ error: 'Erro ao salvar a certidão' });
+  }
+});
+
+router.delete('/certidoes/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('CONTABIL_CERTIDOES')
+      .delete().eq('id', req.params.id).eq('tenant_id', req.tenantId)
+      .select('id, tipo, company_id, validade').maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Certidão não encontrada' });
+    // O arquivo fica no bucket: quem apagou por engano ainda tem a trilha.
+    audit(req, 'delete', 'contabil_certidao', data.id, data);
+    res.json({ success: true });
+  } catch (err) {
+    if (faltou126(err)) return err126(res);
+    res.status(500).json({ error: 'Erro ao apagar a certidão' });
   }
 });
 
