@@ -276,6 +276,112 @@ router.patch('/bulk', async (req, res) => {
 // Apagar em massa (DEFINITIVO) — exige a senha da conta para confirmar.
 // Hard delete: as FKs (migração 022+) cuidam de movimentações (cascade) e
 // do histórico de vendas/orçamentos (SET NULL).
+// ============================================================
+// ACABAMENTOS DO CATÁLOGO EM MASSA — Degradê (On/Off), Bicolor (On/Off)...
+//
+// A regra é da CATEGORIA, porque é ela que a vitrine e o configurador
+// leem: ligar/desligar numa cor só deixaria a vitrine dizendo uma coisa
+// e o configurador outra. Por isso o alcance é a categoria inteira dos
+// produtos marcados, e a tela diz isso antes de aplicar.
+//
+// Desligar um acabamento desliga também as combinações dele com borda
+// ("Degradê + Borda"): senão o card "Degradê com Borda" continuaria na
+// vitrine de um copo que não faz degradê. Ligar não liga a combinação —
+// a borda é adicional e tem a sua própria chave.
+//
+// Exceções por produto do mesmo acabamento são apagadas: depois do
+// clique, quem manda é a categoria, e é isso que a pessoa espera ver.
+// ============================================================
+router.get('/acabamentos-catalogo', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('CONFIG_ACABAMENTOS')
+      .select('id, name, label_comercial, seq, no_catalogo')
+      .eq('tenant_id', req.tenantId).eq('is_active', true).order('seq');
+    if (error) throw error;
+    const acabamentos = (data || [])
+      .filter(a => a.no_catalogo !== false && !/\+/.test(a.name || ''))
+      .map(a => ({ id: a.id, nome: a.label_comercial || a.name }));
+
+    // O estado atual, por categoria pedida: 'on', 'off' ou 'misto' quando
+    // as categorias marcadas não concordam.
+    const cats = String(req.query.categorias || '').split(',').filter(Boolean);
+    let estado = {};
+    if (cats.length) {
+      const { data: regras, error: e2 } = await supabase.from('PRODUTO_COMPATIBILIDADE')
+        .select('category_id, ref_id, permitido')
+        .eq('tenant_id', req.tenantId).eq('tipo', 'acabamento').is('product_id', null).in('category_id', cats);
+      if (e2) throw e2;
+      const liberado = new Set((regras || []).filter(r => r.permitido).map(r => `${r.category_id}|${r.ref_id}`));
+      for (const a of acabamentos) {
+        const ons = cats.filter(c => liberado.has(`${c}|${a.id}`)).length;
+        estado[a.id] = ons === cats.length ? 'on' : ons === 0 ? 'off' : 'misto';
+      }
+    }
+    res.json({ acabamentos, estado });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/bulk-acabamentos', async (req, res) => {
+  const papel = req.userProfile?.role;
+  if (papel !== 'admin' && papel !== 'manager') return res.status(403).json({ error: 'Só o Administrativo altera o catálogo.' });
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
+  const estados = Object.entries(req.body?.estados || {}).filter(([, v]) => v === true || v === false);
+  if (!ids.length) return res.status(400).json({ error: 'Selecione ao menos um produto' });
+  if (!estados.length) return res.status(400).json({ error: 'Nenhum acabamento para alterar' });
+
+  try {
+    const [{ data: prods, error: e1 }, { data: acabs, error: e2 }] = await Promise.all([
+      supabase.from('PRODUTOS').select('category_id').eq('tenant_id', req.tenantId).in('id', ids),
+      supabase.from('CONFIG_ACABAMENTOS').select('id, name').eq('tenant_id', req.tenantId),
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+    const categorias = [...new Set((prods || []).map(p => p.category_id).filter(Boolean))];
+    if (!categorias.length) return res.status(400).json({ error: 'Os produtos marcados não têm categoria.' });
+
+    const porId = new Map((acabs || []).map(a => [a.id, a]));
+    const norm = s => String(s || '').trim().toUpperCase();
+
+    let alterados = 0;
+    for (const [refId, ligar] of estados) {
+      const acab = porId.get(refId);
+      if (!acab) continue;
+      const refs = ligar ? [refId]
+        : [refId, ...(acabs || []).filter(a => /\+/.test(a.name || '') && norm(a.name.split('+')[0]) === norm(acab.name)).map(a => a.id)];
+
+      const { error: eDel } = await supabase.from('PRODUTO_COMPATIBILIDADE').delete()
+        .eq('tenant_id', req.tenantId).eq('tipo', 'acabamento').is('product_id', null)
+        .in('category_id', categorias).in('ref_id', refs);
+      if (eDel) throw eDel;
+
+      const linhas = categorias.flatMap(category_id => refs.map(ref_id => ({
+        tenant_id: req.tenantId, category_id, product_id: null, tipo: 'acabamento', ref_id, permitido: ligar,
+      })));
+      const { error: eIns } = await supabase.from('PRODUTO_COMPATIBILIDADE').insert(linhas);
+      if (eIns) throw eIns;
+
+      // As exceções por cor do mesmo acabamento saem: agora vale a categoria.
+      const { data: daCategoria, error: e3 } = await supabase.from('PRODUTOS')
+        .select('id').eq('tenant_id', req.tenantId).in('category_id', categorias);
+      if (e3) throw e3;
+      const idsCat = (daCategoria || []).map(p => p.id);
+      for (let i = 0; i < idsCat.length; i += 200) {
+        const { error: eExc } = await supabase.from('PRODUTO_COMPATIBILIDADE').delete()
+          .eq('tenant_id', req.tenantId).eq('tipo', 'acabamento')
+          .in('product_id', idsCat.slice(i, i + 200)).in('ref_id', refs);
+        if (eExc) throw eExc;
+      }
+      alterados++;
+    }
+
+    audit(req, 'update', 'categoria-catalogo', null, {
+      acabamentos: Object.fromEntries(estados.map(([id, v]) => [porId.get(id)?.name || id, v ? 'on' : 'off'])),
+      categorias: categorias.length,
+    });
+    res.json({ ok: true, acabamentos: alterados, categorias: categorias.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.post('/bulk-delete', async (req, res) => {
   const { ids, password } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'Selecione ao menos um produto' });

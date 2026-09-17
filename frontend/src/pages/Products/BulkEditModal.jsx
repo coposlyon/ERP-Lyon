@@ -26,6 +26,9 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
   // seriam 24 cliques, e é assim que metade das cores fica esquecida.
   const [noCatalogo, setNoCatalogo] = useState('');
   const [naLoja, setNaLoja] = useState('');
+  // ACABAMENTOS DO CATÁLOGO: { [acabamentoId]: true | false }. Ausente =
+  // não mexer. Vale para a CATEGORIA inteira dos produtos marcados.
+  const [acabEstados, setAcabEstados] = useState({});
   // ADICIONAIS EM MASSA. Praticamente todo copo oferece as mesmas
   // bordas — aplicar as dezoito de um em um seriam 97 × 18 cliques, e
   // é exatamente o motivo de ninguém nunca ter cadastrado nenhuma.
@@ -130,6 +133,19 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
   });
   const products = data?.data || [];
   const selectedIds = Object.keys(selected).filter(id => selected[id]);
+
+  // As categorias dos marcados — é nelas que os acabamentos valem.
+  const categoriasAlvo = useMemo(() => [...new Set(
+    products.filter(p => selected[p.id]).map(p => p.category_id).filter(Boolean),
+  )].sort(), [products, selected]);
+  const { data: acabData } = useQuery({
+    queryKey: ['acabamentos-catalogo', categoriasAlvo.join(',')],
+    queryFn: () => api.get(`/products/acabamentos-catalogo${categoriasAlvo.length ? `?categorias=${categoriasAlvo.join(',')}` : ''}`),
+    enabled: isOpen,
+  });
+  const acabamentosCat = acabData?.acabamentos || [];
+  const acabAtual = acabData?.estado || {};
+  const nomeCategoria = id => (cats || []).find(c => c.id === id)?.name || '';
   const allSelected = products.length > 0 && products.every(p => selected[p.id]);
 
   function toggle(id) { setSelected(s => ({ ...s, [id]: !s[id] })); }
@@ -173,10 +189,13 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
     onError: (e) => toast.error(e.error || 'Erro ao apagar'),
   });
 
+  const temAcab = Object.keys(acabEstados).length > 0;
+
   const apply = useMutation({
     mutationFn: async () => {
-      let updated = 0, adics = 0;
+      let updated = 0, adics = 0, acabs = 0;
       if (hasFields) updated = (await api.patch('/products/bulk', { ids: selectedIds, fields })).updated || 0;
+      if (temAcab) acabs = (await api.post('/products/bulk-acabamentos', { ids: selectedIds, estados: acabEstados })).acabamentos || 0;
       // Os adicionais são OUTRA tabela e outro alcance: eles não
       // alteram o produto, dizem o que ele passa a oferecer.
       if (alvoAdicional) {
@@ -184,13 +203,15 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
           item_ids: adicionais, padrao: adicPadrao, ...alvoAdicional,
         })).aplicados || 0;
       }
-      return { updated, adics };
+      return { updated, adics, acabs };
     },
     onSuccess: (r) => {
       toast.success([
         r.updated ? `${r.updated} produto(s) atualizado(s)` : null,
         r.adics ? `${r.adics} adicional(is) aplicado(s)` : null,
+        r.acabs ? `${r.acabs} acabamento(s) do catálogo alterado(s)` : null,
       ].filter(Boolean).join(' · ') + '!');
+      qc.invalidateQueries({ queryKey: ['acabamentos-catalogo'] });
       qc.invalidateQueries(['products']);
       qc.invalidateQueries(['bulk-products']);
       qc.invalidateQueries(['categories']);
@@ -199,12 +220,13 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
       qc.invalidateQueries({ queryKey: ['adicionais-produto'] });
       setSelected({});
       setAdicionais([]);
+      setAcabEstados({});
     },
     onError: (e) => toast.error(e.error || 'Erro ao aplicar'),
   });
 
   const targetCount = selectedIds.length;
-  const canApply = (hasFields || !!alvoAdicional) && selectedIds.length > 0;
+  const canApply = (hasFields || !!alvoAdicional || temAcab) && selectedIds.length > 0;
 
   // Ao fechar, zera a seleção e os campos para o modal abrir limpo na próxima vez.
   function handleClose() {
@@ -213,6 +235,7 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
     setCostPrice('');
     setNcm(''); setCst(''); setCfop(''); setInkType('');
     setAdicionais([]); setAdicPadrao(false); setBuscaAdic('');
+    setAcabEstados({});
     setConfirmOpen(false);
     setDelOpen(false); setDelPassword('');
     onClose();
@@ -528,6 +551,51 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
           <SimNao pergunta="Produto aparece na loja de lisos?" valor={naLoja} onMudar={setNaLoja} />
         </div>
 
+        {/* Acabamentos do catálogo — On/Off por categoria */}
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Acabamentos que aparecem no catálogo</p>
+          <p className="text-xs text-gray-400 mb-2">
+            {categoriasAlvo.length
+              ? <>Vale para a categoria inteira: <b>{categoriasAlvo.map(nomeCategoria).filter(Boolean).join(', ')}</b>. Clique de novo para não alterar.</>
+              : 'Marque os produtos para ver e alterar os acabamentos da categoria deles.'}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+            {acabamentosCat.map(a => {
+              const novo = acabEstados[a.id];
+              const atual = acabAtual[a.id];
+              const marcar = v => setAcabEstados(o => {
+                const n = { ...o };
+                if (n[a.id] === v) delete n[a.id]; else n[a.id] = v;
+                return n;
+              });
+              return (
+                <div key={a.id} className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-gray-700">
+                    {a.nome}
+                    {categoriasAlvo.length > 0 && atual && (
+                      <span className="ml-1.5 text-[11px] text-gray-400">
+                        (hoje: {atual === 'on' ? 'On' : atual === 'off' ? 'Off' : 'misto'})
+                      </span>
+                    )}
+                  </span>
+                  <div className="flex gap-1.5">
+                    {[[true, 'On'], [false, 'Off']].map(([v, label]) => (
+                      <button key={label} type="button" disabled={!categoriasAlvo.length} onClick={() => marcar(v)}
+                        className={`px-3 py-1 rounded-lg border text-xs font-semibold disabled:opacity-40 ${
+                          novo === v
+                            ? (v ? 'border-green-400 bg-green-50 text-green-700' : 'border-red-300 bg-red-50 text-red-700')
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Fiscal */}
         <div>
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Fiscal (NCM / CST / CFOP)</p>
@@ -597,7 +665,19 @@ export default function BulkEditModal({ isOpen, onClose, categoriaFixa = '' }) {
               </p>
             </div>
           )}
-          {summary.rows.length === 0 && !alvoAdicional ? (
+          {temAcab && (
+            <div className="rounded-lg border border-gray-200 p-3">
+              <p className="font-semibold text-gray-800">Acabamentos no catálogo</p>
+              <p className="text-[13px] text-gray-700 mt-1">
+                {Object.entries(acabEstados).map(([id, v]) =>
+                  `${acabamentosCat.find(a => a.id === id)?.nome || id}: ${v ? 'On' : 'Off'}`).join(' · ')}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Vale para a categoria inteira ({categoriasAlvo.map(nomeCategoria).filter(Boolean).join(', ')}), inclusive cores que não estão marcadas. Desligar também tira a versão com borda.
+              </p>
+            </div>
+          )}
+          {summary.rows.length === 0 && !alvoAdicional && !temAcab ? (
             <p className="text-gray-500">Nenhum campo preenchido para alterar.</p>
           ) : (
             <div className="space-y-3">
