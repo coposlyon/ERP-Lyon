@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Doughnut, Bar } from 'react-chartjs-2';
@@ -45,11 +45,27 @@ function VsBadge({ v }) {
 }
 
 // ═══════════════ VISÃO GERAL ═══════════════
+// A empresa que a Visão Geral está mostrando. Lembrada por navegador —
+// é preferência de quem olha, não regra do sistema.
+const CHAVE_VISUALIZACAO = 'contabil_visualizar_empresa';
+const lerVisualizacao = () => { try { return localStorage.getItem(CHAVE_VISUALIZACAO) || ''; } catch { return ''; } };
+
 function VisaoGeral({ month, setTab }) {
+  const [empresaVis, setEmpresaVis] = useState(lerVisualizacao);
+  const escolherEmpresa = id => {
+    setEmpresaVis(id);
+    try { id ? localStorage.setItem(CHAVE_VISUALIZACAO, id) : localStorage.removeItem(CHAVE_VISUALIZACAO); } catch { /* sem storage */ }
+  };
   const { data: ov, isLoading } = useQuery({
-    queryKey: ['contabil-overview', month],
-    queryFn: () => api.get(`/contabil/overview?month=${month}`),
+    queryKey: ['contabil-overview', month, empresaVis],
+    queryFn: () => api.get(`/contabil/overview?month=${month}${empresaVis ? `&company_id=${empresaVis}` : ''}`),
+    placeholderData: anterior => anterior,
   });
+  // Empresa guardada que foi desativada: volta para o consolidado.
+  useEffect(() => {
+    const lista = ov?.companies || [];
+    if (empresaVis && lista.length && !lista.some(c => c.id === empresaVis)) escolherEmpresa('');
+  }, [ov, empresaVis]); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: alerts } = useQuery({
     queryKey: ['contabil-alerts'],
     queryFn: () => api.get('/contabil/alerts'),
@@ -93,8 +109,37 @@ function VisaoGeral({ month, setTab }) {
     ['Contador', FileDown, () => setTab('contador')],
   ];
 
+
   return (
     <div className="space-y-4">
+      {/* Qual empresa a tela mostra — e qual é a padrão das novas vendas */}
+      <div className="card p-3 flex flex-col md:flex-row md:items-center gap-3">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <Building2 size={18} className="text-primary-600 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[11px] text-gray-500">Empresa padrão das novas vendas</p>
+            <p className="text-sm font-semibold text-gray-900 truncate">
+              {main ? `${main.razao_social} · ${main.cnpj || 'sem CNPJ'} · ${REGIMES[main.regime] || main.regime}` : 'Nenhuma empresa cadastrada'}
+            </p>
+          </div>
+        </div>
+        <div className="md:w-80">
+          <label className="text-[11px] text-gray-500 block mb-0.5">Visualizar dados de</label>
+          <select className="input" value={empresaVis} onChange={e => escolherEmpresa(e.target.value)}>
+            <option value="">Todas as empresas (consolidado)</option>
+            {companies.map(c => (
+              <option key={c.id} value={c.id}>{c.razao_social}{c.cnpj ? ` — ${c.cnpj}` : ''}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {ov?.visualizando && (
+        <p className="text-xs text-gray-500 -mt-2">
+          Mostrando somente <b>{ov.visualizando.razao_social}</b>: vendas faturadas por esse CNPJ, lançamentos das vendas e das contas bancárias dele.
+          Registros sem empresa definida contam para a empresa padrão.
+        </p>
+      )}
+
       {/* KPIs principais */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {kpiCards.map(([label, value, vs, cls]) => (
@@ -129,7 +174,9 @@ function VisaoGeral({ month, setTab }) {
               <div key={c.id} className={`px-4 py-3 ${c.is_default ? 'bg-primary-50/50' : ''}`}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold text-sm text-gray-900 truncate">{c.razao_social}</p>
-                  <span className={`badge ${c.is_active ? 'badge-green' : 'badge-gray'}`}>{c.is_active ? 'Ativa' : 'Inativa'}</span>
+                  <span className={`badge ${c.is_default ? 'badge-green' : 'badge-gray'}`} title={c.is_default ? 'Empresa padrão das novas vendas' : 'Cadastro ativo; não é a empresa padrão'}>
+                    {c.is_default ? 'Padrão' : 'Cadastrada'}
+                  </span>
                 </div>
                 <p className="text-xs text-gray-400">{c.cnpj || 'sem CNPJ'} · {REGIMES[c.regime] || c.regime}</p>
                 <div className="flex items-center justify-between text-xs mt-1">

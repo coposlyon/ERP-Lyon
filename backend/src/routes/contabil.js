@@ -73,15 +73,68 @@ async function defaultAliquota(tenantId, companies) {
   return Number(cfg.tax_pct) || 0;
 }
 
+/**
+ * A QUE EMPRESA PERTENCE CADA REGISTRO — para a Visão Geral por CNPJ.
+ *
+ *   venda        a empresa faturadora gravada no pedido;
+ *   lançamento   a empresa da venda que o originou; senão, a da conta
+ *                bancária em que foi lançado;
+ *   conta        a empresa a que a conta está vinculada.
+ *
+ * O que não tem empresa definida conta para a EMPRESA PADRÃO — a mesma
+ * regra que o faturamento por CNPJ já usa (companiesWithRevenue). Assim
+ * a soma das empresas individuais é exatamente o consolidado: nenhum
+ * registro fica de fora e nenhum é contado duas vezes.
+ *
+ * `companyId` vazio devolve filtros que aceitam tudo (consolidado).
+ */
+async function filtrosDaEmpresa(tenantId, companyId, companies) {
+  const tudo = { ativo: false, daVenda: () => true, doLancamento: () => true, daConta: () => true };
+  const alvo = companyId && (companies || []).find(c => c.id === companyId);
+  if (!alvo) return tudo;
+  const padrao = ((companies || []).find(c => c.is_default) || (companies || [])[0])?.id || null;
+  const dono = id => id || padrao;
+
+  const { data: contas } = await supabase.from('CONTAS_FINANCEIRAS')
+    .select('id, company_id').eq('tenant_id', tenantId);
+  const empresaDaConta = new Map((contas || []).map(c => [c.id, c.company_id]));
+
+  // Empresa das vendas referenciadas por lançamentos — carregada sob demanda.
+  const empresaDaVenda = new Map();
+  const carregarVendas = async ids => {
+    const faltam = [...new Set(ids.filter(id => id && !empresaDaVenda.has(id)))];
+    for (let i = 0; i < faltam.length; i += 300) {
+      const { data } = await supabase.from('VENDAS').select('id, billing_company_id')
+        .eq('tenant_id', tenantId).in('id', faltam.slice(i, i + 300));
+      for (const v of data || []) empresaDaVenda.set(v.id, v.billing_company_id);
+    }
+  };
+  const empresaDoLancamento = l => {
+    if (l.reference_type === 'sale' && empresaDaVenda.has(l.reference_id)) return dono(empresaDaVenda.get(l.reference_id));
+    if (l.account_id && empresaDaConta.has(l.account_id)) return dono(empresaDaConta.get(l.account_id));
+    return padrao;
+  };
+
+  return {
+    ativo: true,
+    empresa: alvo,
+    carregarVendas,
+    daVenda: v => dono(v.billing_company_id) === alvo.id,
+    doLancamento: l => empresaDoLancamento(l) === alvo.id,
+    daConta: c => dono(c.company_id) === alvo.id,
+  };
+}
+
 // Custo dos itens vendidos num intervalo (ficha de precificação → cadastro)
-async function periodCosts(tenantId, start, end) {
+async function periodCosts(tenantId, start, end, daVenda = () => true) {
   const ov = await fixedOverview(tenantId);
   const costs = await productCostMap(tenantId, ov.overhead_unit, ov.tax_pct_default);
-  const { data: sales } = await supabase.from('VENDAS')
-    .select('id, total, created_at, VENDA_ITENS(product_id, quantity)')
+  const { data: todas } = await supabase.from('VENDAS')
+    .select('id, total, created_at, billing_company_id, VENDA_ITENS(product_id, quantity)')
     .eq('tenant_id', tenantId).neq('status', 'cancelled')
     .gte('created_at', start).lt('created_at', end)
     .limit(5000);
+  const sales = (todas || []).filter(daVenda);
   const ids = [...new Set((sales || []).flatMap(s => (s.VENDA_ITENS || []).map(i => i.product_id)).filter(Boolean))];
   let priceMap = {};
   if (ids.length) {
@@ -103,15 +156,16 @@ async function periodCosts(tenantId, start, end) {
 }
 
 // Despesas do intervalo (contas a pagar que não são compra de mercadoria)
-async function periodExpenses(tenantId, start, end) {
+async function periodExpenses(tenantId, start, end, doLancamento = () => true) {
   const { data } = await supabase.from('LANCAMENTOS')
-    .select('amount, reference_type, due_date')
+    .select('amount, reference_type, reference_id, account_id, due_date')
     .eq('tenant_id', tenantId).eq('type', 'payable')
     .neq('status', 'cancelled')
     .gte('due_date', start).lt('due_date', end)
     .limit(10000);
   return r2((data || [])
     .filter(l => l.reference_type !== 'purchase')
+    .filter(doLancamento)
     .reduce((s, l) => s + (Number(l.amount) || 0), 0));
 }
 
@@ -583,15 +637,48 @@ router.get('/overview', async (req, res) => {
   const { start: prevStart } = monthRange(prevMonth);
   try {
     const companies = await companiesWithRevenue(req.tenantId, year).catch(() => []);
-    const aliquota = await defaultAliquota(req.tenantId, companies);
+    const F = await filtrosDaEmpresa(req.tenantId, req.query.company_id, companies);
+    const aliquota = F.ativo && Number(F.empresa.aliquota) > 0
+      ? Number(F.empresa.aliquota)
+      : await defaultAliquota(req.tenantId, companies);
+
+    // Lançamentos lidos de uma vez, para saber a empresa das vendas que
+    // os originaram antes de filtrar.
+    const sixAgo = new Date(Date.UTC(year, Number(month.slice(5, 7)) - 6, 1)).toISOString().slice(0, 10);
+    const today = todayISO();
+    const [{ data: lancAbertos }, { data: paid }, { data: upcomingTodos }, { data: despesasLanc }] = await Promise.all([
+      supabase.from('LANCAMENTOS')
+        .select('type, amount, paid_amount, status, reference_type, reference_id, account_id')
+        .eq('tenant_id', req.tenantId).in('status', ['pending', 'partial', 'overdue'])
+        .limit(10000),
+      supabase.from('LANCAMENTOS')
+        .select('type, paid_amount, paid_date, reference_type, reference_id, account_id')
+        .eq('tenant_id', req.tenantId).in('status', ['paid', 'partial'])
+        .gte('paid_date', sixAgo).lte('paid_date', end)
+        .limit(10000),
+      supabase.from('LANCAMENTOS')
+        .select('id, type, description, amount, paid_amount, due_date, reference_type, reference_id, account_id, CLIENTES(name), FORNECEDORES(name)')
+        .eq('tenant_id', req.tenantId).in('status', ['pending', 'partial'])
+        .gte('due_date', today).order('due_date').limit(F.ativo ? 60 : 6),
+      supabase.from('LANCAMENTOS')
+        .select('reference_type, reference_id')
+        .eq('tenant_id', req.tenantId).eq('type', 'payable').neq('status', 'cancelled')
+        .gte('due_date', prevStart).lt('due_date', end)
+        .limit(10000),
+    ]);
+    if (F.ativo) {
+      const refs = [...(lancAbertos || []), ...(paid || []), ...(upcomingTodos || []), ...(despesasLanc || [])]
+        .filter(l => l.reference_type === 'sale').map(l => l.reference_id);
+      await F.carregarVendas(refs);
+    }
 
     // Vendas do ano (agrega dia/mês/ano + mês anterior em JS)
-    const { data: sales } = await supabase.from('VENDAS')
-      .select('total, created_at')
+    const { data: vendasAno } = await supabase.from('VENDAS')
+      .select('total, created_at, billing_company_id')
       .eq('tenant_id', req.tenantId).neq('status', 'cancelled')
       .gte('created_at', `${year}-01-01`).lt('created_at', `${year + 1}-01-01`)
       .limit(20000);
-    const today = todayISO();
+    const sales = (vendasAno || []).filter(F.daVenda);
     let fatDia = 0, fatMes = 0, fatAno = 0, pedidosMes = 0, fatPrev = 0, pedidosPrev = 0;
     for (const s of (sales || [])) {
       const v = Number(s.total) || 0;
@@ -605,9 +692,9 @@ router.get('/overview', async (req, res) => {
 
     // Custos e despesas do mês (e do anterior, p/ comparativo do lucro)
     const [{ total: custosMes, byMonth: custosByMonth }, despesasMes, despesasPrev] = await Promise.all([
-      periodCosts(req.tenantId, prevStart, end),
-      periodExpenses(req.tenantId, start, end),
-      periodExpenses(req.tenantId, prevStart, start),
+      periodCosts(req.tenantId, prevStart, end, F.daVenda),
+      periodExpenses(req.tenantId, start, end, F.doLancamento),
+      periodExpenses(req.tenantId, prevStart, start, F.doLancamento),
     ]);
     const custosDoMes = custosByMonth.get(month) || 0;
     const custosPrev = custosByMonth.get(prevMonth) || 0;
@@ -618,10 +705,7 @@ router.get('/overview', async (req, res) => {
     const lucroPrev = fatPrev - impostosPrev - custosPrev - despesasPrev;
 
     // Financeiro: a receber / a pagar / saldo bancário
-    const { data: lanc } = await supabase.from('LANCAMENTOS')
-      .select('type, amount, paid_amount, status')
-      .eq('tenant_id', req.tenantId).in('status', ['pending', 'partial', 'overdue'])
-      .limit(10000);
+    const lanc = (lancAbertos || []).filter(F.doLancamento);
     let receber = 0, receberQtd = 0, pagar = 0, pagarQtd = 0;
     for (const l of (lanc || [])) {
       const rest = Math.max(0, (Number(l.amount) || 0) - (Number(l.paid_amount) || 0));
@@ -632,8 +716,8 @@ router.get('/overview', async (req, res) => {
     let saldoBancario = 0;
     try {
       const { data: accs } = await supabase.from('CONTAS_FINANCEIRAS')
-        .select('balance').eq('tenant_id', req.tenantId).eq('is_active', true);
-      saldoBancario = (accs || []).reduce((s, a) => s + (Number(a.balance) || 0), 0);
+        .select('balance, company_id').eq('tenant_id', req.tenantId).eq('is_active', true);
+      saldoBancario = (accs || []).filter(F.daConta).reduce((s, a) => s + (Number(a.balance) || 0), 0);
     } catch { /* sem contas */ }
 
     // Estoque financeiro (quantidade × custo)
@@ -645,14 +729,8 @@ router.get('/overview', async (req, res) => {
     } catch { /* ignora */ }
 
     // Fluxo de caixa dos últimos 6 meses (pagamentos efetivados)
-    const sixAgo = new Date(Date.UTC(year, Number(month.slice(5, 7)) - 6, 1)).toISOString().slice(0, 10);
-    const { data: paid } = await supabase.from('LANCAMENTOS')
-      .select('type, paid_amount, paid_date')
-      .eq('tenant_id', req.tenantId).in('status', ['paid', 'partial'])
-      .gte('paid_date', sixAgo).lte('paid_date', end)
-      .limit(10000);
     const fluxo = new Map();
-    for (const l of (paid || [])) {
+    for (const l of (paid || []).filter(F.doLancamento)) {
       if (!l.paid_date) continue;
       const mk = String(l.paid_date).slice(0, 7);
       const cur = fluxo.get(mk) || { entradas: 0, saidas: 0 };
@@ -664,15 +742,16 @@ router.get('/overview', async (req, res) => {
       .map(([mk, v]) => ({ month: mk, entradas: r2(v.entradas), saidas: r2(v.saidas), saldo: r2(v.entradas - v.saidas) }));
 
     // Vencimentos próximos
-    const { data: upcoming } = await supabase.from('LANCAMENTOS')
-      .select('id, type, description, amount, paid_amount, due_date, CLIENTES(name), FORNECEDORES(name)')
-      .eq('tenant_id', req.tenantId).in('status', ['pending', 'partial'])
-      .gte('due_date', today).order('due_date').limit(6);
+    const upcoming = (upcomingTodos || []).filter(F.doLancamento).slice(0, 6);
 
     const pctChange = (cur, prev) => prev > 0 ? Math.round(((cur - prev) / prev) * 1000) / 10 : null;
 
     res.json({
       month, aliquota,
+      // O que a tela está mostrando: a empresa escolhida ou o consolidado.
+      visualizando: F.ativo
+        ? { company_id: F.empresa.id, razao_social: F.empresa.razao_social, cnpj: F.empresa.cnpj }
+        : null,
       kpis: {
         faturamento_dia: r2(fatDia),
         faturamento_mes: r2(fatMes),
