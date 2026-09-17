@@ -32,7 +32,7 @@ const { pesoCubado } = require('./totalexpress');
 
 // unidades_padrao: quantos copos vão numa caixa quando a regra da
 // categoria não diz. A regra, quando preenchida, sempre vence.
-const CONFIG_PADRAO = { acrescimo_pct: 12, ocupacao_limite_pct: 70, cobrar_caixa: true, unidades_padrao: 50 };
+const CONFIG_PADRAO = { acrescimo_pct: 12, ocupacao_limite_pct: 70, cobrar_caixa: true, unidades_padrao: 100 };
 
 const round2 = v => Math.round((Number(v) + Number.EPSILON) * 100) / 100;
 const round3 = v => Math.round((Number(v) + Number.EPSILON) * 1000) / 1000;

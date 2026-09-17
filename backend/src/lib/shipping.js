@@ -262,7 +262,7 @@ async function cotarPelaTotalExpress(tenantId, cfg, { cep, itens, valor_nota, su
 
 function avisosDoEnvio(envio) {
   return envio?.usou_unidades_padrao
-    ? [`Unidades por caixa pelo padrão (${envio.config?.unidades_padrao ?? 50}) — a regra da categoria não informa.`]
+    ? [`Unidades por caixa pelo padrão (${envio.config?.unidades_padrao ?? 100}) — a regra da categoria não informa.`]
     : [];
 }
 
