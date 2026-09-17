@@ -374,7 +374,7 @@ router.get('/regras', (req, res) => {
  * para o orçamento sai do cadastro, item por item.
  */
 router.post('/orcamento', escritaLimiter, async (req, res) => {
-  const { contato = {}, itens = [], observacao, data_evento, cep, retirar } = req.body || {};
+  const { contato = {}, itens = [], observacao, data_evento, cep, retirar, frete_opcao } = req.body || {};
 
   const nome = String(contato.nome || '').trim();
   const fone = String(contato.telefone || '').replace(/[^0-9]/g, '');
@@ -413,6 +413,8 @@ router.post('/orcamento', escritaLimiter, async (req, res) => {
       contato.email ? 'E-mail: ' + contato.email : null,
       cep ? 'CEP: ' + cep : null,
       retirar ? 'Retirada no local' : null,
+      !retirar && ({ total_express: 'Total Express', braspress: 'BrasPress' })[frete_opcao]
+        ? 'Envio escolhido pelo cliente: ' + ({ total_express: 'Total Express', braspress: 'BrasPress' })[frete_opcao] : null,
       data_evento ? 'Data do evento: ' + String(data_evento).split('-').reverse().join('/') : null,
       observacao ? 'Obs: ' + observacao : null,
     ].filter(Boolean).join('\n');

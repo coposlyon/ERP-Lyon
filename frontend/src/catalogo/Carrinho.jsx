@@ -115,7 +115,10 @@ export default function Carrinho() {
       });
       const opcoes = r?.options || [];
       setOpcoesFrete(opcoes);
-      setFrete(opcoes[0] || null);
+      // Recotou (mudou quantidade ou CEP): continua na transportadora que
+      // o cliente escolheu, com o preço novo. Só a primeira cotação, ou
+      // uma escolha que sumiu, cai na mais barata.
+      setFrete(anterior => opcoes.find(o => o.id === anterior?.id) || opcoes[0] || null);
       // Estado sem valor na tabela: o servidor diz o que houve — repetir
       // "não consegui cotar" mandaria o cliente achar que é erro dele.
       if (!opcoes.length) toast(r?.aviso || 'Não consegui cotar o frete para esse CEP. Fale com um atendente.');
@@ -221,6 +224,7 @@ export default function Carrinho() {
         data_evento: entrega.data_evento || null,
         cep: entrega.cep || null,
         retirar: entrega.retirar,
+        frete_opcao: entrega.retirar ? null : (frete?.id || null),
       });
       // O retrato do orçamento tem de ser tirado ANTES de limpar o
       // carrinho — depois de `limpar()` não há mais item para desenhar,
