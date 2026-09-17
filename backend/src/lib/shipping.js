@@ -295,6 +295,10 @@ async function cotarPelaBraspress(tenantId, cfg, { cep, valor_nota, subtotal, en
       peso: envio.peso_real,
       volumes: envio.volumes,
       cubagem,
+      // CIF SEMPRE: quem paga a BrasPress é a Lyon, que cobra do cliente
+      // no carrinho. FOB (tipo 2, destinatário paga) saía quase 4× mais
+      // caro — R$ 196,84 contra R$ 54,34 na mesma caixa para o RS.
+      tipoFrete: 1,
       timeoutMs: 8000,
     });
   } catch (err) {
