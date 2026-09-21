@@ -544,10 +544,26 @@ export default function Configurador() {
     return liberado ? todos.filter(p => liberado.processos.includes(p.id)) : todos;
   }, [cfg, liberado]);
 
+  /**
+   * A BORDA APARECIA DUAS VEZES: como acabamento "Borda Metalizada" (com
+   * a cor da borda) e como adicional "Borda Metalizada · 18 opções". A
+   * cliente marcava as duas e a prévia saía com duas bordas. A Lyon pediu
+   * a borda só como adicional, "para agregar valor se o cliente escolher"
+   * (e-mail de 16/09/2026). Então, quando o modelo oferece borda nos
+   * adicionais, o acabamento que é SÓ borda sai da lista — os combinados
+   * com pintura ou jateado continuam.
+   */
+  const temBordaAdicional = (preco?.adicionais_disponiveis || []).some(a => a.tipo === 'borda');
+  const soBorda = a => (a?.requer?.borda && !a?.requer?.pintura && !a?.requer?.jateamento)
+    || /^borda metalizada$/i.test(String(a?.nome_interno || a?.nome || '').trim());
+
   const acabamentosDaCor = useMemo(() => {
     const todos = cfg?.acabamentos || [];
-    return liberado ? todos.filter(a => liberado.acabamentos.includes(a.id)) : todos;
-  }, [cfg, liberado]);
+    const daCor = liberado ? todos.filter(a => liberado.acabamentos.includes(a.id)) : todos;
+    if (!temBordaAdicional) return daCor;
+    const semDuplicar = daCor.filter(a => !soBorda(a));
+    return semDuplicar.length ? semDuplicar : daCor;
+  }, [cfg, liberado, temBordaAdicional]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * TROCOU DE COR, O QUE NÃO VALE MAIS CAI.
@@ -558,12 +574,13 @@ export default function Configurador() {
    * que é quando a cliente ainda consegue entender por quê.
    */
   useEffect(() => {
-    if (!liberado) return;
     const patch = {};
-    if (estado.processo_id && !liberado.processos.includes(estado.processo_id)) {
+    if (liberado && estado.processo_id && !liberado.processos.includes(estado.processo_id)) {
       patch.processo_id = null;
     }
-    if (estado.acabamento_id && !liberado.acabamentos.includes(estado.acabamento_id)) {
+    // Vale também para o acabamento que saiu por duplicar a borda.
+    if (estado.acabamento_id && acabamentosDaCor.length
+        && !acabamentosDaCor.some(a => a.id === estado.acabamento_id)) {
       patch.acabamento_id = acabamentosDaCor[0]?.id || null;
     }
     if (Object.keys(patch).length) mudar(patch);
