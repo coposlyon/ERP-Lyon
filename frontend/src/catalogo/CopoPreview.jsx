@@ -929,10 +929,15 @@ export default function CopoPreview({
   // Pablo pediu para inverter as duas de novo — a foto de catalogo da
   // Lyon tem a alca do lado oposto ao que estava saindo aqui.
   //
-  // Este `===` e o interruptor inteiro: as duas imagens viram junto,
+  // A troca de 06/09 (21:09) nao resolveu: as 21:21 a Lyon reportou de
+  // novo "as alcas das canecas estao invertidas", ja com ela no ar. Em
+  // 21/09/2026 volta para a frente espelhada — alca a DIREITA na frente
+  // e a esquerda no verso.
+  //
+  // Este `!==` e o interruptor inteiro: as duas imagens viram junto,
   // porque frente e verso sao a MESMA peca e so uma das duas pode estar
   // espelhada. Quem conhece a peca e a fabrica; a tela segue.
-  const espelhar = face === 'verso';
+  const espelhar = face !== 'verso';
 
   // As faixas de cor do corpo, de baixo para cima — ver `faixasDoCorpo`.
   const faixas = faixasDoCorpo(campos, coresArte);
