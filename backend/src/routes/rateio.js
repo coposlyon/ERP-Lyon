@@ -236,6 +236,18 @@ router.get('/product/:id', async (req, res) => {
         .eq('is_active', true).order('updated_at', { ascending: false })
         .limit(1).maybeSingle();
       sheet = data || null;
+      // A FICHA DA CATEGORIA TAMBÉM VALE. A Formação de Preço permite
+      // precificar a categoria inteira ("Caneca Slim Tradicional"), e a
+      // ficha nasce sem produto. Procurar só pelo produto mostrava o
+      // rateio sem preço ideal justamente para quem precificou do jeito
+      // que a tela oferece. A do produto, quando existe, continua vencendo.
+      if (!sheet && product.category_id) {
+        const { data: daCategoria } = await supabase.from('PRECIFICACOES')
+          .select('*').eq('tenant_id', req.tenantId).eq('category_id', product.category_id)
+          .is('product_id', null).eq('is_active', true).order('updated_at', { ascending: false })
+          .limit(1).maybeSingle();
+        sheet = daCategoria || null;
+      }
     } catch { /* migração 042 pendente */ }
 
     let breakdown;
@@ -243,6 +255,7 @@ router.get('/product/:id', async (req, res) => {
       const c = computeSheet({ ...sheet, overhead_unit: ov.overhead_unit });
       breakdown = {
         source: 'ficha', sheet_id: sheet.id, sheet_name: sheet.name,
+        sheet_scope: sheet.product_id ? 'produto' : 'categoria',
         materia_prima: c.mat_unit,
         tintas: c.tinta_unit,
         serigrafia: c.pers_unit,
