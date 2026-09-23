@@ -24,17 +24,46 @@ const upload = multer({
  */
 const EM_ABERTO = ['pending', 'respondido'];
 
+/**
+ * LIMPAR O HISTÓRICO NÃO APAGA NENHUMA MOVIMENTAÇÃO.
+ *
+ * As linhas de MOVIMENTACOES_ESTOQUE não são só histórico: a de venda é
+ * o que o excluirVenda.js usa para devolver o estoque quando o pedido é
+ * excluído, e a de reposição aponta para a solicitação. Apagar de
+ * verdade faria a exclusão de uma venda antiga não devolver nada.
+ *
+ * Então "limpar" é gravar na AUDITORIA um marco (quem, quando, quantas)
+ * e a tela passa a mostrar só o que veio DEPOIS do último marco. O
+ * registro de que foi limpo é o próprio marco, e ele fica na Auditoria.
+ */
+async function ultimaLimpeza(tenantId) {
+  const { data, error } = await supabase
+    .from('AUDITORIA')
+    .select('created_at, user_name, details')
+    .eq('tenant_id', tenantId)
+    .eq('entity', 'stock_movements')
+    .eq('action', 'clear_history')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
 router.get('/movements', async (req, res) => {
   const { page = 1, limit = 50, product_id, type, start_date, end_date } = req.query;
   const offset = (page - 1) * limit;
 
   try {
+    const limpeza = await ultimaLimpeza(req.tenantId);
+
     let query = supabase
       .from('MOVIMENTACOES_ESTOQUE')
       .select('*, PRODUTOS(id, name, code), USUARIOS(name)', { count: 'exact' })
       .eq('tenant_id', req.tenantId)
       .order('created_at', { ascending: false });
 
+    if (limpeza)     query = query.gt('created_at', limpeza.created_at);
     if (product_id)  query = query.eq('product_id', product_id);
     if (type)        query = query.eq('type', type);
     if (start_date)  query = query.gte('created_at', start_date);
@@ -43,7 +72,58 @@ router.get('/movements', async (req, res) => {
 
     const { data, error, count } = await query;
     if (error) throw error;
-    res.json({ data, total: count, page: Number(page), limit: Number(limit) });
+    res.json({
+      data, total: count, page: Number(page), limit: Number(limit),
+      limpeza: limpeza ? { em: limpeza.created_at, por: limpeza.user_name, quantidade: limpeza.details?.quantidade ?? null } : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Limpar o histórico — exige a senha da conta (mesma checagem do
+// /products/bulk-delete). Só Administrativo.
+router.post('/movements/clear', async (req, res) => {
+  const papel = req.userProfile?.role;
+  if (papel !== 'admin' && papel !== 'manager') return res.status(403).json({ error: 'Só o Administrativo pode limpar o histórico.' });
+
+  const { password } = req.body || {};
+  if (!password) return res.status(400).json({ error: 'Digite a senha da conta para confirmar' });
+
+  const email = req.user?.email;
+  // Não usar 401: o interceptor do front trata 401 como sessão expirada e desloga.
+  if (!email) return res.status(403).json({ error: 'Não consegui confirmar sua sessão. Recarregue a página e tente de novo.' });
+
+  try {
+    const client = supabase.makeClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { error: authErr } = await client.auth.signInWithPassword({ email, password });
+    if (authErr) {
+      const badPass = authErr.status === 400 || /invalid|credential|password|senha/i.test(authErr.message || '');
+      return res.status(badPass ? 403 : 502).json({ error: badPass ? 'Senha incorreta.' : `Não foi possível confirmar a senha: ${authErr.message}` });
+    }
+
+    const anterior = await ultimaLimpeza(req.tenantId);
+    let contagem = supabase.from('MOVIMENTACOES_ESTOQUE')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', req.tenantId);
+    if (anterior) contagem = contagem.gt('created_at', anterior.created_at);
+    const { count, error: cErr } = await contagem;
+    if (cErr) throw cErr;
+
+    // Aqui NÃO é o audit() fire-and-forget: o marco é o que esconde as
+    // linhas, então se não gravar a limpeza não aconteceu.
+    const { data: marco, error } = await supabase.from('AUDITORIA').insert({
+      tenant_id: req.tenantId,
+      user_id:   req.user?.id || null,
+      user_name: req.userProfile?.name || req.user?.email || null,
+      action:    'clear_history',
+      entity:    'stock_movements',
+      entity_id: null,
+      details:   { quantidade: count || 0 },
+    }).select('created_at, user_name').single();
+    if (error) throw error;
+
+    res.json({ ok: true, quantidade: count || 0, em: marco.created_at, por: marco.user_name });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -787,11 +867,16 @@ router.get('/movements-summary', async (req, res) => {
     const since = new Date();
     since.setDate(since.getDate() - 30);
 
+    // Os KPIs contam o mesmo que a aba Movimentações mostra: o que foi
+    // limpo não volta a aparecer aqui.
+    const limpeza = await ultimaLimpeza(req.tenantId);
+    const desde = limpeza && new Date(limpeza.created_at) > since ? limpeza.created_at : since.toISOString();
+
     const { data, error } = await supabase
       .from('MOVIMENTACOES_ESTOQUE')
       .select('quantity, notes, type')
       .eq('tenant_id', req.tenantId)
-      .gte('created_at', since.toISOString());
+      .gt('created_at', desde);
 
     if (error) throw error;
 

@@ -5,7 +5,7 @@ import {
   PackageX, CheckCircle2, ChevronDown, ChevronRight,
   TrendingUp, TrendingDown, ArrowRight, Package,
   AlertCircle, PackageCheck, TriangleAlert,
-  Edit2, Check, Plus, Minus, Search,
+  Edit2, Check, Plus, Minus, Search, Trash2,
 } from 'lucide-react';
 import api from '@/lib/api';
 import SolicitacoesReposicao from './SolicitacoesReposicao';
@@ -516,8 +516,10 @@ function QuickAdjustModal({ target, onClose, onConfirm, pending }) {
 }
 
 export default function Stock() {
-  const { tenant } = useAuth();
+  const { tenant, isAdmin, isManager } = useAuth();
   const [tab, setTab]             = useState('position');
+  const [limparOpen, setLimparOpen]   = useState(false);
+  const [limparSenha, setLimparSenha] = useState('');
   const [page, setPage]           = useState(1);
   // ABRE NOS NEGATIVOS. A lista inteira são centenas de linhas, e quem
   // entra em Estoque entra por causa do que está faltando — o resto é
@@ -575,6 +577,22 @@ export default function Stock() {
     queryKey: ['stock-movements', page],
     queryFn: () => api.get(`/stock/movements?page=${page}&limit=30`),
     enabled: tab === 'movements',
+  });
+
+  // Limpar histórico — não apaga nada no banco: grava um marco na
+  // Auditoria e a lista passa a mostrar só o que veio depois dele
+  // (explicado em routes/stock.js, ultimaLimpeza).
+  const fecharLimpar = () => { setLimparOpen(false); setLimparSenha(''); };
+  const limparMut = useMutation({
+    mutationFn: (password) => api.post('/stock/movements/clear', { password }),
+    onSuccess: (r) => {
+      toast.success(`Histórico limpo (${r.quantidade} movimentação${r.quantidade !== 1 ? 'ões' : ''})`);
+      fecharLimpar();
+      setPage(1);
+      qc.invalidateQueries(['stock-movements']);
+      qc.invalidateQueries(['stock-movements-summary']);
+    },
+    onError: (e) => toast.error(e.error || 'Erro ao limpar o histórico'),
   });
 
   // ── Resumo de movimentações (últimos 30 dias) ───────────────────
@@ -1073,6 +1091,13 @@ export default function Stock() {
             </button>
           )}
 
+          {tab === 'movements' && (isAdmin || isManager) && (
+            <button onClick={() => setLimparOpen(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-600 bg-red-600 text-white hover:bg-red-700 transition-colors">
+              <Trash2 size={13} /> LIMPAR HISTÓRICO DE MOVIMENTAÇÕES
+            </button>
+          )}
+
         </div>
 
         {/* ── Aba: Lista Completa ───────────────────────────────── */}
@@ -1259,6 +1284,16 @@ export default function Stock() {
                 {movLoading ? 'Carregando...' : `${movements?.total ?? 0} movimentação${movements?.total !== 1 ? 'ões' : ''} · clique em qualquer linha para ver detalhes`}
               </p>
             </div>
+            {movements?.limpeza && (
+              <div className="mx-4 mb-2 flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <Trash2 size={13} className="shrink-0" />
+                <span>
+                  Histórico limpo em <b>{format(parseISO(movements.limpeza.em), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</b>
+                  {movements.limpeza.por && <> por <b>{movements.limpeza.por}</b></>}
+                  {movements.limpeza.quantidade != null && <> · {movements.limpeza.quantidade} movimentação{movements.limpeza.quantidade !== 1 ? 'ões' : ''} ocultada{movements.limpeza.quantidade !== 1 ? 's' : ''}</>}
+                </span>
+              </div>
+            )}
 
             {/* Lista de cards */}
             {movLoading ? (
@@ -1435,6 +1470,36 @@ export default function Stock() {
           }}
           onCancel={() => setPerdaOpen(false)}
         />
+      </Modal>
+
+      {/* ── Modal: Limpar histórico de movimentações (senha da conta) ── */}
+      <Modal isOpen={limparOpen} onClose={() => { if (!limparMut.isPending) fecharLimpar(); }}
+        title="Limpar histórico de movimentações" size="sm"
+        footer={
+          <>
+            <button onClick={fecharLimpar} disabled={limparMut.isPending} className="btn-secondary">Cancelar</button>
+            <button onClick={() => limparMut.mutate(limparSenha)} disabled={limparMut.isPending || !limparSenha}
+              className="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg px-4 py-2 flex items-center gap-1.5 disabled:opacity-50">
+              {limparMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />} Limpar histórico
+            </button>
+          </>
+        }>
+        <div className="space-y-3 text-sm">
+          <div className="flex items-start gap-2 text-red-700 bg-red-50 rounded-lg p-3">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+            <p>
+              Todas as <b>{movements?.total ?? 0} movimentação(ões)</b> listadas somem desta tela. O estoque atual
+              dos produtos <b>não muda</b>, e a limpeza fica registrada na Auditoria com o seu nome.
+            </p>
+          </div>
+          <div>
+            <label className="label">Senha da sua conta</label>
+            <input type="password" className="input" autoFocus value={limparSenha}
+              onChange={e => setLimparSenha(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && limparSenha && !limparMut.isPending) limparMut.mutate(limparSenha); }}
+              placeholder="Digite a senha para confirmar" />
+          </div>
+        </div>
       </Modal>
 
       {/* Novo / editar produto direto da tela de estoque */}
