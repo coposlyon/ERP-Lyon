@@ -1,5 +1,6 @@
 // Peças comuns da tela de Maquinários: formatação, campos e selos.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MoreVertical } from 'lucide-react';
 import CampoData from '@/components/UI/CampoData';
 
@@ -143,23 +144,65 @@ export function Leitura({ children, tom = '' }) {
   );
 }
 
-/** Menu ⋮ com itens. */
+/**
+ * Menu ⋮ com itens.
+ *
+ * O PAINEL VAI PARA FORA DA TABELA. Na Lista de Maquinários o menu de
+ * cada linha abria dentro da área com rolagem horizontal, que corta o
+ * que passa da borda: quem clicava nos três pontinhos não via nada
+ * acontecer, embora "Editar cadastro" e "Excluir" estivessem ali. Agora
+ * o painel é desenhado no corpo da página (portal), preso ao botão pela
+ * posição que ele ocupa na tela, e a rolagem ou o redimensionamento o
+ * fecham — senão ele ficaria flutuando longe do botão.
+ */
 export function Menu({ itens, icone: Icone = MoreVertical, rotulo, className = 'btn-ghost p-1.5' }) {
   const [aberto, setAberto] = useState(false);
-  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+  const botaoRef = useRef(null);
+  const painelRef = useRef(null);
+
+  const medir = () => {
+    const r = botaoRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const LARGURA = 220;
+    const esquerda = Math.max(8, Math.min(r.right - LARGURA, window.innerWidth - LARGURA - 8));
+    const abaixo = window.innerHeight - r.bottom;
+    setPos({
+      left: esquerda,
+      largura: LARGURA,
+      ...(abaixo < 200 ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }),
+    });
+  };
+
+  useLayoutEffect(() => { if (aberto) medir(); }, [aberto]);
+
   useEffect(() => {
     if (!aberto) return undefined;
-    const fechar = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false); };
+    const fechar = e => {
+      if (botaoRef.current?.contains(e.target) || painelRef.current?.contains(e.target)) return;
+      setAberto(false);
+    };
+    const sair = () => setAberto(false);
     document.addEventListener('mousedown', fechar);
-    return () => document.removeEventListener('mousedown', fechar);
+    window.addEventListener('scroll', sair, true);
+    window.addEventListener('resize', sair);
+    return () => {
+      document.removeEventListener('mousedown', fechar);
+      window.removeEventListener('scroll', sair, true);
+      window.removeEventListener('resize', sair);
+    };
   }, [aberto]);
+
   return (
-    <div className="relative inline-block" ref={ref}>
-      <button type="button" className={className} onClick={e => { e.stopPropagation(); setAberto(a => !a); }} title={typeof rotulo === 'string' ? rotulo : 'Mais ações'}>
+    <div className="relative inline-block">
+      <button ref={botaoRef} type="button" className={className}
+        onClick={e => { e.stopPropagation(); setAberto(a => !a); }}
+        title={typeof rotulo === 'string' ? rotulo : 'Mais ações'}>
         {Icone && <Icone size={15} />}{rotulo && <span>{rotulo}</span>}
       </button>
-      {aberto && (
-        <div className="absolute right-0 z-30 mt-1 min-w-[200px] bg-white border border-gray-200 rounded-lg shadow-lg py-1 text-left">
+      {aberto && pos && createPortal(
+        <div ref={painelRef} className="fixed z-[70] bg-white border border-gray-200 rounded-lg shadow-lg py-1 text-left"
+          style={{ left: pos.left, width: pos.largura, top: pos.top, bottom: pos.bottom }}>
           {itens.filter(Boolean).map((it, i) => (
             <button key={i} type="button" disabled={it.disabled}
               className={`w-full flex items-center gap-2 px-3 py-2 text-[13px] hover:bg-gray-100 disabled:opacity-40 ${it.perigo ? 'text-red-600' : 'text-gray-700'}`}
@@ -167,7 +210,8 @@ export function Menu({ itens, icone: Icone = MoreVertical, rotulo, className = '
               {it.icone && <it.icone size={14} />} {it.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
