@@ -1,7 +1,22 @@
 import { Component } from 'react';
 
-// Erros de carregamento de chunk (deploy novo invalidou o JS em cache).
-const CHUNK_RE = /(ChunkLoadError|Loading chunk|dynamically imported module|module script failed|Failed to fetch)/i;
+// ERROS DE CARREGAMENTO DE CHUNK — deploy novo invalidou o JS em cache.
+//
+// Cada navegador conta a MESMA história com palavras diferentes, e o
+// React.lazy ainda acrescenta as dele: quando o import falha, quem
+// estoura é o `lazy`, com "can't access property 'default', e._result is
+// undefined" (Firefox) ou "Cannot read properties of undefined (reading
+// 'default')" (Chrome) — mensagens que não falam em chunk nenhum. Sem
+// reconhecê-las, a tela mostrava "Algo deu errado" e ficava lá, quando
+// bastava recarregar para pegar a versão nova. Foi o que aconteceu na
+// Central de Contas em 24/09/2026.
+const CHUNK_RE = new RegExp([
+  'ChunkLoadError', 'Loading chunk', 'dynamically imported module',
+  'module script failed', 'Failed to fetch', 'NetworkError when attempting to fetch',
+  '_result is undefined',                       // React.lazy, Firefox
+  "reading 'default'", 'property "default"',    // React.lazy, Chrome e Firefox
+  "Unexpected token '<'", 'expected expression, got', // HTML no lugar do JS
+].join('|'), 'i');
 const isChunkError = (e) => CHUNK_RE.test(e?.message || e?.name || String(e || ''));
 
 export default class ErrorBoundary extends Component {
