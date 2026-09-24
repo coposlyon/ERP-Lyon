@@ -100,7 +100,11 @@ export default function CadastroCliente() {
   // carrinho intacto — despejar todo mundo em /loja faria essa pessoa
   // perder o pedido que estava montando.
   const [buscaUrl] = useSearchParams();
-  const voltarPara = destinoSeguro(buscaUrl.get('voltar')) || '/loja';
+  // QUEM TERMINA O CADASTRO VAI PARA O CATÁLOGO DE PERSONALIZADOS, e
+  // não para a loja de lisos: a pedido da Lyon em 24/09/2026, o site de
+  // lisos é a última etapa e não deve receber cliente novo por enquanto.
+  // Quem veio no meio de uma compra continua voltando para onde estava.
+  const voltarPara = destinoSeguro(buscaUrl.get('voltar')) || '/personalizados';
   // Veio no meio de uma compra? Então o fim do cadastro é VOLTAR, não a
   // tela de "fale com a gente no WhatsApp": a pessoa tem um carrinho
   // montado esperando, e mandá-la para o WhatsApp é perder a venda que
@@ -143,7 +147,7 @@ export default function CadastroCliente() {
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  // Cliente que ENTROU (já era cadastrado) vai para a loja logado.
+  // Cliente que ENTROU (já era cadastrado) vai para o catálogo logado.
   // Quem acabou de FAZER o cadastro volta para o WhatsApp (ver render
   // abaixo) — exceto quem veio no meio de uma compra, que volta para
   // onde estava comprando.
@@ -392,7 +396,7 @@ export default function CadastroCliente() {
           <p className="text-lg font-bold st-gradient-text mt-1">Olá{welcomeName ? `, ${welcomeName}` : ''}!</p>
           <p className="text-gray-500 mt-3">Você já está logado. Estamos te levando de volta…</p>
           <div className="flex items-center justify-center gap-2 mt-5 text-violet-600 font-semibold">
-            <Loader2 size={18} className="animate-spin" /> Entrando na loja
+            <Loader2 size={18} className="animate-spin" /> Entrando no catálogo
           </div>
           <button onClick={() => navigate(voltarPara)} className="mt-5 text-sm text-gray-400 hover:text-violet-600 underline">
             Ir agora
@@ -496,7 +500,7 @@ export default function CadastroCliente() {
                 {verifyErr && <p className="text-sm text-red-600 font-medium mt-3">{verifyErr}</p>}
                 <button onClick={entrarPJ} disabled={verifying}
                   className="w-full mt-5 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
-                  {verifying ? <Loader2 size={17} className="animate-spin" /> : <><User size={17} /> Entrar na loja</>}
+                  {verifying ? <Loader2 size={17} className="animate-spin" /> : <><User size={17} /> Entrar no catálogo</>}
                 </button>
               </>
             ) : (
