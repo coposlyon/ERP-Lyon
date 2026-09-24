@@ -3,7 +3,11 @@
 // Designer e da Logística, lendo a fatia da produção.
 import { Factory } from 'lucide-react';
 import FilaDeEtapas from '@/components/Fluxo/FilaDeEtapas';
-import SerigrafiaPanel from './SerigrafiaPanel';
+// O painel "Serigrafia — Telas / Matrizes" saiu daqui a pedido da Lyon
+// em 24/09/2026: esta tela mostra a FILA DE PEDIDOS, e a durabilidade
+// das telas era leitura de outro assunto no meio dela. O componente
+// (SerigrafiaPanel) e os dados continuam no sistema, prontos para
+// voltar em tela própria se a serigrafia voltar a precisar deles.
 
 // O que aparece embaixo do título: os status 10 a 21 da régua, pelo
 // número e nome (os mesmos de backend/src/lib/atencao.js).
@@ -25,7 +29,6 @@ export default function Production() {
       subtitulo={STATUS_DA_PRODUCAO.join(' · ')}
       Icone={Factory}
       cor="orange"
-      extras={<SerigrafiaPanel />}
     />
   );
 }
